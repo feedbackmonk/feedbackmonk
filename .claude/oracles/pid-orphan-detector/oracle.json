@@ -1,0 +1,74 @@
+{
+    "name": "pid-orphan-detector",
+    "version": "1.0.0",
+    "question": "Are there worker-shell-*.pid files referencing PIDs that are no longer alive?",
+    "category": "cleanup",
+    "kind": "project-state",
+    "invocation": {
+        "unix": ".claude/oracles/pid-orphan-detector/run.sh",
+        "windows": ".claude/oracles/pid-orphan-detector/run.ps1"
+    },
+    "output": {
+        "format": "json",
+        "schema": {
+            "swept": "array of {pid_file, referenced_pid, liveness_at_sweep, mtime} for orphan PIDs (deleted in --gc/--gc-cheap; reported but not deleted in default mode)",
+            "alive": "array of {pid_file, referenced_pid} for live-PID files (preserved)",
+            "malformed": "array of repo-relative paths to .pid files with non-integer content (NEVER deleted)",
+            "briefing": "string (one-line ORACLE BRIEFING summary; empty string when swept[] is empty)"
+        },
+        "_sweptEntry_schema": {
+            "pid_file": "string (repo-relative path)",
+            "referenced_pid": "integer (PID number read from file content)",
+            "liveness_at_sweep": "boolean (always false for entries in swept[]; alive PIDs are never swept)",
+            "mtime": "string (ISO-8601 UTC modification time at sweep evaluation)"
+        }
+    },
+    "freshness": {
+        "strategy": "always-fresh",
+        "compute_cost_ms": 120
+    },
+    "consultation": {
+        "typical_sessions_using": "every (cheap mode in session-start hook); on-demand for full sweep",
+        "estimated_token_savings_per_call": 150
+    },
+    "validation": {
+        "self_test_unix": ".claude/oracles/pid-orphan-detector/validate.sh",
+        "self_test_windows": ".claude/oracles/pid-orphan-detector/validate.ps1",
+        "last_validated": null
+    },
+    "fallback": "Read ltads/execution/ directly; for each worker-shell-*.pid file, read its content as a PID and probe liveness via `kill -0` (Unix) or `Get-Process -Id N -ErrorAction SilentlyContinue` (Windows). Treat non-integer content as malformed (never delete). Before any delete, append a JSON line summarizing the entry to ltads/execution/_pid-summary.jsonl.",
+    "gcMode": {
+        "summary": "PID-orphan sweep (SWEEP-04). Sweeps ltads/execution/worker-shell-*.pid (and legacy worker-shell.pid) where the referenced PID is not alive. NO TTL per DEC-54: liveness is the sole criterion. Before each delete, appends a JSON entry to _pid-summary.jsonl preserving pid_file, referenced_pid, liveness_at_sweep:false, mtime, sweptAt (audit trail preserved per SWEEP-08).",
+        "cheap": {
+            "invocation_unix": ".claude/oracles/pid-orphan-detector/run.sh --gc-cheap",
+            "invocation_windows": ".claude/oracles/pid-orphan-detector/run.ps1 --gc-cheap",
+            "budget_ms": 500,
+            "behavior": "Session-start path. If the per-file probe + summary write + delete loop exceeds 500ms wall-time, the sweep aborts cleanly and defers to the next session-start (graceful absence). 500ms (vs. dispatchable-sessions' 100ms) absorbs Windows powershell.exe cold-start probe cost (~80-200ms per call); see run.sh comment for rationale. Output is empty on success; warning on stderr on failure.",
+            "exit_codes": "Always 0 (graceful). Internal failures are logged to stderr and never block the session-start briefing."
+        },
+        "on_demand": {
+            "invocation_unix": ".claude/oracles/pid-orphan-detector/run.sh --gc",
+            "invocation_windows": ".claude/oracles/pid-orphan-detector/run.ps1 --gc",
+            "budget_ms": null,
+            "behavior": "Deeper scan with no time budget. Reports a single-line JSON summary on stdout: {swept, alive, malformed, briefing} (same shape as default mode but the swept[] entries' files have been deleted).",
+            "summary_schema": {
+                "swept": "array of {pid_file, referenced_pid, liveness_at_sweep:false, mtime} -- files deleted",
+                "alive": "array of {pid_file, referenced_pid} -- preserved",
+                "malformed": "array of repo-relative paths -- NEVER deleted",
+                "briefing": "string (empty when swept[] is empty)"
+            }
+        },
+        "criteria": "File path under ltads/execution/, basename matches worker-shell-*.pid (or legacy worker-shell.pid), file content reads as positive integer, AND liveness probe returns 'not alive' for that PID. Malformed (non-integer) content is NEVER swept (failure-open). Alive PIDs are NEVER swept regardless of age.",
+        "action": "1) Read PID number from file content. 2) Validate numeric (else -> malformed[]). 3) Probe liveness (alive -> alive[]). 4) Append JSON line to ltads/execution/_pid-summary.jsonl (atomic append). 5) Verify summary write succeeded (read-back last line). 6) Delete the .pid file. Summary write must succeed before delete; on failure the file is preserved.",
+        "atomic_semantics": "Per-file delete is sequential and uses POSIX-atomic append for _pid-summary.jsonl (each entry < PIPE_BUF / 4KB, atomic across concurrent appenders). No directory-level lock -- concurrent sweeps from different sessions are race-tolerant: each sweep reads files that exist at scan time; if two sweeps target the same file, the second one's delete becomes a no-op (idempotent). _pid-summary.jsonl may receive duplicate entries in rare double-sweep cases; audit trail favors over-recording.",
+        "spec_refs": ["SWEEP-04", "SWEEP-05", "SWEEP-06", "SWEEP-08"],
+        "design_lineage": ["CSI-05 (dispatchable-sessions liveness probe)", "RETENTION-05 (audit-trail JSONL invariant)", "DEC-54 (liveness, no TTL)", "DEC-55 (three-leg defense)"],
+        "discoveries_closed": ["DISC-HYGIENE-03"]
+    },
+    "provenance": {
+        "authored_by": "Hygiene Arc 3 PODS session collab-20260508-055646 (CLAUDE-C)",
+        "created": "2026-05-08T06:00:00Z",
+        "spec_refs": ["SWEEP-04..06", "SWEEP-08"],
+        "note": "Caps unbounded growth of ltads/execution/ from worker-shell-*.pid files left by crashed worker shells. Trigger incident: SessionHelm 2026-05-07 audit (10 orphan PIDs). Mirrors CSI-05's liveness probe and RETENTION-05's audit-trail invariant. NO TTL: liveness is binary, age is irrelevant (DEC-54). Three-leg defense (DEC-55): SessionEnd hook (proactive) + session-start --gc-cheap (reactive) + operator --gc (explicit), all sharing the same liveness probe via scripts/lib/pid-liveness.{sh,ps1}."
+    }
+}

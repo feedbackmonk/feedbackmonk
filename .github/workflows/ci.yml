@@ -1,0 +1,97 @@
+name: CI
+
+# Stage 1 P0 Foundation CI gate.
+#
+# Even though no remote is configured yet (LICENSE stub blocks first public
+# push per project CLAUDE.md and DEC-FBR-05), this workflow file is the
+# contract for the eventual public CI. The same checks must pass locally
+# before commit; running them remotely is the second gate.
+#
+# Three-leg defense for FR-FBR-01 active here:
+#   leg 1 (type system): cargo build catches scope-newtype misuse
+#   leg 2 (oracle):      multi-tenant-isolation-check job fails on AST drift
+#   leg 3 (deny/clippy): cargo-deny + clippy -D warnings forbid second DB path
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Verification Oracle - Task Zero of P0; must run on every commit.
+  # -------------------------------------------------------------------------
+  multi-tenant-isolation-check:
+    name: Oracle - multi-tenant-isolation-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run multi-tenant-isolation-check oracle
+        shell: bash
+        run: bash .claude/oracles/multi-tenant-isolation-check/oracle.sh
+
+  # -------------------------------------------------------------------------
+  # Build / test / lint matrix.
+  # -------------------------------------------------------------------------
+  build:
+    name: Build, test, clippy
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: dev
+          POSTGRES_DB: feedbackr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:dev@localhost:5432/feedbackr_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify .sqlx cache exists (offline build contract)
+        run: |
+          if [ ! -d .sqlx ]; then
+            echo "::error::.sqlx/ cache missing -- run 'cargo sqlx prepare --workspace' and commit the result"
+            exit 1
+          fi
+
+      - name: cargo build --workspace
+        run: cargo build --workspace --all-targets
+
+      - name: cargo test --workspace
+        # Tests use sqlx::test against the Postgres service. SQLX_OFFLINE=true
+        # is fine because query metadata still resolves from .sqlx/ at compile
+        # time; runtime queries go to the live service.
+        run: cargo test --workspace -- --nocapture
+
+      - name: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # -------------------------------------------------------------------------
+  # cargo-deny - leg 3 of the three-leg defense.
+  # -------------------------------------------------------------------------
+  deny:
+    name: cargo-deny (banned crates / licenses / advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+          arguments: --workspace

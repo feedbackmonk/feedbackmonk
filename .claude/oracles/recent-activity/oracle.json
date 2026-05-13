@@ -1,0 +1,37 @@
+{
+  "name": "recent-activity",
+  "version": "1.0.0",
+  "question": "What happened recently in this repository: last N commits, touched areas, commit cadence?",
+  "category": "git",
+  "invocation": {
+    "unix": ".claude/oracles/recent-activity/run.sh",
+    "windows": ".claude/oracles/recent-activity/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "last_commits": "array of {hash, subject, author, date}",
+      "touched_directories_last_5": "string[]",
+      "commits_last_7_days": "integer",
+      "commits_last_30_days": "integer"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 60
+  },
+  "consultation": {
+    "typical_sessions_using": "most",
+    "estimated_token_savings_per_call": 500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/recent-activity/validate.sh",
+    "self_test_windows": ".claude/oracles/recent-activity/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run git log --oneline -5 and git log --since='7 days ago' --oneline separately.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z"
+  }
+}

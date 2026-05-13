@@ -1,0 +1,4 @@
+# Project gitignore exists but no baseline file — graceful absent path
+target/
+node_modules/
+**/.claude/checkpoints/

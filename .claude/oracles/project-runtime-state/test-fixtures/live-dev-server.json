@@ -1,0 +1,35 @@
+{
+  "$fixture": "live-dev-server",
+  "$schemaVersion": 1,
+  "_description": "Reference snapshot for a project with an active dev server bound to a port that is assigned in the Dev Port Registry. Indicators contributing: (1) hasLiveDevServer=true (port bound), (2) Dev Port Registry assignment present. With node_modules + vite.config.ts also present, antiFitScore reaches >=3. This is the canonical anti-fit case: spawning workers under git worktree isolation while a live dev server is bound risks port collision and runtime divergence between worktrees.",
+  "_authoredBy": "WT-05 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-05",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6 (WT-06)"
+  },
+  "environmentPrecondition": {
+    "machineConfigDevPortRegistryEntry": "- demo-app: 5173",
+    "currentProjectName": "demo-app",
+    "portBound": 5173,
+    "filesPresent": ["node_modules/", "vite.config.ts", "package.json"]
+  },
+  "expectedOutput": {
+    "schemaVersion": 1,
+    "hasLiveDevServer": true,
+    "devPortRegistryEntries": [
+      { "project": "demo-app", "port": 5173, "source": "MACHINE_CONFIG.md" }
+    ],
+    "sharedBuildArtifacts": ["node_modules"],
+    "fileWatchers": ["vite.config.ts"],
+    "statefulRuntime": null,
+    "antiFitScore": 3,
+    "antiFitReasons": [
+      "port 5173 assigned to 'demo-app' is currently bound (live dev server)",
+      "file watcher config(s) present: vite.config.ts",
+      "Dev Port Registry assignment(s) for this project: 1"
+    ]
+  },
+  "expectedHeuristicVerdict": "anti-fit-warn (regardless of file-touches disjointness — runtime state dominates)",
+  "_match": "Field-shape match — environmentPrecondition is the contract: when the oracle runs in an environment matching this precondition, the output schema and antiFitScore lower bound (>=3) hold. Exact reasons-array contents may vary if MACHINE_CONFIG.md is updated, but the score floor and the principal indicators are stable."
+}

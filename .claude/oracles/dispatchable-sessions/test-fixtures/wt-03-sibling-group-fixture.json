@@ -1,0 +1,114 @@
+{
+  "$fixture": "wt-03-sibling-group",
+  "$schemaVersion": 2,
+  "_description": "Schema v2 fixture for the WT-03 additive `siblingGroup` field on `dispatchable-sessions` peer objects. Two PODS workers share a `siblingGroup` (the PODS session ID) but live in different `workDir` values — the worktree-mode case where the conventional workDir-based grouping would fail to identify them as siblings. v1 readers ignore the new field; v2 readers consume it for sibling discovery in `/0-uldf-pods-collab-sync` and `/0-uldf-dispatch`.",
+  "_authoredBy": "WT-03/WT-04 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-03, WT-04",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "schemaContext": "Frozen DISPATCH-01 schema extended additively at commit (this Arc 1 commit). v1 fixtures (e.g., csi-01-registration-fixture.json scenarios) MUST continue to validate against the unchanged base shape — `siblingGroup` is purely optional."
+  },
+  "scenarios": [
+    {
+      "name": "two-pods-workers-same-sibling-group-different-workdirs",
+      "description": "Two PODS workers (sessionId `WORKER-A`, `WORKER-B`) registered with `siblingGroup: pods-20260510-XXXXXX`. Worker A's workDir is the anchor repo; Worker B's workDir is a sibling worktree. The dispatchable-sessions oracle MUST emit both peers with the same `siblingGroup` value, regardless of workDir divergence.",
+      "input": {
+        "registrySessions": [
+          {
+            "id": "WORKER-A",
+            "sessionId": "WORKER-A",
+            "claudeShellPid": 11111,
+            "claudeShellPidWrittenAt": "2026-05-10T08:00:01Z",
+            "spawnedAt": "2026-05-10T08:00:00Z",
+            "status": "active",
+            "sessionRole": "pods-worker",
+            "dispatchable": true,
+            "pipeName": null,
+            "registryVersion": 2,
+            "workDir": "/abs/anchor",
+            "siblingGroup": "pods-20260510-XXXXXX"
+          },
+          {
+            "id": "WORKER-B",
+            "sessionId": "WORKER-B",
+            "claudeShellPid": 22222,
+            "claudeShellPidWrittenAt": "2026-05-10T08:00:02Z",
+            "spawnedAt": "2026-05-10T08:00:00Z",
+            "status": "active",
+            "sessionRole": "pods-worker",
+            "dispatchable": true,
+            "pipeName": null,
+            "registryVersion": 2,
+            "workDir": "/abs/anchor-pods-20260510-XXXXXX-B",
+            "siblingGroup": "pods-20260510-XXXXXX"
+          }
+        ]
+      },
+      "expectedOracleOutput": {
+        "count": 2,
+        "peers": [
+          {
+            "sessionId": "WORKER-A",
+            "sessionRole": "pods-worker",
+            "siblingGroup": "pods-20260510-XXXXXX",
+            "workDir": "<MATCH:^.+$>"
+          },
+          {
+            "sessionId": "WORKER-B",
+            "sessionRole": "pods-worker",
+            "siblingGroup": "pods-20260510-XXXXXX",
+            "workDir": "<MATCH:^.+$>"
+          }
+        ]
+      },
+      "invariants": [
+        "expectedOracleOutput.peers[0].siblingGroup == expectedOracleOutput.peers[1].siblingGroup (sibling-group join across workDir divergence)",
+        "expectedOracleOutput.peers[0].workDir != expectedOracleOutput.peers[1].workDir (workdir divergence is the WT-03 motivating case)",
+        "Both peers retain all v1 fields (sessionId, sessionRole, role, workDir, claudeShellPid, dispatchable, spawnedAt) — siblingGroup is strictly additive."
+      ]
+    },
+    {
+      "name": "non-pods-worker-no-sibling-group",
+      "description": "A non-PODS interactive worker (no `siblingGroup` in registry entry). Oracle output MUST omit the `siblingGroup` key entirely (NOT emit it as null) — the additive contract requires absence rather than null. v1 consumers can continue to assume the key is absent.",
+      "input": {
+        "registrySessions": [
+          {
+            "id": "INTERACTIVE-A",
+            "sessionId": "INTERACTIVE-A",
+            "claudeShellPid": 33333,
+            "claudeShellPidWrittenAt": "2026-05-10T08:00:03Z",
+            "spawnedAt": "2026-05-10T08:00:00Z",
+            "status": "active",
+            "sessionRole": "interactive",
+            "dispatchable": true,
+            "pipeName": null,
+            "registryVersion": 2,
+            "workDir": "/abs/work/dir"
+          }
+        ]
+      },
+      "expectedOracleOutput": {
+        "count": 1,
+        "peers": [
+          {
+            "sessionId": "INTERACTIVE-A",
+            "sessionRole": "interactive"
+          }
+        ]
+      },
+      "invariants": [
+        "expectedOracleOutput.peers[0] does NOT contain key 'siblingGroup' (absence, not null) — frozen-schema additive contract",
+        "v1 fields present unchanged (sessionId, sessionRole, role, workDir, claudeShellPid, dispatchable, spawnedAt)"
+      ]
+    }
+  ],
+  "matchSyntax": {
+    "_doc": "Same conventions as csi-01-registration-fixture.json: fields whose values begin with '<MATCH:' are matched as Python regex; literal values matched literally; absence assertions live in the invariants block."
+  },
+  "pairedOracle": {
+    "name": "dispatchable-sessions",
+    "path": "claude-template/oracles/dispatchable-sessions/",
+    "patternKind": "Pattern A paired oracle (Oraculurgy Part 11)",
+    "_doc": "Verification path: build a sandbox active-sessions.json populated with input.registrySessions, plus an alive-PID rewrite (smoke harness substitutes real PIDs); invoke `bash run.sh`; assert expectedOracleOutput shape (additive siblingGroup present in scenario 1, absent in scenario 2). The csi-01-smoke harness extension in Phase J of Arc 1 wires this fixture into the regression set."
+  }
+}

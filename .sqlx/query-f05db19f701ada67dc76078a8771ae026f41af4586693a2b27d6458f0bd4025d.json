@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO feedback (\n                short_code, project_id, tenant_id,\n                end_user_email, anon_token_hash, body, kind\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Bytea",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f05db19f701ada67dc76078a8771ae026f41af4586693a2b27d6458f0bd4025d"
+}

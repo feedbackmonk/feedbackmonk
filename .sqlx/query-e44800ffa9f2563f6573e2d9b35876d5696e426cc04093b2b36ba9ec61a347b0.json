@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO anon_submissions (anon_token_hash, project_id)\n            VALUES ($1, $2)\n            ON CONFLICT (anon_token_hash, project_id) DO UPDATE\n              SET last_submission_at = now(),\n                  submission_count = anon_submissions.submission_count + 1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "e44800ffa9f2563f6573e2d9b35876d5696e426cc04093b2b36ba9ec61a347b0"
+}

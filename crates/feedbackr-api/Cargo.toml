@@ -1,0 +1,20 @@
+[package]
+name = "feedbackr-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+feedbackr-core = { path = "../feedbackr-core" }
+feedbackr-repository = { path = "../feedbackr-repository" }
+tokio = { workspace = true }
+axum = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "feedbackr-api"
+path = "src/main.rs"

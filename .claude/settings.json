@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(cargo:*)",
+      "Bash(cargo tauri:*)",
+      "Bash(rustc:*)",
+      "Bash(rustup:*)",
+      "Bash(pnpm:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(node:*)",
+      "Bash(tsc:*)",
+      "Bash(eslint:*)",
+      "Bash(vitest:*)",
+      "Bash(playwright:*)"
+    ]
+  }
+}

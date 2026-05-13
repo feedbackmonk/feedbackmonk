@@ -1,0 +1,45 @@
+{
+  "name": "git-state",
+  "version": "1.0.0",
+  "question": "What is the current git state: branch, working tree cleanliness, last commit?",
+  "category": "git",
+  "invocation": {
+    "unix": ".claude/oracles/git-state/run.sh",
+    "windows": ".claude/oracles/git-state/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "is_git_repo": "boolean",
+      "branch": "string|null",
+      "modified": "integer",
+      "staged": "integer",
+      "untracked": "integer",
+      "deleted": "integer",
+      "clean": "boolean",
+      "last_commit": {
+        "hash": "string|null",
+        "subject": "string|null",
+        "date": "string|null"
+      }
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 30
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 300
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/git-state/validate.sh",
+    "self_test_windows": ".claude/oracles/git-state/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run git branch --show-current, git status --short, git log -1 --format=%h|%s individually.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z"
+  }
+}

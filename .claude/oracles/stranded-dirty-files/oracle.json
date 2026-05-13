@@ -1,0 +1,77 @@
+{
+  "name": "stranded-dirty-files",
+  "version": "1.0.0",
+  "question": "Which dirty files in this project have no live owner and predate the most recent finalize commit?",
+  "category": "workflow",
+  "kind": "project-state",
+  "invocation": {
+    "unix": ".claude/oracles/stranded-dirty-files/run.sh",
+    "windows": ".claude/oracles/stranded-dirty-files/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "has_stranded": "boolean (true iff count > 0; false when count == 0 OR count == -1)",
+      "count": "integer (number of stranded files; -1 means detection skipped — too many dirty files >2000)",
+      "oldest_mtime": "string|null (ISO-8601 UTC mtime of the oldest stranded file; null when count == 0 OR detection skipped)",
+      "sample": "array (capped at 10) of {path: string, mtime: ISO-8601 UTC, age_days: int}",
+      "live_peer_count": "integer (number of live peers consulted for ownership; 0 when registry missing)",
+      "last_finalize_at": "string|null (ISO-8601 UTC commit timestamp of HEAD; null when not in a git repo OR no commits)",
+      "briefing": "string (empty when no stranded files; populated when count > 0 OR count == -1)"
+    },
+    "_briefingForms": {
+      "no_stranded": "\"\"  (empty -> session-start hook suppresses the line, parallel to stale-ltads-state)",
+      "small_stranded_<50": "\"stranded-dirty-files: <N> files (oldest <D> days; no live owner) — run /0-uldf-finalize --include-stranded for cleanup\"",
+      "large_stranded_>=50": "\"stranded-dirty-files: <N> files (oldest <D> days) — significant accumulation; see /0-uldf-oracle stranded-dirty-files for full sample\"",
+      "detection_skipped": "\"stranded-dirty-files: detection skipped — too many dirty files (>2000); run /0-uldf-finalize --include-stranded for full audit\""
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 250,
+    "ceilings": {
+      "small_dirty_set_<=500": "<=250ms target",
+      "medium_dirty_set_<=2000": "<=500ms ceiling (bounded scan)",
+      "large_dirty_set_>2000": "detection skipped, count: -1"
+    }
+  },
+  "scope_guard": {
+    "max_dirty_files": 2000,
+    "rationale": "Above 2000 dirty files, mtime stat + per-file ownership probe blows the briefing budget. Oracle returns count: -1 sentinel; user runs /0-uldf-finalize --include-stranded for the full audit."
+  },
+  "consultation": {
+    "typical_sessions_using": "every (cheap; gracefully absent on clean projects); also consumed by /0-uldf-finalize --include-stranded flag handling",
+    "estimated_token_savings_per_call": 400
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/stranded-dirty-files/validate.sh",
+    "self_test_windows": ".claude/oracles/stranded-dirty-files/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run `git status --porcelain` to enumerate dirty files. Read `git log -1 --format=%aI HEAD` for last_finalize_at. For each dirty file, stat mtime and compare against last_finalize_at; if older AND no live peer claims it (per .claude/collaboration/active-sessions.json `dirtyFiles[]` registry field, defaulting to no-claim), it is a strand candidate. Cap sample at 10 entries; report full count separately. Above 2000 dirty files, skip detection.",
+  "detectionContract": {
+    "summary": "Stranded = (file in `git status --porcelain` dirty set) AND (mtime < HEAD's commit timestamp) AND (no live peer claims via dirtyFiles[] registry field).",
+    "ownership": {
+      "source": ".claude/collaboration/active-sessions.json sessions[] entries where status=='active' AND PID alive AND workDir matches this project root",
+      "field": "dirtyFiles[] (forward-compatible — defaults to empty array; until peers publish ownership, default = 'no live peer' which is the correct default-to-strand behavior)"
+    },
+    "boundary": {
+      "source": "git log -1 --format=%aI HEAD (commit timestamp of HEAD; the most-recent-finalize boundary per spec acceptance §3)",
+      "rationale": "The last committed timestamp is the project's effective finalize boundary; refined detection (parsing commit messages for /0-uldf-finalize markers) is deferred to Phase 1.7.1 if the simple boundary proves insufficient."
+    },
+    "frozenSchema": "The output schema is FROZEN at first commit. Programmatic consumers (/0-uldf-finalize --include-stranded partition logic; session-start hook briefing-line emission) read this shape. Changes require an explicit decision-channel entry plus LD approval — never silent."
+  },
+  "provenance": {
+    "authored_by": "csi-phase-1.7",
+    "created": "2026-05-07T08:30:00Z",
+    "spec_refs": ["CSI-15", "FINALIZE-04"],
+    "decision_refs": [],
+    "discovery_refs": ["DISC-HYGIENE-01"],
+    "design_lineage": [
+      "stale-ltads-state (CSI-14) — same briefing-line silence pattern, same always-fresh + ~250ms budget shape",
+      "dispatchable-sessions (CSI-05) — registry-aware project-state oracle skeleton (parser fallback chain, JSON output)",
+      "workspace-shared-repos (SHARED-CSI-01) — frozen-schema discipline + Set 1/Set 2 partition mirroring (consumed by --include-stranded flag wiring per FINALIZE-04 acceptance #3)"
+    ],
+    "note": "Visibility-only oracle (CSI Phase 1.7). Never mutates state; cleanup is driven by /0-uldf-finalize --include-stranded (FINALIZE-04, separate spec entry — same Arc 2)."
+  }
+}

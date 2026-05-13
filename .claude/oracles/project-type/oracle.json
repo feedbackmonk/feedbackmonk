@@ -1,0 +1,39 @@
+{
+  "name": "project-type",
+  "version": "1.0.0",
+  "question": "What language, framework, and build system does this project use, and how is it run and tested?",
+  "category": "environment",
+  "invocation": {
+    "unix": ".claude/oracles/project-type/run.sh",
+    "windows": ".claude/oracles/project-type/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "languages": "string[]",
+      "frameworks": "string[]",
+      "build_systems": "string[]",
+      "test_command": "string|null",
+      "dev_command": "string|null",
+      "package_managers": "string[]"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 80
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 400
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/project-type/validate.sh",
+    "self_test_windows": ".claude/oracles/project-type/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read package.json, Cargo.toml, pyproject.toml, go.mod, *.csproj, build.gradle, etc., and infer language/framework from their presence and contents.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z"
+  }
+}

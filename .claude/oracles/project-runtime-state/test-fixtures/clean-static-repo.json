@@ -1,0 +1,23 @@
+{
+  "$fixture": "clean-static-repo",
+  "$schemaVersion": 1,
+  "_description": "Reference snapshot for a project with no manifest files, no shared build artifacts, no file-watcher configs, no stateful runtime, and no Dev Port Registry assignment. The oracle should return antiFitScore=0 and empty arrays everywhere. This is the baseline 'worktree-friendly' case the WT-06 heuristic uses to recommend `--worktrees`.",
+  "_authoredBy": "WT-05 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-05",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6 (WT-06)"
+  },
+  "expectedOutput": {
+    "schemaVersion": 1,
+    "hasLiveDevServer": false,
+    "devPortRegistryEntries": [],
+    "sharedBuildArtifacts": [],
+    "fileWatchers": [],
+    "statefulRuntime": null,
+    "antiFitScore": 0,
+    "antiFitReasons": []
+  },
+  "expectedHeuristicVerdict": "recommend-worktrees (when paired with disjoint file-touches)",
+  "_match": "Bit-exact match against oracle output is required for this fixture. The fixture represents the empty-project case; running the oracle in a directory with no detectable indicators should produce exactly this JSON."
+}

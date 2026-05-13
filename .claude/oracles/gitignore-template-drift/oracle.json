@@ -1,0 +1,68 @@
+{
+  "name": "gitignore-template-drift",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "question": "Does this project's .gitignore lack any framework-managed patterns from the current claude-template baseline?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/gitignore-template-drift/run.sh",
+    "windows": ".claude/oracles/gitignore-template-drift/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "drifted": "boolean",
+      "missing_patterns": "array of string (verbatim baseline pattern lines absent from project .gitignore)",
+      "baseline_patterns": "integer (total framework-managed patterns in baseline)",
+      "project_patterns": "integer (total non-comment, non-blank lines in project .gitignore)",
+      "briefing": "string (empty when drifted=false OR baseline missing; otherwise: 'gitignore-template-drift: N framework patterns missing — run /0-uldf-migrate-hygiene to update')"
+    },
+    "schema_frozen": true,
+    "frozen_at": "2026-05-07T07:30:00Z",
+    "frozen_message_ref": "channels/messages.md [ARC1-W3]"
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      ".gitignore",
+      "**/.claude/.gitignore",
+      "claude-template/.gitignore"
+    ],
+    "compute_cost_ms": 50
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 300
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/gitignore-template-drift/validate.sh",
+    "self_test_windows": ".claude/oracles/gitignore-template-drift/validate.ps1",
+    "last_validated": "2026-05-07T07:30:00Z"
+  },
+  "fallback": "Read claude-template/.gitignore (or ~/.claude/.gitignore when deployed). Extract non-comment, non-blank lines under the '# Claude Code (session artifacts — never commit)' header (these are the framework-managed patterns). Read project .gitignore and compare line-trimmed exact matches; missing baseline lines are drift. When no drift: briefing line is empty/absent. When drift: 'gitignore-template-drift: N framework patterns missing — run /0-uldf-migrate-hygiene to update'.",
+  "baseline_resolution": {
+    "order": [
+      "CLAUDE_GITIGNORE_BASELINE env override (test fixtures only)",
+      "$HOME/.claude/.gitignore (deployed location)",
+      "claude-template/.gitignore via walk-up search (framework-dev fallback)"
+    ],
+    "graceful_absent": "When no baseline found: drifted=false, briefing='', exit 0"
+  },
+  "project_resolution": {
+    "order": [
+      "CLAUDE_GITIGNORE_PROJECT env override (test fixtures only)",
+      "./.gitignore"
+    ],
+    "graceful_absent": "When project .gitignore missing: project_patterns=0, missing_patterns=all baseline, drifted=true"
+  },
+  "briefing_line_convention": "Empty briefing string = suppress line (per ULDF gracefully-absent convention). Hook MUST NOT print 'No drift detected' fallback.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-07T07:30:00Z",
+    "spec_refs": ["HYGIENE-03"],
+    "discovery_refs": ["DISC-HYGIENE-01"],
+    "decision_refs": ["DEC-46"],
+    "trigger_session": "collab-20260507-070154 / CLAUDE-C",
+    "note": "Companion to /0-uldf-migrate-hygiene (HYGIENE-02). Surfaces baseline drift in the session-start ORACLE BRIEFING so legacy projects (those that ran /0-uldf-setup-project before CSI Phase 1+1.5+1.6+HYGIENE-01) get nudged onto the post-CSI-1.6 baseline. Companion oracle pattern lineage: dispatchable-sessions (briefing line that surfaces actionable state)."
+  }
+}

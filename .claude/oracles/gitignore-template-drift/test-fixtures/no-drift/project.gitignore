@@ -1,0 +1,18 @@
+# Project-specific patterns (oracle does not check these)
+target/
+*.pyc
+
+# Claude Code (session artifacts — never commit)
+**/.claude/checkpoints/
+**/.claude/.compaction-marker
+**/.claude/aria-telemetry.jsonl
+**/.claude/aria-telemetry-archive-*.jsonl
+**/.claude/collaboration/archived/
+**/.claude/collaboration/active-sessions.json
+**/.claude/collaboration/active-sessions.json.*
+**/.claude/collaboration/critic-telemetry.jsonl
+**/.claude/session-state/
+**/.claude/handoff/handoff-*.md
+!**/.claude/handoff/*.KEEP
+.tauri-dev.log.err
+.tauri-dev.pid

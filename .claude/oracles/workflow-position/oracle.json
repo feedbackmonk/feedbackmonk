@@ -1,0 +1,42 @@
+{
+  "name": "workflow-position",
+  "version": "1.0.0",
+  "question": "Where is this project in the LDIS/LTADS workflow, and what is the next /0-uldf-proceed step?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/workflow-position/run.sh",
+    "windows": ".claude/oracles/workflow-position/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "position": "one of: NONE, POST-IDEATE, POST-INTAKE, POST-SPEC, POST-PLAN, IN-EXECUTION, POST-IMPLEMENTATION, UNKNOWN",
+      "latest_intake": "string|null",
+      "latest_plan": "string|null",
+      "spec_exists": "boolean",
+      "ltads_active": "boolean",
+      "ltads_session_status": "string|null",
+      "suggested_next_command": "string|null",
+      "proceed_hint": "string"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 80
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/workflow-position/validate.sh",
+    "self_test_windows": ".claude/oracles/workflow-position/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Inspect docs/planning/intakes/, docs/planning/plans/, docs/specs/SPECIFICATION.md, and ltads/sessions/current-session.md to manually derive position. See /0-uldf-proceed.md Phase 1 Step 1.2 for the resolution rule.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-17T00:00:00Z",
+    "note": "Pre-answers the question /0-uldf-proceed Phase 1 Step 1.2 asks by artifact inspection. Surfaces a proceed_hint in the session-start briefing so agents recognize workflow boundaries proactively."
+  }
+}

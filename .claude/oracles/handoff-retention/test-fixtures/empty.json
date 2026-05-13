@@ -1,0 +1,14 @@
+{
+    "name": "empty",
+    "description": "No handoff briefs present (or .claude/handoff/ directory absent). Default mode emits empty briefing JSON; --gc reports zero swept; --gc-cheap silent.",
+    "files": [],
+    "expected_default": {
+        "swept": [],
+        "retained_keep_pinned": [],
+        "retained_under_ttl": [],
+        "threshold_days": 30,
+        "threshold_source": "default",
+        "briefing": ""
+    },
+    "expected_gc": {"swept": 0, "before": 0, "after": 0, "summarized": 0}
+}

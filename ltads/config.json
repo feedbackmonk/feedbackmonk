@@ -1,0 +1,36 @@
+{
+  "version": "4.0",
+  "initialized": "2026-05-13T22:00:00Z",
+  "temporary": false,
+  "projectDefinition": "docs/specs/",
+  "autonomy": {
+    "default": "collaborative",
+    "domains": {
+      "spec": "critical-only",
+      "plan": "approve",
+      "delegate": "approve-roles",
+      "decide": "ask-major",
+      "quality": "report",
+      "commit": "approve-message"
+    },
+    "safetyRails": {
+      "alwaysPause": ["force-push", "delete-branch", "modify-secrets", "schema-change"]
+    }
+  },
+  "sessionDefaults": {},
+  "execution": {
+    "useAgents": "auto",
+    "qualityGates": true,
+    "autoCommit": false,
+    "tabLifecycle": {
+      "workerClose": "auto",
+      "phaseRetain": false,
+      "staleTabTimeout": null,
+      "closeBehavior": "graceful"
+    }
+  },
+  "parallelCollaboration": {
+    "enabled": true,
+    "commentTagFormat": "[{AGENT_ID}][{TIMESTAMP}][{TAG}]"
+  }
+}

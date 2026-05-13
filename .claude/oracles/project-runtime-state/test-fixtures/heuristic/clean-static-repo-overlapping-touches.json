@@ -1,0 +1,33 @@
+{
+  "$fixture": "heuristic-clean-static-repo-overlapping-touches",
+  "$schemaVersion": 1,
+  "_description": "WT-06 heuristic fixture: a clean static repo (no anti-fit signals from the oracle) but workers' file-touches overlap (e.g., they all need to edit the same shared interface file). Same-branch's real-time peer awareness is genuinely valuable here. The heuristic should emit verdict=neutral — don't recommend worktrees, don't warn against them, don't surface anything. Default same-branch proceeds.",
+  "_authoredBy": "WT-06 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-06",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6.5"
+  },
+  "input": {
+    "projectRuntimeStateOracle": {
+      "schemaVersion": 1,
+      "hasLiveDevServer": false,
+      "devPortRegistryEntries": [],
+      "sharedBuildArtifacts": [],
+      "fileWatchers": [],
+      "statefulRuntime": null,
+      "antiFitScore": 0,
+      "antiFitReasons": []
+    },
+    "decomposition": {
+      "workers": [
+        { "id": "CLAUDE-A", "fileTouches": ["src/api/types.ts", "src/api/auth.ts"] },
+        { "id": "CLAUDE-B", "fileTouches": ["src/api/types.ts", "src/api/billing.ts"] },
+        { "id": "CLAUDE-C", "fileTouches": ["src/api/types.ts", "src/api/dashboard.ts"] }
+      ]
+    },
+    "userPassedWorktreesFlag": false
+  },
+  "expectedVerdict": "neutral",
+  "expectedSurfaceText": "(no surface — same-branch is the right call when file-touches overlap; peer-awareness during the shared-file edit is the value)"
+}

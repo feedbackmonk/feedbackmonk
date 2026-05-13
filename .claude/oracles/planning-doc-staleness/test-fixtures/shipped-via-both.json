@@ -1,0 +1,13 @@
+{
+  "_comment": "Expected oracle output for the validate.sh T3 sandbox: planning doc whose slug appears in commit log AND whose spec refs are all [DONE]. staleness_signal collapses to 'both'.",
+  "stale": [
+    {
+      "path": "docs/planning/intakes/20260101T000000-baz-feature.md",
+      "staleness_signal": "both",
+      "last_modified": "<ISO-8601 60 days ago>"
+    }
+  ],
+  "fresh": [],
+  "unknown": [],
+  "briefing": "[planning-doc-staleness] 1 stale planning docs, run /0-uldf-finalize to archive"
+}

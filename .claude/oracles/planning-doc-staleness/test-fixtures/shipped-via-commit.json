@@ -1,0 +1,13 @@
+{
+  "_comment": "Expected oracle output for the validate.sh T1 sandbox: one planning doc whose slug appears in a recent commit message; spec is empty so signal 2 is silent.",
+  "stale": [
+    {
+      "path": "docs/planning/intakes/20260101T000000-feature-foo.md",
+      "staleness_signal": "commit-hash-found",
+      "last_modified": "<ISO-8601 30 days ago>"
+    }
+  ],
+  "fresh": [],
+  "unknown": [],
+  "briefing": "[planning-doc-staleness] 1 stale planning docs, run /0-uldf-finalize to archive"
+}

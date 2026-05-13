@@ -1,0 +1,38 @@
+{
+  "name": "module-index",
+  "version": "1.0.0",
+  "question": "What modules exist in this project, and which have README.md files (ULADP compliance)?",
+  "category": "module",
+  "invocation": {
+    "unix": ".claude/oracles/module-index/run.sh",
+    "windows": ".claude/oracles/module-index/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "total_modules": "integer",
+      "with_readme": "integer",
+      "without_readme": "integer",
+      "modules": "array of {path, has_readme, purpose}"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": ["**/README.md"],
+    "compute_cost_ms": 150
+  },
+  "consultation": {
+    "typical_sessions_using": "many",
+    "estimated_token_savings_per_call": 1500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/module-index/validate.sh",
+    "self_test_windows": ".claude/oracles/module-index/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Use Glob to find all README.md files, then read each to extract purpose.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z"
+  }
+}

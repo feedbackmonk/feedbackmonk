@@ -1,0 +1,55 @@
+{
+  "name": "markdown-link-validity",
+  "version": "1.0.0",
+  "question": "Do all internal markdown links in tracked documentation files resolve to existing targets?",
+  "category": "documentation",
+  "kind": "verification",
+  "invocation": {
+    "unix": ".claude/oracles/markdown-link-validity/run.sh",
+    "windows": ".claude/oracles/markdown-link-validity/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "one of: pass, fail",
+      "details": {
+        "checked": "integer",
+        "broken_count": "integer",
+        "scanned_files": "integer",
+        "scan_duration_ms": "integer",
+        "broken": [
+          {
+            "source": "string (path to markdown file containing the broken link)",
+            "line": "integer (1-based line number in source)",
+            "link": "string (the link destination as written, including any anchor)",
+            "resolved_path": "string (the absolute-from-repo-root path the link was checked against)"
+          }
+        ]
+      }
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 500
+  },
+  "consultation": {
+    "typical_sessions_using": "few",
+    "estimated_token_savings_per_call": 1500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/markdown-link-validity/validate.sh",
+    "self_test_windows": ".claude/oracles/markdown-link-validity/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Manually grep markdown files for links of the form [text](path), filter out http/https/mailto/tel and bare anchors, then test each resolved path with test -f or Test-Path. Slow and error-prone vs. the oracle.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-27T00:00:00Z",
+    "note": "Starter Verification Oracle for the Verification Oracle category. Dogfoods the category by validating ULDF's own internal documentation links."
+  },
+  "config": {
+    "scan_directories": ["claude-template", "docs", "FOUNDATIONS"],
+    "scan_root_files": ["CLAUDE.md", "README.md"],
+    "comment": "Edit scan_directories or scan_root_files to change scope. Avoid adding huge directories: this oracle has a <2s speed contract."
+  }
+}

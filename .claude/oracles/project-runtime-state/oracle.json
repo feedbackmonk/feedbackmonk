@@ -1,0 +1,45 @@
+{
+  "name": "project-runtime-state",
+  "version": "1.0.0",
+  "question": "Does this project have live dev servers, shared build artifacts, file watchers, or stateful runtimes that would conflict under PODS worktree isolation?",
+  "category": "environment",
+  "invocation": {
+    "unix": ".claude/oracles/project-runtime-state/run.sh",
+    "windows": ".claude/oracles/project-runtime-state/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "schemaVersion": "integer (frozen at 1)",
+      "hasLiveDevServer": "boolean (Dev Port Registry consulted; at least one assigned port currently bound)",
+      "devPortRegistryEntries": "array of {project, port, source} (project assignments parsed from ~/.claude/MACHINE_CONFIG.md Dev Port Registry section, scoped to current workDir when resolvable)",
+      "sharedBuildArtifacts": "array of strings (detected paths: node_modules, target, .cargo, .gradle, vendor, .venv, etc.)",
+      "fileWatchers": "array of strings (detected configs: vite.config.{js,ts,mjs}, nodemon.json, webpack.config.*, tsup.config.*, etc.)",
+      "statefulRuntime": "string|null (one of: tauri, electron, expo, django-runserver, next.js-dev, vite-dev, ...; null if none detected)",
+      "antiFitScore": "integer 0-5 (sum of indicator counts; >=3 = strong anti-fit signal for worktree mode)",
+      "antiFitReasons": "array of strings (one human-readable string per active anti-fit indicator)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 150
+  },
+  "consultation": {
+    "typical_sessions_using": "rare",
+    "estimated_token_savings_per_call": 600,
+    "_note": "Heuristic-only consumer (WT-06 in `/0-uldf-pods-parallelize` analysis). Not surfaced at session-start; not auto-cached. Each call re-probes Dev Port Registry liveness and re-globs build/watcher artifacts."
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/project-runtime-state/validate.sh",
+    "self_test_windows": ".claude/oracles/project-runtime-state/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read ~/.claude/MACHINE_CONFIG.md Dev Port Registry section manually; check whether any assigned port is bound (lsof -i / Get-NetTCPConnection); inspect package.json/Cargo.toml/pyproject.toml for tauri/electron/expo/django; eyeball node_modules/, target/, .gradle/, vendor/, .venv/.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-10T00:00:00Z",
+    "spec_refs": ["WT-05", "WT-06"],
+    "decision_refs": ["DEC-61"],
+    "note": "Project-state oracle that pre-answers the worktree-mode fit question. Consumer is the proactive heuristic in `claude-template/segments/-pods/parallelize_analysis.md` Step 6 (WT-06). Output schema frozen at v1; future indicators land as additive fields with backward-compat fixtures. PODS opt-in worktree mode Arc 1 (DEC-61, 2026-05-10)."
+  }
+}

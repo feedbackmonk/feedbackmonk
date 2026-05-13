@@ -1,0 +1,181 @@
+{
+  "$fixture": "csi-01-registration",
+  "$schemaVersion": 1,
+  "_description": "Expected post-registration state for the CSI-01 self-registration mechanism. Used by the Phase 1a fast-lane verifier to compare actual vs. expected state after the session-start hook fires for the first time. The Pattern A paired oracle is the existing `dispatchable-sessions` oracle reading the real registry — drift between this fixture's `expectedRegistry` shape and what the oracle returns surfaces a CSI-01 regression.",
+  "_authoredBy": "STAGE1-CSI-01 (PODS session collab-20260429-235242)",
+  "_authoredAt": "2026-04-30T08:00:00Z",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § CSI-01",
+    "decisions": ["DEC-21", "DEC-22", "DEC-24"],
+    "schema": "docs/specs/SPECIFICATION.md § DISPATCH-01 (locked at commit 8077fa6)"
+  },
+  "scenarios": [
+    {
+      "name": "interactive-session-fresh",
+      "description": "An interactive Claude session opens in a project with NO pre-existing registry entry. The session-start hook is the only writer. Result: registry has exactly one entry; this-session.json mirrors it.",
+      "input": {
+        "registryExists": false,
+        "stateFileExists": false,
+        "envVars": {
+          "CLAUDE_SESSION_ID": null,
+          "CLAUDE_SESSION_ROLE": null
+        }
+      },
+      "expectedRegistry": {
+        "sessions": [
+          {
+            "id": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
+            "sessionId": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
+            "claudeShellPid": "<MATCH:^[1-9]\\d*$>",
+            "claudeShellPidWrittenAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+            "spawnedAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+            "status": "active",
+            "sessionRole": "interactive",
+            "dispatchable": true,
+            "pipeName": null,
+            "registryVersion": 2,
+            "workDir": "<MATCH:^.+$>"
+          }
+        ],
+        "stale": [],
+        "closed": [],
+        "lastUpdated": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>"
+      },
+      "expectedSessionState": {
+        "schemaVersion": 2,
+        "sessionId": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
+        "sessionRole": "interactive",
+        "createdAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+        "claudeShellPid": "<MATCH:^[1-9]\\d*$>",
+        "workDir": "<MATCH:^.+$>"
+      },
+      "invariants": [
+        "expectedRegistry.sessions[0].sessionId == expectedSessionState.sessionId",
+        "expectedRegistry.sessions[0].sessionRole == expectedSessionState.sessionRole",
+        "expectedRegistry.sessions[0].workDir == expectedSessionState.workDir",
+        "expectedRegistry.sessions[0].claudeShellPid == expectedSessionState.claudeShellPid"
+      ]
+    },
+    {
+      "name": "spawn-script-then-hook-confirm",
+      "description": "Spawn-script wrote the entry pre-launch (DEC-24 optimization path). The session-start hook reads CLAUDE_SESSION_ID from env, finds the existing entry by id, and confirms-replaces it with the canonical shape (refreshed claudeShellPid + claudeShellPidWrittenAt). spawnedAt and descriptive fields (role, podsWindow, technology, tasks) MUST survive the merge.",
+      "input": {
+        "registryExists": true,
+        "preExistingEntry": {
+          "id": "STAGE1-CSI-01",
+          "claudeShellPid": null,
+          "claudeShellPidWrittenAt": null,
+          "spawnedAt": "2026-04-30T07:59:22Z",
+          "spawnedBy": "manual",
+          "podsWindow": "pods-collab-20260429-235242",
+          "role": "Stage 1 Foundation (CSI-01)",
+          "windowTitle": "STAGE1-CSI-01 | Stage 1 Foundation (CSI-01)",
+          "technology": "Not specified",
+          "tasks": "Not specified",
+          "status": "active",
+          "sessionRole": "pods-worker",
+          "dispatchable": true,
+          "pipeName": null,
+          "registryVersion": 2,
+          "workDir": "/abs/work/dir"
+        },
+        "stateFileExists": false,
+        "envVars": {
+          "CLAUDE_SESSION_ID": "STAGE1-CSI-01",
+          "CLAUDE_SESSION_ROLE": "pods-worker"
+        }
+      },
+      "expectedRegistry": {
+        "sessionsAt0": {
+          "id": "<MATCH:^.+$>",
+          "sessionId": "<MATCH:^.+$>",
+          "sessionRole": "pods-worker",
+          "claudeShellPid": "<MATCH:^[1-9]\\d*$>",
+          "claudeShellPidWrittenAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+          "spawnedAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+          "spawnedBy": "manual",
+          "podsWindow": "<MATCH:^.+$>",
+          "role": "<MATCH:^.+$>",
+          "status": "active",
+          "dispatchable": true,
+          "registryVersion": 2,
+          "workDir": "<MATCH:^.+$>"
+        }
+      },
+      "expectedSessionState": {
+        "schemaVersion": 2,
+        "sessionId": "<MATCH:^.+$>",
+        "sessionRole": "pods-worker"
+      },
+      "invariants": [
+        "expectedRegistry.sessionsAt0.sessionId == expectedSessionState.sessionId (the env-supplied id wins)",
+        "expectedRegistry.sessionsAt0.role preserved from input.preExistingEntry.role (descriptive field NOT overwritten by hook)",
+        "expectedRegistry.sessionsAt0.podsWindow preserved from input.preExistingEntry.podsWindow",
+        "expectedRegistry.sessionsAt0.spawnedAt preserved from input.preExistingEntry.spawnedAt (NOT overwritten with hook's 'now')",
+        "Sample literal values shown in `input.preExistingEntry` are illustrative -- the contract is shape-level (matched via <MATCH:> patterns) and preservation-level (asserted by the smoke harness's literal-value assertions on the same registry, not duplicated here)."
+      ]
+    },
+    {
+      "name": "re-invocation-stable-identity",
+      "description": "Hook fires a second time in the same Claude shell (e.g., after compaction). this-session.json already exists. The hook reads it, leaves sessionId/sessionRole/createdAt/workDir unchanged, only refreshes claudeShellPid + claudeShellPidWrittenAt in the registry.",
+      "input": {
+        "registryExists": true,
+        "preExistingEntry": {
+          "id": "interactive-20260430T080000Z-123456",
+          "sessionId": "interactive-20260430T080000Z-123456",
+          "sessionRole": "interactive",
+          "claudeShellPid": 11111,
+          "claudeShellPidWrittenAt": "2026-04-30T08:00:01Z",
+          "spawnedAt": "2026-04-30T08:00:00Z",
+          "status": "active",
+          "dispatchable": true,
+          "pipeName": null,
+          "registryVersion": 2,
+          "workDir": "/abs/work/dir"
+        },
+        "stateFileExists": true,
+        "preExistingStateFile": {
+          "schemaVersion": 1,
+          "sessionId": "interactive-20260430T080000Z-123456",
+          "sessionRole": "interactive",
+          "createdAt": "2026-04-30T08:00:00Z",
+          "claudeShellPid": 11111,
+          "workDir": "/abs/work/dir"
+        }
+      },
+      "expectedRegistry": {
+        "sessionsAt0": {
+          "id": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
+          "sessionId": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
+          "sessionRole": "interactive",
+          "claudeShellPid": "<MATCH:^[1-9]\\d*$>",
+          "claudeShellPidWrittenAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+          "spawnedAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+          "status": "active",
+          "registryVersion": 2
+        }
+      },
+      "expectedSessionState": {
+        "sessionId": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
+        "sessionRole": "interactive",
+        "createdAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
+        "workDir": "<MATCH:^.+$>"
+      },
+      "invariants": [
+        "expectedSessionState.sessionId stable across re-invocation (identity preserved -- asserted by the smoke harness, not by this fixture)",
+        "expectedSessionState.createdAt stable across re-invocation (NOT refreshed -- asserted by the smoke harness)",
+        "expectedRegistry.sessionsAt0.spawnedAt == preExistingEntry.spawnedAt (preserved)",
+        "Sample literal values in `input.preExistingEntry` are illustrative; the fixture asserts shape only. Cross-invocation invariants are asserted by csi-01-smoke.{sh,ps1}."
+      ]
+    }
+  ],
+  "matchSyntax": {
+    "_doc": "Fields whose values begin with '<MATCH:' are matched as Python-flavoured regular expressions against the actual value's string form. Fields without the '<MATCH:' prefix are matched literally. Lists are order-sensitive unless wrapped in 'sessionsContainsExactlyOneWith' or similar predicate keys."
+  },
+  "pairedOracle": {
+    "name": "dispatchable-sessions",
+    "path": "claude-template/oracles/dispatchable-sessions/",
+    "patternKind": "Pattern A — paired oracle (Oraculurgy Part 11)",
+    "_doc": "The existing dispatchable-sessions oracle reads the real registry. Drift between this fixture's expectedRegistry shape and what the oracle returns indicates a CSI-01 regression. The fixture is the static expectation; the oracle is the live-state mirror. Validation: invoke the oracle after a fresh session start and compare its output's `peers[].sessionRole` and `.id` against this fixture's matching scenario."
+  }
+}

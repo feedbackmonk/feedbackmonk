@@ -1,0 +1,61 @@
+# cargo-deny -- workspace-level dependency policy.
+#
+# Three-leg defense for FR-FBR-01 leg 3: prevent the accidental introduction
+# of a second query path (DEC-FBR-03 declares raw SQL outside the repository
+# layer a security incident; introducing a non-sqlx DB driver would create a
+# parallel surface that would silently bypass the multi-tenant-isolation-check
+# Verification Oracle).
+#
+# Run locally: `cargo deny check`. CI runs it as part of the matrix.
+
+[graph]
+# Default; supports all targets we ship today.
+all-features = false
+
+[advisories]
+version = 2
+ignore = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+
+# DENIED CRATES -- introducing any of these is a security-policy violation
+# (would establish a second DB query path outside crates/feedbackr-repository/).
+deny = [
+    { name = "rusqlite", reason = "Forbidden second DB driver - DEC-FBR-03 mandates sqlx as sole query path." },
+    { name = "mysql",    reason = "Forbidden second DB driver - DEC-FBR-03 mandates sqlx as sole query path." },
+    { name = "mysql_async", reason = "Forbidden second DB driver - DEC-FBR-03." },
+    { name = "diesel",   reason = "Forbidden second DB driver - DEC-FBR-03 mandates sqlx as sole query path." },
+    { name = "sea-orm",  reason = "Forbidden second DB driver - DEC-FBR-03 mandates sqlx as sole query path." },
+    { name = "postgres", reason = "Forbidden non-sqlx Postgres driver - DEC-FBR-03 mandates sqlx as sole query path." },
+    { name = "tokio-postgres", reason = "Forbidden non-sqlx Postgres driver - DEC-FBR-03 mandates sqlx as sole query path." },
+]
+
+[licenses]
+version = 2
+# AGPL-3.0-or-later workspace permits AGPL-compatible deps. Standard permissive
+# licenses are accepted; copyleft other than (L)GPL/AGPL is reviewed manually.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "MIT",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unlicense",
+    "Zlib",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "OpenSSL",
+    "AGPL-3.0",
+    "AGPL-3.0-or-later",
+]
+confidence-threshold = 0.8
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

@@ -1,0 +1,50 @@
+{
+  "name": "aria-status",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "question": "What is the ARIA instrumentation status of this project (surface present? endpoints reachable? foundation-layer healthy?)",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/aria-status/run.sh",
+    "windows": ".claude/oracles/aria-status/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "surface_present": "bool",
+      "exposure_mechanism": "tauri-ipc | http | websocket | file | none",
+      "endpoint_reachable": "bool",
+      "endpoint_url": "string (optional, present when configured)",
+      "foundation_layer": {
+        "errors": "bool",
+        "async": "bool",
+        "navigation": "bool"
+      },
+      "recent_success_at": "ISO8601 (optional, last successful probe)",
+      "query_count_24h": "integer (optional, ARIA MCP queries in trailing 24h)",
+      "briefing": "string (≤200 chars; what the session-start hook emits as [aria-status]; empty string suppresses the line)"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "compute_cost_ms": 200,
+    "invalidate_on": [".claude/aria.json", "package.json", "Cargo.toml", "pubspec.yaml"],
+    "note": "Network probe is bounded to 300ms but typically completes in <50ms (loopback). The oracle is safe to invoke from the session-start hook (invoked in parallel with other every-session oracles)."
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 800
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/aria-status/validate.sh",
+    "self_test_windows": ".claude/oracles/aria-status/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Inspect .claude/aria.json (if present) for endpoint configuration. Probe http://127.0.0.1:14550/aria/health manually. Read the project's CLAUDE.md ARIA Pre-Ask Reflex section. Spec: ARIA-01 in docs/specs/SPECIFICATION.md.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-29T00:00:00Z",
+    "spec_refs": ["ARIA-01", "ARIA-03", "ARIA-07"],
+    "note": "Universal Starter Set member. Composes Leg A of ARIA's four-leg detection machinery (Phase 1 per DEC-26): the [aria-status] briefing line in session-start ORACLE BRIEFING. Reuses surface-detection logic from ui-surface-detector (ARIA-02). Probes the foundation-layer ARIA-07 contract endpoint (default: http://127.0.0.1:14550/aria/health). Gracefully absent — emits empty briefing string (suppressing the line) when no UI/runtime surface is detected."
+  }
+}

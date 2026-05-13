@@ -1,0 +1,38 @@
+{
+  "name": "pending-followups",
+  "version": "1.0.0",
+  "question": "What pending follow-ups are in CLAUDE.md, and which are overdue?",
+  "category": "followup",
+  "invocation": {
+    "unix": ".claude/oracles/pending-followups/run.sh",
+    "windows": ".claude/oracles/pending-followups/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "has_followups_section": "boolean",
+      "total": "integer",
+      "overdue": "integer",
+      "items": "array of {title, due, overdue, days_overdue, detail_path}",
+      "_detail_path": "string|null. Path to the externalized full body, extracted from a `Details: `docs/pending/<slug>.md`` token in the bullet line. Null when the entry's full body remains inline. Lets a triggered consumer go straight to the detail file without re-reading CLAUDE.md."
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 40
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/pending-followups/validate.sh",
+    "self_test_windows": ".claude/oracles/pending-followups/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read CLAUDE.md, find the 'Pending Follow-Ups' section, and parse each entry's date manually.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z"
+  }
+}

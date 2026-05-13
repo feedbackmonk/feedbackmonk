@@ -1,0 +1,60 @@
+{
+  "name": "planning-doc-staleness",
+  "version": "1.0.0",
+  "question": "Are there planning docs in docs/planning/{intakes,plans}/ whose corresponding work has shipped (commit-hash-found OR all-spec-entries-DONE) but the file remains un-archived?",
+  "category": "spec",
+  "kind": "verification",
+  "invocation": {
+    "unix": ".claude/oracles/planning-doc-staleness/run.sh",
+    "windows": ".claude/oracles/planning-doc-staleness/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "stale": [
+        {
+          "path": "string (planning doc path relative to repo root)",
+          "staleness_signal": "one of: commit-hash-found, all-spec-entries-done, both",
+          "last_modified": "string (ISO-8601 UTC mtime)"
+        }
+      ],
+      "fresh": [
+        {"path": "string (planning doc path relative to repo root)"}
+      ],
+      "unknown": [
+        {
+          "path": "string (planning doc path relative to repo root)",
+          "reason": "string (one-line diagnostic explaining why neither signal fired)"
+        }
+      ],
+      "briefing": "string (briefing line for session-start hook; empty when stale[] and unknown[] both empty)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 1700
+  },
+  "consultation": {
+    "typical_sessions_using": "few",
+    "estimated_token_savings_per_call": 1200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/planning-doc-staleness/validate.sh",
+    "self_test_windows": ".claude/oracles/planning-doc-staleness/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Manually list docs/planning/{intakes,plans}/, run git log --since=60.days.ago --grep=<slug> per file, parse each doc body for spec-entry refs and grep SPECIFICATION.md for [DONE]/[DELIVERED] markers. Slow and error-prone vs. the oracle.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-08T05:56:00Z",
+    "note": "SWEEP-02 Verification Oracle. Detection leg of the DEC-53 hybrid model; the action leg is /0-uldf-finalize Phase 8.7 (SWEEP-03). Trigger: DISC-HYGIENE-03."
+  },
+  "config": {
+    "scan_intakes": "docs/planning/intakes",
+    "scan_plans": "docs/planning/plans",
+    "spec_file": "docs/specs/SPECIFICATION.md",
+    "commit_window_days": 60,
+    "fresh_mtime_window_days": 14,
+    "comment": "Edit scan_* paths to retarget; commit_window_days governs Heuristic 1's git-log lookback; fresh_mtime_window_days governs the fresh-vs-unknown threshold for files with no signal. The runtime authoritative values live in run.{sh,ps1}; this block documents the contract."
+  }
+}

@@ -1,0 +1,14 @@
+[workspace]
+members = [
+    "../sibling-a",
+    "../sibling-b",
+    "../not-a-git-checkout",
+]
+
+[workspace.dependencies]
+serde = "1.0"
+
+[package]
+name = "fixture-root"
+version = "0.0.1"
+edition = "2021"

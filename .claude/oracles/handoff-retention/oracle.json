@@ -1,0 +1,80 @@
+{
+    "name": "handoff-retention",
+    "version": "1.0.0",
+    "question": "Which handoff briefs older than the configured TTL exist, and which are KEEP-pinned for permanent retention?",
+    "category": "cleanup",
+    "kind": "project-state",
+    "invocation": {
+        "unix": ".claude/oracles/handoff-retention/run.sh",
+        "windows": ".claude/oracles/handoff-retention/run.ps1"
+    },
+    "output": {
+        "format": "json",
+        "schema": {
+            "swept": "array of {file, swept_at, age_days, brief_first_line}; in default mode lists would-be-swept candidates with swept_at:null; in --gc mode lists actually-swept entries with swept_at:ISO-8601",
+            "retained_keep_pinned": "array of strings (paths exempt via sibling .KEEP file)",
+            "retained_under_ttl": "array of {file, age_days} (briefs younger than threshold)",
+            "threshold_days": "integer (resolved TTL in days)",
+            "threshold_source": "string ('default' or 'config')",
+            "briefing": "string (frozen-format briefing line; empty string when no drift, suppresses session-start line)"
+        },
+        "_swept_entry_schema": {
+            "file": "string (relative path under .claude/handoff/)",
+            "swept_at": "string|null (ISO-8601 UTC; null in default-mode listing)",
+            "age_days": "integer (days between mtime and now)",
+            "brief_first_line": "string (first non-empty line of the brief, ~200 chars max, JSON-escaped)"
+        }
+    },
+    "freshness": {
+        "strategy": "always-fresh",
+        "compute_cost_ms": 100
+    },
+    "consultation": {
+        "typical_sessions_using": "every",
+        "estimated_token_savings_per_call": 250
+    },
+    "validation": {
+        "self_test_unix": ".claude/oracles/handoff-retention/validate.sh",
+        "self_test_windows": ".claude/oracles/handoff-retention/validate.ps1",
+        "last_validated": null
+    },
+    "fallback": "Read .claude/handoff/ directly; for each handoff-*.md file, check sibling <file>.KEEP for exemption, compute age in days from mtime, compare to (handoffRetention.threshold from .claude/config.json, default 30 days). Before any delete, append a JSON line summarizing the file to .claude/handoff/_summary.jsonl.",
+    "gcMode": {
+        "summary": "Handoff retention sweep (SWEEP-01). Sweeps .claude/handoff/handoff-*.md for files where age_days > threshold (default 30) AND no sibling <file>.KEEP exists. Before each delete, appends a JSON entry to _summary.jsonl preserving file, swept_at, age_days, brief_first_line (audit trail preserved per SWEEP-08).",
+        "cheap": {
+            "invocation_unix": ".claude/oracles/handoff-retention/run.sh --gc-cheap",
+            "invocation_windows": ".claude/oracles/handoff-retention/run.ps1 --gc-cheap",
+            "budget_ms": 100,
+            "behavior": "Read-only at --gc-cheap (briefing only, per SWEEP-01). Silent on success; never blocks the session-start briefing. Drift-surfacing is delegated to default-mode iteration-loop pickup (typical_sessions_using = 'every'); this --gc-cheap mode exists for symmetry with archive-retention's hook wiring and as a future-extension point.",
+            "exit_codes": "Always 0 (graceful). Internal failures are logged to stderr only."
+        },
+        "on_demand": {
+            "invocation_unix": ".claude/oracles/handoff-retention/run.sh --gc",
+            "invocation_windows": ".claude/oracles/handoff-retention/run.ps1 --gc",
+            "budget_ms": null,
+            "behavior": "Destructive sweep with no time budget. Writes JSON line to _summary.jsonl BEFORE each delete (SWEEP-08 invariant). Reports a single-line JSON summary on stdout: {swept, before, after, threshold, thresholdSource, summarized, sweptFiles?}.",
+            "summary_schema": {
+                "swept": "integer (number of files deleted)",
+                "before": "integer (handoff-*.md files found before sweep)",
+                "after": "integer (handoff-*.md files after sweep)",
+                "threshold": "string (ISO-8601 duration: PnD; default 'P30D')",
+                "thresholdSource": "string ('config' or 'default')",
+                "summarized": "integer (entries appended to _summary.jsonl; equals swept on clean runs)",
+                "sweptFiles": "string (comma-separated basenames deleted; omitted if empty)"
+            }
+        },
+        "criteria": "Filename matches /^handoff-.+\\.md$/ AND no sibling <file>.KEEP exists AND mtime is older than (now - threshold). Default threshold: 30 days (DEC-54). KEEP-pinned files are NEVER swept regardless of age (HANDOFF-01 substrate consumed verbatim).",
+        "action": "1) Read first non-empty line of brief (brief_first_line). 2) Append JSON line to .claude/handoff/_summary.jsonl (atomic append). 3) Verify summary write succeeded (read-back last line). 4) rm the file. Summary write must succeed before delete; on summary write failure, the file is NOT deleted (SWEEP-08 Probandurgy invariant — never delete without recovery surface).",
+        "atomic_semantics": "Per-file delete sequence is sequential and uses POSIX-atomic append for _summary.jsonl (each entry < PIPE_BUF / 4KB, atomic across concurrent appenders). No file-level lock acquired -- concurrent sweeps from different sessions are race-tolerant: each sweep reads files that exist at its scan time; if two sweeps target the same file, the second's rm becomes a no-op (idempotent). _summary.jsonl may receive duplicate entries in the rare double-sweep case, which is acceptable (audit trail favors over-recording).",
+        "threshold_config": "Configurable via .claude/config.json key 'handoffRetention.threshold' (numeric days OR ISO-8601 duration string PnD). Falls back to default 30 days if config absent or malformed.",
+        "spec_refs": ["SWEEP-01", "SWEEP-07", "SWEEP-08"],
+        "design_lineage": ["RETENTION-01..06 (archive-retention substrate precedent)", "CSI-05 (registry hygiene oracle pattern)", "HANDOFF-01 (KEEP-pin substrate)"],
+        "discoveries_closed": ["DISC-HYGIENE-03"]
+    },
+    "provenance": {
+        "authored_by": "shared-pack:uldf-common",
+        "created": "2026-05-08T06:00:00Z",
+        "spec_refs": ["SWEEP-01", "SWEEP-07", "SWEEP-08"],
+        "note": "Caps unbounded growth of .claude/handoff/handoff-*.md by sweeping files older than 30 days (DEC-54 surface-specific TTL). Mirrors archive-retention's --gc / --gc-cheap pattern with three differences: (a) operates on individual files instead of dirs; (b) 30d default TTL, not 90d (handoffs are routing artifacts, value decays faster); (c) sibling <file>.KEEP convention (HANDOFF-01) instead of in-dir KEEP file. Pre-delete _summary.jsonl preserves recoverable audit trail per SWEEP-08 Probandurgy invariant. Closes DISC-HYGIENE-03 (retention-without-sweep asymmetry — Hygiene Arcs 1+2 defined retention/KEEP-pin but no sweep mechanism)."
+    }
+}

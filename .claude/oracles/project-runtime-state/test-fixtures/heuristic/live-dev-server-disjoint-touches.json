@@ -1,0 +1,38 @@
+{
+  "$fixture": "heuristic-live-dev-server-disjoint-touches",
+  "$schemaVersion": 1,
+  "_description": "WT-06 heuristic fixture: workers' file-touches ARE disjoint (would otherwise be a fit case) but the project has a live dev server bound to its Dev Port Registry-assigned port. Worktree workers can't share the bound port, and the dev server's process-state divergence between worktrees would surface as runtime weirdness even when the disk-level changes are independent. The heuristic should emit verdict=anti-fit-warn even though disk-level signals look fit-positive — runtime state dominates.",
+  "_authoredBy": "WT-06 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-06",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6.5"
+  },
+  "input": {
+    "projectRuntimeStateOracle": {
+      "schemaVersion": 1,
+      "hasLiveDevServer": true,
+      "devPortRegistryEntries": [
+        { "project": "demo-app", "port": 5173, "source": "MACHINE_CONFIG.md" }
+      ],
+      "sharedBuildArtifacts": ["node_modules"],
+      "fileWatchers": ["vite.config.ts"],
+      "statefulRuntime": null,
+      "antiFitScore": 3,
+      "antiFitReasons": [
+        "port 5173 assigned to 'demo-app' is currently bound (live dev server)",
+        "file watcher config(s) present: vite.config.ts",
+        "Dev Port Registry assignment(s) for this project: 1"
+      ]
+    },
+    "decomposition": {
+      "workers": [
+        { "id": "CLAUDE-A", "fileTouches": ["src/feature-a/"] },
+        { "id": "CLAUDE-B", "fileTouches": ["src/feature-b/"] }
+      ]
+    },
+    "userPassedWorktreesFlag": true
+  },
+  "expectedVerdict": "anti-fit-warn",
+  "expectedSurfaceText": "Anti-fit signals detected: port 5173 assigned to 'demo-app' is currently bound (live dev server); file watcher config(s) present: vite.config.ts; Dev Port Registry assignment(s) for this project: 1. Worktree mode may break runtime invariants. Continue anyway? (y/N)"
+}

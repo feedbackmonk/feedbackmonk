@@ -1,0 +1,11 @@
+node_modules/
+
+# Claude Code (legacy partial — pre-CSI Phase 1)
+**/.claude/checkpoints/
+**/.claude/.compaction-marker
+**/.claude/aria-telemetry.jsonl
+**/.claude/aria-telemetry-archive-*.jsonl
+**/.claude/collaboration/archived/
+**/.claude/collaboration/active-sessions.json
+**/.claude/collaboration/active-sessions.json.*
+**/.claude/collaboration/critic-telemetry.jsonl

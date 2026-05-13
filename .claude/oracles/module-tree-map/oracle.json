@@ -1,0 +1,40 @@
+{
+  "name": "module-tree-map",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "question": "What is the hierarchical synopsis tree of this project's modules? (HCT triage map)",
+  "category": "module",
+  "invocation": {
+    "unix": ".claude/oracles/module-tree-map/run.sh",
+    "windows": ".claude/oracles/module-tree-map/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "root": "object: {path, synopsis, file_index?, children: [recursive]}",
+      "stats": "object: {total_modules, synopsized, missing_synopsis: [string]}",
+      "briefing": "string (one-liner for ORACLE BRIEFING display per HCT-05; empty when total_modules == 0 -> gracefully absent)"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": ["**/README.md"],
+    "compute_cost_ms": 200
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 4000
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/module-tree-map/validate.sh",
+    "self_test_windows": ".claude/oracles/module-tree-map/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Use Glob to enumerate README.md files, then Read each to extract Synopsis sections — but you will pay full README ingestion cost across the breadth-first candidate set, which is exactly the cost HCT exists to eliminate.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-03T00:00:00Z",
+    "spec_ref": "HCT-03",
+    "principle_ref": "FOUNDATIONS/HIERARCHICAL_CONTEXT_TRIAGE.md § 4.2"
+  }
+}

@@ -1,0 +1,14 @@
+{
+    "name": "malformed-config",
+    "description": "Config file is not valid JSON. Oracle must fall back to default 30-day TTL with threshold_source=default. Failure-open semantics: never block briefing on bad config.",
+    "config_raw": "this is not json {{{",
+    "files": [
+        {"name": "handoff-20260101-100000.md", "age_days": 60, "keep_pin": false, "first_line": "# Aged"},
+        {"name": "handoff-20260420-130000.md", "age_days": 5, "keep_pin": false, "first_line": "# Recent"}
+    ],
+    "expected_default": {
+        "threshold_days": 30,
+        "threshold_source": "default",
+        "stale_count": 1
+    }
+}

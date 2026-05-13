@@ -1,0 +1,38 @@
+{
+  "name": "autonomy-status",
+  "version": "1.0.0",
+  "question": "What is the resolved autonomy level for this session, and what is its source?",
+  "category": "session-context",
+  "kind": "project-state",
+  "invocation": {
+    "unix": ".claude/oracles/autonomy-status/run.sh",
+    "windows": ".claude/oracles/autonomy-status/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "level": "one of: autopilot, supervised, collaborative, controlled, manual",
+      "source": "one of: session-override, ltads-session, task-arc-autonomy, config, default",
+      "arc_id": "string|null",
+      "expires_at": "ISO-8601 string|null",
+      "source_detail": "human-readable description of source location and resolution path",
+      "briefing": "string for [autonomy] briefing line; empty when level==collaborative"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 60
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 300,
+    "rationale": "Cascade resolution otherwise duplicated across session-start.{sh,ps1}, /0-uldf-autonomy-set status display, and ad-hoc consumers. One oracle call per session-start; zero per follow-up consumer."
+  },
+  "fallback": "Treat resolved level as 'collaborative'. The cascade's documented default is collaborative; agents falling through to default carry no risk beyond the existing default behavior.",
+  "provenance": {
+    "authored_by": "AUTONOMY-02 plan arc",
+    "created": "2026-05-04T00:00:00Z",
+    "spec_ref": "docs/specs/SPECIFICATION.md § AUTONOMY-02",
+    "decision_ref": "DEC-39 (cascade is canonical consent gate), DEC-40 (task-arc-autonomy.json schema)"
+  }
+}

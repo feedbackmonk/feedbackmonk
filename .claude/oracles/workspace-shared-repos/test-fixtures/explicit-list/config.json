@@ -1,0 +1,7 @@
+{
+  "sharedRepos": [
+    {"path": "../sibling-a", "role": "shared-utility"},
+    "../sibling-b",
+    {"path": "../not-a-git-checkout", "role": "should-be-filtered"}
+  ]
+}

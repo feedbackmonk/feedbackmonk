@@ -1,0 +1,42 @@
+{
+  "name": "spec-status",
+  "version": "1.0.0",
+  "question": "What is the status of project specification items: done, pending, in-progress, removed?",
+  "category": "spec",
+  "invocation": {
+    "unix": ".claude/oracles/spec-status/run.sh",
+    "windows": ".claude/oracles/spec-status/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "spec_exists": "boolean",
+      "spec_file": "string|null",
+      "total_items": "integer",
+      "done": "integer",
+      "pending": "integer",
+      "in_progress": "integer",
+      "removed": "integer",
+      "progress_percent": "number"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": ["docs/specs/SPECIFICATION.md", "docs/specs/**/*.md"],
+    "compute_cost_ms": 100
+  },
+  "consultation": {
+    "typical_sessions_using": "most",
+    "estimated_token_savings_per_call": 800
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/spec-status/validate.sh",
+    "self_test_windows": ".claude/oracles/spec-status/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read docs/specs/SPECIFICATION.md and parse requirement status markers (DONE, PENDING, IN_PROGRESS, REMOVED) manually.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z"
+  }
+}

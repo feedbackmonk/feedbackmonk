@@ -1,0 +1,69 @@
+{
+  "name": "dispatchable-sessions",
+  "version": "1.0.0",
+  "question": "What live sibling sessions can THIS session dispatch work to right now?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/dispatchable-sessions/run.sh",
+    "windows": ".claude/oracles/dispatchable-sessions/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "count": "integer",
+      "peers": "array of {sessionId, sessionRole, role, workDir, claudeShellPid, dispatchable, spawnedAt, siblingGroup?}",
+      "briefing": "string (human-readable one-line summary suitable for the session-start ORACLE BRIEFING)",
+      "_sessionRole_taxonomy": "interactive | handoff-successor | lead-developer | monitor | peer | pods-worker | orchestrated-worker (CSI-01 added 'interactive' for sessions registered by the session-start hook with no spawn-script provenance)",
+      "_siblingGroup_semantics": "Optional string field on peer objects. Populated with the PODS session ID (e.g., 'pods-20260510-XXXXXX') when the worker is part of an active PODS session — both same-branch and worktree-mode workers populate it. Absent for non-PODS sessions. Cross-workDir grouping key: workers in the same PODS session share `siblingGroup` even when their `workDir` values differ (worktree mode). Additive at WT-03/WT-04 (Arc 1, DEC-61, 2026-05-10); frozen-schema additive contract — existing consumers reading `peers[].sessionId` etc. are unaffected."
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 80
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 400
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/dispatchable-sessions/validate.sh",
+    "self_test_windows": ".claude/oracles/dispatchable-sessions/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read .claude/collaboration/active-sessions.json (or ltads/sessions/active-sessions.json) and filter to entries where status=='active' AND dispatchable==true AND claudeShellPid is non-null AND the PID is alive (kill -0 / Get-Process). Each surviving entry exposes the dispatch surface that /0-uldf-dispatch consumes.",
+  "gcMode": {
+    "summary": "Registry hygiene sweep (CSI-05). Sweeps active-sessions.json for entries where status=='active' AND claudeShellPid is dead AND spawnedAt is older than the threshold; flips status to 'expired' and moves the entry to closed[] (audit trail preserved).",
+    "cheap": {
+      "invocation_unix": ".claude/oracles/dispatchable-sessions/run.sh --gc-cheap",
+      "invocation_windows": ".claude/oracles/dispatchable-sessions/run.ps1 --gc-cheap",
+      "budget_ms": 100,
+      "behavior": "Session-start path. If the per-entry liveness probe budget is exceeded, the sweep aborts and defers to the next session-start (graceful absence). Output is empty on success; warning on stderr on failure.",
+      "exit_codes": "Always 0 (graceful). Internal failures are logged to stderr and never block the session-start briefing."
+    },
+    "on_demand": {
+      "invocation_unix": ".claude/oracles/dispatchable-sessions/run.sh --gc",
+      "invocation_windows": ".claude/oracles/dispatchable-sessions/run.ps1 --gc",
+      "budget_ms": null,
+      "behavior": "Deeper scan with no time budget. Reports a single-line JSON summary on stdout: {swept, before, after, threshold, thresholdSource}.",
+      "summary_schema": {
+        "swept": "integer (number of entries flipped to expired and moved to closed[])",
+        "before": "integer (sessions[] length before sweep)",
+        "after": "integer (sessions[] length after sweep)",
+        "threshold": "string (ISO-8601 duration: PnD / PnH; default 'P1D' = 24 hours)",
+        "thresholdSource": "string (one of: 'config', 'default')"
+      }
+    },
+    "criteria": "status=='active' AND claudeShellPid is non-null AND PID is dead (kill -0 / Get-Process) AND spawnedAt is older than threshold (default 24h). Live-PID entries are NEVER swept regardless of age. The age threshold protects fresh sessions from transient probe failures.",
+    "action": "Set status='expired', append a sweptAt timestamp, and move the entry from sessions[] to closed[]. The closed[] entry preserves the original fields plus 'expired' status and 'sweptAt' for audit trail.",
+    "atomic_semantics": "Sweep mirrors CSI-01's lock contract (50/200/800ms exp-backoff, 4 attempts, 1050ms budget; same lock path as registry-write.{sh,ps1}). Bash sweep + bash helper both use mkdir-lock at <registry>.lock (single primitive; cross-writer mutually exclusive). PowerShell sweep uses New-Item -ItemType Directory at <registry>.lock (mkdir-equivalent), but the PowerShell helper (registry-write.ps1) currently uses [System.IO.File]::Open FileShare::None on the registry file itself -- a different OS resource than the sweep's mkdir-lock. PS-to-PS writers are correctly serialized via FileShare::None contention; cross-shell PS<->bash concurrent writers contend on different primitives and are NOT mutually exclusive in Phase 1. Concurrent registration of new sessions through registry-write.{sh,ps1} is safe by read-confirm-or-write semantics (DEC-24). Phase 2 (CSI-07 driver-claim adds a third writer) is the planned consolidation point: all writers will adopt the bash mkdir-lock primitive at <registry>.lock. Tracked as A2 in the Stage 3 R-A review (resolution: documentation + Phase 2 consolidation, per Stage 4 disposition option (b)).",
+    "threshold_config": "Configurable via .claude/config.json key 'csi.registryHygieneThreshold' (numeric hours OR ISO-8601 duration string PnH/PnD). Falls back to default 24h if config is absent or malformed.",
+    "spec_refs": ["CSI-05"],
+    "discoveries_closed": ["DISC-PRO-05 (REGISTRY-GC-01 follow-up)"]
+  },
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-27T00:00:00Z",
+    "spec_refs": ["DISPATCH-04", "CSI-05"],
+    "note": "Surfaces the live dispatchable-peer set in the session-start ORACLE BRIEFING so any session immediately knows whether /0-uldf-dispatch is usable. Reconciles plan D5 (peers array shape) with the task-spec briefing-line format by emitting an object with a structured 'peers' array AND a pre-formatted 'briefing' string in a single output mode (avoids hook special-casing). CSI-05 (W-D, 2026-04-30) added --gc / --gc-cheap modes for registry hygiene sweeping; closes DISC-PRO-05's REGISTRY-GC-01 follow-up."
+  }
+}

@@ -1,0 +1,12 @@
+{
+    "name": "all-stale",
+    "description": "All handoff briefs are older than the threshold and none are KEEP-pinned. --gc should sweep all.",
+    "config": {"handoffRetention": {"threshold": 30}},
+    "files": [
+        {"name": "handoff-20260101-100000.md", "age_days": 60, "keep_pin": false, "first_line": "# Aged handoff A"},
+        {"name": "handoff-20260105-093000.md", "age_days": 55, "keep_pin": false, "first_line": "# Aged handoff B"},
+        {"name": "handoff-20260110-141500.md", "age_days": 50, "keep_pin": false, "first_line": "# Aged handoff C"}
+    ],
+    "expected_default_briefing": "3 briefs older than 30d, run /0-uldf-oracle handoff-retention --gc to sweep",
+    "expected_gc": {"swept": 3, "before": 3, "after": 0, "summarized": 3}
+}

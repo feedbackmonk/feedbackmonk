@@ -1,0 +1,9 @@
+{
+  "_comment": "Expected oracle output for the validate.sh T4 sandbox: planning doc with no signals and recent mtime (<14 days). Lands in fresh[]; briefing is empty.",
+  "stale": [],
+  "fresh": [
+    {"path": "docs/planning/plans/20260601T000000-active-arc.md"}
+  ],
+  "unknown": [],
+  "briefing": ""
+}

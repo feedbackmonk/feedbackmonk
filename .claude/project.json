@@ -1,0 +1,42 @@
+{
+  "name": "Feedbackr",
+  "description": "Standalone open-source SaaS user-feedback platform. Submission widget + status-workflow triage + public roadmap with voting + status emails. Multi-product per tenant. AGPL-3.0-or-later.",
+  "license": "AGPL-3.0-or-later",
+  "stage": "pre-P0",
+  "projectCharacteristics": {
+    "type": "hybrid",
+    "hasWebUI": true,
+    "hasMobile": false,
+    "mobileTargets": [],
+    "primaryStack": "rust+typescript",
+    "stackDetail": {
+      "backend": "rust",
+      "frontend": "typescript",
+      "widget": "typescript (vanilla, <30KB bundle target)",
+      "landingSite": "astro (planned at P4)"
+    },
+    "databases": ["postgresql"],
+    "detectedAt": "2026-05-13",
+    "userConfirmed": true
+  },
+  "recommendedCapabilities": {
+    "browserTesting": true,
+    "mobileTesting": false,
+    "desktopTesting": false,
+    "apiTesting": true,
+    "accessibilityTesting": true
+  },
+  "specs": {
+    "specification": "docs/specs/SPECIFICATION.md",
+    "decisions": "docs/specs/DECISIONS.md",
+    "architecture": "docs/specs/ARCHITECTURE.md",
+    "openQuestions": "docs/specs/OPEN_QUESTIONS.md"
+  },
+  "planning": {
+    "arcPlan": "docs/planning/plans/20260513T185711-feedbackr-v1-build-arc.md"
+  },
+  "devPorts": {
+    "frontend": 14204,
+    "registeredIn": "~/.claude/MACHINE_CONFIG.md"
+  }
+}

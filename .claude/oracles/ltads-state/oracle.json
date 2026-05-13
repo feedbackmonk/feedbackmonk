@@ -1,0 +1,42 @@
+{
+  "name": "ltads-state",
+  "version": "1.0.0",
+  "question": "What is the LTADS state of this project: permanent/temporary/legacy/none, session id, and status?",
+  "category": "ltads",
+  "invocation": {
+    "unix": ".claude/oracles/ltads-state/run.sh",
+    "windows": ".claude/oracles/ltads-state/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "state": "one of: none, permanent, temporary, legacy, incomplete_temp, broken",
+      "has_ltads_dir": "boolean",
+      "is_tracked": "boolean",
+      "config_exists": "boolean",
+      "is_temporary": "boolean",
+      "session_id": "string|null",
+      "session_status": "string|null",
+      "summary": "string"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 40
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 300
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/ltads-state/validate.sh",
+    "self_test_windows": ".claude/oracles/ltads-state/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Check if ltads/ exists; read ltads/config.json for temporary flag; read ltads/sessions/current-session.md for Status field; run git ls-files ltads/ for tracking status.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-08T00:00:00Z",
+    "note": "Formalized from the state detection logic originally embedded in session-start.ps1/sh (the inline 'first oracle' of ULDF)."
+  }
+}

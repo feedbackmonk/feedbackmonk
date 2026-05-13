@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE signing_keys\n            SET active = FALSE, deactivated_at = $1\n            WHERE id = $2 AND project_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "78900a32dfa1f994eed0e72f29b119169ad62058d9af61baaa1790ca2dd721d0"
+}

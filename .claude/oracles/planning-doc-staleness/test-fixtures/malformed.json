@@ -1,0 +1,12 @@
+{
+  "_comment": "Expected oracle output for the validate.sh T7 sandbox: zero-byte planning doc with old mtime (>14 days). Both signals silent → unknown[]; never auto-archived (DEC-53 safety).",
+  "stale": [],
+  "fresh": [],
+  "unknown": [
+    {
+      "path": "docs/planning/intakes/20260101T000000-empty.md",
+      "reason": "no commit reference; no spec mapping detectable; mtime 60 days"
+    }
+  ],
+  "briefing": ""
+}

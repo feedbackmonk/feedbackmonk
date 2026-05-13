@@ -1,0 +1,114 @@
+{
+    "name": "workspace-shared-repos",
+    "version": "1.0.0",
+    "question": "Which sibling git repos does this project consume via workspace declarations?",
+    "category": "discovery",
+    "kind": "project-state",
+    "invocation": {
+        "unix": ".claude/oracles/workspace-shared-repos/run.sh",
+        "windows": ".claude/oracles/workspace-shared-repos/run.ps1"
+    },
+    "output": {
+        "format": "json",
+        "schema": {
+            "count": "integer (== repos.length)",
+            "repos": "array of {path, declarationSource, hasGit, hasClaudeDir}",
+            "discoveryMethod": "string (comma-separated sources used in priority order, or 'none')",
+            "_meta": "object {oracleVersion, computeMs, schemaVersion}"
+        },
+        "_repoEntry_schema": {
+            "path": "string (absolute path to the shared repo)",
+            "declarationSource": "string (one of: 'explicit', 'pnpm', 'cargo', 'npm') -- the source whose entry was retained after multi-source dedup; explicit always wins",
+            "hasGit": "boolean (always true; entries without .git/ are filtered before output)",
+            "hasClaudeDir": "boolean (true if <path>/.claude/ exists; informational hint that SHARED-CSI-05 auto-creation is unnecessary for this repo)"
+        }
+    },
+    "freshness": {
+        "strategy": "trigger-invalidate",
+        "invalidate_on": [
+            ".claude/config.json",
+            "pnpm-workspace.yaml",
+            "Cargo.toml",
+            "package.json"
+        ],
+        "compute_cost_ms": 80
+    },
+    "consultation": {
+        "typical_sessions_using": "every (cheap, gracefully absent on single-project setups); also consumed by /0-uldf-finalize setup phase and session-start hook",
+        "estimated_token_savings_per_call": 600
+    },
+    "validation": {
+        "self_test_unix": ".claude/oracles/workspace-shared-repos/validate.sh",
+        "self_test_windows": ".claude/oracles/workspace-shared-repos/validate.ps1",
+        "last_validated": null
+    },
+    "fallback": "Read .claude/config.json (sharedRepos field), pnpm-workspace.yaml (packages: list), Cargo.toml ([workspace] members), and package.json (workspaces field). Resolve each declared path relative to the declaration file's location. Filter to those with their own .git/ directory. Skip the local working tree itself. Deduplicate by absolute path with priority order: explicit > pnpm > cargo > npm.",
+    "discoverySources": {
+        "priorityOrder": ["explicit", "pnpm", "cargo", "npm"],
+        "explicit": {
+            "path": ".claude/config.json",
+            "field": "sharedRepos",
+            "shape": "array of {path: string, role?: string} OR array of strings",
+            "rationale": "Always wins. Escape hatch for non-standard layouts. Submodule consumers point this at the submodule checkout path."
+        },
+        "pnpm": {
+            "path": "pnpm-workspace.yaml",
+            "field": "packages:",
+            "shape": "list of strings (literal paths or glob patterns)"
+        },
+        "cargo": {
+            "path": "Cargo.toml",
+            "field": "[workspace] members",
+            "shape": "list of strings (literal paths; glob patterns supported)"
+        },
+        "npm": {
+            "path": "package.json",
+            "field": "workspaces",
+            "shape": "array of strings OR object with packages:[] field"
+        },
+        "_outOfScope_v1": {
+            "submodules": ".gitmodules — different lifecycle (detached HEAD, ref pinning); use explicit list pointing at the submodule checkout path",
+            "lerna_nx_bazel": "Custom workspace runners — parser surface area without proportional value; explicit list covers them",
+            "nestedPackages": "Workspace packages within the local working tree are filtered out (not separate repos); local-finalize handles their files"
+        }
+    },
+    "filterContract": {
+        "requireGit": "Each candidate path must have its own <path>/.git/ directory; entries without .git/ are silently dropped",
+        "skipSelf": "If a declaration resolves to the local working tree itself (degenerate self-reference), it is dropped",
+        "skipNested": "If a declaration resolves to a path strictly inside the local working tree, it is dropped (nested workspace package, not a sibling repo)",
+        "absolutePaths": "All output paths are absolute; relative declarations are resolved against the declaration file's parent directory",
+        "dedup": "When the same absolute path appears in multiple declaration sources, the highest-priority source wins (explicit > pnpm > cargo > npm); the entry's declarationSource reflects the winner"
+    },
+    "snapshotContract": {
+        "summary": "SHARED-CSI-02 captures per-shared-repo dirty-state snapshots at session-start. SHARED-FINALIZE-02 consumes these snapshots at /0-uldf-finalize time to partition dirty files into 'session-authored' (Set 1) vs 'pre-existing' (Set 2). The snapshot schema is frozen here; CLAUDE-B writes per this contract; CLAUDE-C reads.",
+        "location": ".claude/session-state/shared-repo-snapshots/<repo-basename>.json (LOCAL project; gitignored; session-scoped)",
+        "schemaVersion": 1,
+        "schema": {
+            "schemaVersion": "integer (always 1 in this arc; bump for future breaking changes via decision-channel + LD approval)",
+            "repoPath": "string (absolute path of the shared repo)",
+            "capturedAt": "string (ISO-8601 UTC timestamp of snapshot)",
+            "sessionId": "string (this session's id from .claude/session-state/this-session.json)",
+            "dirtyFiles": "array of {path, status, contentHash}"
+        },
+        "_dirtyFilesEntry_schema": {
+            "path": "string (relative path from the SHARED REPO's root, NOT the local project root)",
+            "status": "string (git's two-letter status notation; the FIRST character (working-tree status) is what matters for snapshot purposes; values: M, A, D, ??)",
+            "contentHash": "string (SHA-256 hex of the file content at snapshot time; CLAUDE-C compares this against the same file's hash at /0-uldf-finalize time to detect 'modified during this session' classification)"
+        },
+        "invariants": {
+            "emptyDirtyFiles": "Empty dirtyFiles[] is valid and means the shared repo was clean at session start; CLAUDE-C interprets this as 'no pre-existing baseline -- every dirty file at finalize is session-authored'",
+            "pathRelativity": "dirtyFiles[].path is ALWAYS relative to the shared repo's root, NOT relative to the local project. CLAUDE-B captures via 'git -C <sharedRepo> status --porcelain' which already emits repo-relative paths.",
+            "hashAlgorithm": "SHA-256 is mandatory. No alternative hash algorithms in v1; future bumps require schemaVersion increment.",
+            "snapshotLifetime": "Session-scoped: written by SHARED-CSI-02 at session-start; consumed by SHARED-FINALIZE-02 at /0-uldf-finalize time; not preserved across sessions (next session-start overwrites)."
+        }
+    },
+    "provenance": {
+        "authored_by": "shared-pack:uldf-common",
+        "created": "2026-04-30T00:00:00Z",
+        "spec_refs": ["SHARED-CSI-01"],
+        "decision_refs": ["DEC-35"],
+        "discovery_refs": ["DISC-CSI-09"],
+        "design_lineage": ["CSI-05 (claude-template/oracles/dispatchable-sessions/)", "RETENTION-01..06 (claude-template/oracles/archive-retention/)"],
+        "note": "Stage 1 foundation deliverable for the cross-project visibility arc (CSI Phase 1.5). Output schema and snapshot schema are FROZEN at first commit -- no consumer-breaking changes without explicit decision-channel entry + LD approval. Submodules + Lerna/Nx/Bazel out of scope for v1 (DEC-35); explicit-list escape hatch covers them. Pattern-mirrors CSI-05's dispatchable-sessions skeleton (per DISC-CSI-09 transferable-skeleton finding) without inheriting its --gc / --gc-cheap surface -- discovery oracles do not sweep state."
+    }
+}

@@ -1,0 +1,84 @@
+# Operating System
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# IDE and Editors
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.suo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and Secrets
+.env
+.env.*
+!.env.example
+
+# Temporary Files
+*.tmp
+*.temp
+*.bak
+~$*
+
+# Claude Code (session artifacts — never commit)
+**/.claude/checkpoints/
+**/.claude/.compaction-marker
+**/.claude/aria-telemetry.jsonl
+**/.claude/aria-telemetry-archive-*.jsonl
+**/.claude/collaboration/archived/
+
+# CSI registry (mutates every session-start)
+**/.claude/collaboration/active-sessions.json
+**/.claude/collaboration/active-sessions.json.*
+
+# CSI critic telemetry (sibling of aria-telemetry)
+**/.claude/collaboration/critic-telemetry.jsonl
+
+# Transient session state
+**/.claude/session-state/
+
+# Handoff briefs (default gitignored; KEEP-pin override per HANDOFF-01)
+**/.claude/handoff/handoff-*.md
+!**/.claude/handoff/*.KEEP
+
+# App-lifecycle dev-server artifacts
+.tauri-dev.log.err
+.tauri-dev.pid
+
+# LTADS local-only session notes
+ltads/sessions/*.local.md
+
+# Node.js
+node_modules/
+.npm
+.eslintcache
+.node_repl_history
+*.tgz
+jspm_packages/
+
+# Rust
+target/
+**/*.rs.bk
+
+# Build output
+dist/
+build/
+out/
+coverage/
+
+# Playwright
+.playwright-mcp/
+test-results/
+playwright-report/

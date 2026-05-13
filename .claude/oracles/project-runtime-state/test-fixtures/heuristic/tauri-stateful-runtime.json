@@ -1,0 +1,36 @@
+{
+  "$fixture": "heuristic-tauri-stateful-runtime",
+  "$schemaVersion": 1,
+  "_description": "WT-06 heuristic fixture: a Tauri project (statefulRuntime='tauri'). Tauri's WebView ↔ Rust bridge holds runtime state (windows, FS handles, IPC channels) that does NOT survive being driven from a sibling worktree. Even when file-touches are disjoint and no port is bound right now, the framework category alone is sufficient to mark this anti-fit. Heuristic should emit verdict=anti-fit-warn. The 2026-04-26 SessionHelm/WinLocksmith Tauri-port-collision incident is the trigger lineage.",
+  "_authoredBy": "WT-06 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-06",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6.5"
+  },
+  "input": {
+    "projectRuntimeStateOracle": {
+      "schemaVersion": 1,
+      "hasLiveDevServer": false,
+      "devPortRegistryEntries": [],
+      "sharedBuildArtifacts": ["node_modules", "target"],
+      "fileWatchers": ["vite.config.ts"],
+      "statefulRuntime": "tauri",
+      "antiFitScore": 3,
+      "antiFitReasons": [
+        "stateful runtime detected: tauri",
+        "file watcher config(s) present: vite.config.ts",
+        "multiple shared build-artifact dirs present: node_modules, target"
+      ]
+    },
+    "decomposition": {
+      "workers": [
+        { "id": "CLAUDE-A", "fileTouches": ["src-tauri/auth/"] },
+        { "id": "CLAUDE-B", "fileTouches": ["src/ui/"] }
+      ]
+    },
+    "userPassedWorktreesFlag": false
+  },
+  "expectedVerdict": "anti-fit-warn",
+  "expectedSurfaceText": "Note: project-runtime-state reports antiFitScore=3 (stateful runtime detected: tauri; file watcher config(s) present: vite.config.ts; multiple shared build-artifact dirs present: node_modules, target). Same-branch is the right choice for this project — proceeding."
+}

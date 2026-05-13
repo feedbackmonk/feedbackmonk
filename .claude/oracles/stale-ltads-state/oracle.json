@@ -1,0 +1,45 @@
+{
+  "name": "stale-ltads-state",
+  "version": "1.0.0",
+  "question": "Is ltads/sessions/current-session.md inconsistent with the active-sessions.json registry (state ACTIVE but registry says closed/expired/missing/PID-dead)?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/stale-ltads-state/run.sh",
+    "windows": ".claude/oracles/stale-ltads-state/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "stale": "boolean",
+      "details": {
+        "current_session_status": "string|null (ACTIVE | PAUSED | IN_PROGRESS | CONCLUDED | etc.)",
+        "current_session_id": "string|null",
+        "registry_status": "string (active | closed | expired | missing)",
+        "registry_pid_alive": "boolean|null (true/false when status=active and PID is non-null; null otherwise)",
+        "inconsistency_kind": "string (none | registry-closed-state-active | registry-expired-state-active | registry-pid-dead-state-active | registry-missing-state-active)"
+      },
+      "briefing": "string (empty when stale=false; one-liner suitable for ORACLE BRIEFING when stale=true)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "compute_cost_ms": 60
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/stale-ltads-state/validate.sh",
+    "self_test_windows": ".claude/oracles/stale-ltads-state/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read ltads/sessions/current-session.md and grep for 'Status:' and 'Session:'. Read .claude/collaboration/active-sessions.json and look for the entry whose .id == that session id. If state Status is ACTIVE/PAUSED/IN_PROGRESS but the registry entry is in closed[] or absent or its PID is not alive, that's a stale-state inconsistency.",
+  "provenance": {
+    "authored_by": "csi-phase-1.6",
+    "created": "2026-05-06T00:00:00Z",
+    "spec_refs": ["CSI-14"],
+    "discoveries_closed": ["DISC-CSI-11"],
+    "note": "Third leg of CSI Phase 1.6's three-leg session-end cleanup defense. CSI-12 (SessionEnd hook) is proactive; CSI-13 (GC coupling) is reactive at next-session-start; CSI-14 is reflective -- it surfaces inconsistencies that slipped through both. Briefing-line emission gracefully absent when state is consistent."
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "multi-tenant-isolation-check",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Does every domain-touching code path go through tenant-scoped repository methods? Are there raw SQL strings, methods accepting Connection outside the repository layer, or repository methods that take tenant_id as a non-TenantScope argument?",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/oracles/multi-tenant-isolation-check/oracle.sh",
+    "windows": ".claude/oracles/multi-tenant-isolation-check/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <count> with file:line offenders on FAIL; exit code 0 on PASS, non-zero on FAIL"
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "migrations/**",
+      "crates/feedbackr-repository/**",
+      "crates/feedbackr-core/**",
+      "crates/feedbackr-api/**",
+      "crates/feedbackr-jwt/**",
+      "crates/feedbackr-anon/**",
+      ".claude/oracles/multi-tenant-isolation-check/allowlist.toml"
+    ],
+    "compute_cost_ms": 250
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P0+",
+    "estimated_token_savings_per_call": 1200
+  },
+  "consumer_scope": "P0+ all crates (every Stage 1+ worker; CI gate)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-13T22:00:00Z"
+  },
+  "fallback": "Read every .rs file under crates/ and grep for sqlx::query, &mut Connection, &mut PgConnection, &mut Transaction, Pool<Postgres>, pool.acquire( OUTSIDE crates/feedbackr-repository/. For repository methods: read every pub fn / pub async fn signature in crates/feedbackr-repository/src/**.rs and check first non-&self argument is &TenantScope or &ProjectScope (or allow-listed in allowlist.toml).",
+  "provenance": {
+    "authored_by": "stage1-worker (P0 Foundation, Task Zero)",
+    "created": "2026-05-13T00:00:00Z",
+    "rationale": "DEC-FBR-03 declares raw SQL outside repository layer a security incident. Type system (TenantScope/ProjectScope newtypes) is leg 1; this oracle is leg 2 (runtime/AST); clippy + cargo-deny is leg 3."
+  }
+}

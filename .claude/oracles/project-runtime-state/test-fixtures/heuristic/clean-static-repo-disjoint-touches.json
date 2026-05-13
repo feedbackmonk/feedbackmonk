@@ -1,0 +1,33 @@
+{
+  "$fixture": "heuristic-clean-static-repo-disjoint-touches",
+  "$schemaVersion": 1,
+  "_description": "WT-06 heuristic fixture: a clean static repo with no anti-fit signals AND a decomposition where each worker's file-touches list is disjoint. The Step 6.5 heuristic should emit verdict=recommend-worktrees. This is the canonical 'fit' case the heuristic exists to surface.",
+  "_authoredBy": "WT-06 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-06",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6.5"
+  },
+  "input": {
+    "projectRuntimeStateOracle": {
+      "schemaVersion": 1,
+      "hasLiveDevServer": false,
+      "devPortRegistryEntries": [],
+      "sharedBuildArtifacts": [],
+      "fileWatchers": [],
+      "statefulRuntime": null,
+      "antiFitScore": 0,
+      "antiFitReasons": []
+    },
+    "decomposition": {
+      "workers": [
+        { "id": "CLAUDE-A", "fileTouches": ["src/auth/", "tests/auth/"] },
+        { "id": "CLAUDE-B", "fileTouches": ["src/dashboard/", "tests/dashboard/"] },
+        { "id": "CLAUDE-C", "fileTouches": ["src/billing/", "tests/billing/"] }
+      ]
+    },
+    "userPassedWorktreesFlag": false
+  },
+  "expectedVerdict": "recommend-worktrees",
+  "expectedSurfaceText": "This decomposition fits worktree mode well — workers' file-touches are disjoint and the runtime state is clean (antiFitScore=0). Consider re-invoking with --worktrees for hard isolation. (Default same-branch will work too.)"
+}

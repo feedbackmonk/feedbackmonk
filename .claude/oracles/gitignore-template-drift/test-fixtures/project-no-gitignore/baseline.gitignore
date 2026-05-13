@@ -1,0 +1,28 @@
+# Some unrelated pre-header section (must be ignored by oracle)
+node_modules/
+*.log
+
+# Claude Code (session artifacts — never commit)
+**/.claude/checkpoints/
+**/.claude/.compaction-marker
+**/.claude/aria-telemetry.jsonl
+**/.claude/aria-telemetry-archive-*.jsonl
+**/.claude/collaboration/archived/
+
+# CSI registry (mutates every session-start)
+**/.claude/collaboration/active-sessions.json
+**/.claude/collaboration/active-sessions.json.*
+
+# CSI critic telemetry (sibling of aria-telemetry)
+**/.claude/collaboration/critic-telemetry.jsonl
+
+# Transient session state
+**/.claude/session-state/
+
+# Handoff briefs (default gitignored; KEEP-pin override)
+**/.claude/handoff/handoff-*.md
+!**/.claude/handoff/*.KEEP
+
+# App-lifecycle dev-server artifacts
+.tauri-dev.log.err
+.tauri-dev.pid

@@ -1,0 +1,33 @@
+{
+  "$fixture": "tauri-stateful",
+  "$schemaVersion": 1,
+  "_description": "Reference snapshot for a Tauri project (statefulRuntime='tauri') with node_modules + target/ build artifacts + vite.config.ts file watcher. Indicators contributing: (1) statefulRuntime=tauri, (2) file watcher present, (3) two shared build-artifact dirs. Reaches antiFitScore >= 3 even without a bound port. Tauri's WebView ↔ Rust bridge holds runtime state (windows, FS handles, IPC channels) that does NOT survive being run from a sibling worktree; spawning worktree workers against a live tauri dev process risks WebView/process desync. Canonical 'stateful runtime' anti-fit case.",
+  "_authoredBy": "WT-05 Arc 1 (DEC-61, 2026-05-10)",
+  "_lineage": {
+    "spec": "docs/specs/SPECIFICATION.md § WT-05",
+    "decision": "docs/specs/DECISIONS.md § DEC-61",
+    "consumer": "claude-template/segments/-pods/parallelize_analysis.md Step 6 (WT-06)",
+    "context": "The 2026-04-26 SessionHelm/WinLocksmith Tauri-port-collision incident motivated the strictPort:true rule in MACHINE_CONFIG.md Dev Port Registry; the same incident demonstrates why Tauri projects are categorically anti-fit for worktree mode."
+  },
+  "environmentPrecondition": {
+    "currentProjectName": "tauri-app",
+    "filesPresent": ["package.json", "Cargo.toml", "node_modules/", "target/", "vite.config.ts"],
+    "packageJsonContains": "@tauri-apps/api"
+  },
+  "expectedOutput": {
+    "schemaVersion": 1,
+    "hasLiveDevServer": false,
+    "devPortRegistryEntries": [],
+    "sharedBuildArtifacts": ["node_modules", "target"],
+    "fileWatchers": ["vite.config.ts"],
+    "statefulRuntime": "tauri",
+    "antiFitScore": 3,
+    "antiFitReasons": [
+      "stateful runtime detected: tauri",
+      "file watcher config(s) present: vite.config.ts",
+      "multiple shared build-artifact dirs present: node_modules, target"
+    ]
+  },
+  "expectedHeuristicVerdict": "anti-fit-warn (Tauri WebView/Rust bridge state is incompatible with worktree isolation — recommend same-branch even when file-touches are disjoint)",
+  "_match": "Field-shape match. statefulRuntime exact match required ('tauri'). antiFitScore floor (>=3) required."
+}

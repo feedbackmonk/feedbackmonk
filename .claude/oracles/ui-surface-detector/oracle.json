@@ -1,0 +1,40 @@
+{
+  "name": "ui-surface-detector",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "question": "Does this project have a UI / runtime surface that ARIA could instrument, and what kind?",
+  "category": "environment",
+  "invocation": {
+    "unix": ".claude/oracles/ui-surface-detector/run.sh",
+    "windows": ".claude/oracles/ui-surface-detector/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "surface_kind": "tauri-desktop | electron-desktop | web-spa | react-native | flutter | mobile-native | backend-service | cli-tool | none",
+      "confidence": "high | medium | low",
+      "evidence": "array of strings (the file/dependency markers that drove the classification)"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "compute_cost_ms": 150,
+    "invalidate_on": ["package.json", "Cargo.toml", "pubspec.yaml", "src-tauri/", "index.html", "bin/"]
+  },
+  "consultation": {
+    "typical_sessions_using": "occasional",
+    "estimated_token_savings_per_call": 600
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/ui-surface-detector/validate.sh",
+    "self_test_windows": ".claude/oracles/ui-surface-detector/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Manually inspect the project's manifests (package.json, Cargo.toml, pubspec.yaml) and the presence of src-tauri/, index.html, and bin/ directories. Detection rules are documented in the README and in spec ARIA-02 acceptance criterion 1.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-04-29T00:00:00Z",
+    "spec_refs": ["ARIA-02"],
+    "note": "Universal Starter Set member. Consumed by /0-uldf-ldis-intake Phase 1 risk profiling and /0-uldf-ldis-plan Phase 4 testability gate (Leg B of ARIA's four-leg detection machinery). Also used by the aria-status oracle (ARIA-01) as the surface-detection helper. Filesystem stat + small file reads only — never executes project scripts."
+  }
+}

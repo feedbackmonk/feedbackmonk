@@ -1,0 +1,9 @@
+{
+  "name": "fixture-root",
+  "private": true,
+  "workspaces": [
+    "../sibling-a",
+    "../sibling-b",
+    "../not-a-git-checkout"
+  ]
+}

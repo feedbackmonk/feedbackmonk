@@ -1,0 +1,57 @@
+# multi-tenant-isolation-check allowlist
+#
+# Methods on repository traits that legitimately do NOT take &TenantScope or
+# &ProjectScope as their first non-&self argument. Each entry MUST cite
+# the rationale (typically: pre-authentication boundary — runs BEFORE a
+# TenantScope can exist).
+#
+# Format:
+#   [[methods]]                          # trait method
+#   trait = "TenantRepo"
+#   method = "create"
+#   rationale = "Pre-auth: signup creates the tenant; no TenantScope exists yet."
+#
+#   [[inherent_methods]]                 # method on an inherent impl (e.g. constructor)
+#   type_name = "SqlxTenantRepo"
+#   method = "new"
+#   rationale = "Repo constructor; no DB access."
+#
+# Probe A (raw-SQL outside repository) has NO allowlist by design - DEC-FBR-03
+# declares any raw SQL outside crates/feedbackr-repository/ a security incident.
+
+[[methods]]
+trait = "TenantRepo"
+method = "create"
+rationale = "Pre-auth: signup creates the tenant; no TenantScope exists yet (DEC-FBR-03 boundary)."
+
+[[methods]]
+trait = "TenantRepo"
+method = "find_by_email"
+rationale = "Pre-auth: login lookup by email runs BEFORE password verification, hence before a TenantScope can be minted."
+
+[[methods]]
+trait = "TenantRepo"
+method = "scope_for"
+rationale = "Pre-auth bridge: mints the FIRST TenantScope from a verified Uuid. Callers MUST have authenticated the bearer before invoking (Stage 2 Worker A wraps this behind login/session). The Uuid argument is a verified-tenant identifier, not arbitrary user input."
+
+# --- Inherent constructors (no DB access; struct-wiring only) ---
+
+[[inherent_methods]]
+type_name = "SqlxTenantRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries."
+
+[[inherent_methods]]
+type_name = "SqlxProjectRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries."
+
+[[inherent_methods]]
+type_name = "SqlxSigningKeyRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries."
+
+[[inherent_methods]]
+type_name = "SqlxFeedbackRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries."

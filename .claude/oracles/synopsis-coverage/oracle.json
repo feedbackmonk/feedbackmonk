@@ -1,0 +1,44 @@
+{
+  "name": "synopsis-coverage",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "What fraction of this project's modules conform to the HCT Synopsis discipline?",
+  "category": "documentation",
+  "invocation": {
+    "unix": ".claude/oracles/synopsis-coverage/run.sh",
+    "windows": ".claude/oracles/synopsis-coverage/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "coverage_pct": "integer (0-100)",
+      "conformant_count": "integer",
+      "total_modules": "integer",
+      "missing": "array of string (module paths without Synopsis section)",
+      "over_length": "array of string (module paths with Synopsis > 5 non-empty lines)",
+      "briefing_summary": "string (one-liner suitable for ORACLE BRIEFING display)",
+      "briefing": "string (alias of briefing_summary; empty when coverage_pct == 100 -> gracefully absent)"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": ["**/README.md"],
+    "compute_cost_ms": 100
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 800
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/synopsis-coverage/validate.sh",
+    "self_test_windows": ".claude/oracles/synopsis-coverage/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Glob all README.md files and read each to check for a ## Synopsis section -- but you will pay full README ingestion cost across the breadth-first compliance set, which is exactly the cost the verification-oracle category exists to eliminate.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-03T00:00:00Z",
+    "spec_ref": "HCT-04",
+    "principle_ref": "FOUNDATIONS/ORACULURGY_DESIGN.md Part 11 (Verification Oracle category)"
+  }
+}

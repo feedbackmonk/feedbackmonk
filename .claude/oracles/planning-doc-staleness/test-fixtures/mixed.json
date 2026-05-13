@@ -1,0 +1,20 @@
+{
+  "_comment": "Expected oracle output for the validate.sh T5 sandbox: three docs spanning all three partitions in one run.",
+  "stale": [
+    {
+      "path": "docs/planning/intakes/20260101T000000-stale-doc.md",
+      "staleness_signal": "all-spec-entries-done",
+      "last_modified": "<ISO-8601 60 days ago>"
+    }
+  ],
+  "fresh": [
+    {"path": "docs/planning/intakes/20260601T000000-fresh-doc.md"}
+  ],
+  "unknown": [
+    {
+      "path": "docs/planning/plans/20260101T000000-unknown-doc.md",
+      "reason": "no commit reference; no spec mapping detectable; mtime 60 days"
+    }
+  ],
+  "briefing": "[planning-doc-staleness] 1 stale planning docs, run /0-uldf-finalize to archive"
+}

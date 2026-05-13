@@ -1,0 +1,13 @@
+{
+    "name": "mixed",
+    "description": "Mixed inventory: stale, KEEP-pinned, and under-TTL briefs. --gc sweeps only stale.",
+    "config": {"handoffRetention": {"threshold": 30}},
+    "files": [
+        {"name": "handoff-20260101-100000-stale.md", "age_days": 60, "keep_pin": false, "first_line": "# Will be swept"},
+        {"name": "handoff-20260105-093000-pinned.md", "age_days": 60, "keep_pin": true, "first_line": "# Aged but pinned"},
+        {"name": "handoff-20260420-130000-recent.md", "age_days": 5, "keep_pin": false, "first_line": "# Recent in-flight"},
+        {"name": "handoff-20260425-100000-pinned-recent.md", "age_days": 3, "keep_pin": true, "first_line": "# Recent pinned (rare but valid)"}
+    ],
+    "expected_default_briefing": "1 brief older than 30d, run /0-uldf-oracle handoff-retention --gc to sweep",
+    "expected_gc": {"swept": 1, "before": 4, "after": 3, "summarized": 1, "sweptFiles": "handoff-20260101-100000-stale.md"}
+}

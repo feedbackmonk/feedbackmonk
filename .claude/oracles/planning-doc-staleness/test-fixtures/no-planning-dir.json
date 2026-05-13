@@ -1,0 +1,7 @@
+{
+  "_comment": "Expected oracle output for the validate.sh T6 sandbox: docs/planning/ does not exist. Graceful absence.",
+  "stale": [],
+  "fresh": [],
+  "unknown": [],
+  "briefing": ""
+}

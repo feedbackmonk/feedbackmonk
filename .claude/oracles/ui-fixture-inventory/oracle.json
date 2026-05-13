@@ -1,0 +1,47 @@
+{
+  "name": "ui-fixture-inventory",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "question": "What fixture/smoke-test infrastructure does this project have, and what conventions are in use?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/ui-fixture-inventory/run.sh",
+    "windows": ".claude/oracles/ui-fixture-inventory/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "has_fixtures": "bool",
+      "patterns": "array of strings (the fixture/smoke-spec glob patterns detected in this project)",
+      "counts": {
+        "fixtures": "integer (count of files matching fixture patterns)",
+        "smoke_specs": "integer (count of files matching paired smoke-spec patterns)",
+        "e2e_specs": "integer (count of files matching e2e-spec patterns)"
+      },
+      "conventions": "array of strings (high-level conventions detected: 'co-located smoke', 'playwright', 'cypress', 'vitest fixtures', 'jest fixtures', 'pytest fixtures', etc.)",
+      "briefing": "string (≤200 chars; what the session-start hook emits as [fixture-inventory]; empty string suppresses the line)"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "compute_cost_ms": 200,
+    "invalidate_on": ["tests/", "e2e/", "__tests__/", "playwright.config.ts", "playwright.config.js", "cypress.config.ts", "cypress.config.js", "vitest.config.ts", "vitest.config.js", "jest.config.ts", "jest.config.js", "package.json", "pyproject.toml"]
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 700,
+    "note": "Marked 'every' so the session-start hook iterator picks it up. Per-invocation cost is bounded by compute_cost_ms (200ms) and the oracle short-circuits on no-surface projects, so 'every' here means 'every session with a UI surface' in practice. Healthy fixtured projects emit empty briefing → line suppressed."
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/ui-fixture-inventory/validate.sh",
+    "self_test_windows": ".claude/oracles/ui-fixture-inventory/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Manually inspect tests/ and e2e/ directories for fixture patterns. Common patterns: tests/fixtures/*-smoke.{ts,js,py} paired with tests/smoke/*.spec.{ts,js,py}; playwright.config.* presence; cypress/ directory. Detection rules documented in README.md and spec TGFP-02 acceptance criterion.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-09T23:03:13Z",
+    "spec_refs": ["TGFP-02", "TGFP-03", "TGFP-04"],
+    "note": "Universal Starter Set member. Composes with ui-surface-detector (ARIA-02) for the 'is there UI?' upstream question; this oracle answers the 'is there fixture infrastructure?' downstream question. Consumed by /0-uldf-ldis-plan Phase 4 testability gate Q4 (scaffolding-leverage scoring). Filesystem stat + small file reads only — never executes project scripts."
+  }
+}

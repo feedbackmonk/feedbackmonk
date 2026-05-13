@@ -1,0 +1,82 @@
+{
+    "name": "archive-retention",
+    "version": "1.0.0",
+    "question": "Which archived PODS sessions exist, and which are old enough to sweep under the retention threshold?",
+    "category": "cleanup",
+    "kind": "project-state",
+    "invocation": {
+        "unix": ".claude/oracles/archive-retention/run.sh",
+        "windows": ".claude/oracles/archive-retention/run.ps1"
+    },
+    "output": {
+        "format": "json",
+        "schema": {
+            "count": "integer (total archived dirs found)",
+            "dirs": "array of {sessionId, createdAt, ageDays, sizeBytes, kept, sweepable, reason}",
+            "threshold": "string (ISO-8601 duration, e.g. 'P90D')",
+            "thresholdSource": "string ('config' or 'default')",
+            "summary": "string (human-readable one-line for ORACLE BRIEFING)"
+        },
+        "_dirEntry_schema": {
+            "sessionId": "string (basename of the archived dir, e.g. 'collab-20260225-004014')",
+            "createdAt": "string|null (ISO-8601 UTC parsed from sessionId; null if unparsable)",
+            "ageDays": "integer|null (days between createdAt and now; null if createdAt unparsable)",
+            "sizeBytes": "integer (recursive byte count of the dir)",
+            "kept": "boolean (true if KEEP file present)",
+            "sweepable": "boolean (true if --gc would sweep this dir)",
+            "reason": "string (one of: 'kept', 'too-young', 'sweepable', 'unparsable-age')"
+        }
+    },
+    "freshness": {
+        "strategy": "always-fresh",
+        "compute_cost_ms": 120
+    },
+    "consultation": {
+        "typical_sessions_using": "every (cheap mode in session-start hook); on-demand for full sweep",
+        "estimated_token_savings_per_call": 200
+    },
+    "validation": {
+        "self_test_unix": ".claude/oracles/archive-retention/validate.sh",
+        "self_test_windows": ".claude/oracles/archive-retention/validate.ps1",
+        "last_validated": null
+    },
+    "fallback": "Read .claude/collaboration/archived/ directly; for each collab-* subdir, parse sessionId timestamp suffix and compare against (now - threshold). Skip dirs containing a KEEP file. Before any delete, append a JSON line summarizing the dir to .claude/collaboration/archived/_summary.jsonl.",
+    "gcMode": {
+        "summary": "Archive retention sweep (RETENTION-01..06). Sweeps .claude/collaboration/archived/collab-*/ for dirs where ageDays > threshold (default 90) AND no KEEP file is present. Before each delete, appends a JSON entry to _summary.jsonl preserving sessionId, createdAt, sweptAt, sizeBytes, workerCount, taskCount, criticVerdict, hasOverrideVeto, guideHeadline (audit trail preserved).",
+        "cheap": {
+            "invocation_unix": ".claude/oracles/archive-retention/run.sh --gc-cheap",
+            "invocation_windows": ".claude/oracles/archive-retention/run.ps1 --gc-cheap",
+            "budget_ms": 100,
+            "behavior": "Session-start path. If the per-dir scan + summary write + delete loop exceeds 100ms wall-time, the sweep aborts cleanly and defers to the next session-start (graceful absence). Output is empty on success; warning on stderr on failure.",
+            "exit_codes": "Always 0 (graceful). Internal failures are logged to stderr and never block the session-start briefing."
+        },
+        "on_demand": {
+            "invocation_unix": ".claude/oracles/archive-retention/run.sh --gc",
+            "invocation_windows": ".claude/oracles/archive-retention/run.ps1 --gc",
+            "budget_ms": null,
+            "behavior": "Deeper scan with no time budget. Reports a single-line JSON summary on stdout: {swept, before, after, threshold, thresholdSource, summarized, sweptIds}.",
+            "summary_schema": {
+                "swept": "integer (number of dirs deleted)",
+                "before": "integer (collab-* dirs found before sweep)",
+                "after": "integer (collab-* dirs after sweep)",
+                "threshold": "string (ISO-8601 duration: PnD; default 'P90D')",
+                "thresholdSource": "string (one of: 'config', 'default')",
+                "summarized": "integer (entries appended to _summary.jsonl; equals swept on clean runs)",
+                "sweptIds": "string (comma-separated sessionIds deleted; omitted if empty)"
+            }
+        },
+        "criteria": "Subdir basename matches /^collab-\\d{8}-\\d{6}$/ AND no KEEP file at <dir>/KEEP AND createdAt parsed from basename is older than (now - threshold). Default threshold: 90 days. Unparsable-age dirs are NEVER swept (failure-open).",
+        "action": "1) Read metadata (sizeBytes, workerCount, taskCount, criticVerdict, hasOverrideVeto, guideHeadline). 2) Append JSON line to .claude/collaboration/archived/_summary.jsonl (atomic append). 3) Verify summary write succeeded (read-back last line). 4) rm -rf the dir. Summary write must succeed before delete; on summary write failure, the dir is NOT deleted.",
+        "atomic_semantics": "Per-dir delete sequence is sequential and uses POSIX-atomic append for _summary.jsonl (each entry < PIPE_BUF / 4KB, atomic across concurrent appenders). No directory-level lock is acquired -- concurrent sweeps from different sessions are race-tolerant: each sweep reads dirs that exist at its scan time; if two sweeps target the same dir, the second one's rm -rf becomes a no-op (idempotent). _summary.jsonl may receive duplicate entries in the rare double-sweep case, which is acceptable (audit trail favors over-recording).",
+        "threshold_config": "Configurable via .claude/config.json key 'archiveRetention.threshold' (numeric days OR ISO-8601 duration string PnD). Falls back to default 90 days if config absent or malformed.",
+        "spec_refs": ["RETENTION-01", "RETENTION-02", "RETENTION-03", "RETENTION-04", "RETENTION-05", "RETENTION-06"],
+        "design_lineage": ["CSI-05 (registry hygiene oracle pattern)", "DISC-PRO-05 (registry-hygiene precedent)"],
+        "discoveries_closed": []
+    },
+    "provenance": {
+        "authored_by": "shared-pack:uldf-common",
+        "created": "2026-04-30T00:00:00Z",
+        "spec_refs": ["RETENTION-01..06"],
+        "note": "Caps unbounded growth of .claude/collaboration/archived/ from converged PODS sessions. Mirrors CSI-05's --gc / --gc-cheap pattern but operates on filesystem dirs instead of registry entries. KEEP-file pin allows operators to mark sessions for permanent retention (e.g., reference forensic artifacts). Pre-delete _summary.jsonl preserves a one-line audit record per swept session. 90-day default threshold covers Phase 2 dogfooding (2026-05-18) and quarterly retrospectives; configurable via .claude/config.json."
+    }
+}
