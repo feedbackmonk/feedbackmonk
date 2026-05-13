@@ -34,6 +34,16 @@ trait = "TenantRepo"
 method = "scope_for"
 rationale = "Pre-auth bridge: mints the FIRST TenantScope from a verified Uuid. Callers MUST have authenticated the bearer before invoking (Stage 2 Worker A wraps this behind login/session). The Uuid argument is a verified-tenant identifier, not arbitrary user input."
 
+[[methods]]
+trait = "EmailVerificationRepo"
+method = "redeem"
+rationale = "Pre-auth: opaque verify-email token IS the credential. At redemption time the tenant is in pending-verification state (verified_at IS NULL) and no TenantScope can exist. The repository looks up the row and returns it; the API layer then uses TenantRepo::scope_for to mint a scope for downstream calls (mark_used + mark_verified). Mirrors the rationale for TenantRepo::find_by_email."
+
+[[methods]]
+trait = "ProjectRepo"
+method = "open_for_submission"
+rationale = "Pre-auth boundary: the public submission endpoint (FR-FBR-03, POST /api/v1/projects/{project_id}/feedback) has NO TenantScope by design -- the end-user JWT it carries identifies an end-user, not a tenant (DEC-FBR-04). The method takes a raw `project_id: Uuid` from the URL path and mints a `ProjectScope` bound to the project's owning tenant so the submission writes land in the correct tenant row via the type-system-protected scope (the schema's `tenant_id NOT NULL` invariant is upheld via the scope, not via caller-supplied data). The endpoint is intentionally public; authentication of the end-user happens via the JWT verifier (Contract C2) when an `Authorization: Bearer` header is present, and via the anonymous rate-limit gate (FR-FBR-06) otherwise. See DEC-PODS-001."
+
 # --- Inherent constructors (no DB access; struct-wiring only) ---
 
 [[inherent_methods]]
@@ -55,3 +65,13 @@ rationale = "Constructor: stores PgPool handle; performs no queries."
 type_name = "SqlxFeedbackRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries."
+
+[[inherent_methods]]
+type_name = "SqlxEmailVerificationRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries."
+
+[[inherent_methods]]
+type_name = "SqlxHealthCheck"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Used by Stage 3's /health + /health/ready endpoints (FR-FBR-18, Contract C5). The companion `ping` method takes only `&self` and runs a trivial `SELECT 1` round-trip — no tenant-bound data flows through it; the oracle's Probe B accepts &self-only methods by design (no caller-supplied identifier to check)."

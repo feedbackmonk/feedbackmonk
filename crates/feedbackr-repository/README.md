@@ -27,6 +27,7 @@ The crate implements a three-leg defense against tenant-isolation drift:
 | `src/projects.rs` | `ProjectRepo` trait + `SqlxProjectRepo` impl. `open(&TenantScope, project_id)` is the **sole** `ProjectScope` constructor in the public API. 4 tests including `open_rejects_cross_tenant_project`. |
 | `src/signing_keys.rs` | `SigningKeyRepo` trait + `SqlxSigningKeyRepo` impl. Always takes `&ProjectScope` first. 2 tests. |
 | `src/feedback.rs` | `FeedbackRepo` trait + `SqlxFeedbackRepo` impl. `submit_authenticated`, `submit_anonymous`, `list_recent`. 3 tests including `list_recent_only_returns_scope_owner_rows`. |
+| `src/email_verifications.rs` | `EmailVerificationRepo` trait + `Redemption` value type + `SqlxEmailVerificationRepo` impl. `create` / `redeem` / `mark_used`. **5 tests** including round-trip, unknown-token, mark-used, duplicate-token conflict, cascade-delete. **`redeem` is pre-auth allow-listed (the verify token IS the credential at redemption time)**; see DEC-PODS-002 below. Added in P0 Stage 2 by CLAUDE-A. |
 | `Cargo.toml` | Adds `clippy::pedantic` on top of the workspace's `clippy::all = deny`. Depends on `sqlx`, `uuid`, `chrono`, `async-trait`, `thiserror`, `serde_json`, `feedbackr-core`. |
 
 ## Public API & Usage
@@ -103,3 +104,25 @@ The contract is **frozen** for Stage 2 consumption — Workers A and B treat the
 **Trade-offs**: Some pedantic lints are noisy; we'll allow individual lints case-by-case rather than blanket-disable. The cost is mild lint-management overhead.
 
 **Implementation**: `Cargo.toml` `[lints.clippy]` block. Verified GREEN on this commit via `cargo clippy --workspace --all-targets -- -D warnings`.
+
+### `ProjectRepo::open_for_submission(project_id)` is allow-listed pre-auth (DEC-PODS-001)
+
+**Decision**: `ProjectRepo::open_for_submission(project_id) -> Result<ProjectScope>` is the fourth allow-listed pre-auth method. It mints a `ProjectScope` from a raw URL-path `project_id` WITHOUT a `TenantScope`. Used ONLY by the public submission endpoint (`POST /api/v1/projects/{project_id}/feedback`, FR-FBR-03). Documented in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`.
+
+**Rationale**: The submission endpoint is PUBLIC by design — the end-user JWT it carries identifies an end-user, not a tenant (DEC-FBR-04). There is no admin session, so there is no `TenantScope` flowing into the handler. After body validation + JWT-or-anon dispatch, the handler must call `FeedbackRepo::submit_authenticated` / `submit_anonymous`, both of which require a `ProjectScope`. Without this method, the handler would have no legitimate way to mint one.
+
+The method body looks up `tenant_id` from the `projects` table and mints both `TenantScope` and `ProjectScope` inside the repository crate where the `pub(crate)` constructors are accessible. Authentication of the end-user happens DOWNSTREAM via the JWT verifier (Contract C2) or anonymous rate-limit gate (FR-FBR-06).
+
+**Trade-offs**: Adds a fourth entry to the pre-auth allowlist. Different from the existing three in that the `Uuid` argument is *not* an already-verified identifier — it's a public URL-path parameter. This is intentional: the method ONLY mints a scope, it does NOT authorize any writes; authorization happens at the JWT/anon layer downstream. The contract is: "I am a public endpoint by design; please mint me a scope so I can write through the tenant-isolated path, and the rest of the protection lives in the JWT verifier."
+
+**Implementation**: `src/projects.rs` — `async fn open_for_submission(&self, project_id: Uuid) -> Result<ProjectScope>`. Returns `RepoError::NotFound` for unknown `project_id`. Three integration tests cover existing-project mint, unknown-project, and cross-tenant binding invariant (`open_for_submission_binds_scope_to_correct_tenant_across_tenants`). Allowlist entry under "pre-authentication boundary" rationale citing DEC-FBR-04 + DEC-PODS-001.
+
+### `EmailVerificationRepo` + `redeem` allow-listed pre-auth (DEC-PODS-002)
+
+**Decision**: Added `EmailVerificationRepo` trait + `SqlxEmailVerificationRepo` impl + `migrations/00002_email_verifications.sql` to back FR-FBR-02's verify-email idempotency. The `redeem(token)` method is allow-listed pre-auth (the verify token IS the credential at redemption time). `create` and `mark_used` both take `&TenantScope` — scope-discipline-clean.
+
+**Rationale**: The signup → verify-email flow requires durable token storage for idempotency (a double-clicked verify link must succeed both times within a replay window). Two paths existed: (a) inline `sqlx::query` in `feedbackr-api`, which would FAIL the `multi-tenant-isolation-check` oracle Probe A (forbidden patterns outside repository crate); (b) add the trait + impl to this crate with `redeem` allow-listed. Path (a) is structurally impossible — the CI gate blocks it. Path (b) follows the established `TenantRepo::find_by_email` precedent: at redemption time, the tenant is in `pending_verification` state (`verified_at IS NULL`), and the token itself is the credential establishing tenant identity. The API layer chains `redeem` → `TenantRepo::scope_for` to mint a real `TenantScope` for `mark_used` + `TenantRepo::mark_verified` downstream calls.
+
+**Trade-offs**: Adds a fifth entry to the pre-auth allowlist (4 trait methods + 1 inherent constructor). The pattern is structurally identical to existing allow-listed entries; oracle-enforced first-arg discipline + allowlist rationale review is the canonical mechanism. The `email_verifications` table cascades from `tenants` (`ON DELETE CASCADE`), so tenant deletion cleans up orphaned tokens.
+
+**Implementation**: `src/email_verifications.rs` — `create` / `redeem` / `mark_used` + 5 sqlx-test integration tests (round-trip, unknown-token, mark-used round-trip, duplicate-token Conflict, cascade-delete). `migrations/00002_email_verifications.sql` adds the table with token PK, FK to `tenants` ON DELETE CASCADE, `expires_at NOT NULL`, `used_at` nullable, `created_at` default, and an index on `tenant_id`. Allowlist entries: `EmailVerificationRepo::redeem` (rationale: "Pre-auth: opaque verify-email token IS the credential. At redemption time the tenant is in pending-verification state and no TenantScope can exist. Mirrors the rationale for `TenantRepo::find_by_email`.") + inherent `SqlxEmailVerificationRepo::new`.

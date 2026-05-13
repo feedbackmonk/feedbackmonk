@@ -1,9 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/feedbackr-core",
-    "crates/feedbackr-repository",
+    "crates/feedbackr-anon",
     "crates/feedbackr-api",
+    "crates/feedbackr-core",
+    "crates/feedbackr-jwt",
+    "crates/feedbackr-repository",
 ]
 
 [workspace.package]
@@ -25,8 +27,20 @@ thiserror = "2"
 anyhow = "1"
 argon2 = "0.5"
 axum = "0.7"
+axum-extra = { version = "0.9", features = ["cookie"] }
+base64 = "0.22"
+hmac = "0.12"
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
+sha2 = "0.10"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "request-id"] }
 tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 rand = "0.8"
+subtle = "2"
+blake3 = "1"
+ed25519-dalek = "2"
+governor = "0.6"
 
 [workspace.lints.clippy]
 # Project-wide clippy baseline. The repository crate adds `pedantic` on top.

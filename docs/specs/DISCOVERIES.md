@@ -74,3 +74,92 @@ The pattern: name those bridge methods explicitly, gate them through an allowlis
 **Status**: Recorded as a recommendation for Stage 2 Worker B's test addition (matches the JWT fixture corpus shape mandated by the Testability Gate for FR-FBR-05). Existing 19 tests stay IMMUTABLE per project CLAUDE.md byte-for-byte rule.
 
 ---
+
+## P0 Stage 2 + Stage 3 (2026-05-13) — P0 Close
+
+### D-FBR-05: Pre-auth allowlist as a repeatable widening mechanism (DEC-PODS-001/002)
+
+**Surfaced by**: Stage 2 PODS convergence. Two independent workers (CLAUDE-A signup, CLAUDE-B submission) each hit the same pattern — needed a single pre-auth method on the repository surface to bridge an externally-verified credential into a first scope value. Both widenings (`ProjectRepo::open_for_submission(project_id)` for JWT-mode submission; `EmailVerificationRepo::redeem(token)` for verify-email) were pre-specified in the P0 plan task briefs, self-mediated by the workers under autopilot:continuous, then LD-ratified after review.
+
+**Generalizable insight**: The pre-auth allowlist (`.claude/oracles/multi-tenant-isolation-check/allowlist.toml`) is now a **proven repeatable mechanism** for legitimate Contract-C1 widening. The pattern:
+
+1. **Plan-time** — the `/0-uldf-ldis-plan` round identifies the bridge method by exact signature in the task brief, citing which verified credential the method consumes.
+2. **Worker-time** — worker adds the entry to `allowlist.toml` with `rationale = "Pre-auth: ..."` explaining what is verified upstream.
+3. **Oracle-time** — `multi-tenant-isolation-check` re-runs (allowlist is a trigger file) and confirms the new entry's first-arg signature passes type discipline.
+4. **LD-time** — convergence-stage critic confirms (a) the rationale parallels existing entries and (b) the widening is upstream-mandated.
+
+**Where this pays off again**:
+- **P1 webhook delivery** (FR-FBR-07/08): inbound provider webhooks need an `Outbound{Status,Reply}Repo::create_for_external_event(verified_signature, …)` pattern — same shape.
+- **P3 tier enforcement** (FR-FBR-14): tier-cap counter reads under public-roadmap voting (anonymous mode) — same boundary, same pattern.
+- **P2 widget ingestion** (FR-FBR-04): per-origin CSP-validated submissions where the origin-check IS the credential.
+
+The pattern's resilience comes from the rationale-bearing allowlist being **fast to audit** (~30 lines after P0; will stay under 100 lines through P4). Future agents reviewing the file can answer "what crosses the tenant-isolation boundary in this repo?" in one read.
+
+---
+
+### D-FBR-06: PODS LD-in-monitor coordination latency — alerts.md should signal self-mediation authority
+
+**Surfaced by**: Stage 2 collaboration `collab-20260513-221600`. CLAUDE-B alerted on a needed Contract C1 widening (`open_for_submission`) and waited approximately 50 minutes for LD response before self-mediating under its autopilot:continuous BoundConsent. The widening was pre-specified in CLAUDE-B's task brief — self-mediation was structurally correct — but the wait time wasted worker context budget.
+
+**What was discovered**: When the LD is in **script-monitor mode** (polling an orchestrated worker via blocking-agent script), it has no awareness of PODS `alerts.md` writes from sibling workers. The PODS coordination model assumes the LD is interactively reading channels; the orchestrated-execution model assumes the LD is asleep in a polling wait. The two models don't compose well when both run concurrently.
+
+**Generalizable insight**: When LD is in monitor mode AND has live PODS workers, the alerts.md write protocol should include:
+
+```markdown
+**LD-state**: script-monitor (orchestrated-execution polling; not actively reading channels)
+**Self-mediation**: AUTHORIZED if change matches a pre-specified plan-time API signature; ratification deferred to LD's natural channel-check (post-monitor-wakeup) OR to convergence.
+```
+
+This shifts the question from "wait for LD" → "is this change one the LD already pre-specified?" Worker checks plan + task brief; if signature-match, proceeds and tags `decisions.md` with `self_mediated=true; ratification_pending=true`.
+
+**Where this pays off again**: Any future PODS where LD is also coordinating a serial worker (Stage 3 in this case did not have this issue because LD was actively at the keyboard). Pattern recommendation: bake into `.claude/skills/0-uldf-pods-collab-sync/` workflow as a `--ld-monitor-mode` signaling flag, or into the `/0-uldf-pods-parallelize` skill so the alerts.md template carries the LD-state field automatically.
+
+---
+
+### D-FBR-07: Fixture-corpus-first pattern proved its value for crypto-verifier surfaces
+
+**Surfaced by**: Stage 2 Worker B Task Zero — JWT fixture corpus (24 named tests across 8 categories a-h + boundary/leeway/RS256-attack cases) authored BEFORE the verifier implementation. Each test corresponds to one Contract C2 hard invariant; the fixture is hermetic-deterministic (no clock dependencies; no shared mutable state).
+
+**What was discovered**: Building the fixture corpus first produced two surprising payoffs:
+
+1. **Error-precedence design fell out naturally**: The verifier's "manual base64url + ed25519-dalek for precise error precedence" design (alg-allowlist enforced BEFORE signature work, aud-check BEFORE temporal-check, missing-claim BEFORE wrong-claim) was DRIVEN by the fixture order — each test expected an exact `JwtError` variant, and the only implementation that satisfied them all was one where checks happen in the documented precedence order. The corpus IS the spec.
+
+2. **"alg=none + HS256 confusion" attack class becomes a single-line test**: `fixture_rs256_attack_rejected` and `header_with_no_alg_field_is_algorithm_not_allowed` are each 5 lines including assertions. Without the corpus-first discipline, these would have been afterthoughts; with it, they are first-class verification surfaces.
+
+**Generalizable insight**: For ANY crypto-verifier surface in Feedbackr (P3 webhook signatures FR-FBR-14, future API request signing, future organization-scoped HMAC for self-host customers), apply the same pattern:
+
+1. **Author the fixture corpus first** with a name per invariant + Contract C-N invariant ID in the test name.
+2. **Use a single canonical verifier crate** (ed25519-dalek for EdDSA; future: ring or hmac for symmetric) and reject the urge to abstract over algorithm-families.
+3. **Manual base64url decode for header parsing** — `serde_json` parsing the decoded header is fine, but defer signature work until alg-allowlist + claim-presence is confirmed. This is the only way to get clean error precedence.
+
+**Where this pays off again**: Forward-binding for P3 webhook signing (planned at `/0-uldf-ldis-plan "Feedbackr P3 — Self-Service Distribution"`). Likely shape: HMAC-SHA256 over canonical request body + `x-feedbackr-timestamp` + `x-feedbackr-signature` header. Author the fixture corpus first with the same 8-category structure (a-h: valid, valid-with-rotation, expired, wrong-secret, missing-header, oversize, attack-class-1, attack-class-2).
+
+---
+
+### D-FBR-08: Anonymous-mode in-memory rate-limiter — restart-loses-state is acceptable for v1.0
+
+**Surfaced by**: Stage 2 Worker B `feedbackr-anon` design. The crate uses `governor::keyed::DefaultKeyedRateLimiter` over a `BLAKE3` hash of `(project_id, ip, salt)` — entirely in-process. Restart of the API binary loses all rate-limit state.
+
+**What was discovered**: For P0 (single-instance dogfood deployment), this is acceptable: an attacker would need to detect a restart in real time to exploit, and the 11-burst-then-429 window is 60 seconds. Even an adversary aware of the restart pattern would only gain 10 extra anonymous submissions per restart — well below noise floor for genuine spam protection.
+
+**Risk surface for v1.1+** (post-launch):
+- Multi-instance horizontal scaling **WILL** require shared state. Redis is the obvious target.
+- Self-host customers running 24/7 single-instance will see the in-memory limiter behave correctly; v1.0 self-host docs should mention "restart resets anonymous rate-limit counters" as a known property, not a bug.
+
+**Generalizable insight**: Component design decisions like "in-memory vs distributed state" need an explicit **graduation criterion** documented at design-time. The `feedbackr-anon` crate's `RateLimitConfig` already takes `requests_per_minute` and `burst_capacity` — adding a hidden `backend: enum { InMemory, Redis(RedisConfig) }` field in v1.1 is a non-breaking change because the public surface (`gate(project_id, ip) -> Result<()>`) doesn't change.
+
+**Where this pays off again**: ALL stateful components in P1+ (status email scheduler, public-roadmap voting cache, tier-cap counters in P3) should follow the same pattern: in-memory v1.0 with documented graduation criterion + non-breaking backend swap in v1.1.
+
+---
+
+### D-FBR-09: Axum `into_make_service_with_connect_info` is load-bearing for IP-aware handlers
+
+**Surfaced by**: Late Stage-3 e2e debugging. The submission handler's anonymous-mode flow uses `axum::extract::ConnectInfo<SocketAddr>` to extract the source IP for BLAKE3 hashing. Default `axum::serve(listener, app)` does NOT make connection info available — the extractor returns 500. Fix: `axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())`.
+
+**What was discovered**: This is a known axum gotcha (documented in axum's README under "extracting connection info"), but the error surface is **silent** — handlers compile, server starts, only the actual extraction fails at request time. The e2e P0-exit-gate witness caught it; no unit test would have.
+
+**Generalizable insight**: Any axum handler that uses `ConnectInfo<_>`, `MatchedPath`, `OriginalUri`, or other "extracts that need server-level wiring" should have a startup smoke test (or e2e witness) that exercises ONE request per such handler. The Stage 3 e2e script (`scripts/e2e-p0-curl.sh`) is the witness mechanism going forward.
+
+**Where this pays off again**: P1 admin UI handlers (FR-FBR-07: feedback list view) will use `MatchedPath` for OpenTelemetry span naming. P2 widget CDN serving (FR-FBR-04) will use `OriginalUri` for CSP nonce binding. Both need the same wiring; both need e2e witnesses.
+
+---

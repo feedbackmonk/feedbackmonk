@@ -36,18 +36,18 @@ This spec is for the standalone product — separate from `docs/specs/feedback-s
 
 ## Functional Requirements
 
-Derived from [`DEC-FBR-08`](DECISIONS.md#dec-fbr-08-mvp-scope) MVP scope. All 18 are PROPOSED status; status promotion to CONFIRMED happens at `/0-uldf-ldis-plan`.
+Derived from [`DEC-FBR-08`](DECISIONS.md#dec-fbr-08-mvp-scope) MVP scope. P0 (FR-FBR-01/02/03/05/06/18) marked **DONE** as of the P0 close commit (2026-05-13); remaining items are PROPOSED until their phase's `/0-uldf-ldis-plan` round promotes them.
 
 ### P0 — Foundation (~2 weeks)
 
 | ID | Requirement | Status | Implementation pointer |
 |---|---|---|---|
 | FR-FBR-01 | Multi-tenant data model with `tenants` + `projects` + RLS-scoped repositories. All domain rows carry `tenant_id` + `project_id`. Tenant-scoped repository layer is the SOLE query path; raw SQL is a security incident. | **DONE** | `crates/feedbackr-repository/` + `crates/feedbackr-core/` + `migrations/00001_p0_schema.sql`; reconciled from P0 Stage 1 implementation. Oracle `.claude/oracles/multi-tenant-isolation-check/` enforces. See `docs/planning/handoffs/stage1-to-stage2.md` for the frozen Contract C1 surface. |
-| FR-FBR-02 | Customer signup + onboarding: email-verify → create org → create first project → display embed code + signing key registration. | PROPOSED | NEW |
-| FR-FBR-03 | Submission API `POST /api/v1/projects/{project_id}/feedback` with JWT-verify or anonymous-mode acceptance. | PROPOSED | Port + extend; ref [`gitcellar-cloud/src/feedback/routes.rs`](../../../gitcellar-cloud/src/feedback/routes.rs) |
-| FR-FBR-05 | JWT verification with EdDSA (Ed25519), per-project signing keys, multiple active keys for rotation, 5-min sliding TTL, required claims `sub`/`iat`/`exp`/`aud`. | PROPOSED | NEW; see [`DEC-FBR-04`](DECISIONS.md#dec-fbr-04-end-user-auth-model) |
-| FR-FBR-06 | Anonymous submission mode with hashed-IP+cookie dedup, optional email field, per-project rate limits, optional verified-email anti-spam gate. | PROPOSED | NEW |
-| FR-FBR-18 | Health endpoint `/health` returning structured JSON; structured logging; basic error-rate observability. | PROPOSED | Port; ref [`gitcellar-cloud/src/main.rs`](../../../gitcellar-cloud/src/main.rs) health endpoint shape |
+| FR-FBR-02 | Customer signup + onboarding: email-verify → create org → create first project → display embed code + signing key registration. | **DONE** | `crates/feedbackr-api/src/{auth,email,handlers}/` + `crates/feedbackr-repository/src/email_verifications.rs` + `migrations/00002_email_verifications.sql`; signup/verify-email/projects/signing-keys endpoints live; argon2 + HMAC-signed admin session; lettre Mailpit/SMTP mailer. Reconciled from P0 Stage 2 (Worker A); 17 unit + 13 integration tests pass. |
+| FR-FBR-03 | Submission API `POST /api/v1/projects/{project_id}/feedback` with JWT-verify or anonymous-mode acceptance. | **DONE** | `crates/feedbackr-api/src/handlers/feedback.rs`; Contract C3 response shape; auth-mode dispatch (JWT vs anonymous); 11 handler unit tests. Reconciled from P0 Stage 2 (Worker B). |
+| FR-FBR-05 | JWT verification with EdDSA (Ed25519), per-project signing keys, multiple active keys for rotation, 5-min sliding TTL, required claims `sub`/`iat`/`exp`/`aud`. | **DONE** | `crates/feedbackr-jwt/` enforces all 6 Contract C2 hard invariants (alg-allowlist EdDSA-only, alg-none + HS256-confusion rejection, wrong-aud, expired, missing-claim, oversize-metadata); JWT fixture corpus 24 named tests (Task Zero, all 8 cases a-h + boundary/leeway/RS256 attack) hermetic-deterministic. Reconciled from P0 Stage 2 (Worker B). |
+| FR-FBR-06 | Anonymous submission mode with hashed-IP+cookie dedup, optional email field, per-project rate limits, optional verified-email anti-spam gate. | **DONE** | `crates/feedbackr-anon/` AnonGate over governor keyed limiter; BLAKE3 domain-separated hash with `feedbackr-anon-v1` prefix; 22-char opaque base64url cookie; 11 tests covering determinism + domain separation + 11th-call 429 boundary. Reconciled from P0 Stage 2 (Worker B). |
+| FR-FBR-18 | Health endpoint `/health` returning structured JSON; structured logging; basic error-rate observability. | **DONE** | `crates/feedbackr-api/src/handlers/health.rs` + `crates/feedbackr-repository/src/health.rs` per Contract C5 (`SqlxHealthCheck` ping, JSON body, 200/503 liveness/readiness split); `tracing` JSON formatter + `tower-http::trace::TraceLayer` + `x-request-id` propagation. E2E P0-exit-gate witness `scripts/e2e-p0-curl.sh` PASS 7/7. Reconciled from P0 Stage 3. |
 
 ### P1 — Closes the Loop (~3 weeks)
 

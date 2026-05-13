@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE email_verifications\n            SET used_at = now()\n            WHERE token = $1 AND tenant_id = $2 AND used_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "8fd5d7797ee42ad7a5ce9cdb250ad96e83b6c9aae8e4b66faedc62458a539fe0"
+}

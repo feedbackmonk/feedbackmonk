@@ -25,6 +25,22 @@ pub trait ProjectRepo: Send + Sync {
     /// the tenant in `scope`. This is the SOLE constructor of
     /// `ProjectScope` outside the repository crate.
     async fn open(&self, scope: &TenantScope, project_id: Uuid) -> Result<ProjectScope>;
+
+    /// Pre-authentication boundary: mint a `ProjectScope` from a public
+    /// `project_id` WITHOUT a `TenantScope`. Used ONLY by the public
+    /// submission endpoint (FR-FBR-03), which has no tenant session by
+    /// design -- the end-user JWT it carries identifies an end-user, not
+    /// a tenant (DEC-FBR-04).
+    ///
+    /// Returns `RepoError::NotFound` for an unknown `project_id`. On
+    /// success the returned scope is bound to the project's owning tenant,
+    /// so downstream `submit_authenticated` / `submit_anonymous` writes
+    /// land in the correct tenant row (the schema's `tenant_id NOT NULL`
+    /// invariant is upheld via the scope, not via caller-supplied data).
+    ///
+    /// **Allow-listed** in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+    /// under rationale "pre-authentication boundary". See DEC-PODS-001.
+    async fn open_for_submission(&self, project_id: Uuid) -> Result<ProjectScope>;
 }
 
 #[derive(Clone)]
@@ -133,6 +149,23 @@ impl ProjectRepo for SqlxProjectRepo {
             None => Err(RepoError::NotFound),
         }
     }
+
+    async fn open_for_submission(&self, project_id: Uuid) -> Result<ProjectScope> {
+        // Pre-auth boundary (DEC-PODS-001): the public submission endpoint
+        // has no TenantScope by design. We resolve the project's owning
+        // tenant from the DB and mint both scopes inside this crate (the
+        // pub(crate) constructors are accessible here).
+        let row = sqlx::query!(
+            "SELECT tenant_id FROM projects WHERE id = $1",
+            project_id
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        let tenant = TenantScope::new(row.tenant_id);
+        Ok(ProjectScope::new(tenant, project_id))
+    }
 }
 
 #[cfg(test)]
@@ -206,5 +239,46 @@ mod tests {
         repo.create(&t, "First", "shared-slug").await.unwrap();
         let err = repo.create(&t, "Second", "shared-slug").await.unwrap_err();
         assert!(matches!(err, RepoError::Conflict));
+    }
+
+    // ---- open_for_submission (DEC-PODS-001 pre-auth boundary) -----------
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn open_for_submission_returns_project_scope_for_existing_project(pool: PgPool) {
+        let repo = SqlxProjectRepo::new(pool.clone());
+        let t = seed_tenant(&pool, "t@example.com").await;
+        let p = repo.create(&t, "Public", "pub").await.unwrap();
+
+        let scope = repo.open_for_submission(p.id).await.unwrap();
+        assert_eq!(scope.project_id(), p.id);
+        // The minted scope's tenant_id MUST match the project's owning
+        // tenant (downstream submit_* writes depend on this binding).
+        assert_eq!(scope.tenant_id(), t.tenant_id());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn open_for_submission_returns_not_found_for_unknown_project(pool: PgPool) {
+        let repo = SqlxProjectRepo::new(pool.clone());
+        let err = repo.open_for_submission(Uuid::new_v4()).await.unwrap_err();
+        assert!(matches!(err, RepoError::NotFound));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn open_for_submission_binds_scope_to_correct_tenant_across_tenants(pool: PgPool) {
+        // Cross-tenant invariant: two tenants, two projects. open_for_submission
+        // on project_a returns scope.tenant_id == tenant_a; on project_b
+        // returns scope.tenant_id == tenant_b. The route's project_id is
+        // the only identifier; the scope binding is repository-mediated.
+        let repo = SqlxProjectRepo::new(pool.clone());
+        let t1 = seed_tenant(&pool, "t1@example.com").await;
+        let t2 = seed_tenant(&pool, "t2@example.com").await;
+        let p1 = repo.create(&t1, "P1", "p1").await.unwrap();
+        let p2 = repo.create(&t2, "P2", "p2").await.unwrap();
+
+        let scope_p1 = repo.open_for_submission(p1.id).await.unwrap();
+        let scope_p2 = repo.open_for_submission(p2.id).await.unwrap();
+        assert_eq!(scope_p1.tenant_id(), t1.tenant_id());
+        assert_eq!(scope_p2.tenant_id(), t2.tenant_id());
+        assert_ne!(scope_p1.tenant_id(), scope_p2.tenant_id());
     }
 }
