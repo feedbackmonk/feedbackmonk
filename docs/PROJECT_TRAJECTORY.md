@@ -1,32 +1,40 @@
-# Project Trajectory — Feedbackr
+# Project Trajectory — feedbackmonk
 
 Rolling high-level state. Auto-maintained by `/0-uldf-finalize` Phase 12. Cheap orientation for fresh sessions; for detail, go to `docs/specs/` and `docs/planning/`.
 
-**Last updated**: 2026-05-14 (P1 Stage 2 mid-arc checkpoint — Status Workflow + Admin UI DONE; Stage 3 e2e + ULADP cleanup pending)
+**Last updated**: 2026-05-14 (P1 CLOSED — arc-terminus; Stage 3 e2e witness + critic C-002 + module READMEs all shipped; P1 FRs 07/08/09/10 DONE)
+
+> **Working name**: "Feedbackr" through most of P1; renamed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11. Identifier prefixes `FR-FBR-*` / `DEC-FBR-*` are stable and do NOT rename. Code-level `feedbackr-*` → `feedbackmonk-*` rename deferred to next quiescent boundary (Pending Follow-Up PF-RENAME-01).
 
 ---
 
 ## Current Focus
 
-**P1 Stage 3** (single agent, in converging session) after Stage 2 mid-arc checkpoint commit.
+**P1 CLOSED — autopilot:continuous arc reaches planned terminus.** Next phase: P2 (Customer-Facing) opens via fresh `/0-uldf-ldis-plan` after the deferred Cargo/env-var/working-dir rename (PF-RENAME-01 + PF-RENAME-02) executes in the next quiescent boundary.
 
-Stage 2 PODS session `collab-20260514-001500` converged with critic PASS verdict. Workers delivered the full closes-the-loop slice: admin transition + reply endpoints (Contract C7), list + detail endpoints (Contract C8), `feedback_replies` migration 00004, three plain-text email templates (FR-FBR-09 via Contract C10), and the React+Vite admin UI on port 14204 (FR-FBR-07). Five self-mediated widenings ratified by LD.
+Stage 3 delivered the P1 exit-gate triple in a single converging session: (a) `scripts/e2e-p1-curl.sh` witness extending `e2e-p0-curl.sh` with the full closes-the-loop pipeline (signup → submit → admin verify-email → list → transition → status-email-observed → public-reply → public-reply-email-observed; Mailpit assertions skip-gracefully when SMTP catcher unavailable); (b) `crates/feedbackr-api/tests/router_submission_integration.rs` covering 5 axum-Router-level cases (JWT happy path, anon happy path, **401 on `alg=none`** — Contract C2 invariant 1 load-bearing JWT-attack defense, 429 rate-limit via custom AnonGate, 400 empty body) — closing carry-forward critic C-002 from the P1 Stage 2 PODS verdict; (c) four module READMEs (`feedbackr-anon`, `feedbackr-jwt`, `feedbackr-api/src/auth`, `feedbackr-api/src/handlers`) with ULADP Agent Context Headers + Decision Logs capturing load-bearing invariants.
 
-- **Stage 3 brief**: `scripts/e2e-p1-curl.sh` witness extension (signup → submit → admin login → list → transition → status-email-observed → public-reply → public-reply-email-observed) + carry-forward critic C-002 (axum-Router-level submission integration tests) + 5 missing module READMEs (feedbackr-anon, feedbackr-jwt, feedbackr-api/{auth,handlers}; the new email module already shipped its README with Stage 2).
-- **P1 exit gate**: e2e-p1-curl.sh PASS + both Verification Oracles GREEN + all P1 FRs (07/08/09/10) DONE in `docs/specs/SPECIFICATION.md`.
+- **P1 exit gate**: PASSED — 218 workspace tests pass, clippy clean, both Verification Oracles GREEN, all P1 FRs (07/08/09/10) DONE in `docs/specs/SPECIFICATION.md`.
 
 ## Active Threads
 
-- **P1 Stage 2 — DONE** (commit pending this finalize): admin status transition + reply HTTP (C7), admin list + detail HTTP (C8), `feedback_replies` migration 00004, three plain-text email templates with tenant-brand parameterization (C10), Mailpit integration test, new `admin-ui/` React+Vite directory with state-machine-aware UI + Playwright+axe a11y smoke. 185 → 213 backend tests (+28) + 13 admin-ui Vitest tests + 1 Playwright a11y smoke. Both Verification Oracles GREEN. Critic verdict PASS.
-- **P1 Stage 3 pending**: `scripts/e2e-p1-curl.sh` + critic C-002 + 5 module READMEs.
+- **P1 CLOSED — arc-terminus** (this commit): Stage 3 e2e-p1-curl.sh + router_submission_integration.rs (critic C-002) + 4 module READMEs land. 213 → 218 workspace tests (+5 router cases). Both Verification Oracles GREEN. FR-FBR-07/08/09/10 all DONE.
+- **P1 Stage 2 — DONE** (commit `d6f247a`): admin transition + reply HTTP (C7), admin list + detail HTTP (C8), `feedback_replies` migration 00004, three plain-text email templates (C10), Mailpit integration test, `admin-ui/` React+Vite directory + Playwright+axe a11y smoke.
 - **P1 Stage 1 — DONE** (commit `f63c66b`): `pii-scrub-audit` oracle, `feedbackr-tracing` crate, migrations 00003/00005, repository extensions, frozen contracts handoff doc.
 - **P0 Foundation — COMPLETE** (commit `b9a672a`): all 5 P0 FRs DONE; e2e P0 PASS 7/7.
-- **AGPL LICENSE pre-public-commit ratification gate — PENDING USER ACTION**: LICENSE file still a stub; repo stays local-only until user replaces with full AGPL-3.0 text + finalizes GitHub org + domain registration. P1 work continues local-only.
-- **LTADS S001** — autopilot:continuous, mid-arc. Arc grant valid until 2026-05-14T21:06:21Z; continues into P1 Stage 3.
+- **Pending pre-public-push gates (USER ACTION)**:
+  - **PF-REGISTER-01** — Register `github.com/feedbackmonk` org + buy `feedbackmonk.com` (~$10/yr). Confirmed AVAILABLE 2026-05-14; not yet claimed.
+  - **AGPL LICENSE**: full AGPL-3.0 text now in `LICENSE` (replaced 2026-05-13) — gate CLEARED on the LICENSE side; remaining gate is org/domain registration.
+- **Pending follow-ups (DEFERRED to next quiescent boundary)**:
+  - **PF-RENAME-01** — Cargo workspace + crate names + env-var prefix rename `feedbackr-*` → `feedbackmonk-*`. Trigger: P1 finalize → P2 plan transition (preferred). DEC-FBR-11 ID-stability rule: only brand strings rename; `FR-FBR-*` / `DEC-FBR-*` IDs stay.
+  - **PF-RENAME-02** — Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`. Requires user action (Windows cannot rename CWD of live process).
+- **LTADS S001 — CONCLUDED at this commit** (arc-terminus): autopilot:continuous arc ends at planned scope (P1 close). Phase 9 CSI-06 flips `current-session.md` Status → CONCLUDED + BoundConsent expired=true + emits `Concluded-By: <hash> via complete-arc-flag`.
 - **GitCellar widget-embed touchpoint — DEFERRED to late P2 / early P3**.
 
 ## Recent Decisions
 
+- **Critic C-002 closure decision** (P1 Stage 3) — Router-level submission integration test injects `ConnectInfo<SocketAddr>` via request extensions (since `tower::ServiceExt::oneshot` doesn't populate it like the production `into_make_service_with_connect_info` does); test-harness limitation documented in helper docstring. `alg=none` case (Contract C2 invariant 1) substituted for the brief's "401 missing-cookie" entry (likely typo — submission endpoint is public and cookie-free at the public surface). Justification artifact at `docs/test-modifications/20260514-stage3-critic-c-002.md`.
+- **Stage 3 Decision Logs authored in-place** (P1 Stage 3) — Four new module READMEs ship with Decision Log sections capturing load-bearing invariants: feedbackr-anon (BLAKE3 domain-separation prefix, in-memory governor as P0/P1 model), feedbackr-jwt (EdDSA-only allowlist defeats alg=none AND HMAC-confusion at header-parse, wrong-audience precedes signature check for information-leak hardening — Contract C2 invariant 3), feedbackr-api/src/auth (cookie name `feedbackr_session` reconciled vs P1-plan misnomer `feedbackr_admin_session` — Contract C11), feedbackr-api/src/handlers (scope-bound writes, same-transaction status update + audit row insert via `_in_executor` overloads).
 - **DEC-PODS-003 / DEC-PODS-004** (P1 Stage 2) — Executor-aware overloads `FeedbackStatusHistoryRepo::append_in_executor` + `FeedbackRepo::update_status_in_executor` for Contract C6 Hard Invariant #4 (atomic audit row + status column in same transaction). LD-ratified at convergence; both methods stay scope-first (Probe B clean). DEC-PODS-004's `FOR UPDATE` lock adds TOCTOU defense — candidate for D-FBR-12 promotion at Stage 3 finalize.
 - **DEC-PODS-005** (P1 Stage 2) — Inline `insta` snapshots for the 6 email template fixtures (3 templates × 2 brand fixtures), not file-on-disk. Functionally identical; improves PR-review locality.
 - **DEC-PODS-006** (P1 Stage 2) — `SqlxFeedbackReplyRepo::new` added to `multi-tenant-isolation-check/allowlist.toml`. Structural mirror of Stage 1's pre-authorized `SqlxFeedbackStatusHistoryRepo::new` entry (constructor stores `PgPool`; no queries). LD-ratified at convergence.
@@ -48,7 +56,7 @@ Stage 2 PODS session `collab-20260514-001500` converged with critic PASS verdict
 
 ## Next-Best-Steps
 
-1. **User action** — replace `LICENSE` stub with full AGPL-3.0 text; register GitHub org + domain. (Orthogonal to P1 implementation.)
-2. **Stage 3 in converging session** — author `scripts/e2e-p1-curl.sh` extending `scripts/e2e-p0-curl.sh` with 8-step closes-the-loop pipeline (signup → submit → admin login → list contains FB-id → transition to triaged → poll Mailpit for status-change email → reply public → poll Mailpit for public-reply email). Co-locate `crates/feedbackr-api/tests/router_submission_integration.rs` (carry-forward critic C-002, ~3-5 tests at axum Router level). Author 5 module READMEs: `crates/feedbackr-anon/`, `crates/feedbackr-jwt/`, `crates/feedbackr-api/src/auth/`, `crates/feedbackr-api/src/handlers/` (and verify `crates/feedbackr-api/src/email/README.md` already shipped). Stage 3 routes via `/0-uldf-proceed` per autopilot:continuous chain.
-3. **P1 exit gate** → `/0-uldf-finalize --skip-push --complete-arc` (arc-terminus this time) → `/0-uldf-ltads-stop`.
-4. After P1 close: `/0-uldf-ldis-plan "Feedbackr P2 — Customer-Facing"` (widget on 14204, bundle-size oracle).
+1. **PF-REGISTER-01 (USER ACTION)** — Register `github.com/feedbackmonk` org and purchase `feedbackmonk.com` before any first public push. Both confirmed AVAILABLE 2026-05-14; `gh api orgs --method POST -f login=feedbackmonk` or web UI.
+2. **PF-RENAME-01 (next quiescent boundary)** — Cargo workspace + crate name rename `feedbackr-*` → `feedbackmonk-*` + env-var prefix `FEEDBACKR_` → `FEEDBACKMONK_`. ~50-file atomic commit; trigger window: P1 finalize → P2 plan transition (preferred). Includes `cargo sqlx prepare` regen + oracle allowlist path updates. ID prefixes (`DEC-FBR-*`, `FR-FBR-*`) do NOT rename per DEC-FBR-11.
+3. **PF-RENAME-02 (USER ACTION)** — Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`. Must run with no live Claude Code sessions in the directory. PowerShell: `Rename-Item "E:\Developer\SourceControlled\Apps\Feedbackr" "feedbackmonk"`. Update `~/.claude/MACHINE_CONFIG.md` Dev Port Registry row afterward.
+4. **P2 plan** — `/0-uldf-ldis-plan "feedbackmonk P2 — Customer-Facing"`. P2 scope: embeddable widget (FR-FBR-04 — <30KB cap, vanilla JS+CSS), `widget-bundle-size` Verification Oracle (defends the cap as a contract), public roadmap with voting (FR-FBR-11), promote-to-roadmap with Q24 byte-for-byte body invariant (FR-FBR-12 — port verbatim test from gitcellar `roadmap_promote.rs`).

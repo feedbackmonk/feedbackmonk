@@ -1,4 +1,6 @@
-# Feedbackr — Specification
+# feedbackmonk — Specification
+
+> **Naming note**: working-named "Feedbackr" through P0 and most of P1; renamed to **feedbackmonk** on 2026-05-14 per [DEC-FBR-11](DECISIONS.md#dec-fbr-11-working-name-changed-to-feedbackmonk--dec-fbr-09-squat-contingency-enacted). ID prefixes `FR-FBR-*` and `DEC-FBR-*` are stable identifiers and do NOT rename. Some inline references below still read "Feedbackr" (repository-path strings, decision-quote excerpts) -- they are brand references awaiting the next sweep and do NOT indicate identifier instability.
 
 **Status**: READY FOR PLANNING ✅
 **Spec session opened**: 2026-05-13
@@ -7,9 +9,9 @@
 
 ---
 
-## What Feedbackr is
+## What feedbackmonk is
 
-Feedbackr is a **standalone open-source SaaS user-feedback platform** for indie developers and privacy-conscious teams. Submission widget + status-workflow triage + public roadmap with voting + status emails. Multi-product per tenant.
+feedbackmonk is a **standalone open-source SaaS user-feedback platform** for indie developers and privacy-conscious teams. Submission widget + status-workflow triage + public roadmap with voting + status emails. Multi-product per tenant.
 
 **One-line pitch**: "Privacy-first product feedback. Hear your users without spying on them."
 **Elevator pitch ("X for Y")**: "Plausible Analytics for product feedback."
@@ -53,10 +55,10 @@ Derived from [`DEC-FBR-08`](DECISIONS.md#dec-fbr-08-mvp-scope) MVP scope. P0 (FR
 
 | ID | Requirement | Status | Implementation pointer |
 |---|---|---|---|
-| FR-FBR-07 | Admin UI: feedback list view + drawer detail + reply composer with public/internal visibility tabs + status transition controls. | PROPOSED | Port React components; ref [`gitcellar-cloud/admin-ui/`](../../../gitcellar-cloud/admin-ui/) |
-| FR-FBR-08 | Status workflow: 6-state machine (`submitted` → `triaged` → `in-progress` → `shipped`/`wontfix`/`duplicate`) with audit history in `feedback_status_history`. | PROPOSED | Port; ref [`gitcellar-cloud/src/feedback/db.rs`](../../../gitcellar-cloud/src/feedback/db.rs) |
-| FR-FBR-09 | Status emails (plain-text): confirmation on submission, on each status change, on admin public reply. FB-1234-style display IDs in subject line. Footer parameterized per tenant brand. | PROPOSED | Port + parameterize; ref [`gitcellar-cloud/src/feedback/email_templates.rs`](../../../gitcellar-cloud/src/feedback/email_templates.rs) |
-| FR-FBR-10 | PII scrubber with canonical 20-pattern regex set applied to all server logs. Drift-detection oracle. | PROPOSED | Port verbatim; ref [`gitcellar-service/src/feedback_logs/scrubber.rs`](../../../gitcellar-service/src/feedback_logs/scrubber.rs) |
+| FR-FBR-07 | Admin UI: feedback list view + drawer detail + reply composer with public/internal visibility tabs + status transition controls. | **DONE** | `admin-ui/` React+Vite+TypeScript (port 14204) ships state-machine-aware `StatusControls` rendering `LEGAL_TRANSITIONS[currentStatus]` (Contract C6), drawer detail, plain-text reply composer with public/internal visibility tabs. 13 Vitest unit tests + 1 Playwright + `@axe-core/playwright` a11y smoke. Reconciled from P1 Stage 2 (PODS Worker B). |
+| FR-FBR-08 | Status workflow: 6-state machine (`submitted` → `triaged` → `in-progress` → `shipped`/`wontfix`/`duplicate`) with audit history in `feedback_status_history`. | **DONE** | `crates/feedbackr-core/src/status.rs` ships `FeedbackStatus` + `legal_transitions_from` (Contract C6 state machine, port from gitcellar). `crates/feedbackr-api/src/handlers/admin_feedback.rs::transition_status` enforces all 5 hard invariants (illegal-transition pre-DB-check, duplicate-requires-target, scope-bound duplicate-of, same-txn audit row, no-op rejection) — same-transaction `feedback.status` UPDATE + `feedback_status_history` INSERT via `_in_executor` overloads. Migrations 00003 + 00004 applied. Reconciled from P1 Stage 1 + Stage 2 (PODS Worker A). |
+| FR-FBR-09 | Status emails (plain-text): confirmation on submission, on each status change, on admin public reply. FB-1234-style display IDs in subject line. Footer parameterized per tenant brand. | **DONE** | `crates/feedbackr-api/src/email/` ships 3 plain-text template renderers (confirmation/status-change/public-reply) brand-parameterised via `EmailTenantBrand` (Contract C10); `LettreEmailNotifier` SMTP chokepoint + `RecordingEmailNotifier` test fixture; FB-id in subject `[{prefix} #{FB-XXX}] {short_subject}`; submitter-visible filter (`is_submitter_visible_transition`) skips re-open/un-merge; insta snapshots × 6. Mailpit integration test PASS. P1 Stage 3 e2e witness `scripts/e2e-p1-curl.sh` polls Mailpit for both status-change + public-reply mails. Reconciled from P1 Stage 2 (PODS Worker A) + Stage 3 witness. |
+| FR-FBR-10 | PII scrubber with canonical 20-pattern regex set applied to all server logs. Drift-detection oracle. | **DONE** | `crates/feedbackr-tracing/` ships byte-for-byte port of GitCellar's 20-pattern scrubber + WRITE-boundary `MakeWriter` chokepoint (Contract C9); `install_global_subscriber` sole composition seam; `pii-scrub-audit` Verification Oracle (Probe A AST + Probe B SHA-256 hash) GREEN on every P1+ commit; idempotent `scrub(scrub(x)) == scrub(x)` asserted. Reconciled from P1 Stage 1 + Stage 3 e2e closes-the-loop witness. |
 
 ### P2 — Customer-Facing (~3 weeks)
 
@@ -71,7 +73,7 @@ Derived from [`DEC-FBR-08`](DECISIONS.md#dec-fbr-08-mvp-scope) MVP scope. P0 (FR
 
 | ID | Requirement | Status | Implementation pointer |
 |---|---|---|---|
-| FR-FBR-14 | Tier enforcement: projects-per-org caps + monthly volume caps per tier. Free-tier "powered by Feedbackr" widget footer (opt-out on paid). | PROPOSED | NEW; see [`DEC-FBR-03`](DECISIONS.md#dec-fbr-03-multi-tenancy-architecture) pricing tiers |
+| FR-FBR-14 | Tier enforcement: projects-per-org caps + monthly volume caps per tier. Free-tier "powered by feedbackmonk" widget footer (opt-out on paid). | PROPOSED | NEW; see [`DEC-FBR-03`](DECISIONS.md#dec-fbr-03-multi-tenancy-architecture) pricing tiers |
 | FR-FBR-15 | Billing via Polar integration: Free / $9 Starter / $29 Pro / $79 Self-host. MoR via Polar (same provider as GitCellar). | PROPOSED | Port Polar setup pattern; ref [`gitcellar-cloud/src/billing/`](../../../gitcellar-cloud/src/billing/) |
 
 ### P4 — Go-Public (~2 weeks)

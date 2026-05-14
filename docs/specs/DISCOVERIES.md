@@ -205,3 +205,27 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 **Where this pays off again**: Every Orchestrated Execution mid-arc checkpoint commit. P1 Stage 2 PODS converge is a different shape (PODS has its own `/0-uldf-pods-converge` flow with explicit ownership-trail), but a fresh orchestrated worker in P1 Stage 3 or any subsequent phase will hit the same boundary.
 
 ---
+
+### D-FBR-13: `tower::ServiceExt::oneshot` doesn't populate `ConnectInfo` — production-parity test harness needs explicit injection
+
+**Surfaced by**: P1 Stage 3 critic C-002 router-level integration tests (`crates/feedbackr-api/tests/router_submission_integration.rs`).
+
+**What was discovered**: The production binary serves the router via `into_make_service_with_connect_info::<SocketAddr>()`, which populates the `ConnectInfo<SocketAddr>` request extension that downstream extractors (the anon-gate IP-bucket extraction) depend on. Tests using `tower::ServiceExt::oneshot(request)` bypass this layer — the request reaches the router with NO `ConnectInfo` extension, and `Extension<ConnectInfo<SocketAddr>>` extraction returns 500 ("Missing extension"). Three router-level cases (anon happy path, 429 rate-limit, 400 empty body via anon path) silently failed with 500 until the helper was updated to inject `req.extensions_mut().insert(ConnectInfo(synthetic_addr))` before passing to `oneshot`.
+
+**Generalizable insight**: Whenever the production-binary composition layer populates request extensions (`ConnectInfo`, `OriginalUri`, trace contexts, custom span-on-request markers), an integration test that touches the router directly via `tower::ServiceExt::oneshot` is one wrapping-layer below where those extensions are added. The test harness must either (a) replicate the production layer-stack at construction time, or (b) inject the missing extension into each request explicitly. Option (b) is cheaper for single-extension cases but trades production-parity for harness simplicity — document the substitution in the helper docstring so the next reader knows what's synthetic.
+
+**Where this pays off again**: P2 widget-bundle-size oracle's HTTP-level tests (the widget endpoint returns serving telemetry extensions); P3 tier-enforcement integration tests (tier-cap check reads from a tenant-tier extension populated by the auth middleware stack in production but not by a stripped-down test harness).
+
+---
+
+### D-FBR-14: P1-plan misnomer reconciled at use-site — `feedbackr_session` IS the admin cookie name (not `feedbackr_admin_session`)
+
+**Surfaced by**: P1 Stage 3 e2e-p1-curl.sh authoring + critic C-002 test authoring.
+
+**What was discovered**: The P1 plan (`20260513T231115-feedbackr-p1-closes-the-loop.md`) and intermediate Stage 2 brief referred to the admin session cookie as `feedbackr_admin_session`. The actual P0/P1 implementation in `crates/feedbackr-api/src/auth/session.rs` uses `feedbackr_session` (the single cookie name shared between signup-flow verification and ongoing admin requests). Contract C11 in the Stage 1 handoff doc had reconciled this verbatim, but downstream Stage-2-era plan references didn't propagate. The Stage 3 e2e script could not have worked against the real binary with the wrong cookie name; the typo would have surfaced as immediate 401 on every admin call.
+
+**Generalizable insight**: When plan documents reference HTTP-layer identifiers (cookie names, header names, JSON field names, URL path segments), they're vulnerable to plan-drift bugs that only fail at integration time. The pattern that catches them: any plan-doc identifier touching the wire surface MUST also appear in a frozen Contract section that's bytes-compared at handoff; downstream consumers of the plan should treat the Contract section as authoritative when the plan body disagrees with it. Contract C11 was authoritative here; the Stage 3 author caught the drift only because the e2e script needed to actually work against the real binary.
+
+**Where this pays off again**: P2 widget public surface (the widget reads project ID + JWT from customer's page; identifiers must be frozen in a Contract before P2 fan-out), P3 webhook signing-header name (HMAC signature header — bind to Contract before any downstream consumers depend on it).
+
+---
