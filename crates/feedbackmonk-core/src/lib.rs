@@ -10,10 +10,13 @@
 
 pub mod ids;
 pub mod models;
+pub mod roadmap;
 pub mod status;
 
 pub use ids::{FeedbackId, SigningKeyId};
 pub use models::{
     AnonSubmission, Feedback, FeedbackKind, Project, RateLimitCounter, SigningKey, Tenant,
+    WidgetBrand,
 };
+pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use status::{legal_transitions_from, FeedbackStatus, TransitionError};

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT i.id AS \"item_id!\",\n                   count(v.id) AS \"vote_count!\"\n            FROM roadmap_items AS i\n            LEFT JOIN roadmap_votes AS v\n              ON v.item_id = i.id\n            WHERE i.tenant_id = $1 AND i.project_id = $2\n            GROUP BY i.id\n            ORDER BY count(v.id) DESC, i.created_at DESC\n            LIMIT $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "item_id!",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "vote_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "7badb2536d32491f1f21c135dd5a57ae6742bf08cbbae2b3c7904995d38920cd"
+}

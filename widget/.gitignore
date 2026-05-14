@@ -1,0 +1,14 @@
+node_modules/
+.vite/
+test-results/
+playwright-report/
+*.log
+*.tsbuildinfo
+
+# NOTE: widget/dist/ IS committed.
+# Rationale: the `widget-bundle-size` Verification Oracle (Probe A + Probe B)
+# scans built artifacts in widget/dist/*.{js,mjs,css} on every commit. Without
+# tracked dist/, the oracle has nothing to verify in CI before npm install +
+# build runs, which would defeat the inner-loop closure the oracle exists to
+# provide. The dist/ files are minified output; reviewing diffs is intentional
+# friction that surfaces accidental bundle-size growth.

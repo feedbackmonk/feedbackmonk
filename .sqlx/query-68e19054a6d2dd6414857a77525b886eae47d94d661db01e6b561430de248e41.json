@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT v.cast_at\n            FROM roadmap_votes AS v\n            WHERE v.tenant_id = $1\n              AND v.project_id = $2\n              AND v.item_id = $3\n              AND v.voter_id = $4\n            FOR UPDATE\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "cast_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "68e19054a6d2dd6414857a77525b886eae47d94d661db01e6b561430de248e41"
+}

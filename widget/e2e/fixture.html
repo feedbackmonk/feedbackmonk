@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>feedbackmonk widget — a11y fixture</title>
+    <!--
+      Test fixture loaded by widget/e2e/widget-a11y.spec.ts.
+      Loads the built widget bundle (widget/dist/widget.{js,css}) via
+      external link/script — no inline content per CSP discipline.
+      The host page has a single button "Launcher" so the test can
+      verify focus return on modal close.
+    -->
+    <link rel="stylesheet" href="../dist/widget.css" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 24px;
+        color: #111;
+      }
+      main { max-width: 720px; }
+      h1 { font-size: 20px; }
+      button.host-launcher {
+        padding: 8px 16px;
+        font-size: 14px;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>feedbackmonk widget — a11y test fixture</h1>
+      <p>
+        This page hosts the widget so the Playwright + axe-core harness can
+        verify no WCAG 2.1 AA violations in either the modal-closed or
+        modal-open state. The widget mounts a launcher button bottom-right.
+      </p>
+      <button class="host-launcher" type="button" id="host-launcher">
+        Host page launcher (focus-return target)
+      </button>
+    </main>
+    <script
+      type="module"
+      src="../dist/widget.js"
+      data-project-id="00000000-0000-0000-0000-000000000001"
+      data-api-base="http://localhost:14206/e2e/mock"
+    ></script>
+  </body>
+</html>

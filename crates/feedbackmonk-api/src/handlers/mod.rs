@@ -14,3 +14,12 @@ pub mod health;
 
 // P1 Stage 2: admin status workflow + replies (Contracts C7 + C8).
 pub mod admin_feedback;
+
+// P2: promote-to-roadmap admin action (FR-FBR-12, Contract C16, Worker C).
+pub mod promote;
+
+// P2: widget runtime config endpoint (FR-FBR-04, Contract C12, Worker A).
+pub mod widget_config;
+
+// P2: public + admin roadmap endpoints (FR-FBR-11 + FR-FBR-13, Contract C15, Worker B).
+pub mod roadmap;

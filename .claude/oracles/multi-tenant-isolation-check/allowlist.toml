@@ -94,3 +94,15 @@ rationale = "Constructor: stores PgPool handle; performs no queries. Structural 
 type_name = "EmailTenantBrand"
 method = "from_db"
 rationale = "Value-type constructor (not a repository method). Builds an `EmailTenantBrand` from raw DB column values; no DB access, no scope coupling. Used by `TenantRepo::get_brand` which IS scope-protected."
+
+# --- P2 additions (Contracts C13 + C14 / migrations 00006 + 00007) ---
+
+[[inherent_methods]]
+type_name = "SqlxRoadmapItemRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0 pre-authorized) — same construction shape, same no-DB-access semantics. Backs migration 00006's roadmap_items table. All public methods on the trait take &ProjectScope as their first non-self argument (Probe B compliance verified). Pre-authorized per GUIDE.md §8 (collab-20260514-035703 task brief Phase 5)."
+
+[[inherent_methods]]
+type_name = "SqlxRoadmapVoteRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxRoadmapItemRepo::new (this commit) and SqlxFeedbackRepo::new (P0). Backs migration 00007's roadmap_votes table. All public methods on the trait take &ProjectScope as their first non-self argument (Probe B compliance verified). The cast() method's INSERT...SELECT enforces scope at the SQL level (cross-tenant item_id returns RepoError::NotFound, not silent insert). Pre-authorized per GUIDE.md §8."

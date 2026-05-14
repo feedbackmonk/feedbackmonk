@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use feedbackmonk_core::Tenant;
+use feedbackmonk_core::{Tenant, WidgetBrand};
 
 use crate::error::{RepoError, Result};
 use crate::scope::TenantScope;
@@ -45,6 +45,16 @@ pub trait TenantRepo: Send + Sync {
     /// Update the brand parameters for `scope`. Stage 2 Worker A wires a
     /// PATCH endpoint on top of this; Stage 1 ships only the repo surface.
     async fn update_brand(&self, scope: &TenantScope, brand: &EmailTenantBrand) -> Result<()>;
+
+    /// Read the widget runtime brand surface for `scope` (Contract C12, P2).
+    ///
+    /// Sibling of `get_brand`, smaller payload: only fields the embeddable
+    /// widget needs (`primary_color`, optional `logo_url`, optional
+    /// `footer_text`). v1 returns hardcoded free-tier defaults derived from
+    /// the same tenant row — P3 wires per-tier overrides via a future
+    /// `update_widget_brand` method. First non-self arg is `&TenantScope`
+    /// (multi-tenant-isolation Probe B compliance; no allowlist entry needed).
+    async fn get_widget_brand(&self, scope: &TenantScope) -> Result<WidgetBrand>;
 }
 
 /// Tenant email-template brand parameters (Contract C10).
@@ -250,6 +260,31 @@ impl TenantRepo for SqlxTenantRepo {
         .await?;
         Ok(())
     }
+
+    async fn get_widget_brand(&self, scope: &TenantScope) -> Result<WidgetBrand> {
+        // v1: existence-check the tenant row + return hardcoded free-tier
+        // defaults. Migration `00008_tenant_widget_brand.sql` (P3) will add
+        // `widget_primary_color`/`widget_logo_url`/`widget_footer_text`
+        // columns and this method will read them.
+        //
+        // No `widget_*` columns in the v1 schema is intentional — P3 owns
+        // tier-flag enforcement (FR-FBR-14); adding columns before that
+        // would couple this phase to billing logic.
+        let exists = sqlx::query!(
+            r#"SELECT id FROM tenants WHERE id = $1"#,
+            scope.tenant_id(),
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+        if exists.is_none() {
+            return Err(RepoError::NotFound);
+        }
+        Ok(WidgetBrand {
+            primary_color: "#3b82f6".to_string(),
+            logo_url: None,
+            footer_text: Some("powered by feedbackmonk".to_string()),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -350,5 +385,17 @@ mod tests {
         repo.mark_verified(&scope).await.unwrap();
         let after = repo.get(&scope).await.unwrap();
         assert!(after.verified_at.is_some());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn get_widget_brand_returns_free_tier_defaults(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("widget@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+        let brand = repo.get_widget_brand(&scope).await.unwrap();
+        // v1 hardcoded defaults (P3 will replace these with per-tier reads).
+        assert_eq!(brand.primary_color, "#3b82f6");
+        assert_eq!(brand.logo_url, None);
+        assert_eq!(brand.footer_text.as_deref(), Some("powered by feedbackmonk"));
     }
 }

@@ -108,6 +108,14 @@ These oracles answer *"did the last action break or violate something?"* — exe
 
 Invocation: `pwsh .claude/oracles/multi-tenant-isolation-check/oracle.ps1` (Windows) or `bash .claude/oracles/multi-tenant-isolation-check/oracle.sh` (Unix); `python .claude/oracles/pii-scrub-audit/oracle.py` (cross-platform) or `bash .claude/oracles/pii-scrub-audit/oracle.sh` (Unix shim).
 
+### privacy
+
+| Oracle | Question | Kind | Strategy | Consumer Scope | Est. savings/call |
+|---|---|---|---|---|---|
+| **`widget-bundle-size`** | Is the built feedbackmonk widget bundle (`widget/dist/*.{js,mjs,css}`) at most 30720 bytes (30 KiB; FR-FBR-04 cap), and does it contain zero canonical third-party tracker hostnames? Has the canonical tracker-list drifted from its hashed baseline? *(P2 Task Zero — CLAUDE-A worker, collab-20260514-035703; three-leg defense leg 2 — paired with vite.config.ts terser+CSP-safe bundler chokepoint (leg 1) + Playwright+axe-core a11y harness (leg 3); enforces FR-FBR-04 size cap + DEC-FBR-02 no-third-party-trackers brand promise; cold-start vacuous-PASS supports Task Zero order-of-operations)* | verification | trigger-invalidate (`widget/dist/**`, `widget/src/**`, `widget/vite.config.ts`, `widget/package.json`, `expected-trackers.txt`) | P2+ widget/ (every commit touching widget/dist or widget/src; CI gate) | ~800 tokens |
+
+Invocation: `bash .claude/oracles/widget-bundle-size/oracle.sh` (Unix) or `pwsh .claude/oracles/widget-bundle-size/oracle.ps1` (Windows); `python .claude/oracles/widget-bundle-size/oracle.py` (cross-platform direct).
+
 ---
 
 ## Invocation Quick Reference

@@ -229,3 +229,53 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 **Where this pays off again**: P2 widget public surface (the widget reads project ID + JWT from customer's page; identifiers must be frozen in a Contract before P2 fan-out), P3 webhook signing-header name (HMAC signature header — bind to Contract before any downstream consumers depend on it).
 
 ---
+
+## P2 Customer-Facing (2026-05-14) — PODS Convergence
+
+### D-FBR-15: PODS monitor regex artifact — terminal-status string-matching is fragile
+
+**Surfaced by**: P2 convergence (collab-20260514-035703) — DEC-PODS-LEAD-01.
+
+**What was discovered**: `monitor-pods.ps1` exited with `TIMEOUT|elapsed=7200s|status=complete=2/3 blocked=0` despite all three workers being functionally complete. The monitor regex matched only the literal terminal string `COMPLETED` and missed CLAUDE-A's `CONVERGENCE-READY` status label. The LD verified all exit-gate criteria manually via `channels/status.md` worker reports before invoking convergence (with explicit DEC-PODS-LEAD-01 ratification).
+
+**Generalizable insight**: Framework coordination programs that pattern-match on free-text status labels are brittle. Two cleaner patterns: (a) a **structured progress field** (JSON `{status: "complete" | "ready" | "blocked"}` in `status.md` frontmatter or sibling JSON) so the monitor parses a typed enum, not free text; (b) **terminal-token enumeration** — monitor accepts an explicit allowlist (`COMPLETED|CONVERGENCE-READY|FEATURE-COMPLETE`). Option (a) is structurally better; option (b) is cheaper and would have unblocked this convergence with zero behavior change.
+
+**Where this pays off again**: Any future PODS-style coordination where workers self-report state; any orchestrator polling `channels/` files for terminal-state signals.
+
+---
+
+### D-FBR-16: rollup-win32-x64-msvc npm bug 4828 — platform-specific optional deps need a CI fallback
+
+**Surfaced by**: P2 convergence — widget build (`cd widget && npm run build`) failed repeatedly with `Cannot find module @rollup/rollup-win32-x64-msvc` on Windows-x64 despite multiple `npm install`, `npm install --include=optional`, and clean `rm -rf node_modules` retries.
+
+**What was discovered**: The well-known npm bug npm/cli#4828 causes platform-specific optional dependencies (rollup's per-platform native binaries) to be skipped during install on some Windows configurations. Standard remediation guidance (clean node_modules + package-lock + reinstall) did not resolve it on this machine. The working fallback: `cd node_modules/@rollup && npm pack @rollup/rollup-win32-x64-msvc@<version>` + manual tar extraction.
+
+**Generalizable insight**: For projects depending on rollup (or any package using platform-specific optional native binaries — esbuild, swc, sharp follow similar patterns), Windows CI runners need a **pre-build fallback step** that detects the missing binary and packs+extracts manually. The fallback is idempotent (`npm pack` is cache-friendly) and adds <2s when the binary is already present.
+
+**Where this pays off again**: feedbackmonk widget CI (when it lands); any other vite-using crate-style frontend in this monorepo or peer repos.
+
+---
+
+### D-FBR-17: Phase 5.4 test-mod justification needs to enumerate fixtures, not module-name handwave
+
+**Surfaced by**: P2 convergence Phase 5.4 audit — CLAUDE-B's original `docs/test-modifications/20260514-p2-appstate-roadmap-fields.md` named only `crates/feedbackmonk-api/src/handlers/admin_feedback.rs` as the affected file, but the actual diff touched FOUR fixture sites (3 AppState extensions + 1 TenantRepo mock fill-in across `admin_feedback.rs`, `tests/handlers.rs`, `tests/router_submission_integration.rs`, `tests/email_integration.rs`).
+
+**What was discovered**: When a single test-modification justification artifact covers a class of co-edits, it must **enumerate every fixture site explicitly in YAML frontmatter** — not name only the primary site and let auditors infer the class from prose context. The Phase 5.4 verifier checks `tests_modified[].path` ⊇ actual co-edit set; partial enumeration fails the gate even when the underlying justification class is sound.
+
+**Generalizable insight**: Justification artifacts for **classes** of changes (mechanical fixture extension, schema-migration downstream propagation, lint-allow-attribute mass-application) need a small validator step in worker workflow: enumerate the actual co-edit set, compare against the artifact's `tests_modified[]` frontmatter, fail loud if the artifact under-claims. This is a candidate for a Verification Oracle (`test-mod-coverage-check`) that walks `docs/test-modifications/*.md` frontmatter and grep-validates `tests_modified[].path` against `git diff --name-only` for the matching commit range.
+
+**Where this pays off again**: Future PODS conversions where mechanical downstream propagation co-edits multiple fixture sites; any large refactor where a single justification covers N test files for the same reason.
+
+---
+
+### D-FBR-18: Byte-for-byte port + `#[allow(...)]` at smallest scope preserves invariant against future lint drift
+
+**Surfaced by**: P2 convergence Phase 5 clippy gate — `cargo clippy --workspace --all-targets -- -D warnings` initially failed with 4 `uninlined_format_args` + `doc_markdown` lints inside `crates/feedbackmonk-api/src/handlers/promote.rs::tests` — all in test bodies that are byte-for-byte ports from gitcellar `roadmap_promote.rs` lines 340–416.
+
+**What was discovered**: The Q24 invariant (FR-FBR-12, DEC-FBR-02) requires test names, message literals, and assertion text to be byte-for-byte identical to the gitcellar source. Clippy would suggest modernizations that are technically correct but would violate the byte-for-byte contract. The fix: add `#[allow(clippy::uninlined_format_args, clippy::doc_markdown)]` at the test-module level, with an explicit comment documenting WHY (load-bearing byte-for-byte invariant). Precedent: the same file already used `#[allow(clippy::too_many_lines)]` on `perform_promote` for a related reason.
+
+**Generalizable insight**: When code is **load-bearing as bytes** — port targets, golden-output fixtures, reference implementations being compared against — applying `#[allow(...)]` at the smallest containing scope (module, function, statement) is correct. Two contracts must hold: (a) the allow attribute MUST carry a comment explaining the byte-for-byte invariant; (b) the byte-for-byte source MUST be documented (file path + line range) so future readers can verify drift. Don't paper over the lint by editing the bytes; don't add a project-wide `#[allow(...)]` that disables the lint for non-port code that should follow modern conventions.
+
+**Where this pays off again**: Any future port from gitcellar or peer repos; any golden-output fixture asserted byte-for-byte thereafter (insta snapshots in CI mode, JSON regression fixtures, fixture-recorded HTTP traces).
+
+---

@@ -1,0 +1,25 @@
+{
+  "name": "feedbackmonk-widget",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Embeddable feedbackmonk widget (vanilla JS+CSS, <30KB, CSP-safe, no third-party trackers).",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "build": "vite build",
+    "build:check": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.48.2",
+    "@types/node": "^25.7.0",
+    "terser": "^5.36.0",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-win32-x64-msvc": "^4.60.3"
+  }
+}

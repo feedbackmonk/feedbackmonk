@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM roadmap_items\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND ($3::text IS NULL OR status = $3)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "3eaf1121d82a0e27b0ea9b6fba04740e9b58765cfc3277963e31fbb3b1799920"
+}

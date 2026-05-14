@@ -1,0 +1,43 @@
+{
+  "name": "widget-bundle-size",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Is the built feedbackmonk widget bundle (widget/dist/*.{js,mjs,css}) at most 30720 bytes, and does it contain zero canonical third-party tracker hostnames? Has the canonical tracker-list drifted from its hashed baseline?",
+  "category": "privacy",
+  "invocation": {
+    "unix": ".claude/oracles/widget-bundle-size/oracle.sh",
+    "windows": ".claude/oracles/widget-bundle-size/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with size detail + tracker-hit file:line offenders on FAIL; tracker-list SHA-256 always printed; exit code 0 on PASS, 1 on FAIL, 2 on environment failure"
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "widget/dist/**",
+      "widget/src/**",
+      "widget/vite.config.ts",
+      "widget/package.json",
+      ".claude/oracles/widget-bundle-size/expected-trackers.txt",
+      ".claude/oracles/widget-bundle-size/oracle.py"
+    ],
+    "compute_cost_ms": 150
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P2+ (touching widget/)",
+    "estimated_token_savings_per_call": 800
+  },
+  "consumer_scope": "P2+ widget/ (every commit touching widget/dist/ or widget/src/; CI gate from P2 start)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-14T03:59:00Z"
+  },
+  "fallback": "Probe A: ls -la widget/dist/*.{js,mjs,css} and sum byte counts; compare to 30720. Probe B: grep -i -F -f expected-trackers.txt widget/dist/* . Drift hash: sort + lowercase + join-with-\\n the non-comment non-blank lines of expected-trackers.txt and SHA-256 the UTF-8 bytes.",
+  "provenance": {
+    "authored_by": "CLAUDE-A worker (P2 Customer-Facing, Task Zero — collab-20260514-035703)",
+    "created": "2026-05-14T03:59:00Z",
+    "rationale": "FR-FBR-04 (<30KB bundle) + DEC-FBR-02 (no third-party trackers brand promise). Three-leg defense per D-FBR-02 pattern: (1) vite.config.ts terser+CSP-safe bundler config; (2) THIS oracle (size probe + tracker-hostname probe + list-hash drift detection); (3) Playwright + axe-core a11y harness for behavioural regressions. The cap is reified as a code-level invariant per arc-plan Testability Gate Q3=4 finding: without the oracle the agent would accept 'looks small enough' and ship over-budget."
+  }
+}

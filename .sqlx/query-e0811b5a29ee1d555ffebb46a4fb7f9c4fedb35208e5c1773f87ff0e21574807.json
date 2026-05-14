@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO roadmap_votes (tenant_id, project_id, item_id, voter_id, voter_mode)\n            SELECT $1, $2, i.id, $4, $5\n            FROM roadmap_items AS i\n            WHERE i.id = $3 AND i.tenant_id = $1 AND i.project_id = $2\n            RETURNING id, tenant_id, project_id, item_id, voter_id, voter_mode, cast_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "item_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "voter_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "voter_mode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "cast_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e0811b5a29ee1d555ffebb46a4fb7f9c4fedb35208e5c1773f87ff0e21574807"
+}

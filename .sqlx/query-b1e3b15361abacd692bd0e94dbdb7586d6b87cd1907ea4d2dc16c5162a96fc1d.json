@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM roadmap_votes\n            WHERE tenant_id = $1 AND project_id = $2 AND item_id = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "b1e3b15361abacd692bd0e94dbdb7586d6b87cd1907ea4d2dc16c5162a96fc1d"
+}

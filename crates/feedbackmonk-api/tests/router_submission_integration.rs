@@ -91,6 +91,15 @@ fn build_test_state(pool: &PgPool, anon_quota_per_hour: u32) -> AppState {
         verify_token_ttl: Duration::hours(24),
         anon_gate: AnonGate::new(NonZeroU32::new(anon_quota_per_hour).unwrap()),
         jwt_iat_leeway_seconds: 5,
+        // P2 fields — mechanical AppState extension per
+        // docs/test-modifications/20260514-p2-appstate-roadmap-fields.md.
+        roadmap_items: Arc::new(feedbackmonk_repository::SqlxRoadmapItemRepo::new(
+            pool.clone(),
+        )),
+        roadmap_votes: Arc::new(feedbackmonk_repository::SqlxRoadmapVoteRepo::new(
+            pool.clone(),
+        )),
+        voting_cache: feedbackmonk_api::VotingCache::new(),
         started_at: chrono::Utc::now(),
         health: SqlxHealthCheck::new(pool.clone()),
     }

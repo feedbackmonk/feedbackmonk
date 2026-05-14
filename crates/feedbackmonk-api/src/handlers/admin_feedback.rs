@@ -685,6 +685,17 @@ mod tests {
             verify_token_ttl: Duration::hours(24),
             anon_gate: AnonGate::new(NonZeroU32::new(DEFAULT_RATE_LIMIT_PER_HOUR).unwrap()),
             jwt_iat_leeway_seconds: 5,
+            // P2 fields — required by AppState; the admin-feedback tests don't
+            // exercise these surfaces (see docs/test-modifications/
+            // 20260514-p2-appstate-roadmap-fields.md for the Read-Only-Tests
+            // mode justification).
+            roadmap_items: Arc::new(feedbackmonk_repository::SqlxRoadmapItemRepo::new(
+                pool.clone(),
+            )),
+            roadmap_votes: Arc::new(feedbackmonk_repository::SqlxRoadmapVoteRepo::new(
+                pool.clone(),
+            )),
+            voting_cache: crate::roadmap_voting_cache::VotingCache::new(),
             started_at: Utc::now(),
             health: SqlxHealthCheck::new(pool.clone()),
         };

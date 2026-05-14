@@ -5,7 +5,7 @@
 //! Fixtures are minted in-process from committed seed bytes, so the suite
 //! is hermetic and reproducible.
 //!
-//! Corpus (a)-(h) below maps 1:1 to the table in `tasks/CLAUDE-B-TASK.md`:
+//! Corpus (a)-(h) below covers each Contract C2 hard invariant:
 //!
 //! | # | Name | Expected |
 //! |---|---|---|

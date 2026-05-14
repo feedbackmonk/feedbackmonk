@@ -135,3 +135,149 @@ export const KIND_LABELS: Record<FeedbackKind, string> = {
   question: "Question",
   other: "Other",
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// P2 — Customer-facing roadmap surfaces
+//
+// Source of truth: `docs/planning/handoffs/p2-fanout-contracts.md` §TypeScript
+// type mirror — frozen 2026-05-14T04:13:00Z at sha 7e1ea3a (canonical for
+// C13/C14/C15 — roadmap backend; C16 — promote handler). The block below is
+// the mirror verbatim + two optional widenings on `RoadmapItem`
+// (`origin_feedback_id`, `voted_by_me`) per DEC-PODS-C-01.
+//
+// Re-apply this block when handler signatures change. NEVER remove or
+// rename fields; additional optional fields are pre-authorized.
+// ─────────────────────────────────────────────────────────────────────────
+
+// --- C13: roadmap item -----------------------------------------------------
+
+export type RoadmapItemStatus =
+  | "considering"
+  | "planned"
+  | "in-progress"
+  | "shipped"
+  | "wontfix";
+
+export const ROADMAP_STATUS_LABELS: Record<RoadmapItemStatus, string> = {
+  considering: "Considering",
+  planned: "Planned",
+  "in-progress": "In Progress",
+  shipped: "Shipped",
+  wontfix: "Won't Do",
+};
+
+// Public order — what end-users see top-down on /public/.../roadmap.
+export const ROADMAP_STATUS_PUBLIC_ORDER: RoadmapItemStatus[] = [
+  "in-progress",
+  "planned",
+  "considering",
+  "shipped",
+  "wontfix",
+];
+
+export interface RoadmapItem {
+  slug: string;
+  title: string;
+  body: string;
+  status: RoadmapItemStatus;
+  vote_count: number;
+  created_at: string; // RFC 3339
+  updated_at: string;
+  // Pre-authorized widenings per GUIDE.md §8 — `origin_feedback_id` is
+  // already in B's migration 00006 schema and only surfaces on admin
+  // endpoints (server omits it on public). `voted_by_me` is a UI-ergonomic
+  // surface so the vote button can render its toggled state without a
+  // separate roundtrip. See DEC-PODS-C-01.
+  origin_feedback_id?: string; // FB-XXXXXX of the promoted source feedback (admin-only)
+  voted_by_me?: boolean; // pre-cached on the response if known
+}
+
+// --- C14: voting ------------------------------------------------------------
+
+export type RoadmapVoterMode = "jwt" | "anon";
+
+export interface VoteResponse {
+  item_slug: string;
+  voter_mode: RoadmapVoterMode;
+  cast_at: string;
+}
+
+export interface VoteErrorBody {
+  error:
+    | "AlreadyVoted"
+    | "RateLimitExceeded"
+    | "VoteNotFound"
+    | "RetractionWindowExpired";
+  retry_after_seconds?: number; // only on RateLimitExceeded
+}
+
+export interface RetractResponse {
+  item_slug: string;
+  retracted_at: string;
+}
+
+// --- C15: list + admin ------------------------------------------------------
+
+export interface RoadmapListResponse {
+  items: RoadmapItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  cached_at: string | null;
+}
+
+export interface TopVotedItem {
+  slug: string;
+  title: string;
+  status: RoadmapItemStatus;
+  vote_count: number;
+}
+
+export interface TopVotedResponse {
+  items: TopVotedItem[];
+  cached_at: string | null;
+}
+
+export interface AdminCreateRoadmapItemRequest {
+  slug: string;
+  title: string;
+  body: string;
+  status?: RoadmapItemStatus; // defaults to "considering"
+}
+
+export interface AdminPatchRoadmapItemRequest {
+  title?: string;
+  body?: string;
+  status?: RoadmapItemStatus;
+}
+
+// Legacy alias names used in admin-ui (kept for stylistic consistency with
+// `TransitionRequest` / `ReplyRequest`); identical shapes.
+export type AdminRoadmapCreateRequest = AdminCreateRoadmapItemRequest;
+export type AdminRoadmapPatchRequest = AdminPatchRoadmapItemRequest;
+
+// --- C16: promote -----------------------------------------------------------
+
+export interface PromoteRequest {
+  slug: string; // 1..=80 chars; kebab-case ASCII
+  title?: string; // defaults to render_roadmap_title(feedback.body)
+}
+
+export interface PromoteResponse {
+  roadmap_item_id: string;
+  roadmap_item_slug: string;
+  source_feedback_id: string; // "FB-XXXXXX"
+  source_status: "duplicate"; // always "duplicate" after a successful promote
+  already_promoted: boolean;
+}
+
+export interface PromoteErrorBody {
+  error:
+    | "InvalidCategory"
+    | "InvalidSlug"
+    | "FeedbackNotFound"
+    | "SlugTaken"
+    | "InternalError";
+  kind?: "bug" | "feature" | "question" | "other"; // on InvalidCategory
+  slug?: string; // on InvalidSlug / SlugTaken
+}

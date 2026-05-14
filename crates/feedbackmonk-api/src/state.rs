@@ -15,17 +15,13 @@ use sqlx::PgPool;
 use feedbackmonk_anon::AnonGate;
 use feedbackmonk_repository::{
     EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo, FeedbackStatusHistoryRepo,
-    ProjectRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
+    ProjectRepo, RoadmapItemRepo, RoadmapVoteRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
 };
 
 use crate::email::{EmailNotifier, Mailer};
+use crate::roadmap_voting_cache::VotingCache;
 
 /// Application context shared across all handlers.
-///
-/// **CLAUDE-B field region (below)**: add `jwt_verifier` / `anon_gate` fields
-/// here once the `feedbackmonk-jwt` and `feedbackmonk-anon` crates land. Construction
-/// goes in `main.rs::build_state`. Coordinate via `channels/messages.md` per
-/// GUIDE.md §6 shared-files protocol.
 #[derive(Clone)]
 pub struct AppState {
     // -- Stage 1 carry-state (Contract C1: repository surface) -------------
@@ -63,6 +59,17 @@ pub struct AppState {
     /// `FEEDBACKMONK_JWT_LEEWAY_SECONDS` at startup; default 5s. Only `iat` is
     /// leeway-tolerant — `exp` is strict per Contract C2 invariant 5.
     pub jwt_iat_leeway_seconds: i64,
+
+    // -- P2: roadmap + voting (FR-FBR-11 + FR-FBR-13, Contracts C13–C15) ---
+    /// Public + admin roadmap-item repository. Constructor allowlisted as a
+    /// structural mirror of `SqlxFeedbackRepo::new`.
+    pub roadmap_items: Arc<dyn RoadmapItemRepo>,
+    /// Roadmap-vote repository. Carries the 409-on-duplicate hard invariant
+    /// (Contract C14) and the retraction-window enforcement.
+    pub roadmap_votes: Arc<dyn RoadmapVoteRepo>,
+    /// In-process 60s voting aggregate cache (Contract C15). Cloneable
+    /// handle backed by `Arc<RwLock<…>>`.
+    pub voting_cache: VotingCache,
 
     // -- Stage 3: health + observability (FR-FBR-18) -----------------------
     /// Wall-clock timestamp captured at binary startup. Used for the

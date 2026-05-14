@@ -60,7 +60,7 @@ Verification Oracles built so far + scheduled:
 |---|---|---|
 | `multi-tenant-isolation-check` | P0 Task Zero | ✅ LIVE (built P0 Stage 1) |
 | `pii-scrub-audit` | P1 | ✅ LIVE (built P1 Stage 1) |
-| `widget-bundle-size` | P2 (start) | scheduled — defends the <30KB cap (FR-FBR-04) as a contract, not aspiration |
+| `widget-bundle-size` | P2 (start) | ✅ LIVE (built P2 Task Zero) — defends <30KB cap (FR-FBR-04) + DEC-FBR-02 no-trackers brand promise as code-level invariants; active-PASS against built `widget/dist/` at 16,829B / 30,720 cap (45% headroom) |
 | `tier-enforcement-status` | P3 | scheduled — defends cap-firing + "powered by feedbackmonk" footer (FR-FBR-14) |
 
 ## Constraints not in spec artifacts

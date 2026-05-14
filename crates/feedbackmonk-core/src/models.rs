@@ -120,6 +120,24 @@ pub struct RateLimitCounter {
     pub count: i32,
 }
 
+/// Widget runtime brand surface (Contract C12).
+///
+/// Sibling of `EmailTenantBrand` (which lives in `feedbackmonk-repository::tenants`
+/// because it has a derived `sender_display_name` constructor). The widget
+/// brand is a smaller subset: only what `GET /api/v1/projects/{id}/widget-config`
+/// returns. Lives in `feedbackmonk-core` so both the repository and the API
+/// crates can read/write the type without a circular dep.
+///
+/// **`footer_text` semantics**: `Some("powered by feedbackmonk")` on free-tier;
+/// `None` on paid tiers (P3 wires the tier-flag flip). V1 returns the hardcoded
+/// free-tier value for every tenant; the column is reserved for P3 to override.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WidgetBrand {
+    pub primary_color: String,
+    pub logo_url: Option<String>,
+    pub footer_text: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -80,6 +80,15 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
     ) -> Result<(), RepoError> {
         unimplemented!()
     }
+    async fn get_widget_brand(
+        &self,
+        _scope: &TenantScope,
+    ) -> Result<feedbackmonk_core::WidgetBrand, RepoError> {
+        // Test fixture stub — `feedbackmonk-api` integration tests in this
+        // file exercise the email-send path, not the widget-config path.
+        // Real defaults live in `SqlxTenantRepo::get_widget_brand`.
+        unimplemented!()
+    }
 }
 
 // ----- Synthesise a TenantScope ----------------------------------------------

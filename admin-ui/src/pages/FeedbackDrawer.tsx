@@ -9,6 +9,7 @@ import {
 import { StatusBadge } from "../components/StatusBadge";
 import { StatusControls } from "../components/StatusControls";
 import { ReplyComposer } from "../components/ReplyComposer";
+import { PromoteButton } from "./roadmap/PromoteButton";
 import { formatAbsolute, formatRelative } from "../shared/format";
 
 interface FeedbackDrawerProps {
@@ -199,6 +200,12 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
             <StatusControls
               feedbackId={feedbackId}
               currentStatus={detail.status}
+            />
+            <PromoteButton
+              feedbackId={feedbackId}
+              kind={detail.kind}
+              status={detail.status}
+              bodyPreview={detail.body}
             />
           </>
         )}

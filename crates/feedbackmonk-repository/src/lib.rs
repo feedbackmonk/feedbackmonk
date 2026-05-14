@@ -20,6 +20,8 @@ pub mod feedback_replies;
 pub mod feedback_status_history;
 pub mod health;
 pub mod projects;
+pub mod roadmap_items;
+pub mod roadmap_votes;
 pub mod scope;
 pub mod signing_keys;
 pub mod tenants;
@@ -31,6 +33,12 @@ pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, Sq
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
 pub use health::SqlxHealthCheck;
 pub use projects::{ProjectRepo, SqlxProjectRepo};
+pub use roadmap_items::{
+    NewRoadmapItem, RoadmapItemPatch, RoadmapItemRepo, SqlxRoadmapItemRepo,
+};
+pub use roadmap_votes::{
+    RetractOutcome, RoadmapVoteRepo, SqlxRoadmapVoteRepo, DEFAULT_RETRACTION_WINDOW,
+};
 pub use scope::{ProjectScope, TenantScope};
 pub use signing_keys::{SigningKeyRepo, SqlxSigningKeyRepo};
 pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo};
