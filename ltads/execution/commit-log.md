@@ -83,3 +83,36 @@ _Append-only. Newest at bottom._
 **Push**: SKIPPED (--skip-push flag). PF-REGISTER-01 (github.com/feedbackmonk org + feedbackmonk.com purchase) gates first public push; not yet cleared.
 
 **Next**: `/0-uldf-proceed` -> auto-spawn P3 Stage 2 (admin UI tier display + stub Upgrade button) per autopilot:continuous chain. Handoff brief: `docs/planning/handoffs/p3-stage1-to-stage2.md` (Contracts C17/C18/C19 frozen verbatim + TS starter kit).
+
+---
+
+## f4491d3 -- 2026-05-14 -- P4 Stage 2 (v1-arc-terminus)
+
+**Message**: `feat(p4-s2): close P4 v1-arc-terminus -- marketing site + self-host docker compose (FR-FBR-16/17 DONE)`
+
+**Scope**: P4 Stage 2 convergence commit. PODS collab-20260514-170323 (LD + CLAUDE-A + CLAUDE-B) converged via `/0-uldf-pods-converge --inline --finalize`. Two parallel workers shipped FR-FBR-16 (marketing site) + FR-FBR-17 (self-host docker compose) in one atomic v1-arc-terminus commit. Net-additive: two new top-level directories (`marketing/`, `deploy/docker/`), one new oracle (`.claude/oracles/selfhost-compose-smoke/`), one new pricing-export binary (`crates/feedbackmonk-core/examples/export_tier_quotas.rs`), one operator runbook (`docs/operations/SELFHOST.md`). One pre-existing file modified at code level: `crates/feedbackmonk-api/src/main.rs` (+16 lines for `FEEDBACKMONK_BIND_ADDR` per DEC-FBR-IMPL-07).
+
+**Spec deltas**:
+- FR-FBR-16 -> DONE (was PROPOSED) — Astro marketing site at `marketing/`, 7 pages, brand kit C20 applied, build-time pricing-parity SSOT, /docs/self-host content-mirror, Playwright + axe-core 11/11 PASS.
+- FR-FBR-17 -> DONE (was PROPOSED) — `deploy/docker/` stack with api + admin-ui nginx edge + postgres + migrate one-shot + operator scripts (backup/restore); `selfhost-compose-smoke` Verification Oracle 3-probe active-PASS; `docker compose down -v && up -d --build --wait` GREEN with `/health/ready` 200 in <90s.
+- DEC-FBR-IMPL-07 added to DECISIONS.md (FEEDBACKMONK_BIND_ADDR widening).
+- D-FBR-25 (PricingCard SSOT-asymmetry post-Polar) + D-FBR-26 (`/docs/self-host` drift-risk; verification-oracle candidate `marketing-selfhost-page-parity` queued) added to DISCOVERIES.md.
+- INDEX.md updated to include `selfhost-compose-smoke` oracle.
+- v1 spec is content-complete: 17/18 FRs DONE, FR-FBR-15 (Polar) remains DEFERRED per DEC-FBR-DEFER-01.
+
+**Quality witnesses**:
+- Astro `npm run build`: GREEN (7 pages, clean)
+- Playwright + axe-core (`marketing/tests/a11y.spec.ts`): 11/11 PASS, 0 a11y violations
+- `docker compose down -v && up -d --build --wait`: GREEN end-to-end with `/health/ready` 200 in <90s
+- `.claude/oracles/multi-tenant-isolation-check/oracle.sh`: PASS (no domain code changes)
+- `.claude/oracles/pii-scrub-audit/oracle.sh`: PASS (no tracing changes)
+- `.claude/oracles/widget-bundle-size/oracle.sh`: PASS (widget unchanged at 16,829B / 30,720B)
+- `.claude/oracles/tier-enforcement-status/oracle.sh`: PASS (tier-stack unchanged; pricing export consumes same Contract C19)
+- `.claude/oracles/selfhost-compose-smoke/oracle.sh --full`: PASS (Probe A yaml-lint clean; Probe B env-refs ⊆ C21 catalog; Probe C `/health/ready` 200 in <90s)
+- Critic verdict at convergence: CONCERN (2 low-severity findings — D-FBR-25 SSOT-asymmetry pre-authorized per DEC-FBR-DEFER-01, D-FBR-26 drift-risk surfaced with named follow-up oracle; both within GUIDE §8 pre-authorized envelope)
+
+**Arc state**: **ARC-TERMINUS**. P4 is the final phase of the v1 arc; Stage 2 is the final stage of P4. CSI-06 three-signal detection FIRES (final-stage-detection + chain-endpoint-metadata + this `/0-uldf-ltads-stop` invocation). BoundConsent expires per its `boundUntil=on /0-uldf-ltads-stop OR spec-exhaustion` clause — both conditions satisfied. `current-session.md` Status flips ACTIVE -> CONCLUDED; `Concluded-By: S002 at <ISO-8601> via /0-uldf-ltads-stop arc-terminus`. Autopilot:continuous cascades back to project default (collaborative).
+
+**Push**: SKIPPED (--skip-push flag). PF-REGISTER-01 (github.com/feedbackmonk org + feedbackmonk.com purchase) gates first public push; not yet cleared.
+
+**Next**: User-action only — no autonomous code work remains for v1. (1) PF-REGISTER-01 register org + buy domain; (2) PF-RENAME-02 working-dir rename `Apps\Feedbackr` -> `Apps\feedbackmonk`; (3) first public push once #1 clears; (4) post-launch: build `marketing-selfhost-page-parity` oracle (D-FBR-26), un-defer FR-FBR-15 Polar billing (DEC-FBR-DEFER-01 reversal addresses D-FBR-25).
