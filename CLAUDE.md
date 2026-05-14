@@ -2,7 +2,7 @@
 
 Project-specific context. The global ULDF framework guidance lives at `~/.claude/CLAUDE.md` and is the authoritative reference for framework commands, autonomy levels, propagation rules, and the agentic disciplines (Contexturgy, Oraculurgy, Probandurgy). This file ONLY documents what is specific to **feedbackmonk**.
 
-> **Working name changed mid-arc**: project was named "Feedbackr" through P0 and most of P1. The name was changed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11, enacting DEC-FBR-09's squat-contingency clause after `github.com/Feedbackr` and `feedbackr.com` were found taken. Identifier prefixes `DEC-FBR-*` and `FR-FBR-*` are stable — they do NOT rename (see DEC-FBR-11 § Identifier-stability rule). Code-level rename of `feedbackr-*` → `feedbackmonk-*` was completed in PF-RENAME-01 (commit on this branch). The on-disk working directory is still `E:\Developer\SourceControlled\Apps\Feedbackr` for now — working-dir rename is tracked in Pending Follow-Ups as PF-RENAME-02 (user action; Windows blocks renaming a CWD).
+> **Working name changed mid-arc**: project was named "Feedbackr" through P0 and most of P1. The name was changed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11, enacting DEC-FBR-09's squat-contingency clause after `github.com/Feedbackr` and `feedbackr.com` were found taken. Identifier prefixes `DEC-FBR-*` and `FR-FBR-*` are stable — they do NOT rename (see DEC-FBR-11 § Identifier-stability rule). Code-level rename of `feedbackr-*` → `feedbackmonk-*` was completed in PF-RENAME-01. Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk` completed in PF-RENAME-02 at the v1 arc-terminus (2026-05-14).
 
 ---
 
@@ -93,17 +93,14 @@ Completed in a single atomic commit at the P1-finalize → P2-plan boundary. Sco
 - Plan-file rename: `20260513T185711-feedbackr-v1-build-arc.md` → `…-feedbackmonk-v1-build-arc.md` (+ P0/P1 plan files)
 - ID stability preserved: `DEC-FBR-*` and `FR-FBR-*` left untouched per DEC-FBR-11.
 
-### PF-RENAME-02: Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk` (requires user action)
+### ~~PF-RENAME-02: Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`~~ — DONE
 
-**Trigger**: when the autopilot:continuous chain reaches quiescence (P1 fully finalized, no live PODS workers, no live LD session). The agent that recorded DEC-FBR-11 could not perform this rename — Windows does not allow renaming a directory that is any process's CWD, and the working dir was CWD for the recording agent and all live sibling sessions.
-
-**Steps** (user-executable PowerShell):
-1. Verify no live sessions: `~/.claude/oracles/dispatchable-sessions/run.ps1` should return `count: 0` (or only stale handoff-successors that can be killed).
-2. Close all Claude Code terminals open in `E:\Developer\SourceControlled\Apps\Feedbackr`.
-3. `Rename-Item "E:\Developer\SourceControlled\Apps\Feedbackr" "feedbackmonk"`
-4. Update `~/.claude/MACHINE_CONFIG.md` Dev Port Registry: change the row's project path from `Apps\Feedbackr` to `Apps\feedbackmonk` (port numbers + project name unchanged).
-5. If a git remote was set pointing at the old path, update it.
-6. Re-open Claude Code at the new path.
+Executed at the v1 arc-terminus (2026-05-14). Scope delivered:
+- `Rename-Item "E:\Developer\SourceControlled\Apps\Feedbackr" "feedbackmonk"` (user-action; Windows blocks renaming a CWD, so executed after closing the last Claude session in the directory).
+- `~/.claude/MACHINE_CONFIG.md` Dev Port Registry row path updated `Apps\Feedbackr` → `Apps\feedbackmonk` (port numbers + project name unchanged).
+- Living docs path references updated in the same commit (CLAUDE.md banner, SPECIFICATION.md Repository home, ARCHITECTURE.md, PROJECT_TRAJECTORY.md Next-Best-Steps).
+- Historical records left intact per DEC-FBR-11 identifier-stability rule (planning/intakes, commit-log, decision-record narrative, OPEN_QUESTIONS resolution narrative).
+- No git remote existed at rename time (PF-REGISTER-01 still pending), so no remote-URL update required.
 
 ### PF-REGISTER-01: Register `github.com/feedbackmonk` org + buy `feedbackmonk.com` (user action)
 

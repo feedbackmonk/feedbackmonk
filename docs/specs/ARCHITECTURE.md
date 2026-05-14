@@ -44,7 +44,7 @@ The GitCellar-integrated feedback system at `gitcellar-cloud/src/feedback/` is t
 The original spec session sketched the component shape before code landed; the above tables now reflect implementation reality (P0 Stage 1 SHIPPED). For historical context the original speculative list was:
 
 - ~~`feedback-core` extracted reusable library at `Shared/feedback-core/`~~ — superseded by three-crate split (`-core`, `-repository`, `-api`) per DEC-FBR-07 (greenfield repo, not shared library).
-- ~~Backend service "sibling to gitcellar-cloud"~~ — superseded by standalone repo at `E:\Developer\SourceControlled\Apps\Feedbackr\` per DEC-FBR-07.
+- ~~Backend service "sibling to gitcellar-cloud"~~ — superseded by standalone repo at `E:\Developer\SourceControlled\Apps\feedbackmonk\` per DEC-FBR-07 (working-dir renamed per PF-RENAME-02).
 - Admin dashboard, widget, public roadmap, marketing site: still planned per the deferred-components table.
 
 ## Data flow (to be defined)

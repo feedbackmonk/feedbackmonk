@@ -15,8 +15,9 @@ Rolling high-level state. Auto-maintained by `/0-uldf-finalize` Phase 12. Cheap 
 Remaining work is **user-action only**:
 
 1. **PF-REGISTER-01** — Register `github.com/feedbackmonk` GitHub org + purchase `feedbackmonk.com` domain (~$10-15/yr). Both confirmed AVAILABLE 2026-05-14; not yet claimed.
-2. **PF-RENAME-02** — Rename working directory `Apps\Feedbackr` → `Apps\feedbackmonk` (Windows blocks renaming a CWD; must run with no live Claude sessions in the directory).
-3. **First public push** — Unblocked once PF-REGISTER-01 clears.
+2. **First public push** — Unblocked once PF-REGISTER-01 clears.
+
+PF-RENAME-02 (working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`) completed at v1 arc-terminus 2026-05-14.
 
 Post-launch follow-ups (NOT v1 blockers): FR-FBR-15 Polar billing (DEC-FBR-DEFER-01 — un-defer to address D-FBR-25 PricingCard SSOT-asymmetry), `marketing-selfhost-page-parity` Verification Oracle (D-FBR-26 — defends `/docs/self-host` content-mirror against drift from `docs/operations/SELFHOST.md`).
 
@@ -49,9 +50,9 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
   - **PF-REGISTER-01** — Register `github.com/feedbackmonk` org + buy `feedbackmonk.com` (~$10/yr). Confirmed AVAILABLE 2026-05-14; not yet claimed. Push remains GATED until this clears.
   - **AGPL LICENSE**: full AGPL-3.0 text in `LICENSE` (replaced 2026-05-13) — gate CLEARED on the LICENSE side.
 - **Pending follow-ups**:
-  - **PF-RENAME-02 (USER ACTION, pending)** — Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`. Requires user action (Windows cannot rename CWD of live process). Surfaced at this quiescence boundary.
   - **DEC-PODS-LEAD-01 framework improvement** — `monitor-pods.ps1` regex should accept `CONVERGENCE-READY` alongside `COMPLETED` as a terminal status label (TIMEOUT artifact observed at convergence; not a real blocker).
   - **rollup-win32-x64-msvc npm bug 4828 workaround** — when widget CI lands, automate the manual binary-extraction fallback.
+- **PF-RENAME-02 (DONE 2026-05-14)** — Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk` completed at v1 arc-terminus.
 - **LTADS S001** — CONCLUDED at P1 close (commit `835fbf8`). P2 convergence ran outside LTADS (LTADS-not-active path through `/0-uldf-pods-converge --finalize`).
 - **GitCellar widget-embed touchpoint — DEFERRED to late P2 / early P3**: first cross-repo integration when GitCellar embeds the feedbackmonk widget as customer #1.
 
@@ -91,8 +92,7 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
 **v1 arc is content-complete. The remaining items are user-action gates (1+2) and post-launch follow-ups (3+). No autonomous code work for v1.**
 
 1. **PF-REGISTER-01 (USER ACTION — blocks first push)** — Register `github.com/feedbackmonk` org and purchase `feedbackmonk.com` (~$10-15/yr). Both confirmed AVAILABLE 2026-05-14. Commands: `gh api orgs --method POST -f login=feedbackmonk -f admin=<your-username>` (or web UI at https://github.com/account/organizations/new), then domain purchase via Namecheap/Cloudflare/etc. Optionally also `feedbackmonk.app` / `feedbackmonk.dev` (both also AVAILABLE).
-2. **PF-RENAME-02 (USER ACTION)** — Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`. Must run with no live Claude Code sessions in the directory. PowerShell: `Rename-Item "E:\Developer\SourceControlled\Apps\Feedbackr" "feedbackmonk"`; update `~/.claude/MACHINE_CONFIG.md` Dev Port Registry row afterward.
-3. **First public push** — Unblocked once PF-REGISTER-01 clears. Add remote (`git remote add origin git@github.com:feedbackmonk/feedbackmonk.git`), push `main`, then enable GitHub Actions + branch protection. Domain DNS → wherever the marketing site will deploy (Cloudflare Pages / Vercel / static-S3 / etc — Astro site is `marketing/dist/` after `npm run build`).
-4. **Build `marketing-selfhost-page-parity` Verification Oracle** (D-FBR-26 follow-up, post-launch) — Defends the `/docs/self-host` content-mirror against drift from `docs/operations/SELFHOST.md`. Simple diff oracle: pre-commit hook that fails if either file changes without the other.
-5. **Un-defer FR-FBR-15 Polar billing** (DEC-FBR-DEFER-01 reversal, post-launch) — Port webhook receiver + customer-subscription schema from `gitcellar-cloud/src/billing/` per stub at `docs/deferred/polar-integration.md`. Address D-FBR-25 (PricingCard SSOT-asymmetry — at that point, code↔site for pricing tiers is structural via DEC-FBR-IMPL-05, but billing flows are still operator-in-the-loop via TIER_OVERRIDE.md).
-6. **Widget CI hardening** — automate the rollup-win32-x64-msvc fallback when widget e2e CI lands (npm bug 4828).
+2. **First public push** — Unblocked once PF-REGISTER-01 clears. Add remote (`git remote add origin git@github.com:feedbackmonk/feedbackmonk.git`), push `main`, then enable GitHub Actions + branch protection. Domain DNS → wherever the marketing site will deploy (Cloudflare Pages / Vercel / static-S3 / etc — Astro site is `marketing/dist/` after `npm run build`).
+3. **Build `marketing-selfhost-page-parity` Verification Oracle** (D-FBR-26 follow-up, post-launch) — Defends the `/docs/self-host` content-mirror against drift from `docs/operations/SELFHOST.md`. Simple diff oracle: pre-commit hook that fails if either file changes without the other.
+4. **Un-defer FR-FBR-15 Polar billing** (DEC-FBR-DEFER-01 reversal, post-launch) — Port webhook receiver + customer-subscription schema from `gitcellar-cloud/src/billing/` per stub at `docs/deferred/polar-integration.md`. Address D-FBR-25 (PricingCard SSOT-asymmetry — at that point, code↔site for pricing tiers is structural via DEC-FBR-IMPL-05, but billing flows are still operator-in-the-loop via TIER_OVERRIDE.md).
+5. **Widget CI hardening** — automate the rollup-win32-x64-msvc fallback when widget e2e CI lands (npm bug 4828).

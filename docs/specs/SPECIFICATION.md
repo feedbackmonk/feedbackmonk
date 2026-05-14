@@ -29,7 +29,7 @@ This spec is for the standalone product — separate from `docs/specs/feedback-s
 4. ✅ **End-user auth model** — three-mode hybrid (JWT EdDSA primary + anonymous fallback + magic-link optional). [`DEC-FBR-04`](DECISIONS.md#dec-fbr-04-end-user-auth-model)
 5. ✅ **Business model** — Open-source self-host (AGPL-3.0-or-later) + Commercial SaaS, same codebase. [`DEC-FBR-05`](DECISIONS.md#dec-fbr-05-business-model)
 6. ✅ **Roadmap backend** — Native PostgreSQL data model + UI; drop Forge dependency. [`DEC-FBR-06`](DECISIONS.md#dec-fbr-06-roadmap-backend)
-7. ✅ **Repository home** — New public GitHub repo (`E:\Developer\SourceControlled\Apps\Feedbackr` locally). [`DEC-FBR-07`](DECISIONS.md#dec-fbr-07-repository-home)
+7. ✅ **Repository home** — New public GitHub repo (`E:\Developer\SourceControlled\Apps\feedbackmonk` locally per PF-RENAME-02). [`DEC-FBR-07`](DECISIONS.md#dec-fbr-07-repository-home)
 8. ✅ **MVP scope** — 18 IN-scope items, 5 phases, ~12 weeks FTE. [`DEC-FBR-08`](DECISIONS.md#dec-fbr-08-mvp-scope)
 9. ✅ **Product name** — "feedbackmonk" working name; brand pass at P4. [`DEC-FBR-09`](DECISIONS.md#dec-fbr-09-product-name)
 10. ✅ **Launch posture** — Three-stage gradient (dogfood → public beta → marketed launch). [`DEC-FBR-10`](DECISIONS.md#dec-fbr-10-launch-posture)
