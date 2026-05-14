@@ -124,6 +124,14 @@ Invocation: `bash .claude/oracles/widget-bundle-size/oracle.sh` (Unix) or `pwsh 
 
 Invocation: `bash .claude/oracles/tier-enforcement-status/oracle.sh` (Unix; `--full` runs Probe C integration smoke) or `pwsh .claude/oracles/tier-enforcement-status/oracle.ps1` (Windows); `python .claude/oracles/tier-enforcement-status/oracle.py [--full]` (cross-platform direct).
 
+### deployment
+
+| Oracle | Question | Kind | Strategy | Consumer Scope | Est. savings/call |
+|---|---|---|---|---|---|
+| **`selfhost-compose-smoke`** | Does `deploy/docker/docker-compose.yml` parse cleanly (yaml-lint), do its application env-var references match the canonical C21 catalog in `docs/operations/SELFHOST_ENV.md`, and (with `--full`) does `docker compose down -v && up -d` from a clean state bring the stack to HTTP 200 on `/health/ready` within 90s? *(P4 Stage 2 Task Zero — CLAUDE-B worker, collab-20260514-170323; three-leg defense leg 2 — paired with env-reader fail-fast chokepoints in `crates/feedbackmonk-api/src/main.rs` (leg 1) + operator runbook `docs/operations/SELFHOST.md` cold-readability (leg 3); enforces FR-FBR-17 self-host distribution + Contracts C21 (env catalog SSOT) + C24 (three-probe schema); cold-start vacuous-PASS supports Task Zero order-of-operations)* | verification | trigger-invalidate (`deploy/docker/**`, `docs/operations/SELFHOST_ENV.md`, oracle.py) | P4+ `deploy/docker/**` + `docs/operations/SELFHOST_ENV.md` (every commit touching either; CI gate post-launch with `--full`) | ~900 tokens |
+
+Invocation: `bash .claude/oracles/selfhost-compose-smoke/oracle.sh` (Unix; `--full` runs Probe C clean-state smoke) or `pwsh .claude/oracles/selfhost-compose-smoke/oracle.ps1` (Windows); `python .claude/oracles/selfhost-compose-smoke/oracle.py [--full]` (cross-platform direct).
+
 ---
 
 ## Invocation Quick Reference

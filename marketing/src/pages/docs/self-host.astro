@@ -1,0 +1,245 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+// Content-mirror approach (snapshot, not MDX-import). Rationale:
+//   - The canonical runbook lives at `docs/operations/SELFHOST.md` in the
+//     repo (Worker B, FR-FBR-17). It is the operator-facing, terminal-side,
+//     plain-text reference — it is updated post-launch as operators report
+//     real-world incidents.
+//   - This /docs/self-host page is the marketing-side introduction: "is
+//     this for me, and what does the happy path look like?" — a snapshot
+//     of the runbook's key sections (Prerequisites + Quickstart + required
+//     env vars) plus a clear pointer to the canonical full runbook for
+//     backup/restore, troubleshooting, and upgrade procedure depth.
+//   - MDX-import was considered but rejected: a marketing page should be
+//     editable for tone without changing the operator runbook, and the
+//     runbook's literal bash blocks render better in a terminal context.
+//
+// The snapshot is taken from SELFHOST.md as of P4 Stage 2 freeze ping
+// (2026-05-14T17:35Z). When SELFHOST.md changes substantively, refresh
+// this page — see marketing/README.md Decision Log.
+---
+
+<BaseLayout
+  title="Self-host"
+  description="Run feedbackmonk on your own infrastructure with `docker compose up`. AGPL source, postgres + Rust api + nginx admin."
+>
+  <header class="page-header">
+    <h1>Self-host</h1>
+    <p class="lede">
+      feedbackmonk runs in your tenant via <code>docker compose up</code>.
+      Same Rust binary as the SaaS tier, same migrations, same admin UI &mdash;
+      no closed-source carve-out. The Self-host tier ships with no per-seat
+      pricing and no feedback-volume cap.
+    </p>
+    <p class="snapshot-note" role="note">
+      This page is a snapshot of the operator runbook. The canonical,
+      operator-side version lives at
+      <a href="https://github.com/feedbackmonk/feedbackmonk/blob/main/docs/operations/SELFHOST.md">
+        <code>docs/operations/SELFHOST.md</code>
+      </a>
+      in the repo &mdash; refer to it for the full troubleshooting matrix,
+      cron + systemd backup recipes, and upgrade procedure.
+    </p>
+  </header>
+
+  <section aria-labelledby="who-heading">
+    <h2 id="who-heading">Who is this for</h2>
+    <ul>
+      <li>You'd prefer your users' feedback never touch our servers.</li>
+      <li>You already operate Docker on a VPS or Kubernetes cluster.</li>
+      <li>You want predictable cost (one container stack, one postgres) instead of per-seat SaaS billing.</li>
+      <li>You're comfortable with AGPL: modifications you ship must be made available under AGPL.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="prereq-heading">
+    <h2 id="prereq-heading">Prerequisites</h2>
+    <table>
+      <thead>
+        <tr><th scope="col">Requirement</th><th scope="col">Version</th><th scope="col">Why</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Docker Engine</td>
+          <td>24+ (Compose v2)</td>
+          <td>Stack uses Compose v2 profiles + service-completed dependency conditions.</td>
+        </tr>
+        <tr>
+          <td>RAM</td>
+          <td>1 GB min / 2 GB recommended</td>
+          <td>postgres + Rust api + nginx, plus a transient Rust build on first <code>up --build</code>.</td>
+        </tr>
+        <tr>
+          <td>Disk</td>
+          <td>5 GB</td>
+          <td>~80 MB api image, ~25 MB nginx, ~250 MB postgres data per 10k feedback rows. Add backup headroom.</td>
+        </tr>
+        <tr>
+          <td>Open ports</td>
+          <td>1 (default 14304)</td>
+          <td>Operator-facing admin edge. Postgres + api are not host-exposed by default.</td>
+        </tr>
+        <tr>
+          <td>TLS proxy</td>
+          <td>optional</td>
+          <td>Stack speaks HTTP only. Production deployments terminate TLS upstream (Caddy / nginx / Cloudflare Tunnel).</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="quickstart-heading">
+    <h2 id="quickstart-heading">Quickstart</h2>
+    <pre><code>{`# 1. Clone the repo:
+git clone https://github.com/feedbackmonk/feedbackmonk.git
+cd feedbackmonk/deploy/docker
+
+# 2. Copy the env template and edit four required values:
+cp .env.example .env
+\${EDITOR:-vim} .env
+#   DATABASE_URL=postgres://feedbackmonk:<your-password>@db:5432/feedbackmonk
+#   FEEDBACKMONK_PUBLIC_URL=https://feedback.example.com
+#   FEEDBACKMONK_SESSION_SECRET=<openssl rand -hex 32>
+#   POSTGRES_PASSWORD=<same as in DATABASE_URL>
+
+# 3. Bring up the stack (first run builds the Rust image — 5-15 min cold):
+docker compose up -d
+
+# 4. Verify health:
+curl http://localhost:14304/health/ready
+# HTTP 200 with: {"status":"ok","db_connected":true,...}`}</code></pre>
+    <p>
+      If <code>/health/ready</code> returns 200 with
+      <code>db_connected: true</code>, you're live. Visit
+      <code>http://localhost:14304/</code> in a browser &mdash; you'll see
+      the admin sign-in screen.
+    </p>
+  </section>
+
+  <section aria-labelledby="env-heading">
+    <h2 id="env-heading">Required environment variables</h2>
+    <p>
+      The canonical catalog &mdash; every var, with code line references and
+      security-sensitivity flags &mdash; lives at
+      <a href="https://github.com/feedbackmonk/feedbackmonk/blob/main/docs/operations/SELFHOST_ENV.md">
+        <code>docs/operations/SELFHOST_ENV.md</code>
+      </a>
+      (Contract&nbsp;C21). The four required ones:
+    </p>
+    <table>
+      <thead>
+        <tr><th scope="col">Var</th><th scope="col">Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>DATABASE_URL</code></td>
+          <td><code>postgres://USER:PASS@db:5432/feedbackmonk</code>. Host <code>db</code> is the compose service name &mdash; keep it.</td>
+        </tr>
+        <tr>
+          <td><code>FEEDBACKMONK_PUBLIC_URL</code></td>
+          <td>Customer-facing base URL. No trailing slash. Must match the URL operators actually visit (verify-email links use this verbatim).</td>
+        </tr>
+        <tr>
+          <td><code>FEEDBACKMONK_SESSION_SECRET</code></td>
+          <td>64 hex chars (32 bytes). Generate with <code>openssl rand -hex 32</code>. Rotating it invalidates all admin sessions.</td>
+        </tr>
+        <tr>
+          <td><code>POSTGRES_PASSWORD</code></td>
+          <td>Must match the password inside <code>DATABASE_URL</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>
+      The <code>.env.example</code> ships sensible defaults for ~16 optional vars
+      (logging format, mailer selection, token TTLs, anon rate-limit, SMTP).
+      Uncomment lines in <code>.env</code> to override.
+    </p>
+  </section>
+
+  <section aria-labelledby="ops-heading">
+    <h2 id="ops-heading">Operations</h2>
+
+    <h3>Backup</h3>
+    <p>Daily gzipped <code>pg_dump</code> via the bundled helper:</p>
+    <pre><code>{`cd deploy/docker
+mkdir -p backups
+./backup.sh > backups/feedbackmonk-$(date +%Y%m%d-%H%M%S).sql.gz`}</code></pre>
+    <p>
+      Cron / systemd-timer recipes are in
+      <a href="https://github.com/feedbackmonk/feedbackmonk/blob/main/docs/operations/SELFHOST.md#4-backup-and-restore">SELFHOST.md §4</a>.
+    </p>
+
+    <h3>Restore (destructive)</h3>
+    <p>
+      The dump is <code>--clean --if-exists</code> &mdash; restoring drops
+      and recreates every object. The helper requires confirmation:
+    </p>
+    <pre><code>{`gunzip -c backups/feedbackmonk-20260514.sql.gz | ./restore.sh
+# type 'yes' at the prompt. Add --force for non-TTY DR drills.`}</code></pre>
+
+    <h3>Upgrade</h3>
+    <pre><code>{`git pull
+cd deploy/docker
+./backup.sh > backups/pre-upgrade-$(date +%Y%m%d).sql.gz
+docker compose build
+docker compose up -d`}</code></pre>
+    <p>
+      Every <code>docker compose up</code> runs the <code>migrate</code>
+      init-container, which calls <code>sqlx migrate run</code> &mdash;
+      idempotent on a fresh start, applies only new migrations on upgrade.
+      Skipping or rolling back migrations is not supported; restore from
+      backup if a migration fails.
+    </p>
+  </section>
+
+  <section aria-labelledby="defends-heading">
+    <h2 id="defends-heading">What defends this contract</h2>
+    <p>
+      The <em>selfhost-compose-smoke</em> Verification Oracle has three probes:
+    </p>
+    <ul>
+      <li><strong>Probe A</strong> &mdash; yaml-lint of <code>docker-compose.yml</code>.</li>
+      <li>
+        <strong>Probe B</strong> &mdash; every env-var the compose stack references
+        must exist in the canonical C21 catalog
+        (<code>SELFHOST_ENV.md</code>). Catches "code added a var, docs didn't"
+        drift before it reaches an operator.
+      </li>
+      <li>
+        <strong>Probe C</strong> &mdash; <code>--full</code> clean-state smoke:
+        <code>docker compose down -v &amp;&amp; up -d</code>, wait for
+        <code>/health/ready</code>, assert 200 with
+        <code>db_connected: true</code>.
+      </li>
+    </ul>
+    <p>
+      The oracle ran GREEN at the freeze ping for this page (P4 Stage 2,
+      2026-05-14).
+    </p>
+  </section>
+
+  <section aria-labelledby="agpl-heading">
+    <h2 id="agpl-heading">License + source</h2>
+    <p>
+      feedbackmonk is <strong>AGPL-3.0-or-later</strong>. The Self-host tier
+      receives identical releases to SaaS; there is no proprietary fork.
+      Source: <a href="https://github.com/feedbackmonk/feedbackmonk">github.com/feedbackmonk/feedbackmonk</a>
+      (org registration pending PF-REGISTER-01).
+    </p>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header { margin-block: 2rem 1.5rem; }
+  .snapshot-note {
+    margin-top: 1rem;
+    padding: 0.875rem 1rem;
+    background: var(--brand-rule);
+    border-left: 3px solid var(--brand-sage-deep);
+    border-radius: 0 var(--brand-radius) var(--brand-radius) 0;
+    color: var(--brand-ink);
+    font-size: 0.9375rem;
+  }
+  pre { max-width: 100%; }
+</style>

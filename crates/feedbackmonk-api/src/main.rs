@@ -13,7 +13,7 @@
 //! `build_app` here -- coordinate via `channels/messages.md`.
 
 use std::env;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -53,6 +53,18 @@ async fn main() -> Result<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(14304);
 
+    // FEEDBACKMONK_BIND_ADDR controls which interface the api binary
+    // listens on. Default 127.0.0.1 preserves the dev-machine pattern
+    // (don't expose the api to the whole LAN during `cargo run`).
+    // Self-host docker-compose sets this to 0.0.0.0 so the admin-ui
+    // edge container (separate IP in the docker network) can reach the
+    // api via the service-name DNS (see deploy/docker/docker-compose.yml
+    // and docs/operations/SELFHOST_ENV.md — Contract C21).
+    let bind_addr: IpAddr = env::var("FEEDBACKMONK_BIND_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1".to_string())
+        .parse()
+        .context("FEEDBACKMONK_BIND_ADDR is not a valid IP address (try 127.0.0.1 for local, 0.0.0.0 for docker)")?;
+
     let pool = connect_pg().await?;
     let state = build_state(pool)?;
 
@@ -68,7 +80,7 @@ async fn main() -> Result<()> {
 
     let app = build_app(state);
 
-    let addr: SocketAddr = ([127, 0, 0, 1], port).into();
+    let addr: SocketAddr = (bind_addr, port).into();
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(%addr, "feedbackmonk-api listening");
     // `into_make_service_with_connect_info` injects `ConnectInfo<SocketAddr>`

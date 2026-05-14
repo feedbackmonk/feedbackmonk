@@ -82,3 +82,7 @@ coverage/
 .playwright-mcp/
 test-results/
 playwright-report/
+
+# Python
+__pycache__/
+*.pyc

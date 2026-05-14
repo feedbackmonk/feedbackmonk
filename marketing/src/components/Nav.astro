@@ -1,0 +1,80 @@
+---
+const navItems = [
+  { href: '/pricing', label: 'Pricing' },
+  { href: '/docs/', label: 'Docs' },
+];
+const currentPath = Astro.url.pathname.replace(/\/$/, '') || '/';
+---
+
+<header class="site-header">
+  <div class="container nav-row">
+    <a href="/" class="wordmark" aria-label="feedbackmonk home">feedbackmonk</a>
+    <nav aria-label="Primary">
+      <ul class="nav-list">
+        {navItems.map((item) => {
+          const itemPath = item.href.replace(/\/$/, '') || '/';
+          const isCurrent = currentPath === itemPath ||
+            (itemPath !== '/' && currentPath.startsWith(itemPath));
+          return (
+            <li>
+              <a
+                href={item.href}
+                aria-current={isCurrent ? 'page' : undefined}
+              >{item.label}</a>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    border-bottom: 1px solid var(--brand-rule);
+    background: var(--brand-cream);
+  }
+  .nav-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding-block: 1rem;
+  }
+  .wordmark {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 1.125rem;
+    letter-spacing: -0.02em;
+    color: var(--brand-ink);
+    text-decoration: none;
+  }
+  .wordmark:hover,
+  .wordmark:focus-visible {
+    color: var(--brand-sage-deep);
+  }
+  .nav-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+  }
+  .nav-list a {
+    color: var(--brand-ink);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .nav-list a:hover,
+  .nav-list a:focus-visible {
+    color: var(--brand-sage-deep);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .nav-list a[aria-current='page'] {
+    color: var(--brand-sage-deep);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+</style>

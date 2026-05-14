@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1.6
+# feedbackmonk admin-ui edge image (nginx).
+#
+# Topology: this container is the operator-facing edge. It serves the built
+# admin-ui static assets at `/` and reverse-proxies `/api/*`, `/health`,
+# and `/health/ready` to the `api` service in the same docker network.
+# This is the **B2** topology (see deploy/docker/README.md Decision Log)
+# — chosen over B1 (api binary serves admin-ui via tower-http::ServeDir)
+# because B1 requires modification of crates/feedbackmonk-api/src/router.rs
+# (P0-P3 frozen surface; P4 is net-additive only).
+#
+# Build context: workspace root.
+
+# -----------------------------------------------------------------------------
+# Stage 1 — node builder
+# -----------------------------------------------------------------------------
+FROM node:20-bookworm-slim AS builder
+WORKDIR /build
+
+# Copy admin-ui manifests and strip the Windows-specific rollup binary
+# from the dep list before installing.
+#
+# Why: admin-ui/package.json carries `@rollup/rollup-win32-x64-msvc` as a
+# non-optional devDependency (it should be in `optionalDependencies` per
+# rollup's cross-platform conventions). This entry causes `npm install`
+# to error with EBADPLATFORM in any non-Windows container. We strip the
+# line at build time and let npm resolve the correct platform-specific
+# rollup binary (linux-x64-gnu) fresh — Vite itself will require the
+# right one transitively.
+#
+# We also drop the lockfile because it's pinned to the Windows-platform
+# resolution; `npm install` regenerates it. This trades strict lockfile
+# reproducibility for cross-platform build portability — appropriate for
+# a self-host distribution that builds in many possible environments.
+#
+# (See alerts.md in this PODS session for the follow-up: move the line
+# to `optionalDependencies` in admin-ui/package.json post-P4.)
+COPY admin-ui/package.json ./package.json
+RUN sed -i '/"@rollup\/rollup-win32-x64-msvc"/d' package.json \
+    && npm install --no-audit --no-fund
+
+COPY admin-ui ./
+# Re-apply the same strip on the post-COPY package.json in case files
+# overwrote it (defensive). Then build. Vite outputs to /build/dist/.
+RUN sed -i '/"@rollup\/rollup-win32-x64-msvc"/d' package.json \
+    && npm run build
+
+# -----------------------------------------------------------------------------
+# Stage 2 — nginx runtime
+# -----------------------------------------------------------------------------
+FROM nginx:alpine AS runtime
+
+# Copy the built admin-ui assets.
+COPY --from=builder /build/dist /usr/share/nginx/html
+
+# Copy the nginx config (reverse-proxy /api/* + /health* to the api service).
+COPY deploy/docker/admin-ui-nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+# nginx:alpine's default ENTRYPOINT/CMD start nginx in foreground; keep them.

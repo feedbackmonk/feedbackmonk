@@ -1,0 +1,54 @@
+# Dockerfile build-context ignore list. Build context is the workspace
+# root (../..); without this list every COPY would pull node_modules,
+# target/, playwright caches, etc., bloating context transfer.
+
+# Rust build artifacts
+target
+**/target
+
+# Node modules + build outputs (admin-ui has its own builder stage)
+**/node_modules
+admin-ui/dist
+widget/dist
+widget/node_modules
+
+# Test artifacts
+**/test-results
+**/playwright-report
+**/.playwright
+admin-ui/e2e
+widget/e2e
+**/.pytest_cache
+**/__pycache__
+
+# Version control + tooling state
+.git
+.gitignore
+.github
+.vscode
+.idea
+.claude
+ltads
+docs/planning
+docs/specs/_archive
+docs/test-modifications
+
+# Logs / runtime state
+*.log
+*.pid
+worker-shell-*.pid
+
+# Local env (NEVER bake into image)
+.env
+deploy/docker/.env
+deploy/docker/backups
+**/.env.local
+
+# Mac / Windows clutter
+.DS_Store
+Thumbs.db
+
+# Marketing / non-build trees
+marketing/node_modules
+marketing/dist
+marketing/.astro

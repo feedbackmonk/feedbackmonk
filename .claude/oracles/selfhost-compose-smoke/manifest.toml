@@ -1,0 +1,38 @@
+# selfhost-compose-smoke -- TOML mirror of manifest.json.
+#
+# The feedbackmonk oracle harness reads manifest.json (matches the existing
+# multi-tenant-isolation-check + pii-scrub-audit + widget-bundle-size +
+# tier-enforcement-status oracles' convention). manifest.toml is a TOML
+# mirror so anyone consulting the file by brief-name lands on the same
+# authoritative metadata. Drift between the two is a documentation bug;
+# manifest.json wins at runtime.
+
+name = "selfhost-compose-smoke"
+version = "1.0.0"
+kind = "verification"
+category = "deployment"
+question = "Does deploy/docker/docker-compose.yml parse cleanly (yaml-lint), do its application env-var references match the canonical C21 catalog in docs/operations/SELFHOST_ENV.md, and (with --full) does `docker compose down -v && up -d` from a clean state bring the stack to HTTP 200 on /health/ready within 90s?"
+
+[invocation]
+unix = ".claude/oracles/selfhost-compose-smoke/oracle.sh"
+windows = ".claude/oracles/selfhost-compose-smoke/oracle.ps1"
+
+[output]
+format = "text"
+schema = "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure."
+
+[freshness]
+strategy = "trigger-invalidate"
+triggers = [
+  "deploy/docker/docker-compose.yml",
+  "deploy/docker/Dockerfile.api",
+  "deploy/docker/.env.example",
+  "docs/operations/SELFHOST_ENV.md",
+  ".claude/oracles/selfhost-compose-smoke/oracle.py",
+]
+compute_cost_ms = 400
+
+[provenance]
+authored_by = "feedbackmonk P4 Stage 2 Worker B (Task Zero, oracle pre-build)"
+created = "2026-05-14T17:30:00Z"
+rationale = "FR-FBR-17 self-host distribution + DEC-FBR-IMPL-06 three-probe smoke oracle + Contracts C21 + C24. Three-leg defense: (1) env-reader chokepoints in crates/feedbackmonk-api/src/main.rs; (2) THIS oracle (yaml-lint + env-doc-xref + clean-state smoke); (3) operator runbook docs/operations/SELFHOST.md."

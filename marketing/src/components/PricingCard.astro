@@ -1,0 +1,244 @@
+---
+// PricingCard.astro
+//
+// Consumes one entry from `src/data/tier_quotas.json` (build-time-generated
+// from `feedbackmonk_core::tier::tier_quotas()` per DEC-FBR-IMPL-05).
+//
+// Pricing numbers are sourced from
+// docs/planning/plans/20260514T163356-feedbackmonk-p4-go-public.md §C23
+// (Free / Starter $9 / Pro $29 / Self-host $79). These are placeholder
+// numbers per the build-arc plan — DEC-FBR-DEFER-01 keeps Polar deferred,
+// so CTAs are mailto stubs and the price values are display-only.
+//
+// CTA pattern mirrors the admin-UI Upgrade button stub: a `mailto:` link
+// with subject. No checkout flow.
+
+export interface TierEntry {
+  tier: 'free' | 'starter' | 'pro' | 'self_host';
+  projects_per_org: number | null;
+  monthly_feedback_volume: number | null;
+  custom_branding: boolean;
+  custom_domain: boolean;
+  eu_residency: boolean;
+  footer_text: string | null;
+}
+
+export interface Props {
+  entry: TierEntry;
+  highlighted?: boolean;
+}
+
+const { entry, highlighted = false } = Astro.props;
+
+const display: Record<TierEntry['tier'], {
+  name: string;
+  price: string;
+  cadence: string;
+  tagline: string;
+  ctaLabel: string;
+  ctaSubject: string;
+}> = {
+  free: {
+    name: 'Free',
+    price: '$0',
+    cadence: '/ month',
+    tagline: 'For evaluating feedbackmonk on a single small project.',
+    ctaLabel: 'Get started',
+    ctaSubject: 'Free tier — get started',
+  },
+  starter: {
+    name: 'Starter',
+    price: '$9',
+    cadence: '/ month',
+    tagline: 'For indie devs and side-projects shipping with their own brand.',
+    ctaLabel: 'Contact sales',
+    ctaSubject: 'Starter tier — upgrade request',
+  },
+  pro: {
+    name: 'Pro',
+    price: '$29',
+    cadence: '/ month',
+    tagline: 'For teams running multiple products with EU + US residency.',
+    ctaLabel: 'Contact sales',
+    ctaSubject: 'Pro tier — upgrade request',
+  },
+  self_host: {
+    name: 'Self-host',
+    price: '$79',
+    cadence: '/ month per instance',
+    tagline: 'AGPL source. Run in your own tenant. No per-seat pricing.',
+    ctaLabel: 'Self-host docs',
+    ctaSubject: 'Self-host — questions',
+  },
+};
+
+const d = display[entry.tier];
+
+const fmtCap = (n: number | null, unit: string) =>
+  n === null ? 'Unlimited' : `${n.toLocaleString('en-US')} ${unit}`;
+
+const features: { label: string; included: boolean; emphasis?: boolean }[] = [
+  {
+    label: fmtCap(entry.projects_per_org, entry.projects_per_org === 1 ? 'project' : 'projects'),
+    included: true,
+    emphasis: true,
+  },
+  {
+    label: `${fmtCap(entry.monthly_feedback_volume, 'feedback / month')}`,
+    included: true,
+    emphasis: true,
+  },
+  {
+    label: 'Custom branding',
+    included: entry.custom_branding,
+  },
+  {
+    label: 'Custom domain',
+    included: entry.custom_domain,
+  },
+  {
+    label: 'EU + US residency',
+    included: entry.eu_residency,
+  },
+  {
+    label: entry.footer_text
+      ? `Footer: "${entry.footer_text}"`
+      : 'No footer attribution',
+    included: true,
+  },
+];
+
+const isSelfHost = entry.tier === 'self_host';
+const ctaHref = isSelfHost
+  ? '/docs/self-host'
+  : `mailto:hello@feedbackmonk.com?subject=${encodeURIComponent(d.ctaSubject)}`;
+---
+
+<article class={['pricing-card', highlighted && 'is-featured'].filter(Boolean).join(' ')}
+  aria-labelledby={`tier-${entry.tier}-name`}>
+  <header>
+    <h2 id={`tier-${entry.tier}-name`} class="tier-name">{d.name}</h2>
+    <p class="tier-price">
+      <span class="price-amount">{d.price}</span>
+      <span class="price-cadence">{d.cadence}</span>
+    </p>
+    <p class="tier-tagline">{d.tagline}</p>
+  </header>
+
+  <ul class="tier-features" aria-label={`${d.name} tier features`}>
+    {features.map((f) => (
+      <li class={['feature', f.included ? 'is-included' : 'is-omitted', f.emphasis && 'is-emphasis'].filter(Boolean).join(' ')}>
+        <span class="feature-mark" aria-hidden="true">{f.included ? '✓' : '–'}</span>
+        <span class="feature-label">
+          <span class="visually-hidden">{f.included ? 'Included: ' : 'Not included: '}</span>
+          {f.label}
+        </span>
+      </li>
+    ))}
+  </ul>
+
+  <a class="tier-cta" href={ctaHref}>
+    {d.ctaLabel}
+    <span class="visually-hidden">— {d.name} tier</span>
+  </a>
+</article>
+
+<style>
+  .pricing-card {
+    background: var(--brand-cream);
+    border: 1px solid var(--brand-rule);
+    border-radius: var(--brand-radius);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    box-shadow: var(--brand-shadow);
+  }
+  .pricing-card.is-featured {
+    border-color: var(--brand-sage-deep);
+    border-width: 2px;
+  }
+  .tier-name {
+    font-size: 1.375rem;
+    margin: 0 0 0.5rem;
+  }
+  .tier-price {
+    margin: 0 0 0.5rem;
+  }
+  .price-amount {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: var(--brand-ink);
+    letter-spacing: -0.02em;
+  }
+  .price-cadence {
+    color: var(--brand-muted);
+    font-size: 0.9375rem;
+    margin-left: 0.35rem;
+  }
+  .tier-tagline {
+    color: var(--brand-muted);
+    margin: 0;
+    font-size: 0.9375rem;
+  }
+  .tier-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border-top: 1px solid var(--brand-rule);
+    padding-top: 1rem;
+  }
+  .feature {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    color: var(--brand-ink);
+  }
+  .feature.is-omitted {
+    color: var(--brand-muted);
+    text-decoration: line-through;
+    text-decoration-color: var(--brand-muted);
+  }
+  .feature.is-emphasis .feature-label {
+    font-weight: 600;
+  }
+  .feature-mark {
+    color: var(--brand-sage-deep);
+    font-weight: 700;
+    width: 1ch;
+  }
+  .feature.is-omitted .feature-mark {
+    color: var(--brand-muted);
+  }
+  .tier-cta {
+    display: inline-block;
+    text-align: center;
+    margin-top: auto;
+    background: var(--brand-sage-deep);
+    color: var(--brand-cream);
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--brand-radius);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .tier-cta:hover,
+  .tier-cta:focus-visible {
+    background: var(--brand-ink);
+    color: var(--brand-cream);
+    text-decoration: none;
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>

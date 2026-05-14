@@ -1,0 +1,26 @@
+{
+  "name": "feedbackmonk-marketing",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "fetch-fonts": "node ./scripts/fetch-fonts.mjs",
+    "prebuild": "node ./scripts/run-export.mjs",
+    "predev": "node ./scripts/run-export.mjs",
+    "dev": "astro dev --port 14210 --host 127.0.0.1",
+    "build": "astro build",
+    "preview": "astro preview --port 14210 --host 127.0.0.1",
+    "check": "astro check",
+    "test:a11y": "playwright test"
+  },
+  "dependencies": {
+    "astro": "^4.16.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.48.2",
+    "@rollup/rollup-win32-x64-msvc": "^4.60.3",
+    "@types/node": "^25.7.0",
+    "typescript": "^5.6.3"
+  }
+}

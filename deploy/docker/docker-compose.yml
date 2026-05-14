@@ -1,0 +1,163 @@
+# feedbackmonk — self-host docker-compose stack (FR-FBR-17).
+#
+# Quickstart:
+#   cp .env.example .env
+#   # Edit .env: DATABASE_URL, FEEDBACKMONK_PUBLIC_URL, FEEDBACKMONK_SESSION_SECRET
+#   docker compose up -d
+#   curl http://localhost:14304/health/ready    # expect HTTP 200
+#
+# Topology: nginx (admin-ui) is the operator-facing edge — it serves the
+# built React admin-ui and reverse-proxies `/api/*`, `/health`, and
+# `/health/ready` to the api binary in the same docker network. The api
+# and db services are NOT exposed to the host by default; the operator
+# only needs to expose the admin-ui port. See deploy/docker/README.md
+# Decision Log for the B1-vs-B2 trade-off (this stack is B2 — separate
+# nginx container).
+#
+# Env-var contract: every application env-var referenced below is
+# documented in docs/operations/SELFHOST_ENV.md (Contract C21). The
+# `selfhost-compose-smoke` Verification Oracle Probe B enforces this
+# at every commit; appending a new var requires updating C21 first.
+# POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB configure the
+# postgres image's container-init protocol (upstream contract), not
+# the application catalog.
+#
+# Profiles:
+#   default       — db, migrate, api, admin-ui (production self-host)
+#   dev           — adds mailpit (SMTP capture for local-mode email)
+#   backup        — runs a one-shot pg_dump container (`docker compose
+#                   --profile backup run --rm backup`)
+
+services:
+  # ---------- database -----------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-feedbackmonk}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (set in .env)}
+      POSTGRES_DB: ${POSTGRES_DB:-feedbackmonk}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-feedbackmonk} -d ${POSTGRES_DB:-feedbackmonk}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    # No `ports:` mapping — db is not exposed to host by default.
+    # Operators wanting direct psql access add `ports: ["5432:5432"]`
+    # at their own discretion (.env can override; see .env.example).
+
+  # ---------- migrations (init container) ----------------------------------
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    image: feedbackmonk-api:local
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (set in .env)}
+      RUST_LOG: ${RUST_LOG:-info}
+    command: ["/usr/local/bin/migrate.sh"]
+
+  # ---------- api binary ---------------------------------------------------
+  api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.api
+    image: feedbackmonk-api:local
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required (set in .env)}
+      FEEDBACKMONK_PORT: ${FEEDBACKMONK_PORT:-14304}
+      FEEDBACKMONK_BIND_ADDR: ${FEEDBACKMONK_BIND_ADDR:-0.0.0.0}
+      FEEDBACKMONK_PUBLIC_URL: ${FEEDBACKMONK_PUBLIC_URL:?FEEDBACKMONK_PUBLIC_URL is required (set in .env)}
+      FEEDBACKMONK_SESSION_SECRET: ${FEEDBACKMONK_SESSION_SECRET:?FEEDBACKMONK_SESSION_SECRET is required (set in .env; 64 hex chars from `openssl rand -hex 32`)}
+      FEEDBACKMONK_LOG_FORMAT: ${FEEDBACKMONK_LOG_FORMAT:-json}
+      RUST_LOG: ${RUST_LOG:-info}
+      FEEDBACKMONK_VERIFY_TOKEN_TTL_HOURS: ${FEEDBACKMONK_VERIFY_TOKEN_TTL_HOURS:-24}
+      FEEDBACKMONK_JWT_LEEWAY_SECONDS: ${FEEDBACKMONK_JWT_LEEWAY_SECONDS:-5}
+      FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR: ${FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR:-10}
+      FEEDBACKMONK_MAILER: ${FEEDBACKMONK_MAILER:-mailpit}
+      FEEDBACKMONK_SMTP_FROM: ${FEEDBACKMONK_SMTP_FROM:-no-reply@feedbackmonk.local}
+      FEEDBACKMONK_MAILPIT_HOST: ${FEEDBACKMONK_MAILPIT_HOST:-mailpit}
+      FEEDBACKMONK_MAILPIT_PORT: ${FEEDBACKMONK_MAILPIT_PORT:-1025}
+      FEEDBACKMONK_SMTP_HOST: ${FEEDBACKMONK_SMTP_HOST:-}
+      FEEDBACKMONK_SMTP_PORT: ${FEEDBACKMONK_SMTP_PORT:-587}
+      FEEDBACKMONK_SMTP_USER: ${FEEDBACKMONK_SMTP_USER:-}
+      FEEDBACKMONK_SMTP_PASS: ${FEEDBACKMONK_SMTP_PASS:-}
+      FEEDBACKMONK_SMTP_STARTTLS: ${FEEDBACKMONK_SMTP_STARTTLS:-true}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:${FEEDBACKMONK_PORT:-14304}/health/ready > /dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    # No `ports:` mapping by default — fronted by the admin-ui nginx edge.
+    # If an operator prefers direct api exposure (e.g., headless self-host
+    # without admin-ui), they can add `ports: ["${FEEDBACKMONK_PORT}:${FEEDBACKMONK_PORT}"]`.
+
+  # ---------- admin-ui (nginx edge: static + reverse proxy) ----------------
+  admin-ui:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile.admin-ui
+    image: feedbackmonk-admin-ui:local
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${FEEDBACKMONK_PORT:-14304}:80"
+    healthcheck:
+      # Use 127.0.0.1 (force IPv4) — busybox wget in nginx:alpine resolves
+      # `localhost` as IPv6 (::1) and nginx defaults to IPv4-only `listen 80`,
+      # so the IPv6 attempt gets connection-refused. Explicit IPv4 sidesteps.
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:80/health/ready > /dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  # ---------- mailpit (dev profile only) -----------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    profiles: ["dev"]
+    ports:
+      - "8025:8025"   # web UI
+      - "1025:1025"   # smtp
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+
+  # ---------- backup (one-shot, opt-in profile) ----------------------------
+  # Usage: `docker compose --profile backup run --rm backup`
+  # The script pipes pg_dump to stdout (gzipped). Operators redirect.
+  backup:
+    image: postgres:16-alpine
+    profiles: ["backup"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGUSER: ${POSTGRES_USER:-feedbackmonk}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (set in .env)}
+      PGDATABASE: ${POSTGRES_DB:-feedbackmonk}
+      PGHOST: db
+    command:
+      - "sh"
+      - "-c"
+      - "pg_dump --no-owner --no-acl --clean --if-exists | gzip -9"
+
+volumes:
+  pgdata:

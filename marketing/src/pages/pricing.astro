@@ -1,0 +1,110 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PricingCard, { type TierEntry } from '../components/PricingCard.astro';
+import tierData from '../data/tier_quotas.json';
+
+// Build-time data sourced from `feedbackmonk_core::tier::tier_quotas()` via
+// the prebuild step (DEC-FBR-IMPL-05). Hand-editing tier_quotas.json is a
+// gitignore violation — it's regenerated on every `npm run prebuild`.
+const tiers = tierData as TierEntry[];
+
+const order: Record<TierEntry['tier'], number> = {
+  free: 0,
+  starter: 1,
+  pro: 2,
+  self_host: 3,
+};
+const sorted = [...tiers].sort((a, b) => order[a.tier] - order[b.tier]);
+---
+
+<BaseLayout
+  title="Pricing"
+  description="feedbackmonk pricing — Free, Starter, Pro, and Self-host. Polar billing deferred; contact us to upgrade today."
+>
+  <header class="page-header">
+    <h1>Pricing</h1>
+    <p class="lede">
+      Same product on every tier. Same AGPL source on Self-host. Caps are
+      generated from the Rust source at build time (no human-edited
+      placeholder file).
+    </p>
+    <p class="defer-note" role="note">
+      <strong>Polar billing is deferred.</strong> Upgrade buttons currently
+      open an email draft &mdash; we&apos;ll wire self-service checkout when
+      billing un-defers
+      (<a href="https://github.com/feedbackmonk/feedbackmonk/blob/main/docs/specs/DECISIONS.md">DEC-FBR-DEFER-01</a>).
+    </p>
+  </header>
+
+  <section aria-labelledby="tier-grid-heading">
+    <h2 id="tier-grid-heading" class="visually-hidden">Tiers</h2>
+    <div class="tier-grid">
+      {sorted.map((entry) => (
+        <PricingCard entry={entry} highlighted={entry.tier === 'pro'} />
+      ))}
+    </div>
+  </section>
+
+  <section aria-labelledby="caps-source-heading" class="caps-source">
+    <h2 id="caps-source-heading">Where these numbers come from</h2>
+    <p>
+      Every cap on this page is a one-way mirror of the
+      <code>tier_quotas()</code> function in
+      <code>crates/feedbackmonk-core/src/tier.rs</code>. The
+      <em>tier-enforcement-status</em> Verification Oracle (Probe&nbsp;B)
+      blocks drift between that source and the runtime cap-firing path.
+      If a cap on this page disagrees with what the API enforces, that&apos;s
+      a CI failure, not a rounding error.
+    </p>
+    <p>
+      The Free tier carries the <code>powered by feedbackmonk</code> footer
+      in the widget (FR-FBR-14). Paid tiers don&apos;t. That distinction
+      is enforced at the data layer, not at render time.
+    </p>
+  </section>
+
+  <section aria-labelledby="not-yet-heading" class="not-yet">
+    <h2 id="not-yet-heading">Not in v1</h2>
+    <ul>
+      <li>Self-service Polar checkout (deferred &mdash; mailto stubs for now).</li>
+      <li>Webhook integrations (planned post-launch).</li>
+      <li>Dark mode in the admin UI (v1.1).</li>
+      <li>Logo-mark beyond the wordmark (post-launch designer engagement).</li>
+    </ul>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header {
+    margin-block: 2rem 2.5rem;
+  }
+  .defer-note {
+    margin-top: 1rem;
+    padding: 0.875rem 1rem;
+    background: var(--brand-rule);
+    border-left: 3px solid var(--brand-sage-deep);
+    border-radius: 0 var(--brand-radius) var(--brand-radius) 0;
+    color: var(--brand-ink);
+    font-size: 0.9375rem;
+  }
+  .tier-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 3rem;
+  }
+  .caps-source, .not-yet {
+    margin-block: 2.5rem;
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>

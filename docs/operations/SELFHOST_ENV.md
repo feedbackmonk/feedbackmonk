@@ -31,6 +31,7 @@
 | Name | Required | Default | 🔒 | Semantics |
 |---|---|---|---|---|
 | `FEEDBACKMONK_PORT` | optional | `14304` | | TCP port the api binary binds to. Integer 1-65535. In docker-compose this typically stays at `14304` and the container port is mapped externally (`ports: ["14304:14304"]`) or proxied behind nginx. Source: `crates/feedbackmonk-api/src/main.rs:51`. |
+| `FEEDBACKMONK_BIND_ADDR` | optional | `127.0.0.1` | | IP address the api binary binds to. Default `127.0.0.1` preserves the dev-machine pattern (don't expose api to LAN during `cargo run`). Docker-compose self-host sets this to `0.0.0.0` so the admin-ui edge container can reach api via docker-network DNS. Source: `crates/feedbackmonk-api/src/main.rs:59`. **Note**: appended P4 Stage 2 by Worker B (self-mediated widening per GUIDE §8, ratification pending at convergence — needed to unblock B2 topology where admin-ui nginx must reach api over the docker bridge network). |
 | `FEEDBACKMONK_PUBLIC_URL` | **REQ** | — | | Customer-facing base URL used in verify-email links and any URL the customer follows back to the api. **No trailing slash.** Dev: `http://localhost:14304`. Self-host behind TLS: `https://feedback.example.com`. Source: `crates/feedbackmonk-api/src/main.rs:141`. |
 
 ### Logging / Observability

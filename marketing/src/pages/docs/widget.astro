@@ -1,0 +1,149 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="Widget embed"
+  description="How to embed the feedbackmonk widget on your site. Anonymous-by-default, optional JWT, zero third-party fetches."
+>
+  <header class="page-header">
+    <h1>Widget embed</h1>
+    <p class="lede">
+      The widget is a 17&nbsp;KB ES module. You drop one
+      <code>&lt;script&gt;</code> tag on your page; it mounts a launcher
+      button in the bottom-right corner and submits feedback over your own
+      domain &mdash; not via a tracker.
+    </p>
+  </header>
+
+  <section aria-labelledby="quickstart-heading">
+    <h2 id="quickstart-heading">Quickstart</h2>
+    <p>
+      Add the script tag. Replace <code>YOUR_PROJECT_ID</code> with the
+      project UUID from <code>/admin/projects</code>.
+    </p>
+    <pre><code>{`<script
+  type="module"
+  src="https://cdn.feedbackmonk.com/widget.js"
+  data-project-id="YOUR_PROJECT_ID"
+></script>`}</code></pre>
+    <p>
+      That's it. The launcher auto-mounts on
+      <code>DOMContentLoaded</code>. Add <code>data-fbm-no-auto-mount</code>
+      if you'd rather call <code>mountFeedbackMonk()</code> manually.
+    </p>
+  </section>
+
+  <section aria-labelledby="identity-heading">
+    <h2 id="identity-heading">Identity modes</h2>
+    <h3>Anonymous (default)</h3>
+    <p>
+      With no <code>data-jwt</code> attribute, the widget submits
+      anonymously. A first-party cookie scoped to the API domain
+      (<code>X-Feedbackmonk-Anon-Cookie</code>) lets the admin console
+      group submissions from the same browser session without ever
+      learning who the user is.
+    </p>
+
+    <h3>Authenticated (JWT mode)</h3>
+    <p>
+      If your app already signs a JWT for the user, pass it via
+      <code>data-jwt</code>:
+    </p>
+    <pre><code>{`<script
+  type="module"
+  src="https://cdn.feedbackmonk.com/widget.js"
+  data-project-id="YOUR_PROJECT_ID"
+  data-jwt="eyJhbGciOiJIUzI1NiIs..."
+></script>`}</code></pre>
+    <p>
+      feedbackmonk verifies the JWT against the public key you registered
+      and attaches the verified claim to the submission. This JWT is the
+      only identity feedbackmonk ever stores for an end-user
+      (DEC-FBR-04). No callbacks to your auth provider; no long-lived
+      bearer token retention.
+    </p>
+  </section>
+
+  <section aria-labelledby="programmatic-heading">
+    <h2 id="programmatic-heading">Programmatic mount</h2>
+    <pre><code>{`import { mountFeedbackMonk } from "@feedbackmonk/widget";
+await mountFeedbackMonk({
+  projectId: "YOUR_PROJECT_ID",
+  jwt: optionalJwt,
+  apiBase: "https://api.feedbackmonk.com", // optional override
+});`}</code></pre>
+  </section>
+
+  <section aria-labelledby="config-heading">
+    <h2 id="config-heading">Widget config (read-only)</h2>
+    <p>
+      On mount, the widget fetches
+      <code>GET /api/v1/projects/&#123;project_id&#125;/widget-config</code>.
+      The response shape (Contract&nbsp;C12) drives the modal's labels and
+      visible kinds:
+    </p>
+    <pre><code>{`{
+  "project_id": "...",
+  "brand": {
+    "name": "Acme",
+    "footer_text": "powered by feedbackmonk"
+  },
+  "auth_modes": ["auth", "anonymous"],
+  "submission_kinds": ["bug", "feature", "question", "other"],
+  "max_body_chars": 16384
+}`}</code></pre>
+    <p>
+      The <code>brand.footer_text</code> is <code>"powered by feedbackmonk"</code>
+      on the Free tier and <code>null</code> on paid tiers (FR-FBR-14).
+      That toggle is enforced at the data layer in
+      <code>feedbackmonk-core::tier::tier_quotas()</code> &mdash; not at
+      render time.
+    </p>
+  </section>
+
+  <section aria-labelledby="constraints-heading">
+    <h2 id="constraints-heading">Constraints</h2>
+    <ul>
+      <li>
+        <strong>Bundle size:</strong> ≤ 30,720 bytes total (FR-FBR-04).
+        Currently 16,829&nbsp;B &mdash; 45% headroom. Enforced by the
+        <em>widget-bundle-size</em> Verification Oracle, Probe&nbsp;A.
+      </li>
+      <li>
+        <strong>Zero third-party tracker hostnames:</strong> the
+        <em>widget-bundle-size</em> Oracle Probe&nbsp;B greps every
+        <code>dist/*</code> artifact against an 18-hostname allowlist.
+        Any drift fails CI.
+      </li>
+      <li>
+        <strong>CSP-safe:</strong> no <code>unsafe-inline</code> or
+        <code>unsafe-eval</code> required. Styles are emitted as a
+        sibling <code>.css</code> file; the only inline DOM literal is a
+        single static SVG.
+      </li>
+      <li>
+        <strong>A11y:</strong> <code>role="dialog"</code>,
+        <code>aria-modal</code>, full keyboard trap, ESC restores focus,
+        visible focus indicators. Verified via Playwright + axe-core in
+        every CI run.
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="versioning-heading">
+    <h2 id="versioning-heading">Versioning</h2>
+    <p>
+      The widget binary is served from
+      <code>https://cdn.feedbackmonk.com/widget.js</code> as the rolling
+      "current" major version. Wire-shape changes are gated behind a new
+      script URL (<code>widget@v2.js</code>); embedders pin if they need
+      strict reproducibility.
+    </p>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header { margin-block: 2rem 1.5rem; }
+  pre { max-width: 100%; }
+</style>

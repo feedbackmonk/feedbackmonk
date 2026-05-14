@@ -1,0 +1,42 @@
+{
+  "name": "selfhost-compose-smoke",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Does deploy/docker/docker-compose.yml parse cleanly (yaml-lint), do its application env-var references match the canonical C21 catalog in docs/operations/SELFHOST_ENV.md, and (with --full) does `docker compose down -v && up -d` from a clean state bring the stack to HTTP 200 on /health/ready within 90s?",
+  "category": "deployment",
+  "invocation": {
+    "unix": ".claude/oracles/selfhost-compose-smoke/oracle.sh",
+    "windows": ".claude/oracles/selfhost-compose-smoke/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "deploy/docker/docker-compose.yml",
+      "deploy/docker/Dockerfile.api",
+      "deploy/docker/.env.example",
+      "docs/operations/SELFHOST_ENV.md",
+      ".claude/oracles/selfhost-compose-smoke/oracle.py"
+    ],
+    "compute_cost_ms": 400
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P4+ (touching deploy/docker or SELFHOST_ENV.md); /0-uldf-finalize Phase 11 with --full",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "P4+ deploy/docker/** + docs/operations/SELFHOST_ENV.md (every commit touching either; CI gate post-launch with --full)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-14T17:30:00Z"
+  },
+  "fallback": "Probe A: `docker compose -f deploy/docker/docker-compose.yml config --quiet` should exit 0. Probe B: extract `${FEEDBACKMONK_*}`, `${DATABASE_URL}` from compose; confirm each name appears as a backticked first-cell entry in a markdown table row of docs/operations/SELFHOST_ENV.md (above the `## Out of Scope` section). Probe C: `docker compose -f deploy/docker/docker-compose.yml down -v && docker compose -f deploy/docker/docker-compose.yml up -d --build --wait && curl -fsS http://localhost:${FEEDBACKMONK_PORT:-14304}/health/ready` should print `{\"status\":\"ok\",\"db_connected\":true,...}` with HTTP 200.",
+  "provenance": {
+    "authored_by": "P4 Stage 2 Worker B — CLAUDE-B (Task Zero — collab-20260514-170323)",
+    "created": "2026-05-14T17:30:00Z",
+    "rationale": "FR-FBR-17 self-host distribution + DEC-FBR-IMPL-06 three-probe oracle decision + Contracts C21 (env catalog SSOT) and C24 (three-probe schema). Three-leg defense per P4 plan § Testability Gate: (1) env-reader chokepoints in crates/feedbackmonk-api/src/main.rs (Tier-1 fail-fast); (2) THIS oracle (yaml-lint + env-doc-xref + clean-state smoke — Tier-2 mechanical); (3) operator runbook docs/operations/SELFHOST.md (Tier-3 cold-readability). Cold-start vacuous-PASS supports Task Zero order-of-operations — oracle authored BEFORE the compose stack, then re-evaluated as Phase 1 lands."
+  }
+}

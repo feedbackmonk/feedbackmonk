@@ -1,0 +1,141 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+
+// Show HN draft per BRAND.md §Show HN Voice:
+//   - Title pattern: `Show HN: feedbackmonk – <one-line value prop>`
+//   - Open with the artifact, not the founder story.
+//   - One concrete technical detail (the widget bundle size + the
+//     CI-enforced tracker scan).
+//   - Direct, evidenced, no marketing-speak. ~150-250 words.
+//
+// frontmatter draft:true — page is unlisted (no nav link).
+// User reviews and revises before posting per DEC-FBR-10 Stage 2 trigger.
+const draftTitle = 'Show HN: feedbackmonk – privacy-first product feedback (AGPL)';
+---
+
+<BaseLayout
+  title="Show HN draft"
+  description="Working draft of the Show HN announcement post for feedbackmonk. Not yet published."
+>
+  <article class="hn-draft">
+    <header>
+      <p class="draft-tag">DRAFT &mdash; not yet posted</p>
+      <h1>Show HN draft</h1>
+      <p class="lede">
+        This is the working draft of the Show HN announcement. It will get
+        a final pass from the maintainer before the launch.
+      </p>
+    </header>
+
+    <hr />
+
+    <section aria-labelledby="post-title">
+      <h2 id="post-title">{draftTitle}</h2>
+
+      <p>
+        feedbackmonk is a small, open-source feedback platform: an
+        embeddable widget, a triage admin, a public roadmap with voting,
+        and status emails. AGPL-3.0; self-host with
+        <code>docker compose up</code>, or run on our SaaS.
+      </p>
+
+      <p>
+        Source: <a href="https://github.com/feedbackmonk/feedbackmonk">github.com/feedbackmonk/feedbackmonk</a><br />
+        Self-host docs: <a href="https://feedbackmonk.com/docs/self-host">feedbackmonk.com/docs/self-host</a>
+      </p>
+
+      <p>
+        I built it because the existing feedback tools either bundle a
+        tracker on every embed (Intercom, Hotjar, similar) or sit behind
+        SSO-and-seat-licensing walls that are wrong for indie shops. The
+        positioning is "Plausible Analytics for product feedback":
+        privacy-respecting, source-available, runs in your tenant.
+      </p>
+
+      <p>
+        Two things worth surfacing for the dev audience:
+      </p>
+
+      <ul>
+        <li>
+          The widget bundle is <strong>16.8&nbsp;KB</strong> (45% under the
+          30&nbsp;KB hard cap). A CI oracle scans every <code>dist/*</code>
+          artifact against an 18-hostname tracker allowlist on every
+          build &mdash; "zero third-party trackers" is enforced at build
+          time, not aspirational copy. See the
+          <a href="https://github.com/feedbackmonk/feedbackmonk/tree/main/.claude/oracles/widget-bundle-size">widget-bundle-size</a>
+          oracle.
+        </li>
+        <li>
+          End-user identity is whatever your app's JWT says &mdash; no
+          callbacks to your auth provider, no long-lived bearer tokens,
+          no cookies on the user's root domain. If you don't sign a
+          JWT, the widget submits anonymously via a first-party cookie
+          scoped to the API domain.
+        </li>
+      </ul>
+
+      <p>
+        v1 is intentionally small: feedback submission, status workflow,
+        public roadmap with voting, status emails. No webhooks yet, no
+        Polar billing checkout yet (mailto stub until we wire it), no
+        dark mode in admin (v1.1). The roadmap is on the site &mdash;
+        you can vote on it.
+      </p>
+
+      <p>
+        Stack: Rust (axum) on top of postgres, vanilla TypeScript widget,
+        React admin, Astro marketing. Migrations are sqlx; multi-tenancy
+        is enforced via a repository layer that's the sole query path.
+        About 18k LoC total.
+      </p>
+
+      <p>
+        Happy to answer questions about the design trade-offs &mdash;
+        why text-only wordmark in v1, why AGPL rather than MIT, why
+        we ship a Self-host tier on day one rather than gating it behind
+        a contract. The decision log is in the repo
+        (<a href="https://github.com/feedbackmonk/feedbackmonk/blob/main/docs/specs/DECISIONS.md">docs/specs/DECISIONS.md</a>).
+      </p>
+    </section>
+
+    <hr />
+
+    <section aria-labelledby="post-notes">
+      <h2 id="post-notes">Authoring notes (not part of the post)</h2>
+      <ul>
+        <li>Title is set in <code>--brand-mono</code> for visual separation from the page chrome.</li>
+        <li>Word count: ~280 (slightly over the BRAND.md 150&ndash;250 guidance; maintainer to trim during revision pass).</li>
+        <li>BRAND.md ban-list check: no "leverage / synergize / robust / world-class / cutting-edge / paradigm / holistic / ecosystem / journey / empower" used. No exclamation points in body.</li>
+        <li>Includes the one concrete technical detail per BRAND.md (widget bundle size + tracker oracle).</li>
+        <li>Acknowledges limits per voice guideline 5 (Honest about limits): no webhooks, no Polar checkout, no dark mode.</li>
+      </ul>
+    </section>
+  </article>
+</BaseLayout>
+
+<style>
+  .hn-draft {
+    max-width: 42rem;
+    margin: 0 auto;
+  }
+  .draft-tag {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--brand-sage-deep);
+    background: var(--brand-rule);
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--brand-radius);
+    margin-bottom: 1rem;
+  }
+  hr {
+    margin: 2rem 0;
+  }
+  .hn-draft h2 {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+  }
+</style>

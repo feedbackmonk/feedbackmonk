@@ -1,0 +1,179 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import TrustSignal from '../components/TrustSignal.astro';
+---
+
+<BaseLayout
+  title="feedbackmonk"
+  description="Privacy-first product feedback. AGPL-licensed widget + admin + roadmap. Self-host or SaaS. Zero third-party trackers."
+>
+  <section class="hero">
+    <p class="eyebrow">AGPL-3.0 · privacy-first · self-host or SaaS</p>
+    <h1>Product feedback that respects your users.</h1>
+    <p class="lede">
+      feedbackmonk is an open-source feedback platform &mdash; submission widget,
+      triage queue, public roadmap with voting, status emails. No third-party
+      trackers; the only identity we hold is the JWT your app signs.
+    </p>
+
+    <div class="hero-cta">
+      <a class="btn-primary" href="/pricing">See pricing</a>
+      <a class="btn-secondary" href="/docs/self-host">Self-host docs</a>
+    </div>
+  </section>
+
+  <section aria-labelledby="trust-signals-heading" class="trust-section">
+    <h2 id="trust-signals-heading" class="trust-heading">What we promise</h2>
+    <ul class="trust-list">
+      <TrustSignal
+        title="EU + US hosting"
+        evidence="region selectable per tenant"
+      />
+      <TrustSignal
+        title="Open-source core (AGPL-3.0)"
+        evidence="github.com/feedbackmonk/feedbackmonk"
+        href="https://github.com/feedbackmonk/feedbackmonk"
+      />
+      <TrustSignal
+        title="Zero third-party trackers"
+        evidence="verified in CI (widget-bundle-size oracle)"
+        href="/docs/widget"
+      />
+    </ul>
+  </section>
+
+  <section class="narrative" aria-labelledby="how-it-works-heading">
+    <h2 id="how-it-works-heading">How it works</h2>
+
+    <p>
+      You embed a 17&nbsp;KB JavaScript widget on your site. A user submits a
+      bug, a feature idea, or a question. Your team triages it in the admin
+      console &mdash; status flows from submitted to triaged to in&nbsp;progress
+      to resolved or declined, with a single typed reply attached at each step.
+    </p>
+
+    <p>
+      Feature requests can be promoted to a public roadmap that voters
+      upvote. The promoted text is the feedback body verbatim, with no
+      submitter attribution attached &mdash; that&apos;s a load-bearing
+      invariant, not a setting. When status changes, the original submitter
+      gets a single email; no marketing blasts, no re-engagement campaigns,
+      no list rentals, no analytics pixels.
+    </p>
+
+    <p>
+      The widget is anonymous-by-default. If your app already signs a JWT
+      for the user, feedbackmonk verifies the claim and attaches it to the
+      submission &mdash; that JWT is the only identity feedbackmonk ever
+      holds. No callbacks to your auth provider, no long-lived bearer
+      tokens, no cookies set on the user&apos;s root domain.
+    </p>
+
+    <p>
+      You can run it as SaaS on our infrastructure, or self-host the
+      AGPL-licensed source via <code>docker compose up</code>. The Self-host
+      tier is the same binary, the same migrations, the same admin UI &mdash;
+      no carve-outs. See <a href="/docs/self-host">/docs/self-host</a> for
+      the operator runbook.
+    </p>
+  </section>
+
+  <section class="cta-section" aria-labelledby="final-cta-heading">
+    <h2 id="final-cta-heading">Get started</h2>
+    <p>
+      Pick a tier on <a href="/pricing">/pricing</a>, or read the
+      <a href="/docs/self-host">self-host runbook</a> to run feedbackmonk
+      on your own infrastructure today.
+    </p>
+  </section>
+</BaseLayout>
+
+<style>
+  .hero {
+    padding-block: 2.5rem 1.5rem;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--brand-muted);
+    margin: 0 0 1rem;
+  }
+  .hero-cta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+  }
+  .btn-primary, .btn-secondary {
+    display: inline-block;
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--brand-radius);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .btn-primary {
+    background: var(--brand-sage-deep);
+    color: var(--brand-cream);
+  }
+  .btn-primary:hover,
+  .btn-primary:focus-visible {
+    background: var(--brand-ink);
+    color: var(--brand-cream);
+  }
+  .btn-secondary {
+    color: var(--brand-ink);
+    border: 1px solid var(--brand-rule);
+    background: var(--brand-cream);
+  }
+  .btn-secondary:hover,
+  .btn-secondary:focus-visible {
+    border-color: var(--brand-ink);
+    color: var(--brand-ink);
+    text-decoration: none;
+  }
+
+  .trust-section {
+    margin: 2.5rem 0;
+    padding: 1.5rem;
+    background: var(--brand-cream);
+    border: 1px solid var(--brand-rule);
+    border-radius: var(--brand-radius);
+  }
+  .trust-heading {
+    font-size: 1.125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--brand-muted);
+    margin-bottom: 1rem;
+  }
+  .trust-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+    gap: 1rem;
+  }
+
+  .narrative {
+    margin-block: 2.5rem;
+  }
+  .narrative h2 {
+    margin-bottom: 0.75rem;
+  }
+
+  .cta-section {
+    margin-block: 2.5rem;
+    padding: 1.25rem 1.5rem;
+    background: var(--brand-rule);
+    border-radius: var(--brand-radius);
+  }
+  .cta-section h2 {
+    font-size: 1.25rem;
+  }
+  .cta-section p {
+    margin: 0;
+  }
+</style>

@@ -1,0 +1,71 @@
+---
+import '../styles/global.css';
+import Nav from '../components/Nav.astro';
+import Footer from '../components/Footer.astro';
+
+export interface Props {
+  title: string;
+  description: string;
+  /** Optional Open Graph image absolute path (defaults to /og-default.png). */
+  ogImage?: string;
+  /** Optional canonical URL override (defaults to current Astro.url). */
+  canonical?: string;
+}
+
+const {
+  title,
+  description,
+  ogImage = '/og-default.png',
+  canonical,
+} = Astro.props;
+
+const siteName = 'feedbackmonk';
+const fullTitle = title === siteName ? siteName : `${title} · ${siteName}`;
+const canonicalUrl = canonical ?? new URL(Astro.url.pathname, Astro.site ?? 'https://feedbackmonk.com').toString();
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalUrl} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- Self-hosted fonts preload (BRAND.md mandate — no CDN). -->
+    <link
+      rel="preload"
+      href="/fonts/InterVariable.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin="anonymous"
+    />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:image" content={new URL(ogImage, Astro.site ?? 'https://feedbackmonk.com').toString()} />
+
+    <!-- Twitter / X card (no tracking, just OpenGraph mirror) -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
+
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#faf8f4" />
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to main content</a>
+    <Nav />
+    <main id="main" class="container">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

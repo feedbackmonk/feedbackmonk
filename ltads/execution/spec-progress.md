@@ -18,8 +18,8 @@
 | FR-FBR-13 | Status emails | P1/P2 | — | **DONE** | Subsumed by FR-FBR-09 (P1) |
 | FR-FBR-14 | Tier enforcement (caps + footer) | P3 | S1+S2 | **DONE (S1 backend)** | **Stage 1 (this commit)**: backend tier model (`crates/feedbackmonk-core/src/tier.rs` Contract C19), `TierQuotaRepo::check_tier_quota` chokepoint (Contract C17), `ApiError::TierCapExceeded` 402/409 (Contract C18), tier-aware `get_widget_brand` (free-tier footer), `GET /api/v1/admin/tier`, `migrations/00008_tenant_tier_check.sql` defense-in-depth, `tier-enforcement-status` Verification Oracle 3-probe active-PASS. **Stage 2 (UPCOMING)**: admin UI tier display + stub Upgrade button. |
 | FR-FBR-15 | Polar billing integration | P3 | — | **DEFERRED** | DEC-FBR-DEFER-01 ratified (added in this commit); stub at `docs/deferred/polar-integration.md`; operator promotion via SQL helper at `docs/operations/TIER_OVERRIDE.md` until Polar lands; not blocking P4 |
-| FR-FBR-16 | Marketing site (Astro) | P4 | — | NOT_STARTED | — |
-| FR-FBR-17 | Self-host docker compose | P4 | — | NOT_STARTED | — |
+| FR-FBR-16 | Marketing site (Astro) | P4 | S2 | **DONE** | PODS collab-20260514-170323 Worker A; Astro site at `marketing/` — 7 pages with brand kit C20 + pricing-parity build-time Rust→JSON SSOT (DEC-FBR-IMPL-05) + self-host content-mirror at `/docs/self-host` (D-FBR-26 follow-up). `npm run build` clean; Playwright + axe-core 11/11 PASS. |
+| FR-FBR-17 | Self-host docker compose | P4 | S2 | **DONE** | PODS collab-20260514-170323 Worker B; `deploy/docker/` stack (api + admin-ui nginx edge + postgres + migrate + backup/restore); env-var catalog SSOT C21 at `docs/operations/SELFHOST_ENV.md`; `FEEDBACKMONK_BIND_ADDR` widening per DEC-FBR-IMPL-07; `selfhost-compose-smoke` Verification Oracle (3-probe, active-PASS); `docker compose down -v && up -d --build --wait` GREEN end-to-end with `/health/ready` 200. |
 
 ## P3 Stage 1 — Tasks (CLOSED in this commit)
 
@@ -62,3 +62,34 @@
 - `.claude/oracles/pii-scrub-audit/oracle.sh`: **PASS** (no tracing changes)
 - `.claude/oracles/widget-bundle-size/oracle.sh`: **PASS** (16,829B / 30,720B; widget unchanged)
 - `.claude/oracles/tier-enforcement-status/oracle.sh --full`: **PASS** (Probe A handler coverage clean; Probe B Contract-C19 shape clean; Probe C `cargo test --test tier_enforcement_smoke` GREEN)
+
+## P4 Stage 2 — Tasks (CLOSED in this commit — v1-arc-terminus)
+
+| Task ID | Worker | Description | Status | Notes |
+|---|---|---|---|---|
+| P4-S2-A1 | CLAUDE-A | Astro marketing site at `marketing/` (7 pages) + brand-kit C20 application | DONE | Hero/pricing/docs/blog stub/show-hn/self-host/404; self-hosted Inter/JetBrainsMono |
+| P4-S2-A2 | CLAUDE-A | Pricing-parity SSOT: build-time Rust→JSON export at `crates/feedbackmonk-core/examples/export_tier_quotas.rs` | DONE | DEC-FBR-IMPL-05 Option A; PricingCard.astro consumes `marketing/src/data/tier-quotas.json` |
+| P4-S2-A3 | CLAUDE-A | `/docs/self-host` content-mirror of `docs/operations/SELFHOST.md` | DONE | D-FBR-26 follow-up: verification-oracle candidate `marketing-selfhost-page-parity` queued |
+| P4-S2-A4 | CLAUDE-A | a11y + build witnesses: Playwright + axe-core (`marketing/tests/a11y.spec.ts`) | DONE | 11/11 PASS; `npm run build` clean 7 pages |
+| P4-S2-B1 | CLAUDE-B | `selfhost-compose-smoke` Verification Oracle (3-probe; Task Zero) | DONE | Probe A yaml-lint + Probe B env-doc cross-reference vs C21 + Probe C `--full` clean-state smoke |
+| P4-S2-B2 | CLAUDE-B | `deploy/docker/docker-compose.yml` (api + admin-ui nginx edge + postgres + migrate) | DONE | Separate nginx edge over single-binary serves (worker-self-mediated topology decision) |
+| P4-S2-B3 | CLAUDE-B | `Dockerfile.api` + `Dockerfile.admin-ui` + `admin-ui-nginx.conf` | DONE | Cross-platform npm install workaround via `sed` in `Dockerfile.admin-ui`; nginx IPv4 healthcheck |
+| P4-S2-B4 | CLAUDE-B | Operator scripts: `migrate.sh`, `backup.sh`, `restore.sh` + `.env.example` | DONE | All env-vars cross-referenced to Contract C21 (SELFHOST_ENV.md) |
+| P4-S2-B5 | CLAUDE-B | `FEEDBACKMONK_BIND_ADDR` env-var widening | DONE | DEC-FBR-IMPL-07 ratified inline (Probe C surfaced; default `0.0.0.0` in container) |
+| P4-S2-B6 | CLAUDE-B | `docs/operations/SELFHOST.md` operator runbook | DONE | Step-by-step deployment + backup/restore + troubleshooting |
+| P4-S2-C1 | LD | DEC-FBR-IMPL-07 promotion to DECISIONS.md | DONE | Mid-session widening surfaced by Probe C; ratified inline by user; promoted at convergence |
+| P4-S2-C2 | LD | Discoveries D-FBR-25 (PricingCard SSOT-asymmetry post-Polar) + D-FBR-26 (`/docs/self-host` drift-risk) | DONE | Both in DISCOVERIES.md; D-FBR-26 has named verification-oracle candidate |
+| P4-S2-T-FIN | LD | `/0-uldf-ltads-stop --skip-push` (v1-arc-terminus commit) | DONE | This commit; PF-REGISTER-01 gate active → no push |
+
+## Quality Witnesses (P4 Stage 2 close — v1-arc-terminus)
+
+- Astro `npm run build`: **GREEN** (7 pages, clean)
+- Playwright + axe-core (`marketing/tests/a11y.spec.ts`): **11/11 PASS** (0 a11y violations)
+- `docker compose down -v && up -d --build --wait`: **GREEN** end-to-end with `/health/ready` 200 in <90s
+- `.claude/oracles/multi-tenant-isolation-check/oracle.sh`: **PASS** (no domain code changes)
+- `.claude/oracles/pii-scrub-audit/oracle.sh`: **PASS** (no tracing changes)
+- `.claude/oracles/widget-bundle-size/oracle.sh`: **PASS** (widget unchanged)
+- `.claude/oracles/tier-enforcement-status/oracle.sh`: **PASS** (tier-stack unchanged; pricing-export uses same Contract C19)
+- `.claude/oracles/selfhost-compose-smoke/oracle.sh --full`: **PASS** (Probe A yaml-lint clean; Probe B env-refs ⊆ C21 catalog; Probe C `/health/ready` 200 in <90s)
+
+**Arc-terminus**: v1 spec (FR-FBR-01 through FR-FBR-18) is content-complete. FR-FBR-15 remains DEFERRED per DEC-FBR-DEFER-01 (Polar billing). All other 17 requirements are DONE. User-action gates remaining: PF-REGISTER-01 (github.com/feedbackmonk org + feedbackmonk.com purchase), PF-RENAME-02 (working-dir rename). These unblock the first public push but are not autonomous code work.

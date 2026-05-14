@@ -566,3 +566,35 @@ Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python c
 
 ---
 
+### DEC-FBR-IMPL-07: `FEEDBACKMONK_BIND_ADDR` env var — api binary bind-address configurability (DEC-PODS-B-01 ratified)
+
+**Resolved**: 2026-05-14 (P4 Stage 2 — surfaced by `selfhost-compose-smoke` Probe C during PODS session `collab-20260514-170323`).
+
+**Context**: FR-FBR-17 self-host blocker surfaced during P4 Stage 2 Probe C `--full` verification. The api binary at `crates/feedbackmonk-api/src/main.rs:71` was hard-coded to bind `[127, 0, 0, 1]`. Inside the api container this passes the local healthcheck (curl localhost:14304 inside the container) but the admin-ui edge container (separate IP on the docker bridge, e.g. 172.20.0.4 → api at 172.20.0.3) gets `Connection refused`. The nginx reverse-proxy to `http://api:14304` returns 502 to operators. Without this fix, the B2 topology (separate admin-ui nginx edge) cannot work AND a B1 topology (api serves admin-ui via ServeDir) would still fail external healthchecks.
+
+**Decision**: Add a new optional env var `FEEDBACKMONK_BIND_ADDR` (default `127.0.0.1`) controlling the IP address the api binary binds to. Docker-compose sets it to `0.0.0.0` so containers on the docker bridge can reach the api.
+
+**Scope** (minimal-additive):
+- `crates/feedbackmonk-api/src/main.rs` — adds env-reader with `127.0.0.1` default. ~10 LOC added. No existing handler/route/error/test changed.
+- `docs/operations/SELFHOST_ENV.md` (C21 catalog) — appends one row in the HTTP Binding section, alphabetically near `FEEDBACKMONK_PORT`. Catalog is grow-only; no existing rows touched. C21 grew from 18 → 19 entries.
+- `deploy/docker/docker-compose.yml` — adds one `environment:` entry defaulting `0.0.0.0`. No existing env entry changed.
+- `deploy/docker/.env.example` — adds commented row documenting the new var.
+
+**Backwards compatibility**: optional env var with backwards-compatible default. Existing `cargo run` / dev / CI flows unaffected — nothing currently sets `FEEDBACKMONK_BIND_ADDR`, and the absent-env-var branch reads `127.0.0.1`, identical to the prior hard-coded literal.
+
+**Witnesses**:
+- Probe C `--full` GREEN end-to-end (`docker compose down -v && docker compose up -d --build --wait` succeeds; `curl /health/ready` 200 in <90s via admin-ui→api over docker bridge).
+- `pii-scrub-audit` re-verified post-change — canonical hash unaffected (no `tracing_subscriber::*` surface touched).
+- `multi-tenant-isolation-check`, `widget-bundle-size`, `tier-enforcement-status` regression-checked GREEN.
+
+**Self-mediation provenance**: surfaced + authored by CLAUDE-B during PODS session `collab-20260514-170323`. Pre-authorized per session `GUIDE.md §8` row "Worker B: SELFHOST_ENV.md appends" — *"If compose authoring surfaces a missed env var, B may APPEND a row to the C21 catalog and reference it in compose. Tagged self-mediated; LD ratifies at convergence. NEVER modify existing rows."* Ratified by LD at 2026-05-14T18:18:00Z (channels/decisions.md DEC-PODS-B-01).
+
+**Rollback**: single `git revert` removes all four touched files cleanly. Three files implicated (main.rs +10 LOC, SELFHOST_ENV.md +1 row, docker-compose.yml +1 env entry, deploy/docker/.env.example +1 commented row). No DB/migration/contract surface implicated.
+
+**Alternatives considered**:
+- *Keep hard-coded literal* — blocks FR-FBR-17 self-host distribution.
+- *Hard-code `0.0.0.0`* — broadens default attack surface for `cargo run` dev flows on multi-user dev machines; rejected.
+- *Per-startup `LD_PRELOAD` override or similar* — significantly more invasive; rejected.
+
+---
+

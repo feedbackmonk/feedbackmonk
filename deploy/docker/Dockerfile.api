@@ -1,0 +1,96 @@
+# syntax=docker/dockerfile:1.6
+# feedbackmonk-api self-host image.
+#
+# Pattern: cargo-chef dependency-layer caching + slim-debian runtime.
+# Result: image contains the `feedbackmonk-api` release binary, the
+# `sqlx` CLI binary (for migrate.sh), the migrations directory, and
+# curl (for compose healthcheck). The migrate service and the api
+# service both run from THIS image — the compose file picks the
+# command. See deploy/docker/README.md Decision Log for the base-image
+# choice (slim-debian over distroless for shell-ergonomics in
+# self-host operability).
+#
+# Build context is the workspace root (`../..` from deploy/docker/);
+# compose declares this with `build.context: ../..`.
+
+# -----------------------------------------------------------------------------
+# Stage 0 — cargo-chef base
+# -----------------------------------------------------------------------------
+FROM lukemathwalker/cargo-chef:latest-rust-1.91-bookworm AS chef
+WORKDIR /build
+
+# -----------------------------------------------------------------------------
+# Stage 1 — recipe planner
+# -----------------------------------------------------------------------------
+FROM chef AS planner
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+RUN cargo chef prepare --recipe-path recipe.json
+
+# -----------------------------------------------------------------------------
+# Stage 2 — dependency layer cook + build
+# -----------------------------------------------------------------------------
+FROM chef AS builder
+ARG SQLX_OFFLINE=true
+ENV SQLX_OFFLINE=${SQLX_OFFLINE}
+
+COPY --from=planner /build/recipe.json recipe.json
+# Cook the dependency graph (cached layer — only invalidated when
+# Cargo.toml / Cargo.lock change).
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy the full source tree + sqlx offline cache for compile-time-checked
+# queries. The `.sqlx/` directory is committed and re-generated via
+# `cargo sqlx prepare` whenever queries change.
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY .sqlx ./.sqlx
+COPY migrations ./migrations
+RUN cargo build --release -p feedbackmonk-api --bin feedbackmonk-api
+
+# Install sqlx-cli (used by migrate.sh). Pin to a known-compatible
+# version with the workspace `sqlx = "0.8"` dep.
+RUN cargo install sqlx-cli --version ^0.8 --no-default-features --features rustls,postgres --root /sqlx-cli-out
+
+# -----------------------------------------------------------------------------
+# Stage 3 — runtime
+# -----------------------------------------------------------------------------
+FROM debian:bookworm-slim AS runtime
+ARG APP_USER=feedbackmonk
+ARG APP_UID=10001
+
+# Runtime deps:
+#   ca-certificates  — TLS to SMTP / external services
+#   libpq5           — postgres client lib (sqlx-cli + libsqlx need libpq for tooling, even with rustls)
+#                      (kept conservative; rustls feature means the api binary itself doesn't link libpq,
+#                       but sqlx-cli pulls it for tooling)
+#   curl             — used by compose `healthcheck`
+#   tini             — pid-1 reaper for clean signal handling under docker
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libpq5 \
+        curl \
+        tini \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd --system --gid ${APP_UID} ${APP_USER} \
+    && useradd --system --uid ${APP_UID} --gid ${APP_UID} --create-home --home-dir /home/${APP_USER} --shell /usr/sbin/nologin ${APP_USER}
+
+WORKDIR /app
+
+# Copy artifacts from the builder stage.
+COPY --from=builder /build/target/release/feedbackmonk-api /usr/local/bin/feedbackmonk-api
+COPY --from=builder /sqlx-cli-out/bin/sqlx /usr/local/bin/sqlx
+COPY migrations /app/migrations
+COPY deploy/docker/migrate.sh /usr/local/bin/migrate.sh
+RUN chmod +x /usr/local/bin/migrate.sh /usr/local/bin/feedbackmonk-api /usr/local/bin/sqlx
+
+USER ${APP_USER}
+
+# tini as pid-1 for clean SIGTERM handling (docker compose down respects this).
+ENTRYPOINT ["/usr/bin/tini", "--"]
+# Default command: run the api binary. Compose overrides for the migrate service.
+CMD ["/usr/local/bin/feedbackmonk-api"]
+
+EXPOSE 14304

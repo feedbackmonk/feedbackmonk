@@ -1,0 +1,41 @@
+---
+export interface Props {
+  /** Short label, e.g. "Zero third-party trackers". */
+  title: string;
+  /** Evidence line — link target. */
+  href?: string;
+  /** Evidence label, e.g. "verified in CI". */
+  evidence?: string;
+}
+
+const { title, href, evidence } = Astro.props;
+---
+
+<li class="trust-signal">
+  <span class="trust-title">{title}</span>
+  {evidence && (
+    <span class="trust-evidence">
+      {href
+        ? <a href={href}>{evidence}</a>
+        : evidence}
+    </span>
+  )}
+</li>
+
+<style>
+  .trust-signal {
+    list-style: none;
+    padding-block: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+  .trust-title {
+    font-weight: 600;
+    color: var(--brand-ink);
+  }
+  .trust-evidence {
+    color: var(--brand-muted);
+    font-size: 0.9375rem;
+  }
+</style>

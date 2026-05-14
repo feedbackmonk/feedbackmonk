@@ -1,0 +1,87 @@
+---
+// Footer carries the FR-FBR-14 brand-promise string verbatim:
+// `powered by feedbackmonk`. BRAND.md mandates lowercase, the literal phrase,
+// link to feedbackmonk.com. On the marketing site itself (vs. the widget),
+// it's always present regardless of tier.
+const year = new Date().getUTCFullYear();
+---
+
+<footer class="site-footer">
+  <div class="container footer-row">
+    <div class="footer-brand">
+      <span class="footer-attribution">powered by <a href="https://feedbackmonk.com">feedbackmonk</a></span>
+      <span class="footer-copy">&copy; {year} feedbackmonk contributors</span>
+    </div>
+    <nav aria-label="Footer">
+      <ul class="footer-links">
+        <li><a href="/docs/">Docs</a></li>
+        <li><a href="/docs/self-host">Self-host</a></li>
+        <li><a href="/docs/api">API</a></li>
+        <li><a href="/pricing">Pricing</a></li>
+        <li>
+          <a href="https://github.com/feedbackmonk/feedbackmonk" rel="external">
+            Source (AGPL-3.0)
+          </a>
+        </li>
+        <li><a href="mailto:hello@feedbackmonk.com">Email</a></li>
+      </ul>
+    </nav>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    border-top: 1px solid var(--brand-rule);
+    background: var(--brand-cream);
+    margin-top: 4rem;
+    padding-block: 2rem;
+    color: var(--brand-muted);
+    font-size: 0.9375rem;
+  }
+  .footer-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.5rem;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .footer-brand {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .footer-attribution {
+    color: var(--brand-ink);
+    font-weight: 500;
+  }
+  .footer-attribution a {
+    color: var(--brand-sage-deep);
+    text-decoration: none;
+  }
+  .footer-attribution a:hover,
+  .footer-attribution a:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .footer-copy {
+    color: var(--brand-muted);
+  }
+  .footer-links {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 1.25rem;
+  }
+  .footer-links a {
+    color: var(--brand-muted);
+    text-decoration: none;
+  }
+  .footer-links a:hover,
+  .footer-links a:focus-visible {
+    color: var(--brand-ink);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+</style>

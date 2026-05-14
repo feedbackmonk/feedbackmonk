@@ -1,0 +1,122 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+---
+
+<BaseLayout
+  title="API reference"
+  description="feedbackmonk public API — submit feedback, fetch widget config, query the public roadmap, vote, promote. JWT semantics included."
+>
+  <header class="page-header">
+    <h1>API reference</h1>
+    <p class="lede">
+      A thin REST surface over JSON. Public endpoints are unauthenticated
+      (or optionally JWT-bearer); admin endpoints require a session cookie
+      from <code>POST /api/v1/auth/login</code>. Wire shapes are stable as
+      of v1.
+    </p>
+  </header>
+
+  <section aria-labelledby="auth-heading">
+    <h2 id="auth-heading">Authentication</h2>
+    <p>
+      <strong>Public endpoints:</strong> optional
+      <code>Authorization: Bearer &lt;jwt&gt;</code>. The JWT is verified
+      against the project's registered public key; the verified claim is
+      stored alongside the submission. No JWT &rarr; anonymous submission
+      (paired with the <code>X-Feedbackmonk-Anon-Cookie</code> first-party
+      cookie for group-by-browser).
+    </p>
+    <p>
+      <strong>Admin endpoints:</strong> session cookie (<code>feedbackmonk_session</code>)
+      issued by <code>POST /api/v1/auth/login</code>. All admin endpoints
+      are tenant-scoped &mdash; you only ever see rows belonging to your
+      tenant (DEC-FBR-03, enforced by the
+      <em>multi-tenant-isolation-check</em> Verification Oracle).
+    </p>
+  </section>
+
+  <section aria-labelledby="widget-endpoints-heading">
+    <h2 id="widget-endpoints-heading">Widget endpoints</h2>
+
+    <h3>GET /api/v1/projects/&#123;project_id&#125;/widget-config</h3>
+    <p>
+      Public. Returns the widget's render configuration (Contract C12):
+      brand text, allowed auth modes, submission kinds, body length cap.
+    </p>
+
+    <h3>POST /api/v1/projects/&#123;project_id&#125;/feedback</h3>
+    <p>Public. Submits one feedback row. Request body:</p>
+    <pre><code>{`{
+  "kind": "bug" | "feature" | "question" | "other",
+  "subject": "Short title (1-200 chars)",
+  "body":    "Free-form body (1-16384 chars)",
+  "email":   "optional@reply-to.example"
+}`}</code></pre>
+    <p>
+      Returns <code>201 Created</code> with the generated
+      <code>FB-XXXXXX</code> id. Cap-firing (Free tier, &gt;50 in rolling
+      month) returns <code>402 Payment Required</code> with a typed
+      <code>TierCapExceededBody</code>.
+    </p>
+  </section>
+
+  <section aria-labelledby="roadmap-endpoints-heading">
+    <h2 id="roadmap-endpoints-heading">Public roadmap endpoints</h2>
+    <p>
+      Public; no auth required. Anonymous voters are deduplicated via the
+      first-party cookie.
+    </p>
+    <ul>
+      <li><code>GET    /api/v1/projects/&#123;project_id&#125;/roadmap</code> &mdash; list, paginated.</li>
+      <li><code>GET    /api/v1/projects/&#123;project_id&#125;/roadmap/top-voted</code> &mdash; sorted by vote count.</li>
+      <li><code>GET    /api/v1/projects/&#123;project_id&#125;/roadmap/items/&#123;slug&#125;</code> &mdash; single item.</li>
+      <li><code>POST   /api/v1/projects/&#123;project_id&#125;/roadmap/items/&#123;slug&#125;/vote</code> &mdash; cast a vote.</li>
+      <li><code>DELETE /api/v1/projects/&#123;project_id&#125;/roadmap/items/&#123;slug&#125;/vote</code> &mdash; retract.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="admin-endpoints-heading">
+    <h2 id="admin-endpoints-heading">Admin endpoints</h2>
+    <p>
+      Session-cookie authenticated. Tenant-scoped by the
+      <code>feedbackmonk-repository</code> layer &mdash; the API does no
+      raw SQL.
+    </p>
+    <ul>
+      <li><code>GET  /api/v1/admin/feedback</code> &mdash; list, status/kind filterable.</li>
+      <li><code>GET  /api/v1/admin/feedback/&#123;id&#125;</code> &mdash; detail with replies + status history.</li>
+      <li><code>POST /api/v1/admin/feedback/&#123;id&#125;/transition</code> &mdash; status flow with required reply.</li>
+      <li><code>POST /api/v1/admin/feedback/&#123;id&#125;/reply</code> &mdash; attach a typed reply (queues email).</li>
+      <li><code>POST /api/v1/admin/feedback/&#123;id&#125;/promote</code> &mdash; promote to public roadmap (Q24 invariant: body verbatim, no submitter attribution).</li>
+      <li><code>GET  /api/v1/admin/tier</code> &mdash; current tier + per-resource usage vs cap (Contract C17).</li>
+      <li><code>GET, POST, PATCH /api/v1/admin/projects/&#123;project_id&#125;/roadmap[…]</code> &mdash; manage roadmap items + slug.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="errors-heading">
+    <h2 id="errors-heading">Error shapes</h2>
+    <p>
+      All errors are JSON with a stable
+      <code>error</code> code and a human <code>message</code>:
+    </p>
+    <pre><code>{`{ "error": "tier_cap_exceeded", "message": "...", "resource": "feedback_in_rolling_month", "current": 50, "limit": 50 }`}</code></pre>
+    <p>
+      The <code>tier_cap_exceeded</code> body shape is Contract C18 &mdash;
+      stable across tiers and resources, parseable client-side without
+      string scraping.
+    </p>
+  </section>
+
+  <section aria-labelledby="health-heading">
+    <h2 id="health-heading">Health</h2>
+    <ul>
+      <li><code>GET /health</code> &mdash; liveness; always 200 if the process is up.</li>
+      <li><code>GET /health/ready</code> &mdash; readiness; 200 when DB is reachable, 503 otherwise. Use this for orchestrator probes (the self-host compose stack relies on it).</li>
+    </ul>
+  </section>
+</BaseLayout>
+
+<style>
+  .page-header { margin-block: 2rem 1.5rem; }
+  pre { max-width: 100%; }
+</style>

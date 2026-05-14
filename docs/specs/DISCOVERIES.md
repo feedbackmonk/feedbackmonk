@@ -400,3 +400,45 @@ if (limit === null) {
 **Where this pays off again**: Future feedbackmonk admin-UI dashboards — any usage gauge for a metric that may be uncapped on higher tiers (API rate, storage, retention period). Also relevant for self-host distribution where caps may be configured per-deployment; the "self-host = unlimited" baseline becomes the visual default. Pair with D-FBR-22 — this and 22 are the two anchor patterns for the admin-UI's quantitative-widget conventions.
 
 ---
+
+## P4 Stage 2 (2026-05-14)
+
+### D-FBR-25: PODS Critic surfaces SSOT-asymmetry between tier *caps* and tier *prices* — pre-Polar honest state
+
+**Surfaced by**: PODS independent-critic verdict at convergence of session `collab-20260514-170323` (P4 Stage 2).
+
+**What was discovered**: The Astro pricing page (`marketing/src/pages/pricing.astro`) sources tier *caps* (project count, feedback-per-month, status-email entitlement, etc.) from the build-time JSON export of `tier_quotas()` (Contract C19, DEC-FBR-IMPL-05) — but tier *display prices* ($9 / $29 / $79 / Self-Host) and CTA copy are hard-coded as a static `Record<Tier, {...}>` inside `PricingCard.astro`. This creates two SSOT regimes inside the same component: caps are pulled from Rust, prices are component-local strings.
+
+**Why this is structurally OK right now**: DEC-FBR-DEFER-01 keeps Polar billing deferred. There IS no canonical pricing source yet — `TierQuotas` carries caps but no price field. The pricing page is functionally a marketing surface with mailto CTAs, not a billing surface. The asymmetry is a faithful reflection of the deferred-billing state; promoting prices to SSOT before there is one would be premature.
+
+**Generalizable insight**: When a system has two related domains (caps + prices) where one has an SSOT and the other does not yet, **the component can legitimately mix sources** rather than fake an SSOT for the un-formalized domain. The honest move is to annotate the component with the asymmetry and the trigger condition for unifying (e.g., "promote when Polar un-defers"). The dishonest move is to invent a sibling `prices.ts` constants file that pretends to be canonical.
+
+**Where this pays off again**: When P5+ promotes Polar from deferred to live, the trigger should be the in-component comment ("placeholder numbers per the build-arc plan — DEC-FBR-DEFER-01 keeps Polar deferred"). At that point, promote the price strings into a sibling struct alongside `TierQuotas` or into Polar's own product/price API call, regenerate the JSON export, and remove the component-local `display` Record. The annotation IS the migration plan.
+
+**Follow-up tracked**: pending — promote pricing display strings to SSOT when Polar un-defers (post-launch P5+).
+
+---
+
+### D-FBR-26: Content-mirror vs MDX-import as drift-risk trade-off in marketing docs surface
+
+**Surfaced by**: PODS independent-critic verdict at convergence of session `collab-20260514-170323` (P4 Stage 2).
+
+**What was discovered**: CLAUDE-A chose the content-mirror strategy (snapshot) for `/docs/self-host` rather than the MDX-import strategy (live link to canonical `docs/operations/SELFHOST.md`). Pre-authorized by the session's GUIDE.md §8 cross-worker widening row. The strategy choice is logged on-page (snapshot timestamp) and in `marketing/README.md` Decision Log. Trade-off: simpler build (no MDX runtime), but the page needs manual refresh when SELFHOST.md changes substantively.
+
+**Why this is OK right now**: at this scale and refresh cadence, manual refresh is cheap and the linked-canonical fallback on-page is honest about drift. MDX-import would add Astro-MDX build wiring + cross-package path coupling that is plan-overkill for v1.
+
+**Generalizable insight**: For documentation surfaces that mirror canonical project docs into a marketing/blog/landing site, three strategies span the trade-space:
+
+| Strategy | Build complexity | Drift risk | Best when |
+|---|---|---|---|
+| **MDX-import (live)** | Higher (MDX runtime + cross-package paths) | Zero (always reads canonical) | Frequent canonical edits; tight coupling acceptable |
+| **Content-mirror (snapshot)** | Lower | Manual refresh required | Stable canonical; rare edits; coupling avoidance valuable |
+| **Verification-Oracle parity check** | Mid (oracle to author) | Catches drift at CI but doesn't auto-fix | Stable canonical + drift detection desired without runtime coupling |
+
+The third path — a `marketing-selfhost-page-parity` Verification Oracle that diffs the snapshot against canonical and fails CI if they drift past a threshold — is the right candidate for v1.x if the content-mirror strategy persists.
+
+**Where this pays off again**: any future `/docs/X` marketing page that mirrors a canonical `docs/operations/X.md` or `docs/specs/X.md`. The Verification-Oracle parity-check pattern composes cleanly with the existing `selfhost-compose-smoke` Probe B (env-var doc cross-reference) — same pattern, different anchor pair.
+
+**Follow-up tracked**: pending — author `marketing-selfhost-page-parity` Verification Oracle candidate at P4 finalize Phase 11 oracle-candidate sweep (if drift-risk surfaces in practice).
+
+---
