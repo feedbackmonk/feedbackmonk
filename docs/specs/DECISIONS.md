@@ -525,3 +525,44 @@ The deferred Polar contract — webhook envelope, event → tier mapping, schema
 
 ---
 
+### DEC-FBR-IMPL-05: P4 marketing-site pricing single-source-of-truth — build-time Rust→JSON export
+
+**Resolved**: 2026-05-14 (P4 Stage 1).
+
+**Decision**: The marketing site's `/pricing` page derives its tier caps and tier-label strings from a **build-time JSON export** of `feedbackmonk-core::tier::tier_quotas()` (Contract C19), NOT from hand-typed pricing constants in Astro/MDX/TypeScript. Implementation: Stage 2 Worker A adds a thin Rust binary (a new `examples/` target in `crates/feedbackmonk-core/` or a tiny new crate `crates/feedbackmonk-marketing-export/`) that prints `tier_quotas()` as JSON to stdout, plus a `marketing/scripts/export-tier-quotas.{sh,ps1}` shim that runs the binary and writes the output to `marketing/src/data/tier_quotas.json`. Astro's `prebuild` npm-script invokes the shim. The `/pricing` page imports the JSON at build time.
+
+**Rationale**: Option-A vs Option-B was scoped at P4 Stage 1 (per `docs/planning/plans/20260514T163356-feedbackmonk-p4-go-public.md` Decision-1):
+
+- **Option A — build-step export (chosen)**: pricing drift is **structurally impossible**. Astro cannot import stale data because the JSON IS the export. The `tier-enforcement-status` Verification Oracle (built P3 Stage 1) already defends `tier_quotas()` against Contract C19 drift via its Probe B; combining that with this build-step makes site↔code parity transitively verified.
+- **Option B — hand-typed pricing + `marketing-pricing-parity` Verification Oracle**: drift is detected after the fact, not prevented. Worse: parity oracle has Q5 drift-detection risk if it's not rebuilt on Astro-side changes (operator forgets `npm run prebuild` after editing copy → silent drift until next CI).
+
+Option A's cost (one small Rust binary + one shim script + one `prebuild` npm-script entry) is bounded and one-shot. The Astro-build pipeline already needs node and ts; adding `cargo run` is one tool further but the build host is already a developer machine with `cargo` (or a CI runner with `cargo` for the Rust workspace anyway).
+
+**Trade-offs**: (1) Marketing-site Astro build now depends on `cargo` being available in the same environment. Documented in `marketing/README.md`. CI's marketing job needs `cargo` if the marketing site is built in CI. Acceptable — every existing CI job for this repo has `cargo`. (2) Hot-reloading the pricing data during Astro dev requires re-running the shim; acceptable since `tier_quotas()` rarely changes (the const fn predates P4 and was frozen in P3). (3) Doesn't extend to other code↔site invariants (e.g., feature-matrix); each invariant decides its own SSOT approach. Decision applies ONLY to pricing tier caps/labels.
+
+**Implementation**: Worker A's Task Zero in P4 Stage 2. Worker A authors the new Rust binary + shim + Astro prebuild wiring + the `/pricing` page importing `tier_quotas.json`. The `marketing-pricing-parity` Verification Oracle candidate from the P4 plan is **withdrawn** — Option A makes it redundant.
+
+---
+
+### DEC-FBR-IMPL-06: P4 `selfhost-compose-smoke` Verification Oracle — three-probe, build-at-Task-Zero of Stage 2 Worker B
+
+**Resolved**: 2026-05-14 (P4 Stage 1).
+
+**Decision**: P4 ships a new Verification Oracle `selfhost-compose-smoke` defending FR-FBR-17 self-host distribution as a code-level invariant. Three probes:
+
+- **Probe A (fast, always-on)**: `deploy/docker/docker-compose.yml` exists and parses (yaml-lint or `docker compose config` --quiet equivalent). Catches yaml-syntax breakage without spinning up containers.
+- **Probe B (fast, always-on)**: every `${FEEDBACKMONK_*}` and `${DATABASE_URL}` reference in `deploy/docker/docker-compose.yml`'s `environment:` blocks is present in `docs/operations/SELFHOST_ENV.md`'s canonical catalog table (parses the table, extracts var names, set-compares against compose-env references). Catches typos, undocumented additions, schema drift.
+- **Probe C (`--full`, opt-in)**: `docker compose down --volumes && docker compose up -d && wait-for-healthy && curl http://localhost:14304/health` returns 200 with the documented JSON body. Clean-state smoke — catches "works only because volume is stale" and "works only because image is cached" failure modes that ate two real cycles of GitCellar's own self-host bring-up.
+
+Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python canonical + bash/ps1 shims pattern (DEC-FBR-IMPL-03).
+
+**Rationale**: P4 Stage 1's Testability Gate scored FR-FBR-17 at composite ~14 (Q1=4 iteration cost, Q2=4 fidelity risk — clean-state-vs-stale-state is the canonical docker fidelity gap; Q3=4 critical path for the P4 exit gate). The composite-12+ threshold AND the Q3-Q4 combination both flag scaffolding-leverage; the `selfhost-compose-smoke` oracle is the scaffolding. Building it as Worker B's Task Zero locks the verification surface in before main implementation, mirroring the P3 Stage 1 Task Zero pattern for `tier-enforcement-status`.
+
+**Probe-C gating**: Probe C requires a docker daemon and is heavy (~30-60 seconds per run). Like `tier-enforcement-status` Probe C (`--full` integration smoke trio), it's opt-in for CI / convergence / pre-release sweeps, NOT every-commit. `--full` flag pattern matches the existing oracle convention.
+
+**Trade-offs**: (1) Probe C is OS-dependent — Windows / macOS dev machines need Docker Desktop running; Linux servers run docker natively. Documented in oracle README. (2) Probe B's catalog-parser is fragile against `SELFHOST_ENV.md` formatting changes; mitigation: Probe B uses a documented table-extraction pattern (start anchor, end anchor, column position) tested against the file frozen at Stage 1. If the table format changes, the oracle's parser updates. (3) Two probes (A and B) are cheap and always-on; the failure mode is "I ran the oracle, both quick probes passed, I assumed Probe C was also fine" — countered by `/0-uldf-finalize` Phase 1.5 calling out which probes ran vs `--full` skipped.
+
+**Implementation**: Worker B's Task Zero in P4 Stage 2. The `marketing-pricing-parity` Verification Oracle candidate (alternate path under DEC-FBR-IMPL-05 Option B) is NOT built since DEC-FBR-IMPL-05 chose Option A.
+
+---
+
