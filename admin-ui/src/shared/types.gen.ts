@@ -281,3 +281,69 @@ export interface PromoteErrorBody {
   kind?: "bug" | "feature" | "question" | "other"; // on InvalidCategory
   slug?: string; // on InvalidSlug / SlugTaken
 }
+
+// ─────────────────────────────────────────────────────────────────────────
+// P3 — Tier model + cap-aware error rendering (Contracts C17/C18/C19).
+//
+// Source of truth: docs/planning/handoffs/p3-stage1-to-stage2.md
+// (frozen verbatim at Stage 1 exit, commit d2266ae). Drift here is a Stage 2
+// implementation bug; semantic shape changes require a DEC-FBR-* + Stage 1
+// re-engagement.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type Tier = "free" | "starter" | "pro" | "self_host";
+
+export type ResourceKind = "project" | "feedback_in_rolling_month";
+
+export interface TierQuotas {
+  projects_per_org: number | null;        // null = unlimited
+  monthly_feedback_volume: number | null; // null = unlimited
+  custom_branding: boolean;
+  custom_domain: boolean;
+  eu_residency: boolean;
+  footer_text: string | null;             // "powered by feedbackmonk" (Free) or null (paid)
+}
+
+export interface TierUsage {
+  projects: number;
+  feedback_monthly: number;
+  period_start: string;                   // ISO-8601
+}
+
+export interface TierStatus {
+  tier: Tier;
+  quotas: TierQuotas;
+  usage: TierUsage;
+}
+
+export interface TierCapExceededBody {
+  error: "tier_cap_exceeded";
+  tier: Tier;
+  resource: ResourceKind;
+  current: number;
+  limit: number;
+  upgrade_hint: string;
+}
+
+// Type-guard for narrow error handling — used by ApiClient response interceptor
+// and UpgradePrompt toast. Mirrors handoff §TypeScript starter kit verbatim.
+export function isTierCapExceeded(body: unknown): body is TierCapExceededBody {
+  return (
+    typeof body === "object" &&
+    body !== null &&
+    (body as { error?: unknown }).error === "tier_cap_exceeded"
+  );
+}
+
+// Display labels — kept here so UI never hardcodes tier strings elsewhere.
+export const TIER_LABELS: Record<Tier, string> = {
+  free: "Free",
+  starter: "Starter",
+  pro: "Pro",
+  self_host: "Self-host",
+};
+
+export const RESOURCE_LABELS: Record<ResourceKind, string> = {
+  project: "projects",
+  feedback_in_rolling_month: "monthly feedback",
+};

@@ -12,11 +12,14 @@ import type {
   ReplyResponse,
   RoadmapItem,
   RoadmapListResponse,
+  TierCapExceededBody,
+  TierStatus,
   TopVotedResponse,
   TransitionRequest,
   TransitionResponse,
   VoteResponse,
 } from "./types.gen";
+import { isTierCapExceeded } from "./types.gen";
 
 const api: AxiosInstance = axios.create({
   baseURL: "/api/v1",
@@ -35,9 +38,52 @@ api.interceptors.response.use(
       const next = encodeURIComponent(location.pathname + location.search);
       location.replace(`/login?next=${next}`);
     }
+    // Parse Contract C18 TierCapExceeded once and tag the error so any
+    // mutation `onError` callback can surface the UpgradePrompt toast
+    // without re-parsing. Status mapping (Contract C18): 409 for `project`,
+    // 402 for `feedback_in_rolling_month`. Tag without short-circuiting —
+    // callers still receive the AxiosError for normal rejection plumbing.
+    const status = err.response?.status;
+    if (status === 402 || status === 409) {
+      const body = err.response?.data;
+      if (isTierCapExceeded(body)) {
+        (err as AxiosError & { tierCapExceeded?: TierCapExceededBody }).tierCapExceeded =
+          body;
+      }
+    }
     return Promise.reject(err);
   },
 );
+
+/**
+ * Extract a Contract C18 `TierCapExceededBody` from a thrown error, or
+ * `null` if the error is not a tier-cap rejection. Designed to be called
+ * from a mutation `onError(err)` callback:
+ *
+ * ```ts
+ * onError: (err) => {
+ *   const body = extractTierCapExceeded(err);
+ *   if (body) notify(body.upgrade_hint, "error");
+ * }
+ * ```
+ */
+export function extractTierCapExceeded(err: unknown): TierCapExceededBody | null {
+  if (
+    err &&
+    typeof err === "object" &&
+    "tierCapExceeded" in err &&
+    isTierCapExceeded((err as { tierCapExceeded: unknown }).tierCapExceeded)
+  ) {
+    return (err as { tierCapExceeded: TierCapExceededBody }).tierCapExceeded;
+  }
+  // Belt-and-braces: parse on the fly if the interceptor didn't tag (e.g.,
+  // a non-axios error wrapping the body, or a fixture that bypassed the
+  // interceptor).
+  if (axios.isAxiosError(err) && isTierCapExceeded(err.response?.data)) {
+    return err.response.data as TierCapExceededBody;
+  }
+  return null;
+}
 
 export interface ListParams {
   status?: FeedbackStatus;
@@ -224,6 +270,15 @@ export async function postPromoteFeedback(
     `/admin/feedback/${encodeURIComponent(feedbackId)}/promote`,
     body,
   );
+  return r.data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// P3 — Tier status (Contract C17). Read-only; consumed by TierSettings page.
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function fetchTierStatus(): Promise<TierStatus> {
+  const r = await api.get<TierStatus>("/admin/tier");
   return r.data;
 }
 

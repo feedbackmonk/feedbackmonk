@@ -334,4 +334,69 @@ This adds maybe 5 minutes upfront and saves the entire mid-test-run-recovery + d
 
 ---
 
+## P3 Stage 2 (2026-05-14)
+
+### D-FBR-22: WCAG 1.4.1 dual-encoding meter pattern — color token + explicit text status in `aria-valuetext`
+
+**Surfaced by**: `admin-ui/src/pages/settings/UsageMeter.tsx` authoring (Stage 2 worker).
+
+**What was discovered**: A bare `<progressbar role aria-valuenow={42} />` with color states is a textbook WCAG 2.1 SC 1.4.1 (Use of Color) violation — meaning is decodable only by sighted users who can see the color. Screen readers receive only "42"; monochrome / color-blind users receive an unreadable bar. The cleanest fix uses `aria-valuetext` to compose the canonical screen-reader payload `"X of Y label used (N%, state-lowercase)"` AND keeps a visible state span (`"OK" / "Approaching cap" / "Over cap"`) alongside the numeric counts.
+
+The pattern decomposes:
+
+| Encoding channel | Carries | Audience |
+|---|---|---|
+| Color token (CSS `--meter-ok / --meter-warn / --meter-danger`) | State (3 levels) | Sighted users |
+| Visible text span (`<span class="usage-meter-state">{stateLabel}</span>`) | State (3 levels) | Monochrome / color-blind / cognitive-load users |
+| `aria-valuenow={pct}` | Numeric ratio | Screen-reader users (basic ARIA) |
+| `aria-valuetext="X of Y ... (N%, state)"` | Full state + numbers as one phrase | Screen-reader users (rich ARIA) |
+
+Two channels (color + text) for state means the bar passes 1.4.1 even if either fails (color-blind, monochrome, screen reader, even just "the user looked away while a value updated").
+
+**Generalizable insight**: For any quantitative widget where state is layered on a base measurement (meter / gauge / progress / health-indicator / battery / signal-strength), apply the four-channel pattern. The cost is small (~6 LOC), the WCAG compliance is mechanical (axe-core verifies 0 violations), and the pattern is reusable. Add this to the admin-ui component patterns library when it grows beyond ad-hoc.
+
+**Where this pays off again**: Future feedbackmonk admin-UI quantitative widgets — feedback-rate trend indicators, quota-usage gauges in P4 self-host dashboard, any Polar-billing widget when DEC-FBR-DEFER-01 lifts. Also reusable in the public widget if it ever surfaces a status (e.g. submission-quota indicator for high-volume embedders).
+
+---
+
+### D-FBR-23: "Tag the AxiosError, don't fire from the interceptor" — interceptor-vs-React-context boundary
+
+**Surfaced by**: `admin-ui/src/shared/ApiClient.ts` 402/409 interceptor authoring (Stage 2 worker).
+
+**What was discovered**: The natural-feeling design for "show a toast when a tier cap is exceeded" is to fire the toast directly from the axios response interceptor. This DOESN'T WORK cleanly: the interceptor is a module-level singleton instantiated outside React, so it has no access to the toast context (which is React-context-based and only available inside the provider tree). Workarounds — global event bus, ref-passing, useEffect subscribing to a singleton observable — are over-engineering for a surface that has no current consumers.
+
+The cleaner design separates **detection** (interceptor's job) from **presentation** (caller's job):
+
+1. Interceptor parses the 402/409 body once and **tags** the AxiosError: `(err as AxiosError & { tierCapExceeded?: TierCapExceededBody }).tierCapExceeded = body`.
+2. Provide an `extractTierCapExceeded(err)` helper that callers use in their `onError` callback: `const body = extractTierCapExceeded(err); if (body) notify(body.upgrade_hint, "error");`.
+3. Belt-and-braces: the helper also parses on-the-fly when called with an axios error whose body wasn't tagged (e.g. a fixture that bypassed the interceptor). The two paths converge to the same `TierCapExceededBody | null` return shape.
+
+This is a structural-decoupling pattern — detection lives where the data first arrives (the interceptor); presentation lives where the user-context is available (the React component). Neither side needs to know about the other beyond the shared type.
+
+**Generalizable insight**: For structured-error rendering where the error has a typed body and can come from any mutation, apply the pattern: **detect-and-tag at the singleton boundary, extract-and-present at the React boundary.** Don't try to bridge the two with a global event bus or context-singleton. The seam is the typed `extract*` helper.
+
+**Where this pays off again**: Other typed-error surfaces — Polar billing payment-required errors when DEC-FBR-DEFER-01 lifts, JWT token-expired errors at the auth boundary, validation-error structured bodies from feedback-submit handlers if they grow beyond the current 400-with-string. Each gets its own `tag-and-extract` pair. Pattern documented in the helper's TSDoc.
+
+---
+
+### D-FBR-24: `unlimited` rendering convention — flat text, no progressbar, when the cap is null
+
+**Surfaced by**: `admin-ui/src/pages/settings/UsageMeter.tsx` authoring (Stage 2 worker).
+
+**What was discovered**: When `limit === null` (Pro projects, Self-host both axes), there is no honest way to render a progressbar. A 0% bar suggests "low usage out of a real cap"; a 100% bar suggests "you're hitting the cap." Both are false — there IS NO cap. The cleanest answer is to render a flat text row (`"X / unlimited"`) with no `role="progressbar"` element at all.
+
+This produces an asymmetric visual treatment: bounded rows have a bar, unlimited rows don't. **The asymmetry IS the information** — it tells the user "this resource is uncapped" louder than any text label could. A user who has been on Free or Starter and upgrades to Pro will see two of their bars disappear; that's the visual confirmation of the upgrade.
+
+The implementation is an early-return branch:
+
+```tsx
+if (limit === null) {
+  return <div className="usage-meter usage-meter-unlimited">…</div>;
+}
+```
+
+**Generalizable insight**: For any quantitative widget where the base measurement may be unbounded, prefer **render-nothing-for-the-bound-channel** over **render-a-fake-bound** (0%, 100%, "infinity-bar", or a stretched "∞" rune). The widget should refuse to lie about its data. This generalizes the broader principle: visual encodings should refuse to encode information they don't have.
+
+**Where this pays off again**: Future feedbackmonk admin-UI dashboards — any usage gauge for a metric that may be uncapped on higher tiers (API rate, storage, retention period). Also relevant for self-host distribution where caps may be configured per-deployment; the "self-host = unlimited" baseline becomes the visual default. Pair with D-FBR-22 — this and 22 are the two anchor patterns for the admin-UI's quantitative-widget conventions.
+
 ---

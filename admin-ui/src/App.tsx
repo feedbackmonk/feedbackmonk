@@ -4,12 +4,14 @@ import { FeedbackList } from "./pages/FeedbackList";
 import { FeedbackDrawer } from "./pages/FeedbackDrawer";
 import { AdminRoadmap } from "./pages/roadmap/AdminRoadmap";
 import { PublicRoadmap } from "./pages/roadmap/PublicRoadmap";
+import { TierSettings } from "./pages/settings/TierSettings";
 
 // Routes:
 //   /login                                   → Login
 //   /feedback                                → FeedbackList
 //   /feedback/FB-XXXXXX                      → FeedbackList + FeedbackDrawer overlay
 //   /admin/roadmap                           → AdminRoadmap (server-side sole-project resolution)
+//   /admin/settings/tier                     → TierSettings (P3 Stage 2 — plan & usage)
 //   /public/projects/:projectId/roadmap      → PublicRoadmap (no admin chrome; project-segmented per Contract C15)
 //   anything else                            → redirect to /feedback (or /login when API 401s)
 //
@@ -34,6 +36,13 @@ export function App() {
 
   if (pathname === "/admin/roadmap" || pathname === "/admin/roadmap/") {
     return <AdminRoadmap />;
+  }
+
+  if (
+    pathname === "/admin/settings/tier" ||
+    pathname === "/admin/settings/tier/"
+  ) {
+    return <TierSettings />;
   }
 
   // Match /feedback or /feedback/{feedbackId}

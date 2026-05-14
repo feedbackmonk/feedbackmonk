@@ -29,6 +29,14 @@
   --status-wontfix: #6b6b6b;
   --status-duplicate: #6b21a8;
 
+  /* Usage-meter tokens — paired with explicit "OK / Approaching cap / Over
+   * cap" text labels (WCAG 1.4.1: meaning never carried by color alone).
+   * Each token meets AA contrast against --surface. */
+  --meter-ok: #15602e;
+  --meter-warn: #8a5a00;
+  --meter-danger: #b3261e;
+  --meter-track: var(--surface-2);
+
   font-family:
     system-ui,
     -apple-system,
@@ -60,6 +68,11 @@
     --status-shipped: #6ee098;
     --status-wontfix: #a0a098;
     --status-duplicate: #d39bff;
+
+    --meter-ok: #6ee098;
+    --meter-warn: #ffb86c;
+    --meter-danger: #ff8a80;
+    --meter-track: var(--surface-2);
   }
 }
 
@@ -511,4 +524,163 @@ a {
 
 .toast-error {
   border-left: 3px solid var(--danger);
+}
+
+/* ---------- Tier settings (P3 Stage 2) ---------- */
+.tier-settings-page .tier-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.tier-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: 999px;
+  padding: 0.15rem 0.7rem;
+  font-size: 0.95rem;
+}
+
+.tier-usage,
+.tier-capabilities {
+  margin-bottom: 1.5rem;
+}
+
+.tier-usage-period {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+}
+
+.usage-meter {
+  margin-bottom: 1rem;
+}
+
+.usage-meter-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.95rem;
+  margin-bottom: 0.25rem;
+}
+
+.usage-meter-label {
+  font-weight: 600;
+}
+
+.usage-meter-counts {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-meter-state {
+  font-weight: 600;
+}
+
+.usage-meter-bar {
+  width: 100%;
+  height: 0.6rem;
+  background: var(--meter-track);
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.usage-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.2s ease;
+}
+
+.usage-meter-ok .usage-meter-fill {
+  background: var(--meter-ok);
+}
+.usage-meter-ok .usage-meter-state {
+  color: var(--meter-ok);
+}
+
+.usage-meter-warn .usage-meter-fill {
+  background: var(--meter-warn);
+}
+.usage-meter-warn .usage-meter-state {
+  color: var(--meter-warn);
+}
+
+.usage-meter-danger .usage-meter-fill {
+  background: var(--meter-danger);
+}
+.usage-meter-danger .usage-meter-state {
+  color: var(--meter-danger);
+}
+
+.capability-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.capability-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.capability-list li:last-child {
+  border-bottom: none;
+}
+
+.capability-mark {
+  display: inline-block;
+  width: 1.25rem;
+  text-align: center;
+  font-weight: 700;
+}
+
+.capability-on .capability-mark {
+  color: var(--success);
+}
+
+.capability-off .capability-mark {
+  color: var(--text-muted);
+}
+
+.capability-off span:not(.capability-mark) {
+  color: var(--text-muted);
+}
+
+.capability-note {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.upgrade-prompt {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-top: 1rem;
+}
+
+.upgrade-prompt-message {
+  margin: 0 0 0.75rem;
+}
+
+.upgrade-prompt-button {
+  display: inline-block;
+  padding: 0.45rem 1rem;
+  background: var(--accent);
+  color: var(--accent-on);
+  border-radius: 4px;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.upgrade-prompt-button:hover {
+  background: var(--accent-hover);
 }
