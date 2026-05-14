@@ -42,6 +42,26 @@ pub trait FeedbackStatusHistoryRepo: Send + Sync {
         transitioned_by: Uuid,
     ) -> Result<Uuid>;
 
+    /// Same-transaction variant of `append`. Required by Contract C6 Hard
+    /// Invariant #4 (audit row + `feedback.status` UPDATE land atomically).
+    /// The caller opens a transaction via `pool.begin()` and passes
+    /// `&mut *tx` for `conn`.
+    ///
+    /// Pre-authorized widening per Stage 1->2 handoff doc:
+    /// `self_mediated=true; ratification_pending=true;
+    ///  matches_spec_at=docs/planning/handoffs/p1-stage1-to-stage2.md#pre-authorized`.
+    async fn append_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        from_status: FeedbackStatus,
+        to_status: FeedbackStatus,
+        reason_note: Option<&str>,
+        duplicate_of: Option<&FeedbackId>,
+        transitioned_by: Uuid,
+    ) -> Result<Uuid>;
+
     /// List the full status history for a feedback row, newest-first.
     /// Cross-tenant lookups return an empty Vec (NOT an error) — the JOIN
     /// against `feedback` filters by scope, so a sibling tenant's row
@@ -131,6 +151,72 @@ impl FeedbackStatusHistoryRepo for SqlxFeedbackStatusHistoryRepo {
             transitioned_by,
         )
         .fetch_one(&self.pool)
+        .await?;
+
+        Ok(inserted.id)
+    }
+
+    async fn append_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        from_status: FeedbackStatus,
+        to_status: FeedbackStatus,
+        reason_note: Option<&str>,
+        duplicate_of: Option<&FeedbackId>,
+        transitioned_by: Uuid,
+    ) -> Result<Uuid> {
+        let src = sqlx::query!(
+            r#"
+            SELECT id
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+
+        let duplicate_of_uuid: Option<Uuid> = if let Some(target) = duplicate_of {
+            let row = sqlx::query!(
+                r#"
+                SELECT id
+                FROM feedback
+                WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                target.as_str(),
+            )
+            .fetch_optional(&mut *conn)
+            .await?
+            .ok_or(crate::error::RepoError::NotFound)?;
+            Some(row.id)
+        } else {
+            None
+        };
+
+        let inserted = sqlx::query!(
+            r#"
+            INSERT INTO feedback_status_history (
+                feedback_id, from_status, to_status,
+                reason_note, duplicate_of_feedback_id, transitioned_by
+            )
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
+            "#,
+            src.id,
+            from_status.as_db_str(),
+            to_status.as_db_str(),
+            reason_note,
+            duplicate_of_uuid,
+            transitioned_by,
+        )
+        .fetch_one(&mut *conn)
         .await?;
 
         Ok(inserted.id)

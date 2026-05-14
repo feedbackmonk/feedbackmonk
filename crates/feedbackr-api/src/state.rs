@@ -14,10 +14,11 @@ use sqlx::PgPool;
 
 use feedbackr_anon::AnonGate;
 use feedbackr_repository::{
-    EmailVerificationRepo, FeedbackRepo, ProjectRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
+    EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo, FeedbackStatusHistoryRepo,
+    ProjectRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
 };
 
-use crate::email::Mailer;
+use crate::email::{EmailNotifier, Mailer};
 
 /// Application context shared across all handlers.
 ///
@@ -33,10 +34,18 @@ pub struct AppState {
     pub projects: Arc<dyn ProjectRepo>,
     pub signing_keys: Arc<dyn SigningKeyRepo>,
     pub feedback: Arc<dyn FeedbackRepo>,
+    pub feedback_history: Arc<dyn FeedbackStatusHistoryRepo>,
+    pub feedback_replies: Arc<dyn FeedbackReplyRepo>,
     pub email_verifications: Arc<dyn EmailVerificationRepo>,
 
     // -- Worker A: signup / onboarding -------------------------------------
     pub mailer: Arc<dyn Mailer>,
+    /// Feedback notification chokepoint (FR-FBR-09). Wraps the lettre
+    /// transport + per-call `EmailTenantBrand` resolution. Distinct from
+    /// `mailer` (which sends signup-verification emails) so the two paths
+    /// can evolve independently — same SMTP transport in dev (Mailpit) but
+    /// the brand-resolved chokepoint is what FR-FBR-09 mandates.
+    pub email_notifier: Arc<dyn EmailNotifier>,
     /// HMAC key for signed admin-session cookies. 32 bytes, loaded from
     /// `FEEDBACKR_SESSION_SECRET` (hex-encoded, 64 hex chars).
     pub session_secret: Arc<[u8; 32]>,

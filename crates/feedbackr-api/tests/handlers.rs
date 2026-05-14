@@ -22,8 +22,8 @@ use feedbackr_api::router::router;
 use feedbackr_api::state::AppState;
 use feedbackr_api::email::Mailer;
 use feedbackr_repository::{
-    SqlxEmailVerificationRepo, SqlxFeedbackRepo, SqlxProjectRepo, SqlxSigningKeyRepo,
-    SqlxTenantRepo,
+    SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
+    SqlxFeedbackStatusHistoryRepo, SqlxProjectRepo, SqlxSigningKeyRepo, SqlxTenantRepo,
 };
 
 // ----- Mailer fake ------------------------------------------------------------
@@ -54,6 +54,22 @@ impl RecordingMailer {
     }
 }
 
+// ----- EmailNotifier no-op (P0 handler tests don't exercise it) ---------------
+
+struct NoopEmailNotifier;
+
+#[async_trait::async_trait]
+impl feedbackr_api::email::EmailNotifier for NoopEmailNotifier {
+    async fn send_email(
+        &self,
+        _scope: &feedbackr_repository::TenantScope,
+        _kind: feedbackr_api::email::EmailKind,
+        _ctx: feedbackr_api::email::EmailContext,
+    ) -> Result<feedbackr_api::email::SendOutcome, feedbackr_api::email::EmailError> {
+        Ok(feedbackr_api::email::SendOutcome::Skipped)
+    }
+}
+
 // ----- Test wiring ------------------------------------------------------------
 
 fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, Arc<RecordingMailer>) {
@@ -63,8 +79,11 @@ fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, A
         projects: Arc::new(SqlxProjectRepo::new(pool.clone())),
         signing_keys: Arc::new(SqlxSigningKeyRepo::new(pool.clone())),
         feedback: Arc::new(SqlxFeedbackRepo::new(pool.clone())),
+        feedback_history: Arc::new(SqlxFeedbackStatusHistoryRepo::new(pool.clone())),
+        feedback_replies: Arc::new(SqlxFeedbackReplyRepo::new(pool.clone())),
         email_verifications: Arc::new(SqlxEmailVerificationRepo::new(pool.clone())),
         mailer: mailer.clone(),
+        email_notifier: Arc::new(NoopEmailNotifier),
         session_secret: Arc::new([0x42u8; 32]),
         public_url: Arc::from("http://test.local"),
         verify_token_ttl: Duration::hours(24),

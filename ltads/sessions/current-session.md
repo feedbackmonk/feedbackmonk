@@ -5,9 +5,10 @@
 **Started**: 2026-05-13T22:00:00Z
 **Paused-At**: 2026-05-13T22:15:00Z
 **Resumed-At**: 2026-05-13T23:25:03Z
-**Status**: ACTIVE
-**Paused-By**: /0-uldf-proceed HANDOFF→PODS at POST-STAGE-1 boundary (mid-arc, NOT arc-terminus; successor session inherits via .claude/handoff/handoff-20260513-221500.md and continues autopilot:continuous chain)
-**Resumed-By**: /0-uldf-ltads-start arrival from .claude/handoff/handoff-20260513-190819.md (P1 plan authored 23:11:15Z; Stage 1 orchestrated worker spawn pending)
+**Re-Paused-At**: 2026-05-14T00:11:35Z
+**Status**: PAUSED
+**Paused-By**: /0-uldf-proceed HANDOFF→PODS at P1 Stage 2 boundary (mid-arc, NOT arc-terminus; successor session inherits via .claude/handoff/handoff-20260514-001135.md and continues autopilot:continuous chain through /0-uldf-pods-parallelize)
+**Resumed-By**: /0-uldf-ltads-start arrival from .claude/handoff/handoff-20260513-190819.md (P1 plan authored 23:11:15Z; Stage 1 orchestrated worker spawned + committed f63c66b)
 **Phase**: P1 (Closes the Loop), Stage 1 (Foundation Contracts + PII Oracle)
 **Plan**: docs/planning/plans/20260513T231115-feedbackr-p1-closes-the-loop.md
 **P0 Plan (reference)**: docs/planning/plans/20260513T210133-feedbackr-p0-foundation.md
@@ -37,3 +38,4 @@ Stage 1 of P1 (Closes the Loop) (SEQUENTIAL, single orchestrated worker):
 
 - **2026-05-13** — Stage 1 complete. FR-FBR-01 DONE. Contract C1 frozen for Stage 2 fan-out. `multi-tenant-isolation-check` oracle GREEN. 19 tests pass (6 core + 13 repository). Next: `/0-uldf-pods-parallelize` for Stage 2 (Worker A signup + Worker B submission path). See `docs/PROJECT_TRAJECTORY.md` for next-best-steps.
 - **2026-05-13 (P0 CLOSE)** — Stages 2+3 complete. FR-FBR-02/03/05/06/18 all DONE. P0 Foundation is closed. PODS session `collab-20260513-221600` converged with DEC-PODS-001 + DEC-PODS-002 ratified. 118 tests pass (Stage 2's 116 + Stage 3's 2 health unit tests). `multi-tenant-isolation-check` oracle GREEN. E2E P0-exit-gate witness `scripts/e2e-p0-curl.sh` PASS 7/7. Arc continues — NOT arc-terminus; autopilot:continuous arc carries through to P1. Next: fresh `/0-uldf-ldis-plan "Feedbackr P1 — Closes the Loop"`.
+- **2026-05-13 (P1 STAGE 1)** — Stage 1 complete (commit `f63c66b`). `pii-scrub-audit` Verification Oracle built (Task Zero); `feedbackr-tracing` crate shipped with `install_global_subscriber` chokepoint + canonical 20-pattern scrubber (byte-for-byte GitCellar port); migrations 00003 (`feedback.status` + audit history table) + 00005 (tenant email brand) applied; repository surface extended (`FeedbackRepo::list_for_admin`/`get_with_history` + `FeedbackStatusHistoryRepo` + `TenantRepo::get_brand`/`update_brand`/`EmailTenantBrand`). 118 → 185 tests (+67). Both Verification Oracles GREEN; clippy clean. Contracts C6/C7/C8/C9/C10/C11 frozen verbatim in `docs/planning/handoffs/p1-stage1-to-stage2.md` for Stage 2 fan-out. FR-FBR-10 progress: oracle + scrubber + chokepoint shipped; end-to-end verification awaits Stage 2 (email-emit paths) + Stage 3 (e2e witness) — NOT yet DONE. Arc continues — NOT arc-terminus; autopilot:continuous carries through. Next: `/0-uldf-pods-parallelize "Feedbackr P1 Stage 2 — Status Workflow + Admin UI"` consuming the handoff doc as freeze surface.

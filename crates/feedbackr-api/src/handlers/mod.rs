@@ -11,3 +11,6 @@ pub mod feedback;
 
 // Stage 3: FR-FBR-18 health + observability.
 pub mod health;
+
+// P1 Stage 2: admin status workflow + replies (Contracts C7 + C8).
+pub mod admin_feedback;

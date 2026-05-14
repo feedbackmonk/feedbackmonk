@@ -38,6 +38,8 @@ uuid = { workspace = true }
 [dev-dependencies]
 http-body-util = "0.1"
 mime = "0.3"
+insta = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

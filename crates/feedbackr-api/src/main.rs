@@ -28,14 +28,17 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use feedbackr_anon::{AnonGate, DEFAULT_RATE_LIMIT_PER_HOUR};
 use feedbackr_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackr_repository::{
-    SqlxEmailVerificationRepo, SqlxFeedbackRepo, SqlxHealthCheck, SqlxProjectRepo,
-    SqlxSigningKeyRepo, SqlxTenantRepo,
+    SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
+    SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxSigningKeyRepo,
+    SqlxTenantRepo,
 };
 
-use feedbackr_api::email::{EnvSmtpConfig, EnvSmtpMailer, Mailer, MailpitMailer};
+use feedbackr_api::email::{
+    EmailNotifier, EnvSmtpConfig, EnvSmtpMailer, LettreEmailNotifier, Mailer, MailpitMailer,
+};
 use feedbackr_api::router::router as worker_a_router;
 use feedbackr_api::state::AppState;
-use feedbackr_api::submission_router;
+use feedbackr_api::{admin_feedback_routes, submission_router};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -108,10 +111,13 @@ fn build_state(pool: PgPool) -> Result<AppState> {
     let projects = Arc::new(SqlxProjectRepo::new(pool.clone()));
     let signing_keys = Arc::new(SqlxSigningKeyRepo::new(pool.clone()));
     let feedback = Arc::new(SqlxFeedbackRepo::new(pool.clone()));
+    let feedback_history = Arc::new(SqlxFeedbackStatusHistoryRepo::new(pool.clone()));
+    let feedback_replies = Arc::new(SqlxFeedbackReplyRepo::new(pool.clone()));
     let email_verifications = Arc::new(SqlxEmailVerificationRepo::new(pool.clone()));
     let health = SqlxHealthCheck::new(pool.clone());
 
     let mailer = build_mailer()?;
+    let email_notifier = build_email_notifier(Arc::clone(&tenants) as Arc<dyn feedbackr_repository::TenantRepo>)?;
     let session_secret = load_session_secret()?;
     let public_url = env::var("FEEDBACKR_PUBLIC_URL")
         .unwrap_or_else(|_| "http://localhost:14304".to_string());
@@ -140,8 +146,11 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         projects,
         signing_keys,
         feedback,
+        feedback_history,
+        feedback_replies,
         email_verifications,
         mailer,
+        email_notifier,
         session_secret: Arc::new(session_secret),
         public_url: Arc::from(public_url.as_str()),
         verify_token_ttl: Duration::hours(ttl_hours),
@@ -186,6 +195,52 @@ fn build_mailer() -> Result<Arc<dyn Mailer>> {
     }
 }
 
+fn build_email_notifier(
+    tenants: Arc<dyn feedbackr_repository::TenantRepo>,
+) -> Result<Arc<dyn EmailNotifier>> {
+    let mode = env::var("FEEDBACKR_MAILER").unwrap_or_else(|_| "mailpit".to_string());
+    let from = env::var("FEEDBACKR_SMTP_FROM").unwrap_or_else(|_| "no-reply@feedbackr.local".into());
+    match mode.as_str() {
+        "mailpit" => {
+            let host = env::var("FEEDBACKR_MAILPIT_HOST").unwrap_or_else(|_| "localhost".into());
+            let port = env::var("FEEDBACKR_MAILPIT_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1025);
+            Ok(Arc::new(LettreEmailNotifier::mailpit(tenants, &host, port, &from)?))
+        }
+        "smtp" => {
+            // Reuse the env-driven SMTP relay; we only need the lettre
+            // transport, not the EnvSmtpMailer wrapper.
+            use lettre::{AsyncSmtpTransport, Tokio1Executor};
+            use lettre::transport::smtp::authentication::Credentials;
+            let host = env::var("FEEDBACKR_SMTP_HOST").context("FEEDBACKR_SMTP_HOST")?;
+            let port: u16 = env::var("FEEDBACKR_SMTP_PORT")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(587);
+            let user = env::var("FEEDBACKR_SMTP_USER").context("FEEDBACKR_SMTP_USER")?;
+            let pass = env::var("FEEDBACKR_SMTP_PASS").context("FEEDBACKR_SMTP_PASS")?;
+            let starttls = env::var("FEEDBACKR_SMTP_STARTTLS")
+                .map(|s| s != "false")
+                .unwrap_or(true);
+            let builder = if starttls {
+                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)?
+            } else {
+                AsyncSmtpTransport::<Tokio1Executor>::relay(&host)?
+            };
+            let transport = builder
+                .port(port)
+                .credentials(Credentials::new(user, pass))
+                .build();
+            Ok(Arc::new(LettreEmailNotifier::from_transport(tenants, transport, &from)))
+        }
+        other => Err(anyhow::anyhow!(
+            "FEEDBACKR_MAILER must be 'mailpit' or 'smtp', got {other}"
+        )),
+    }
+}
+
 fn load_session_secret() -> Result<[u8; 32]> {
     let hex_str = env::var("FEEDBACKR_SESSION_SECRET")
         .context("FEEDBACKR_SESSION_SECRET not set (expected 64 hex chars)")?;
@@ -215,7 +270,9 @@ fn build_app(state: AppState) -> Router {
         .on_request(DefaultOnRequest::new())
         .on_response(DefaultOnResponse::new());
 
-    let app = worker_a_router(state.clone()).merge(submission_router(state));
+    let app = worker_a_router(state.clone())
+        .merge(submission_router(state.clone()))
+        .merge(admin_feedback_routes(state));
     app.layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace_layer)
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))

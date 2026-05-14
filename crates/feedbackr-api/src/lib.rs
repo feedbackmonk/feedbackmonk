@@ -20,6 +20,7 @@ pub mod router;
 pub mod state;
 
 pub use error::ApiError;
+pub use handlers::admin_feedback::routes as admin_feedback_routes;
 pub use handlers::feedback::submission_router;
 pub use router::router as worker_a_router;
 pub use state::AppState;

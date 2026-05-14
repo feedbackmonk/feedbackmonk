@@ -83,6 +83,13 @@ type_name = "SqlxFeedbackStatusHistoryRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Mirrors every other SqlxXxxRepo::new in this crate."
 
+# --- P1 Stage 2 additions (Contract C7 / migration 00004) ---
+
+[[inherent_methods]]
+type_name = "SqlxFeedbackReplyRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackStatusHistoryRepo::new (Stage 1 pre-authorized). New repo type backs migration 00004's feedback_replies table per task brief Phase 1 step 3."
+
 [[inherent_methods]]
 type_name = "EmailTenantBrand"
 method = "from_db"

@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE feedback\n            SET status = $1\n            WHERE tenant_id = $2 AND project_id = $3 AND short_code = $4\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c3cdffb872810239413bff827081b304f0524aee1e4598b1eb0df6ba6d193753"
+}

@@ -10,11 +10,21 @@
 
 pub mod env_smtp;
 pub mod mailpit;
+pub mod send;
+pub mod templates;
 
 use async_trait::async_trait;
 
 pub use env_smtp::{EnvSmtpConfig, EnvSmtpMailer};
 pub use mailpit::MailpitMailer;
+pub use send::{
+    EmailContext, EmailError, EmailKind, EmailNotifier, LettreEmailNotifier, SendOutcome,
+    is_submitter_visible_transition,
+};
+pub use templates::{
+    render_confirmation, render_public_reply, render_status_change, ConfirmationContext,
+    PublicReplyContext, RenderedEmail, StatusChangeContext,
+};
 
 /// `Mailer` decouples Worker A's handlers from concrete SMTP transports.
 /// Test code substitutes an in-memory recorder.

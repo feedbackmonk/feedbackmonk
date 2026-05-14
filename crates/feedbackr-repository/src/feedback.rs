@@ -57,6 +57,27 @@ pub trait FeedbackRepo: Send + Sync {
         scope: &ProjectScope,
         feedback_id: &FeedbackId,
     ) -> Result<(Feedback, Vec<StatusHistoryRow>)>;
+
+    /// Same-transaction `feedback.status` UPDATE. Companion to
+    /// `FeedbackStatusHistoryRepo::append_in_executor` for Contract C6
+    /// Hard Invariant #4 -- the transition handler updates the status
+    /// column and inserts the audit row inside one transaction; both
+    /// roll back together on any failure.
+    ///
+    /// Pre-authorized widening per Stage 1->2 handoff doc:
+    /// `self_mediated=true; ratification_pending=true;
+    ///  matches_spec_at=docs/planning/handoffs/p1-stage1-to-stage2.md#pre-authorized`.
+    ///
+    /// Returns the previous status so the audit row's `from_status` field
+    /// reflects the actual pre-write state (defends against TOCTOU between
+    /// the handler's `get_with_history` read and this UPDATE).
+    async fn update_status_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        new_status: FeedbackStatus,
+    ) -> Result<FeedbackStatus>;
 }
 
 /// Trimmed list item — the columns the admin list page renders, plus the
@@ -373,6 +394,50 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             .collect();
 
         Ok((feedback, history))
+    }
+
+    async fn update_status_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        new_status: FeedbackStatus,
+    ) -> Result<FeedbackStatus> {
+        // The UPDATE...RETURNING gives us back the row we just updated; we
+        // need the PRE-update status, so we read it inside the same txn
+        // BEFORE the write. Scope filter on both reads/writes ensures a
+        // cross-tenant feedback_id cannot be touched.
+        let pre = sqlx::query!(
+            r#"
+            SELECT status
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+            FOR UPDATE
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+        let from_status = FeedbackStatus::from_db_str(&pre.status);
+
+        sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET status = $1
+            WHERE tenant_id = $2 AND project_id = $3 AND short_code = $4
+            "#,
+            new_status.as_db_str(),
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        Ok(from_status)
     }
 }
 

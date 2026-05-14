@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM feedback_replies AS r\n            JOIN feedback AS f ON f.id = r.feedback_id\n            WHERE f.tenant_id = $1\n              AND f.project_id = $2\n              AND f.short_code = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "c445b30285b7530e06f348ab9143d1efbba2298bd2563c57fe0b0f360ed76398"
+}

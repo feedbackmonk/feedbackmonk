@@ -16,6 +16,7 @@
 pub mod email_verifications;
 pub mod error;
 pub mod feedback;
+pub mod feedback_replies;
 pub mod feedback_status_history;
 pub mod health;
 pub mod projects;
@@ -26,6 +27,7 @@ pub mod tenants;
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
 pub use feedback::{FeedbackListItem, FeedbackRepo, SqlxFeedbackRepo, StatusHistoryRow};
+pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
 pub use health::SqlxHealthCheck;
 pub use projects::{ProjectRepo, SqlxProjectRepo};
