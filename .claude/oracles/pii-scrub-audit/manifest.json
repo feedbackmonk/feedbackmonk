@@ -1,0 +1,46 @@
+{
+  "name": "pii-scrub-audit",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Does every emitted log line (from tracing subscribers) pass through the canonical 20-pattern PII scrubber installed by feedbackr-tracing::install_global_subscriber? Has the pattern set drifted from the canonical source ported byte-for-byte from GitCellar?",
+  "category": "privacy",
+  "invocation": {
+    "unix": ".claude/oracles/pii-scrub-audit/oracle.sh",
+    "windows": ".claude/oracles/pii-scrub-audit/oracle.sh"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <count> with file:line / hash mismatch detail on FAIL; exit code 0 on PASS, non-zero on FAIL"
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackr-tracing/**",
+      "crates/feedbackr-api/src/main.rs",
+      "crates/feedbackr-anon/**",
+      "crates/feedbackr-jwt/**",
+      "crates/feedbackr-core/**",
+      "crates/feedbackr-repository/**",
+      "crates/feedbackr-api/**",
+      "migrations/**",
+      ".claude/oracles/pii-scrub-audit/expected_hash.txt"
+    ],
+    "compute_cost_ms": 250
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P1+",
+    "estimated_token_savings_per_call": 1200
+  },
+  "consumer_scope": "P1+ all backend crates (every Stage 1+ worker emitting logs; CI gate)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-13T23:30:00Z"
+  },
+  "fallback": "Probe A: grep every .rs file under crates/ for the pattern (tracing_subscriber::fmt\\(|tracing_subscriber::registry\\(|impl ... Layer<...> for ...) OUTSIDE crates/feedbackr-tracing/. Probe B: read crates/feedbackr-tracing/src/scrubber.rs, extract each CANONICAL_PATTERNS tuple (name, regex, replacement), serialise as name\\tregex\\treplacement\\n, SHA-256 the bytes, compare to .claude/oracles/pii-scrub-audit/expected_hash.txt.",
+  "provenance": {
+    "authored_by": "stage1-worker (P1 Foundation, Task Zero)",
+    "created": "2026-05-13T23:30:00Z",
+    "rationale": "FR-FBR-10 + DEC-FBR-01 Persona D (privacy). Three-leg defense per D-FBR-02: (1) type-system chokepoint in feedbackr_tracing::install_global_subscriber; (2) this oracle (AST probe + hash probe); (3) clippy + cargo-deny rejecting direct tracing_subscriber::fmt() builder calls outside the binary's main entrypoint."
+  }
+}

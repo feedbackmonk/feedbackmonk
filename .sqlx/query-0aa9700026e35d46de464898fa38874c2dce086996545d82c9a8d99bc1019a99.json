@@ -1,0 +1,46 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT brand_name, email_subject_prefix, support_email,\n                   unsubscribe_url, footer_signature\n            FROM tenants\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "brand_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "email_subject_prefix",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "support_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "unsubscribe_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "footer_signature",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "0aa9700026e35d46de464898fa38874c2dce086996545d82c9a8d99bc1019a99"
+}

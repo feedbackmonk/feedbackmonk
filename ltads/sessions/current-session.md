@@ -4,10 +4,13 @@
 **Role**: orchestrator (Stage 1 monitor + autopilot:continuous chain coordinator)
 **Started**: 2026-05-13T22:00:00Z
 **Paused-At**: 2026-05-13T22:15:00Z
-**Status**: PAUSED
+**Resumed-At**: 2026-05-13T23:25:03Z
+**Status**: ACTIVE
 **Paused-By**: /0-uldf-proceed HANDOFF→PODS at POST-STAGE-1 boundary (mid-arc, NOT arc-terminus; successor session inherits via .claude/handoff/handoff-20260513-221500.md and continues autopilot:continuous chain)
-**Phase**: P0 (Foundation), Stage 1 (Foundation Contract)
-**Plan**: docs/planning/plans/20260513T210133-feedbackr-p0-foundation.md
+**Resumed-By**: /0-uldf-ltads-start arrival from .claude/handoff/handoff-20260513-190819.md (P1 plan authored 23:11:15Z; Stage 1 orchestrated worker spawn pending)
+**Phase**: P1 (Closes the Loop), Stage 1 (Foundation Contracts + PII Oracle)
+**Plan**: docs/planning/plans/20260513T231115-feedbackr-p1-closes-the-loop.md
+**P0 Plan (reference)**: docs/planning/plans/20260513T210133-feedbackr-p0-foundation.md
 **Arc Plan**: docs/planning/plans/20260513T185711-feedbackr-v1-build-arc.md
 
 **Autonomy Override**: autopilot:continuous (from .claude/session-state/task-arc-autonomy.json; arc grant active until 2026-05-14T21:06:21Z OR spec exhausted)
@@ -16,16 +19,19 @@
 
 ## Active Work
 
-Stage 1 of P0 Foundation (SEQUENTIAL, single orchestrated worker):
-- Task Zero: build `multi-tenant-isolation-check` Verification Oracle
-- Sub-task 1 (FR-FBR-01): data model + tenant-scoped repository layer per Contract C1
+Stage 1 of P1 (Closes the Loop) (SEQUENTIAL, single orchestrated worker):
+- Task Zero: build `pii-scrub-audit` Verification Oracle (Probe A AST + Probe B hash)
+- Sub-task 1: `crates/feedbackr-tracing/` PII scrubber (canonical 20-pattern port from GitCellar) + Layer + main.rs wire-in
+- Sub-task 2: migrations 00003_feedback_status_history.sql + 00005_tenant_email_brand.sql
+- Sub-task 3: repository surface extensions (FeedbackRepo + new FeedbackStatusHistoryRepo + TenantRepo brand surface)
+- Sub-task 4: frozen contracts handoff doc (C6/C7/C8/C9/C10/C11 + TypeScript type-mirror code block) at `docs/planning/handoffs/p1-stage1-to-stage2.md`
 
-## Chain Plan (autopilot:continuous)
+## Chain Plan (autopilot:continuous — P1)
 
-1. Stage 1 (this session, orchestrated worker) — Foundation Contract
-2. Stage 2 (PODS, 2 workers) — Worker A (signup/onboarding) + Worker B (submission path) — auto-triggered at Stage 1 exit gate
-3. Stage 3 (single session in converging tree) — health + observability
-4. P0 exit gate → /0-uldf-finalize → P1 begins via fresh /0-uldf-ldis-plan
+1. P1 Stage 1 (this session, orchestrated worker) — Foundation Contracts + PII Oracle
+2. P1 Stage 2 (PODS, 2 workers) — Worker A (backend: status workflow + emails, FR-FBR-08+09) + Worker B (frontend: admin UI React+Vite, FR-FBR-07) — auto-triggered at Stage 1 exit gate
+3. P1 Stage 3 (single session in converging tree) — e2e-p1-curl.sh witness + carry-forward critic C-002 + 5 missing module READMEs (ULADP)
+4. P1 exit gate → /0-uldf-finalize --skip-push → P2 begins via fresh /0-uldf-ldis-plan
 
 ## Mid-arc Checkpoint
 

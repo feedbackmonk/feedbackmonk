@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tenants\n            SET brand_name           = $2,\n                email_subject_prefix = $3,\n                support_email        = $4,\n                unsubscribe_url      = $5,\n                footer_signature     = $6,\n                updated_at           = now()\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "dda19ef5a76f00465b2c064a928b306a116965608756a8c1ba345d82a6969ba7"
+}

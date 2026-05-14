@@ -163,3 +163,45 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 **Where this pays off again**: P1 admin UI handlers (FR-FBR-07: feedback list view) will use `MatchedPath` for OpenTelemetry span naming. P2 widget CDN serving (FR-FBR-04) will use `OriginalUri` for CSP nonce binding. Both need the same wiring; both need e2e witnesses.
 
 ---
+
+## P1 Stage 1 (2026-05-13)
+
+### D-FBR-10: Write-boundary scrubbing beats Layer-field scrubbing for log-PII chokepoints
+
+**Surfaced by**: `feedbackr-tracing` PII scrubber design (S1-T1).
+
+**What was discovered**: The P1 plan brief called for a `tracing_subscriber::Layer<...>` impl that applies the canonical-pattern scrub to event field values. The implementation chose a different seam — `ScrubbingMakeWriter` at the formatted-byte WRITE boundary — and the property holds more cleanly. A `Layer` impl scrubs field values, but the formatter still emits level prefixes, span metadata, JSON-encoded structured fields, and timestamp data through paths the Layer never sees. The writer-boundary chokepoint covers ALL emitted bytes because every byte of every log line passes through `MakeWriter::make_writer`.
+
+**Generalizable insight**: For "every X passes through Y" invariants in a stacked subscriber/middleware pattern, prefer the **terminal seam** (where bytes/values cross into the external sink) over an **intermediate transform seam** (where you can be sidestepped by other transforms operating on different fields). The terminal seam is harder to bypass because the transport mechanism itself converges through it. The defense-in-depth check (AST oracle Probe A forbidding `impl Layer<...> for ...` outside the crate) catches the case where a future maintainer is tempted to add a parallel Layer impl that bypasses the writer.
+
+**Trade-off captured**: Writer-boundary scrubbing means the scrub function operates on already-formatted bytes (UTF-8 strings with JSON-escapes possibly applied), not on raw field values. This is fine for regex-based pattern matching but would be the wrong choice for structured field-aware scrubbing (e.g., "redact a specific field name across all log events regardless of value"). Our 20 canonical patterns are all value-pattern-based, so the trade is clean.
+
+**Where this pays off again**: Any future "every emitted X passes through canonical sanitizer" surface — email outbound (FR-FBR-09 P1 Stage 2: every email body passes through canonical link-encoder + footer-injection — Stage 2 should consider the smtp-transport seam, not a per-template transform seam), widget event egress (FR-FBR-04 P2: every widget telemetry event passes through CSP/origin-validation), webhook delivery (P3).
+
+---
+
+### D-FBR-11: Three-tuple pattern records — promote diagnostic identity into the data shape
+
+**Surfaced by**: `CANONICAL_PATTERNS: &[(&str, &str, &str)]` shape design in `feedbackr-tracing`.
+
+**What was discovered**: GitCellar's source stores `Rule { re, replacement }` with the pattern name only in a `//` comment. Porting verbatim would have made the `pii-scrub-audit` Probe B oracle unable to name offenders ("a pattern drifted" rather than "the `aws-access-key-id` pattern drifted") and would have made re-ordering invisible to a hash check (if the regex+replacement pair is unchanged, the bytes are the same regardless of position). Promoting `name` to the first slot of the tuple made both problems disappear: the oracle reports `pattern-set drift: actual=X expected=Y; parsed 20 patterns; review every tuple in <path>`, and the hash includes the human label.
+
+**Generalizable insight**: When a data slice will be consumed by both runtime code AND a Verification Oracle that hash-locks the slice, the slice's **shape itself** has a diagnostic dimension — the oracle's error-message quality depends on what identifiers travel inside the hash. Identifiers that live only in adjacent comments are invisible to the oracle. If you're tempted to put a label in a comment "for clarity," ask: is this label load-bearing for any verification surface? If yes, promote it into the data shape.
+
+**Where this pays off again**: Any future canonical-set-with-drift-detection — `tier-enforcement-status` (P3, canonical tier-cap rules), JWT-verifier hardcoded-alg-list (P0+, currently a const slice in `feedbackr-jwt`), email-template-id manifest (P1 Stage 2, FR-FBR-09).
+
+---
+
+### D-FBR-12: Post-orchestrated-worker finalize needs `--all` (orchestrator owns the convergence commit)
+
+**Surfaced by**: P1 Stage 1 mid-arc commit finalize protocol.
+
+**What was discovered**: In autopilot:continuous Orchestrated Execution, the worker session is spawned in a separate CLI process, produces all code changes, and terminates. The orchestrator session (this one) never *itself* writes the changes via tool calls — it only edits LTADS coordination files (`current-session.md`, `development-brief.md`, etc.) and the plan doc. The standard finalize "Session Files" list would only enumerate orchestrator-side edits, leaving the worker's code changes unstaged.
+
+**Generalizable insight**: The Session Scope Guard in the finalizer agent is the right default (it prevents cross-session contamination in PODS/peer-parallel modes), but Orchestrated Execution needs an explicit `--all` flag because the worker's writes are by-design owned by the orchestrator at convergence. The autopilot loop documented in `start_autopilot.md` ("spawn worker → auto-monitor → auto-finalize → repeat") implicitly requires `--all` at the auto-finalize step.
+
+**Framework-level recommendation** (not project-level): The autopilot loop's auto-finalize invocation should pass `--all` automatically when the topology is Orchestrated Execution (detected via `ltads/orchestration/mode.json` or equivalent), with the rationale rendered into the commit context. Today's flow requires the user (or chain coordinator) to remember the flag.
+
+**Where this pays off again**: Every Orchestrated Execution mid-arc checkpoint commit. P1 Stage 2 PODS converge is a different shape (PODS has its own `/0-uldf-pods-converge` flow with explicit ownership-trail), but a fresh orchestrated worker in P1 Stage 3 or any subsequent phase will hit the same boundary.
+
+---

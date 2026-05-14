@@ -2,50 +2,50 @@
 
 Rolling high-level state. Auto-maintained by `/0-uldf-finalize` Phase 12. Cheap orientation for fresh sessions; for detail, go to `docs/specs/` and `docs/planning/`.
 
-**Last updated**: 2026-05-13 (P0 Foundation CLOSE — Stages 1+2+3 all DONE; e2e P0-exit-gate witness PASS)
+**Last updated**: 2026-05-13 (P1 Stage 1 mid-arc checkpoint — Foundation Contracts + PII Oracle DONE; Stage 2 PODS pending)
 
 ---
 
 ## Current Focus
 
-**P1 — Closes the Loop** (next, not yet started). FR-FBR-07/08/09/10:
-- **FR-FBR-07** — Admin UI: feedback list view + drawer detail + reply composer with public/internal visibility tabs + status transition controls. React port from `gitcellar-cloud/admin-ui/`.
-- **FR-FBR-08** — Status workflow: 6-state machine (`submitted` → `triaged` → `in-progress` → `shipped`/`wontfix`/`duplicate`) with audit history in `feedback_status_history`.
-- **FR-FBR-09** — Status emails (plain-text): confirmation, on-status-change, on-public-reply. FB-NNNNNN display IDs in subject. Footer parameterized per tenant brand.
-- **FR-FBR-10** — PII scrubber with canonical 20-pattern regex set + drift-detection oracle (port verbatim from `gitcellar-service/src/feedback_logs/scrubber.rs`).
+**P1 Stage 2** (PODS, 2 workers — backend + admin UI) after Stage 1 mid-arc checkpoint commit.
 
-P1 entry point: fresh `/0-uldf-ldis-plan "Feedbackr P1 — Closes the Loop"` consuming the arc plan at `docs/planning/plans/20260513T185711-feedbackr-v1-build-arc.md`.
+Stage 2 spawn surface is the frozen handoff doc `docs/planning/handoffs/p1-stage1-to-stage2.md`, which contains Contracts C6/C7/C8/C9/C10/C11 verbatim + TypeScript type mirror + pre-authorized self-mediation widenings. Workers consume this as the library surface — no signature deviation without LD ratification.
+
+- **Worker A (backend)**: status workflow transition handlers (FR-FBR-08), status emails plain-text rendering through PII-scrubbed paths (FR-FBR-09), audit-row atomicity contract (C7).
+- **Worker B (frontend admin UI)**: React port from `gitcellar-cloud/admin-ui/` (FR-FBR-07), feedback list view + drawer detail + reply composer with public/internal visibility tabs + status transition controls. Binds dev-port 14204 with `strictPort: true`.
 
 ## Active Threads
 
-- **P0 Foundation — COMPLETE**: all 5 P0 FRs DONE (FR-FBR-01/02/03/05/06/18); 118 tests pass; `multi-tenant-isolation-check` oracle GREEN; e2e P0-exit-gate witness `scripts/e2e-p0-curl.sh` PASS 7/7 end-to-end against live binary :14304 + Postgres :5433 + Mailpit :1025/:8025.
-- **AGPL LICENSE pre-public-commit ratification gate — PENDING USER ACTION**: LICENSE file is still a stub; repo stays local-only until user replaces with full AGPL-3.0 text + finalizes GitHub org + domain registration. Not a P1 blocker; only blocks first public push.
-- **LTADS S001** — autopilot:continuous, mid-arc. Arc grant in `.claude/session-state/task-arc-autonomy.json` valid until 2026-05-14T21:06:21Z; continues onto P1 phase.
+- **P1 Stage 1 — DONE** (commit pending this finalize): `pii-scrub-audit` oracle built (Task Zero leg 2) + `feedbackr-tracing` crate shipped + migrations 00003 (`feedback.status` + audit history) + 00005 (tenant email brand) applied + repository surface extended (`FeedbackRepo::list_for_admin`/`get_with_history` + `FeedbackStatusHistoryRepo` + `TenantRepo::get_brand`/`update_brand`/`EmailTenantBrand`). 118 → 185 tests (+67). Both Verification Oracles GREEN.
+- **P1 Stage 2 PODS pending**: spawn via `/0-uldf-pods-parallelize` consuming `docs/planning/handoffs/p1-stage1-to-stage2.md`.
+- **P0 Foundation — COMPLETE** (closed at commit `b9a672a`): all 5 P0 FRs DONE; e2e P0-exit-gate witness PASS 7/7; 118 tests pass.
+- **AGPL LICENSE pre-public-commit ratification gate — PENDING USER ACTION**: LICENSE file still a stub; repo stays local-only until user replaces with full AGPL-3.0 text + finalizes GitHub org + domain registration. P1 work continues local-only.
+- **LTADS S001** — autopilot:continuous, mid-arc. Arc grant valid until 2026-05-14T21:06:21Z; continues into P1 Stage 2.
 - **GitCellar widget-embed touchpoint — DEFERRED to late P2 / early P3**. No P1 cross-repo blockers.
 
 ## Recent Decisions
 
-- **DEC-PODS-001** (P0 Stage 2) — `ProjectRepo::open_for_submission(project_id) -> Result<ProjectScope>` allow-listed pre-auth-boundary widening to Contract C1. Self-mediated by CLAUDE-B under autopilot:continuous; LD-ratified. Pattern: pre-auth allowlist now proven as a repeatable mechanism for legitimate Contract-C1 widening (see DISCOVERIES.md D-FBR-05). 3 cross-tenant binding tests added.
-- **DEC-PODS-002** (P0 Stage 2) — `EmailVerificationRepo` trait + `migrations/00002_email_verifications.sql` schema addition. Self-mediated by CLAUDE-A (structurally necessary — `multi-tenant-isolation-check` Probe A forbids raw SQL outside repo crate). LD-ratified. 5 sqlx-test integration tests.
-- **Contract C1 frozen** (P0 Stage 1) — repository public surface stable; all subsequent stages worked within it without signature deviations.
-- **Contract C2 frozen** (P0 Stage 2 Worker B) — JWT verifier 6 hard invariants enforced by `crates/feedbackr-jwt/` + witness-backed by 24 named tests in the fixture corpus.
-- **Contract C5 frozen** (P0 Stage 3) — `/health` + `/health/ready` JSON shape with `SqlxHealthCheck` ping; 200/503 liveness/readiness split.
-- **DEC-FBR-IMPL-01..04** (P0 Stage 1) — Contract C1 extensions; `scope_for` allowlist; Python-canonical oracle pattern; dev-port 5433 deconfliction.
+- **Contracts C6 / C7 / C8 / C9 / C10 / C11 frozen** (P1 Stage 1) — captured verbatim in `docs/planning/handoffs/p1-stage1-to-stage2.md` for Stage 2 fan-out. Spec-side reconciliation deferred to P1 arc-close `/0-uldf-conform-specs` pass; the handoff doc is itself durable.
+- **DEC-FBR-IMPL-03 reapplied: Python-canonical oracle pattern** — `pii-scrub-audit` Probe B parses Rust `CANONICAL_PATTERNS` source across lines to extract `(name, regex, replacement)` tuples and hash them. Pure shell would false-positive on near-line-continuation patterns (same lesson surfaced by `multi-tenant-isolation-check` in P0). Documented in oracle README + DISCOVERIES.md D-FBR-10.
+- **Write-boundary scrubbing chokepoint** (P1 Stage 1, deviation from brief) — PII scrub applied at `ScrubbingMakeWriter` instead of a `tracing_subscriber::Layer<...>` impl. Captures formatter prefixes + span metadata + JSON-encoded fields the Layer would miss. Three-leg defense: `install_global_subscriber` chokepoint (type system) + Probe A AST oracle (forbids `impl Layer<...> for ...` outside crate) + clippy baseline. Documented in `crates/feedbackr-tracing/README.md` Decision Log + DISCOVERIES.md D-FBR-11.
+- **`TenantRepo::get_brand` separation from `find_by_email`** (P1 Stage 1) — pre-auth surface kept minimal; brand reads route through normal `&TenantScope`-scoped path. Documented in `crates/feedbackr-repository/README.md` Decision Log.
+- **Migration 00003 cohesion** (P1 Stage 1) — `feedback.status` column + `feedback_status_history` table land in the SAME migration; removes a forced Stage 2 widening. Documented in the migration file header comment.
+- **DEC-PODS-001 / DEC-PODS-002** (P0 Stage 2) — pre-auth allowlist as a repeatable Contract-C1 widening mechanism. Pattern still active for P1+.
 
 ## Risks
 
 | Risk | Stage | Notes |
 |---|---|---|
-| **AGPL LICENSE stub** | Pre-public | User-action: replace `LICENSE` file with full AGPL-3.0 text from `https://www.gnu.org/licenses/agpl-3.0.txt` before first public push. Repo MUST stay local-only until then per DEC-FBR-05 + project CLAUDE.md `--skip-push` invariant. |
-| **GitHub org + domain registration** | Pre-public | User-action: pending. Working name "Feedbackr" through P3; brand pass at P4 (DEC-FBR-09). |
-| **In-memory anonymous rate-limiter loses state on restart** | P0 (deferred to v1.1) | Acceptable for P0 single-instance dogfood; `feedbackr-anon` API surface designed for non-breaking Redis backend swap in v1.1. See DISCOVERIES.md D-FBR-08. |
-| **PII scrub drift in P1** | P1 | Mitigated by `pii-scrub-audit` oracle scheduled at P1 entry. Canonical 20-pattern set must be ported byte-for-byte from `gitcellar-service/src/feedback_logs/scrubber.rs`. |
+| **AGPL LICENSE stub** | Pre-public | User-action: replace `LICENSE` file with full AGPL-3.0 text before first public push. Repo MUST stay local-only until then per DEC-FBR-05 + project CLAUDE.md `--skip-push` invariant. |
+| **GitHub org + domain registration** | Pre-public | User-action pending. Working name "Feedbackr" through P3; brand pass at P4 (DEC-FBR-09). |
+| **In-memory anonymous rate-limiter loses state on restart** | P0 (deferred to v1.1) | Acceptable for P0 single-instance dogfood; non-breaking Redis backend swap planned for v1.1. See DISCOVERIES.md D-FBR-08. |
+| **PII scrub drift in P1** | P1 | **MITIGATED** — `pii-scrub-audit` oracle shipped (Task Zero leg 2). Probe A (AST) + Probe B (SHA-256 over canonical pattern set). PASS on this commit. |
 | **GitCellar peer repo coordination** | Late P2 / early P3 | First cross-repo touchpoint when GitCellar embeds the widget. Forward-looking only; not a P1 blocker. |
 
 ## Next-Best-Steps
 
-1. **User action** — replace `LICENSE` stub with full AGPL-3.0 text; register GitHub org + domain. (Pre-public-commit gate; orthogonal to P1 implementation.)
-2. **`/0-uldf-proceed`** at P0 → P1 phase boundary. Topology selector will likely pick **HANDOFF** (fresh `/0-uldf-ldis-plan` session is the right shape — P1 is multi-FR, needs full planning treatment).
-3. If HANDOFF chosen: **`/0-uldf-ldis-plan "Feedbackr P1 — Closes the Loop"`** consuming the arc plan; produces P1's intra-phase topology + interface contracts + Oracle Pre-Build Plan + Testability Gate findings.
-4. P1 implementation likely PODS (admin UI + status workflow + emails + PII scrub are independent surfaces with parallel-friendly contracts).
-5. **`pii-scrub-audit` oracle** must be built at P1 entry (port from GitCellar's existing oracle; drift-detection over canonical 20-pattern set).
+1. **User action** — replace `LICENSE` stub with full AGPL-3.0 text; register GitHub org + domain. (Orthogonal to P1 implementation.)
+2. **`/0-uldf-pods-parallelize "Feedbackr P1 Stage 2 — Status Workflow + Admin UI"`** — Stage 2 PODS spawn consuming `docs/planning/handoffs/p1-stage1-to-stage2.md` as the freeze surface. Two workers: Worker A (backend status workflow + emails, FR-FBR-08+09) + Worker B (frontend admin UI on port 14204, FR-FBR-07).
+3. After Stage 2 converges: **Stage 3 single session in converging tree** — `scripts/e2e-p1-curl.sh` witness + carry-forward critic findings + ULADP module READMEs for any new modules.
+4. **P1 exit gate** → `/0-uldf-finalize --skip-push` → `/0-uldf-ldis-plan "Feedbackr P2 — Customer-Facing"`.

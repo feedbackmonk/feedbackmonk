@@ -92,7 +92,7 @@ Oracle candidates surfaced during spec. To be authored during P0-P1 or as Task Z
 | `widget-bundle-size` | Current widget JS+CSS bundle size; FR-FBR-04 caps it at 30KB | trigger-invalidate (on build) | **Verification Oracle — build before P2 ships** |
 | `multi-tenant-isolation-check` | Verify no cross-tenant data leakage in any query path (FR-FBR-01) | trigger-invalidate (on schema/access-layer change) | **BUILT (P0 Stage 1 Task Zero)** — `.claude/oracles/multi-tenant-isolation-check/` (Python canonical + ps1/sh shims). PASS on every Stage 1 commit. |
 | `tier-enforcement-status` | Confirm each pricing-tier cap fires correctly (FR-FBR-14) | always-fresh on cap-check | **Verification Oracle — build during P3** |
-| `pii-scrub-audit` | Drift-detection over canonical PII pattern set (FR-FBR-10) | freshness via pattern-set hash | Port from GitCellar's existing oracle |
+| `pii-scrub-audit` | Drift-detection over canonical PII pattern set (FR-FBR-10) | freshness via pattern-set hash | **BUILT (P1 Stage 1 Task Zero)** — `.claude/oracles/pii-scrub-audit/` (Python canonical + bash shim). Probe A (AST: no tracing-subscriber setup outside `crates/feedbackr-tracing/`) + Probe B (SHA-256 hash drift on `CANONICAL_PATTERNS`). PASS on every P1+ commit. *(reconciled from implementation)* |
 
 Project-state oracles (not Verification Oracles):
 

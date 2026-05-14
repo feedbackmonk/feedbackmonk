@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::ids::{FeedbackId, SigningKeyId};
+use crate::status::FeedbackStatus;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tenant {
@@ -95,6 +96,11 @@ pub struct Feedback {
     pub body: String,
     pub kind: FeedbackKind,
     pub accepted_at: DateTime<Utc>,
+    /// FR-FBR-08 status workflow column. Defaults to `Submitted` for rows
+    /// inserted before migration 00003 (the column has a server-side
+    /// default; the repository layer reads it as part of `get_with_history`).
+    #[serde(default)]
+    pub status: FeedbackStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

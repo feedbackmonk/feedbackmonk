@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT short_code,\n                   kind,\n                   status,\n                   left(body, 200) AS body_excerpt,\n                   end_user_email,\n                   anon_token_hash IS NOT NULL AS is_anonymous,\n                   accepted_at\n            FROM feedback\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND ($3::text IS NULL OR status = $3)\n            ORDER BY accepted_at DESC\n            LIMIT $4\n            OFFSET $5\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "body_excerpt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_user_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "is_anonymous",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "accepted_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      null,
+      true,
+      null,
+      false
+    ]
+  },
+  "hash": "ee808faa0184a5cd35d997a5b4d6bee217541ac07571dbd5c7f3e89222624112"
+}

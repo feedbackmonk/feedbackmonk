@@ -75,3 +75,15 @@ rationale = "Constructor: stores PgPool handle; performs no queries."
 type_name = "SqlxHealthCheck"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Used by Stage 3's /health + /health/ready endpoints (FR-FBR-18, Contract C5). The companion `ping` method takes only `&self` and runs a trivial `SELECT 1` round-trip — no tenant-bound data flows through it; the oracle's Probe B accepts &self-only methods by design (no caller-supplied identifier to check)."
+
+# --- P1 Stage 1 additions (Contract C6 + Contract C10) ---
+
+[[inherent_methods]]
+type_name = "SqlxFeedbackStatusHistoryRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Mirrors every other SqlxXxxRepo::new in this crate."
+
+[[inherent_methods]]
+type_name = "EmailTenantBrand"
+method = "from_db"
+rationale = "Value-type constructor (not a repository method). Builds an `EmailTenantBrand` from raw DB column values; no DB access, no scope coupling. Used by `TenantRepo::get_brand` which IS scope-protected."

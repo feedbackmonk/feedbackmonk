@@ -16,6 +16,7 @@
 pub mod email_verifications;
 pub mod error;
 pub mod feedback;
+pub mod feedback_status_history;
 pub mod health;
 pub mod projects;
 pub mod scope;
@@ -24,9 +25,10 @@ pub mod tenants;
 
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
-pub use feedback::{FeedbackRepo, SqlxFeedbackRepo};
+pub use feedback::{FeedbackListItem, FeedbackRepo, SqlxFeedbackRepo, StatusHistoryRow};
+pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
 pub use health::SqlxHealthCheck;
 pub use projects::{ProjectRepo, SqlxProjectRepo};
 pub use scope::{ProjectScope, TenantScope};
 pub use signing_keys::{SigningKeyRepo, SqlxSigningKeyRepo};
-pub use tenants::{SqlxTenantRepo, TenantRepo};
+pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo};

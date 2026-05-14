@@ -1,0 +1,41 @@
+# pii-scrub-audit — TOML mirror of manifest.json.
+#
+# The Feedbackr oracle harness reads manifest.json (matches the existing
+# multi-tenant-isolation-check oracle's convention). The brief specifies
+# manifest.toml — kept as a TOML mirror so anyone consulting the file by
+# brief-name lands on the same authoritative metadata. Drift between the
+# two files is a documentation bug; manifest.json wins at runtime.
+
+name = "pii-scrub-audit"
+version = "1.0.0"
+kind = "verification"
+category = "privacy"
+question = "Does every emitted log line pass through the canonical 20-pattern PII scrubber installed by feedbackr_tracing::install_global_subscriber, and does the in-tree pattern set still match the canonical hash?"
+
+[invocation]
+unix = ".claude/oracles/pii-scrub-audit/oracle.sh"
+windows = ".claude/oracles/pii-scrub-audit/oracle.sh"
+
+[output]
+format = "text"
+schema = "PASS or FAIL <count> with file:line offenders + hash diff on FAIL; exit 0 on PASS, 1 on FAIL"
+
+[freshness]
+strategy = "trigger-invalidate"
+triggers = [
+  "crates/feedbackr-tracing/**",
+  "crates/feedbackr-api/src/main.rs",
+  "crates/feedbackr-anon/**",
+  "crates/feedbackr-jwt/**",
+  "crates/feedbackr-core/**",
+  "crates/feedbackr-repository/**",
+  "crates/feedbackr-api/**",
+  "migrations/**",
+  ".claude/oracles/pii-scrub-audit/expected_hash.txt",
+]
+compute_cost_ms = 250
+
+[provenance]
+authored_by = "stage1-worker (P1 Foundation, Task Zero)"
+created = "2026-05-13T23:30:00Z"
+rationale = "FR-FBR-10 + DEC-FBR-01 Persona D. Three-leg defense per D-FBR-02: (1) type chokepoint in install_global_subscriber, (2) this oracle (AST probe + hash probe), (3) clippy + cargo-deny."

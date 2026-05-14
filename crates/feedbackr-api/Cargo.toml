@@ -10,6 +10,7 @@ feedbackr-anon = { path = "../feedbackr-anon" }
 feedbackr-core = { path = "../feedbackr-core" }
 feedbackr-jwt = { path = "../feedbackr-jwt" }
 feedbackr-repository = { path = "../feedbackr-repository" }
+feedbackr-tracing = { path = "../feedbackr-tracing" }
 anyhow = { workspace = true }
 argon2 = { workspace = true }
 async-trait = { workspace = true }

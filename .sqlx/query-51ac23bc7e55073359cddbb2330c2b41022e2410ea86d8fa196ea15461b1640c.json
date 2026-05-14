@@ -1,0 +1,96 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, short_code, project_id, tenant_id,\n                   end_user_sub, end_user_email, end_user_name,\n                   external_metadata, anon_token_hash, body, kind, accepted_at, status\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "short_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "end_user_sub",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "end_user_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "end_user_name",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "external_metadata",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 8,
+        "name": "anon_token_hash",
+        "type_info": "Bytea"
+      },
+      {
+        "ordinal": 9,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "accepted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 12,
+        "name": "status",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "51ac23bc7e55073359cddbb2330c2b41022e2410ea86d8fa196ea15461b1640c"
+}

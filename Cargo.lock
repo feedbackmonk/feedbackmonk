@@ -582,6 +582,7 @@ dependencies = [
  "feedbackr-core",
  "feedbackr-jwt",
  "feedbackr-repository",
+ "feedbackr-tracing",
  "hmac",
  "http-body-util",
  "lettre",
@@ -644,6 +645,18 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+]
+
+[[package]]
+name = "feedbackr-tracing"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "regex",
+ "sha2",
+ "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1641,6 +1654,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4666a1a60d8412eab19d94f6d13dcc9cea0a5ef4fdf6a5db306537413c661b1b"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "regex"
+version = "1.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
 ]
 
 [[package]]

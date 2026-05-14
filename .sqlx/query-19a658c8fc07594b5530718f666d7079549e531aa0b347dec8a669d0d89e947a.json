@@ -1,0 +1,66 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT h.id,\n                   h.feedback_id,\n                   h.from_status,\n                   h.to_status,\n                   h.reason_note,\n                   h.duplicate_of_feedback_id,\n                   h.transitioned_by,\n                   h.transitioned_at\n            FROM feedback_status_history AS h\n            JOIN feedback AS f ON f.id = h.feedback_id\n            WHERE f.tenant_id = $1\n              AND f.project_id = $2\n              AND f.short_code = $3\n            ORDER BY h.transitioned_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "feedback_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "from_status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "to_status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "reason_note",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "duplicate_of_feedback_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 6,
+        "name": "transitioned_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 7,
+        "name": "transitioned_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "19a658c8fc07594b5530718f666d7079549e531aa0b347dec8a669d0d89e947a"
+}

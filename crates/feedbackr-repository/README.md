@@ -26,8 +26,10 @@ The crate implements a three-leg defense against tenant-isolation drift:
 | `src/tenants.rs` | `TenantRepo` trait + `SqlxTenantRepo` impl. **Three pre-auth allow-listed methods**: `create`, `find_by_email`, `scope_for`. 4 tests including cross-tenant lookup invariants. |
 | `src/projects.rs` | `ProjectRepo` trait + `SqlxProjectRepo` impl. `open(&TenantScope, project_id)` is the **sole** `ProjectScope` constructor in the public API. 4 tests including `open_rejects_cross_tenant_project`. |
 | `src/signing_keys.rs` | `SigningKeyRepo` trait + `SqlxSigningKeyRepo` impl. Always takes `&ProjectScope` first. 2 tests. |
-| `src/feedback.rs` | `FeedbackRepo` trait + `SqlxFeedbackRepo` impl. `submit_authenticated`, `submit_anonymous`, `list_recent`. 3 tests including `list_recent_only_returns_scope_owner_rows`. |
+| `src/feedback.rs` | `FeedbackRepo` trait + `SqlxFeedbackRepo` impl. P0: `submit_authenticated`, `submit_anonymous`, `list_recent`. **P1 Stage 1 additions**: `list_for_admin(scope, status_filter, limit, offset)` + `get_with_history(scope, feedback_id)` (Contract C6 backing). Also defines `FeedbackListItem` and `StatusHistoryRow` value types. ~8 tests including cross-tenant negatives for the new methods. |
+| `src/feedback_status_history.rs` | **P1 Stage 1**. `FeedbackStatusHistoryRepo` trait + `SqlxFeedbackStatusHistoryRepo` impl. `append(scope, feedback_id, from, to, reason?, duplicate_of?, transitioned_by)` + `list_for_feedback(scope, feedback_id)`. Both `&ProjectScope`-first. 4 sqlx::test cases including cross-tenant negatives + duplicate_of cross-tenant rejection. |
 | `src/email_verifications.rs` | `EmailVerificationRepo` trait + `Redemption` value type + `SqlxEmailVerificationRepo` impl. `create` / `redeem` / `mark_used`. **5 tests** including round-trip, unknown-token, mark-used, duplicate-token conflict, cascade-delete. **`redeem` is pre-auth allow-listed (the verify token IS the credential at redemption time)**; see DEC-PODS-002 below. Added in P0 Stage 2 by CLAUDE-A. |
+| `src/tenants.rs` (P1 Stage 1 extension) | `TenantRepo` trait now includes `get_brand` + `update_brand` plus the new `EmailTenantBrand` value type (Contract C10). The pre-existing `create` was extended to populate brand-column defaults inline so new signups land identically to migration 00005's backfilled rows. |
 | `Cargo.toml` | Adds `clippy::pedantic` on top of the workspace's `clippy::all = deny`. Depends on `sqlx`, `uuid`, `chrono`, `async-trait`, `thiserror`, `serde_json`, `feedbackr-core`. |
 
 ## Public API & Usage
@@ -116,6 +118,16 @@ The method body looks up `tenant_id` from the `projects` table and mints both `T
 **Trade-offs**: Adds a fourth entry to the pre-auth allowlist. Different from the existing three in that the `Uuid` argument is *not* an already-verified identifier — it's a public URL-path parameter. This is intentional: the method ONLY mints a scope, it does NOT authorize any writes; authorization happens at the JWT/anon layer downstream. The contract is: "I am a public endpoint by design; please mint me a scope so I can write through the tenant-isolated path, and the rest of the protection lives in the JWT verifier."
 
 **Implementation**: `src/projects.rs` — `async fn open_for_submission(&self, project_id: Uuid) -> Result<ProjectScope>`. Returns `RepoError::NotFound` for unknown `project_id`. Three integration tests cover existing-project mint, unknown-project, and cross-tenant binding invariant (`open_for_submission_binds_scope_to_correct_tenant_across_tenants`). Allowlist entry under "pre-authentication boundary" rationale citing DEC-FBR-04 + DEC-PODS-001.
+
+### `TenantRepo::get_brand` is its own method, not a widening of `find_by_email` (P1 Stage 1)
+
+**Decision**: `TenantRepo::get_brand(&TenantScope) -> Result<EmailTenantBrand>` is a new tenant-scoped method that reads the brand columns added by migration 00005. We did NOT widen the pre-auth allow-listed `find_by_email` to return brand fields.
+
+**Rationale**: `find_by_email` is one of the three pre-auth allow-listed methods (alongside `create` and `scope_for`). Pre-auth surface discipline is load-bearing — every column added to a pre-auth return type expands the attack surface available to a caller that has only proven they know an email address. Brand fields are NOT load-bearing pre-auth (they're consumed by email-template rendering, which happens deep inside an authenticated request lifecycle). Adding a separate `get_brand(&TenantScope)` keeps the pre-auth payload minimal and routes brand reads through normal scope-discipline.
+
+**Trade-offs**: One extra DB round-trip for handlers that need both auth and brand. Mitigated by the fact that admin handlers are rarely auth-then-brand in the same call path (auth happens at session-middleware time; brand is read by the email-emit code path, which has its own scope). Stage 2 Worker A may revisit if profiling shows the extra round-trip is hot.
+
+**Implementation**: `src/tenants.rs` — `async fn get_brand(&self, scope: &TenantScope) -> Result<EmailTenantBrand>` + `async fn update_brand(&self, scope: &TenantScope, brand: &EmailTenantBrand) -> Result<()>`. `EmailTenantBrand` value type lives in `src/tenants.rs` and is re-exported from `lib.rs`. Pre-existing `TenantRepo::create` was extended to populate the brand-column defaults inline so new signups land identically to migration 00005's backfilled rows. Cross-tenant negatives + defaults-match-migration tests cover the new surface.
 
 ### `EmailVerificationRepo` + `redeem` allow-listed pre-auth (DEC-PODS-002)
 

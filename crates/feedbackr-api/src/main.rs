@@ -39,7 +39,7 @@ use feedbackr_api::submission_router;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    init_tracing();
+    init_tracing()?;
 
     let port: u16 = env::var("FEEDBACKR_PORT")
         .ok()
@@ -66,32 +66,31 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Initialise tracing per FR-FBR-18. `FEEDBACKR_LOG_FORMAT=json` (default in
-/// prod-style deployments) emits structured JSON suitable for log aggregators;
-/// `FEEDBACKR_LOG_FORMAT=text` is the human-friendly dev format. Log level is
-/// controlled by `RUST_LOG` (default `info`).
-fn init_tracing() {
-    use tracing_subscriber::EnvFilter;
-    let filter = EnvFilter::try_from_env("RUST_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
-    let fmt = std::env::var("FEEDBACKR_LOG_FORMAT").unwrap_or_else(|_| "json".to_string());
-    match fmt.as_str() {
-        "text" => {
-            tracing_subscriber::fmt()
-                .with_env_filter(filter)
-                .init();
-        }
-        _ => {
-            // JSON is the default — structured for log aggregators per
-            // FR-FBR-18. Includes the request_id span field automatically
-            // when the request lives inside the TraceLayer's span (below).
-            tracing_subscriber::fmt()
-                .json()
-                .with_current_span(true)
-                .with_span_list(false)
-                .with_env_filter(filter)
-                .init();
-        }
-    }
+/// Initialise tracing per FR-FBR-18 + FR-FBR-10.
+///
+/// Delegates to `feedbackr_tracing::install_global_subscriber`, the
+/// workspace-wide PII-scrubbing chokepoint. `FEEDBACKR_LOG_FORMAT=json`
+/// (production default) emits structured JSON; `FEEDBACKR_LOG_FORMAT=text`
+/// is the human-friendly dev format. `RUST_LOG`, if set, overrides the
+/// `level` argument (parsed inside `install_global_subscriber`).
+///
+/// The `pii-scrub-audit` Verification Oracle (Probe A) forbids any other
+/// `tracing_subscriber::fmt()` / `registry()` / `impl Layer<...> for ...`
+/// elsewhere in the workspace.
+fn init_tracing() -> Result<()> {
+    let format = match std::env::var("FEEDBACKR_LOG_FORMAT")
+        .unwrap_or_else(|_| "json".to_string())
+        .as_str()
+    {
+        "text" | "plain" => feedbackr_tracing::LogFormat::Plain,
+        _ => feedbackr_tracing::LogFormat::Json,
+    };
+    feedbackr_tracing::install_global_subscriber(
+        feedbackr_tracing::LogLevel::Info,
+        format,
+    )
+    .context("failed to install global tracing subscriber")?;
+    Ok(())
 }
 
 async fn connect_pg() -> Result<PgPool> {
