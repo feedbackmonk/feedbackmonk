@@ -2,7 +2,7 @@
 """multi-tenant-isolation-check Verification Oracle (canonical implementation).
 
 Two probes:
-  A) No raw SQL or Connection-grabbing OUTSIDE crates/feedbackr-repository/.
+  A) No raw SQL or Connection-grabbing OUTSIDE crates/feedbackmonk-repository/.
   B) Every public repository-crate function signature accepts &TenantScope or
      &ProjectScope as the first non-&self argument, OR is allow-listed in
      allowlist.toml as a documented pre-auth exception.
@@ -25,7 +25,7 @@ from typing import List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[2]
 CRATES_DIR = REPO_ROOT / "crates"
-REPO_CRATE = CRATES_DIR / "feedbackr-repository"
+REPO_CRATE = CRATES_DIR / "feedbackmonk-repository"
 ALLOWLIST = SCRIPT_DIR / "allowlist.toml"
 
 
@@ -127,7 +127,7 @@ def probe_a() -> List[str]:
             for pat, label in FORBIDDEN:
                 if re.search(pat, stripped):
                     offenders.append(
-                        f"{rel(path)}:{i}  forbidden pattern '{label}' outside crates/feedbackr-repository/"
+                        f"{rel(path)}:{i}  forbidden pattern '{label}' outside crates/feedbackmonk-repository/"
                     )
     return offenders
 
@@ -314,7 +314,7 @@ def main() -> int:
     print(f"FAIL multi-tenant-isolation-check ({total} offender(s))")
     if a:
         print()
-        print("Probe A offenders (raw SQL or Connection outside crates/feedbackr-repository/):")
+        print("Probe A offenders (raw SQL or Connection outside crates/feedbackmonk-repository/):")
         for o in a:
             print(f"  {o}")
     if b:

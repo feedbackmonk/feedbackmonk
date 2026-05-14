@@ -1,12 +1,12 @@
 # migrations
 
 <!-- agent-synopsis -->
-SQL migration files driving the Feedbackr Postgres schema. `00001_p0_schema.sql` is the P0 Foundation schema; it is the authoritative source for column names that the repository crate hard-depends on.
+SQL migration files driving the feedbackmonk Postgres schema. `00001_p0_schema.sql` is the P0 Foundation schema; it is the authoritative source for column names that the repository crate hard-depends on.
 <!-- /agent-synopsis -->
 
 ## Purpose & Responsibilities
 
-This directory holds the ordered SQL migration set that builds Feedbackr's Postgres schema from empty. The numbering convention (`NNNNN_description.sql`) is stable; migrations are append-only — never edit a committed migration, always add a new one.
+This directory holds the ordered SQL migration set that builds feedbackmonk's Postgres schema from empty. The numbering convention (`NNNNN_description.sql`) is stable; migrations are append-only — never edit a committed migration, always add a new one.
 
 The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in the repository crate). Self-host distribution (P4) will ship a `migrate` binary that runs this directory against a fresh database.
 
@@ -20,12 +20,12 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 
 - **Append-only.** Never edit a committed migration. To alter a table, add a new migration that performs the alteration (`ALTER TABLE` / data migration). Editing in place corrupts every downstream environment that has already run the migration.
 - **Numbered prefix is load-bearing.** `sqlx-cli` runs migrations in lexical order by filename. Future migrations: `00002_*`, `00003_*`, etc. Skipping or reusing numbers is a bug.
-- **Schema column names are an interface.** `crates/feedbackr-repository/src/*.rs` hard-depends on every column name in `00001_p0_schema.sql`. A rename here without a coordinated repository update breaks the entire build at sqlx-macro-compile time.
+- **Schema column names are an interface.** `crates/feedbackmonk-repository/src/*.rs` hard-depends on every column name in `00001_p0_schema.sql`. A rename here without a coordinated repository update breaks the entire build at sqlx-macro-compile time.
 - **`gen_random_uuid()` requires `pgcrypto`.** The first migration enables the extension (`CREATE EXTENSION IF NOT EXISTS pgcrypto;`). Self-host environments need a Postgres build that includes pgcrypto; documented in `docs/operations/LOCAL_DEV.md`.
 
 ## Relationships & Dependencies
 
-- **Authoritative for**: `crates/feedbackr-repository` query SQL, `crates/feedbackr-core` record-field names.
+- **Authoritative for**: `crates/feedbackmonk-repository` query SQL, `crates/feedbackmonk-core` record-field names.
 - **Run by**: `sqlx::test` macros at test time (against the dev container on port 5433), and the future self-host migrate runner (P4).
 - **Triggered by oracle**: `multi-tenant-isolation-check` lists `migrations/**` as a freshness trigger — changes here invalidate the oracle and require a re-run.
 
@@ -35,7 +35,7 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 
 **Decision**: The `tenants` table includes a `tier TEXT NOT NULL DEFAULT 'free'` column from migration `00001`, even though tier-cap enforcement (FR-FBR-14) is a P3 feature.
 
-**Rationale**: Adding a column to a table with many rows (post-launch) is significantly more expensive than including it at greenfield. The Feedbackr arc plan flags FR-FBR-14 as P3 work that will land months after P0; backfilling `tier` on every existing tenant at P3 would either require a downtime window or a careful zero-downtime ADD COLUMN dance. Shipping the column at P0 — with the inert default `'free'` — costs effectively nothing now and avoids a real cost later. This is forward-looking ripple-from-arc-plan, not premature optimization: the cost asymmetry is large and the implementation is one column declaration.
+**Rationale**: Adding a column to a table with many rows (post-launch) is significantly more expensive than including it at greenfield. The feedbackmonk arc plan flags FR-FBR-14 as P3 work that will land months after P0; backfilling `tier` on every existing tenant at P3 would either require a downtime window or a careful zero-downtime ADD COLUMN dance. Shipping the column at P0 — with the inert default `'free'` — costs effectively nothing now and avoids a real cost later. This is forward-looking ripple-from-arc-plan, not premature optimization: the cost asymmetry is large and the implementation is one column declaration.
 
 **Trade-offs**: A column whose only value is the default for ~6 months. The cost is one extra byte per tenant row in pg_class metadata; effectively zero.
 
@@ -43,9 +43,9 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 
 ### Schema column renames require coordinated repository updates
 
-**Decision**: Treat the column-name set in `00001_p0_schema.sql` as an interface contract with `crates/feedbackr-repository`. Renames require a follow-up migration AND a coordinated repository change in the same commit (or sequenced commits with a sqlx-cache regeneration in between).
+**Decision**: Treat the column-name set in `00001_p0_schema.sql` as an interface contract with `crates/feedbackmonk-repository`. Renames require a follow-up migration AND a coordinated repository change in the same commit (or sequenced commits with a sqlx-cache regeneration in between).
 
-**Rationale**: `feedbackr-repository` uses `sqlx::query!` / `sqlx::query_as!` macros that compile-check against the live schema (or against `.sqlx/` cached metadata in offline mode). A column rename without a coordinated update breaks the build at the macro-compile stage — loud, but cross-cutting. Documenting the contract explicitly here saves the next developer 15 minutes of "why does cargo build fail when the SQL parses fine."
+**Rationale**: `feedbackmonk-repository` uses `sqlx::query!` / `sqlx::query_as!` macros that compile-check against the live schema (or against `.sqlx/` cached metadata in offline mode). A column rename without a coordinated update breaks the build at the macro-compile stage — loud, but cross-cutting. Documenting the contract explicitly here saves the next developer 15 minutes of "why does cargo build fail when the SQL parses fine."
 
 **Trade-offs**: None — this is a documented invariant, not new policy.
 

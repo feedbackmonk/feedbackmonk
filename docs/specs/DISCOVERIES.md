@@ -1,6 +1,6 @@
 # DISCOVERIES
 
-Insights surfaced during Feedbackr implementation that are worth preserving beyond the session-completion report. Append-only; newest at bottom.
+Insights surfaced during feedbackmonk implementation that are worth preserving beyond the session-completion report. Append-only; newest at bottom.
 
 ---
 
@@ -20,7 +20,7 @@ Insights surfaced during Feedbackr implementation that are worth preserving beyo
 | Cross-line / balanced-delimiter parsing | Python (`re` + manual tokenization), shell shims forward |
 | Structural AST manipulation | tree-sitter or syn-cli (Rust-specific) |
 
-**Where this pays off again**: Future Feedbackr Verification Oracles likely to need this pattern — `pii-scrub-audit` (P1, drift-detection over a canonical pattern set with regex alternation requiring balanced parens), `tier-enforcement-status` (P3, parses Rust enum + match-arm structure to verify cap-check completeness). Documented in DEC-FBR-IMPL-03.
+**Where this pays off again**: Future feedbackmonk Verification Oracles likely to need this pattern — `pii-scrub-audit` (P1, drift-detection over a canonical pattern set with regex alternation requiring balanced parens), `tier-enforcement-status` (P3, parses Rust enum + match-arm structure to verify cap-check completeness). Documented in DEC-FBR-IMPL-03.
 
 ---
 
@@ -36,7 +36,7 @@ Insights surfaced during Feedbackr implementation that are worth preserving beyo
 
 The legs are **independent** — a bug that defeats one likely does not defeat the others. Two legs alone is fragile (every safety-critical exploit history is "the one mechanism failed"); three legs is resilient.
 
-**Generalizable insight**: For any future high-Q2 invariant in Feedbackr (JWT verifier alg-confusion, PII scrubber pattern drift, tier-cap enforcement, AGPL header presence), design the defense as a three-leg architecture from the start. Pick what each leg checks; pick patterns that are genuinely independent (a single underlying bug should not invalidate two legs at once).
+**Generalizable insight**: For any future high-Q2 invariant in feedbackmonk (JWT verifier alg-confusion, PII scrubber pattern drift, tier-cap enforcement, AGPL header presence), design the defense as a three-leg architecture from the start. Pick what each leg checks; pick patterns that are genuinely independent (a single underlying bug should not invalidate two legs at once).
 
 **Where this pays off again**:
 
@@ -54,7 +54,7 @@ The legs are **independent** — a bug that defeats one likely does not defeat t
 
 The pattern: name those bridge methods explicitly, gate them through an allowlist with per-entry rationale, and trigger oracle re-runs when the allowlist changes. This makes the "what crosses the boundary" question audit-friendly (a 30-line `allowlist.toml` shows the entire attack surface) instead of buried in source code.
 
-**Generalizable insight**: Any type-system isolation boundary in Feedbackr (signing-key access, anonymous-mode rate-limit counters, future RBAC scopes, future organization-level admin scopes) should follow the same pattern: `pub(crate)` constructor + named allowlist of bridge methods + oracle that enforces.
+**Generalizable insight**: Any type-system isolation boundary in feedbackmonk (signing-key access, anonymous-mode rate-limit counters, future RBAC scopes, future organization-level admin scopes) should follow the same pattern: `pub(crate)` constructor + named allowlist of bridge methods + oracle that enforces.
 
 **Where this pays off again**: Stage 2 Worker B's `verify()` on the JWT crate is a similar boundary — only one method mints "verified payload" from raw token bytes. That allowlist would be a single entry but the same shape (explicit, rationale-bearing, oracle-triggered).
 
@@ -126,19 +126,19 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 
 2. **"alg=none + HS256 confusion" attack class becomes a single-line test**: `fixture_rs256_attack_rejected` and `header_with_no_alg_field_is_algorithm_not_allowed` are each 5 lines including assertions. Without the corpus-first discipline, these would have been afterthoughts; with it, they are first-class verification surfaces.
 
-**Generalizable insight**: For ANY crypto-verifier surface in Feedbackr (P3 webhook signatures FR-FBR-14, future API request signing, future organization-scoped HMAC for self-host customers), apply the same pattern:
+**Generalizable insight**: For ANY crypto-verifier surface in feedbackmonk (P3 webhook signatures FR-FBR-14, future API request signing, future organization-scoped HMAC for self-host customers), apply the same pattern:
 
 1. **Author the fixture corpus first** with a name per invariant + Contract C-N invariant ID in the test name.
 2. **Use a single canonical verifier crate** (ed25519-dalek for EdDSA; future: ring or hmac for symmetric) and reject the urge to abstract over algorithm-families.
 3. **Manual base64url decode for header parsing** — `serde_json` parsing the decoded header is fine, but defer signature work until alg-allowlist + claim-presence is confirmed. This is the only way to get clean error precedence.
 
-**Where this pays off again**: Forward-binding for P3 webhook signing (planned at `/0-uldf-ldis-plan "Feedbackr P3 — Self-Service Distribution"`). Likely shape: HMAC-SHA256 over canonical request body + `x-feedbackr-timestamp` + `x-feedbackr-signature` header. Author the fixture corpus first with the same 8-category structure (a-h: valid, valid-with-rotation, expired, wrong-secret, missing-header, oversize, attack-class-1, attack-class-2).
+**Where this pays off again**: Forward-binding for P3 webhook signing (planned at `/0-uldf-ldis-plan "feedbackmonk P3 — Self-Service Distribution"`). Likely shape: HMAC-SHA256 over canonical request body + `x-feedbackr-timestamp` + `x-feedbackr-signature` header. Author the fixture corpus first with the same 8-category structure (a-h: valid, valid-with-rotation, expired, wrong-secret, missing-header, oversize, attack-class-1, attack-class-2).
 
 ---
 
 ### D-FBR-08: Anonymous-mode in-memory rate-limiter — restart-loses-state is acceptable for v1.0
 
-**Surfaced by**: Stage 2 Worker B `feedbackr-anon` design. The crate uses `governor::keyed::DefaultKeyedRateLimiter` over a `BLAKE3` hash of `(project_id, ip, salt)` — entirely in-process. Restart of the API binary loses all rate-limit state.
+**Surfaced by**: Stage 2 Worker B `feedbackmonk-anon` design. The crate uses `governor::keyed::DefaultKeyedRateLimiter` over a `BLAKE3` hash of `(project_id, ip, salt)` — entirely in-process. Restart of the API binary loses all rate-limit state.
 
 **What was discovered**: For P0 (single-instance dogfood deployment), this is acceptable: an attacker would need to detect a restart in real time to exploit, and the 11-burst-then-429 window is 60 seconds. Even an adversary aware of the restart pattern would only gain 10 extra anonymous submissions per restart — well below noise floor for genuine spam protection.
 
@@ -146,7 +146,7 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 - Multi-instance horizontal scaling **WILL** require shared state. Redis is the obvious target.
 - Self-host customers running 24/7 single-instance will see the in-memory limiter behave correctly; v1.0 self-host docs should mention "restart resets anonymous rate-limit counters" as a known property, not a bug.
 
-**Generalizable insight**: Component design decisions like "in-memory vs distributed state" need an explicit **graduation criterion** documented at design-time. The `feedbackr-anon` crate's `RateLimitConfig` already takes `requests_per_minute` and `burst_capacity` — adding a hidden `backend: enum { InMemory, Redis(RedisConfig) }` field in v1.1 is a non-breaking change because the public surface (`gate(project_id, ip) -> Result<()>`) doesn't change.
+**Generalizable insight**: Component design decisions like "in-memory vs distributed state" need an explicit **graduation criterion** documented at design-time. The `feedbackmonk-anon` crate's `RateLimitConfig` already takes `requests_per_minute` and `burst_capacity` — adding a hidden `backend: enum { InMemory, Redis(RedisConfig) }` field in v1.1 is a non-breaking change because the public surface (`gate(project_id, ip) -> Result<()>`) doesn't change.
 
 **Where this pays off again**: ALL stateful components in P1+ (status email scheduler, public-roadmap voting cache, tier-cap counters in P3) should follow the same pattern: in-memory v1.0 with documented graduation criterion + non-breaking backend swap in v1.1.
 
@@ -168,7 +168,7 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 
 ### D-FBR-10: Write-boundary scrubbing beats Layer-field scrubbing for log-PII chokepoints
 
-**Surfaced by**: `feedbackr-tracing` PII scrubber design (S1-T1).
+**Surfaced by**: `feedbackmonk-tracing` PII scrubber design (S1-T1).
 
 **What was discovered**: The P1 plan brief called for a `tracing_subscriber::Layer<...>` impl that applies the canonical-pattern scrub to event field values. The implementation chose a different seam — `ScrubbingMakeWriter` at the formatted-byte WRITE boundary — and the property holds more cleanly. A `Layer` impl scrubs field values, but the formatter still emits level prefixes, span metadata, JSON-encoded structured fields, and timestamp data through paths the Layer never sees. The writer-boundary chokepoint covers ALL emitted bytes because every byte of every log line passes through `MakeWriter::make_writer`.
 
@@ -182,13 +182,13 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 
 ### D-FBR-11: Three-tuple pattern records — promote diagnostic identity into the data shape
 
-**Surfaced by**: `CANONICAL_PATTERNS: &[(&str, &str, &str)]` shape design in `feedbackr-tracing`.
+**Surfaced by**: `CANONICAL_PATTERNS: &[(&str, &str, &str)]` shape design in `feedbackmonk-tracing`.
 
 **What was discovered**: GitCellar's source stores `Rule { re, replacement }` with the pattern name only in a `//` comment. Porting verbatim would have made the `pii-scrub-audit` Probe B oracle unable to name offenders ("a pattern drifted" rather than "the `aws-access-key-id` pattern drifted") and would have made re-ordering invisible to a hash check (if the regex+replacement pair is unchanged, the bytes are the same regardless of position). Promoting `name` to the first slot of the tuple made both problems disappear: the oracle reports `pattern-set drift: actual=X expected=Y; parsed 20 patterns; review every tuple in <path>`, and the hash includes the human label.
 
 **Generalizable insight**: When a data slice will be consumed by both runtime code AND a Verification Oracle that hash-locks the slice, the slice's **shape itself** has a diagnostic dimension — the oracle's error-message quality depends on what identifiers travel inside the hash. Identifiers that live only in adjacent comments are invisible to the oracle. If you're tempted to put a label in a comment "for clarity," ask: is this label load-bearing for any verification surface? If yes, promote it into the data shape.
 
-**Where this pays off again**: Any future canonical-set-with-drift-detection — `tier-enforcement-status` (P3, canonical tier-cap rules), JWT-verifier hardcoded-alg-list (P0+, currently a const slice in `feedbackr-jwt`), email-template-id manifest (P1 Stage 2, FR-FBR-09).
+**Where this pays off again**: Any future canonical-set-with-drift-detection — `tier-enforcement-status` (P3, canonical tier-cap rules), JWT-verifier hardcoded-alg-list (P0+, currently a const slice in `feedbackmonk-jwt`), email-template-id manifest (P1 Stage 2, FR-FBR-09).
 
 ---
 
@@ -208,7 +208,7 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 
 ### D-FBR-13: `tower::ServiceExt::oneshot` doesn't populate `ConnectInfo` — production-parity test harness needs explicit injection
 
-**Surfaced by**: P1 Stage 3 critic C-002 router-level integration tests (`crates/feedbackr-api/tests/router_submission_integration.rs`).
+**Surfaced by**: P1 Stage 3 critic C-002 router-level integration tests (`crates/feedbackmonk-api/tests/router_submission_integration.rs`).
 
 **What was discovered**: The production binary serves the router via `into_make_service_with_connect_info::<SocketAddr>()`, which populates the `ConnectInfo<SocketAddr>` request extension that downstream extractors (the anon-gate IP-bucket extraction) depend on. Tests using `tower::ServiceExt::oneshot(request)` bypass this layer — the request reaches the router with NO `ConnectInfo` extension, and `Extension<ConnectInfo<SocketAddr>>` extraction returns 500 ("Missing extension"). Three router-level cases (anon happy path, 429 rate-limit, 400 empty body via anon path) silently failed with 500 until the helper was updated to inject `req.extensions_mut().insert(ConnectInfo(synthetic_addr))` before passing to `oneshot`.
 
@@ -218,11 +218,11 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 
 ---
 
-### D-FBR-14: P1-plan misnomer reconciled at use-site — `feedbackr_session` IS the admin cookie name (not `feedbackr_admin_session`)
+### D-FBR-14: P1-plan misnomer reconciled at use-site — `feedbackmonk_session` IS the admin cookie name (not `feedbackmonk_admin_session`)
 
 **Surfaced by**: P1 Stage 3 e2e-p1-curl.sh authoring + critic C-002 test authoring.
 
-**What was discovered**: The P1 plan (`20260513T231115-feedbackr-p1-closes-the-loop.md`) and intermediate Stage 2 brief referred to the admin session cookie as `feedbackr_admin_session`. The actual P0/P1 implementation in `crates/feedbackr-api/src/auth/session.rs` uses `feedbackr_session` (the single cookie name shared between signup-flow verification and ongoing admin requests). Contract C11 in the Stage 1 handoff doc had reconciled this verbatim, but downstream Stage-2-era plan references didn't propagate. The Stage 3 e2e script could not have worked against the real binary with the wrong cookie name; the typo would have surfaced as immediate 401 on every admin call.
+**What was discovered**: The P1 plan (`20260513T231115-feedbackmonk-p1-closes-the-loop.md`) and intermediate Stage 2 brief referred to the admin session cookie as `feedbackmonk_admin_session`. The actual P0/P1 implementation in `crates/feedbackmonk-api/src/auth/session.rs` uses `feedbackmonk_session` (the single cookie name shared between signup-flow verification and ongoing admin requests). Contract C11 in the Stage 1 handoff doc had reconciled this verbatim, but downstream Stage-2-era plan references didn't propagate. The Stage 3 e2e script could not have worked against the real binary with the wrong cookie name; the typo would have surfaced as immediate 401 on every admin call.
 
 **Generalizable insight**: When plan documents reference HTTP-layer identifiers (cookie names, header names, JSON field names, URL path segments), they're vulnerable to plan-drift bugs that only fail at integration time. The pattern that catches them: any plan-doc identifier touching the wire surface MUST also appear in a frozen Contract section that's bytes-compared at handoff; downstream consumers of the plan should treat the Contract section as authoritative when the plan body disagrees with it. Contract C11 was authoritative here; the Stage 3 author caught the drift only because the e2e script needed to actually work against the real binary.
 

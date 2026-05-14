@@ -2,7 +2,7 @@
 
 **Kind**: Verification Oracle (Probandurgy — Task Zero leg 2 of three-leg defense).
 **Question**: Does every emitted log line pass through the canonical 20-pattern PII
-scrubber installed by `feedbackr_tracing::install_global_subscriber`? Has the
+scrubber installed by `feedbackmonk_tracing::install_global_subscriber`? Has the
 pattern set drifted from the canonical source ported byte-for-byte from
 GitCellar's `gitcellar-service/src/feedback_logs/scrubber.rs`?
 
@@ -10,7 +10,7 @@ GitCellar's `gitcellar-service/src/feedback_logs/scrubber.rs`?
 
 ### Probe A — no tracing-subscriber setup outside the scrubber crate
 
-Walks `crates/**/*.rs` (excluding `crates/feedbackr-tracing/`) and flags any
+Walks `crates/**/*.rs` (excluding `crates/feedbackmonk-tracing/`) and flags any
 match for the following patterns:
 
 - `tracing_subscriber::fmt(` — the builder API that bypasses our scrubbing
@@ -27,7 +27,7 @@ are stripped too.
 ### Probe B — canonical pattern-set hash
 
 Parses `CANONICAL_PATTERNS: &[(&str, &str, &str)]` from
-`crates/feedbackr-tracing/src/scrubber.rs`, extracts each
+`crates/feedbackmonk-tracing/src/scrubber.rs`, extracts each
 `(name, regex, replacement)` tuple, serialises as `name\tregex\treplacement\n`
 per row, computes SHA-256 over the UTF-8 bytes, and compares to the digest in
 `expected_hash.txt`.
@@ -41,7 +41,7 @@ becomes a reviewable change rather than a silent one.
 
 | Leg | Mechanism | File / location |
 |---|---|---|
-| 1. Type system chokepoint | `install_global_subscriber` is the sole public entry-point for tracing setup; all other items in `feedbackr-tracing` are `pub(crate)` or test-only. | `crates/feedbackr-tracing/src/lib.rs` |
+| 1. Type system chokepoint | `install_global_subscriber` is the sole public entry-point for tracing setup; all other items in `feedbackmonk-tracing` are `pub(crate)` or test-only. | `crates/feedbackmonk-tracing/src/lib.rs` |
 | 2. AST / hash oracle (this file) | Probes A + B (this file) | `.claude/oracles/pii-scrub-audit/` |
 | 3. Lint baseline | clippy `all = deny` workspace-wide; `cargo-deny` (post-P1) rejects direct `tracing_subscriber::fmt()` builder calls outside the binary entrypoint | `Cargo.toml` workspace lints |
 
@@ -61,7 +61,7 @@ Exit `0` on PASS, `1` on FAIL, `2` on environment failure (Python not found).
 
 ```
 PASS pii-scrub-audit
-  Probe A (no tracing setup outside crates/feedbackr-tracing/): clean
+  Probe A (no tracing setup outside crates/feedbackmonk-tracing/): clean
   Probe B (CANONICAL_PATTERNS hash matches expected_hash.txt): clean
 ```
 
@@ -71,7 +71,7 @@ or
 FAIL pii-scrub-audit (N offender(s))
 
 Probe A offenders (...):
-  <file>:<line>  forbidden tracing-subscriber setup '<label>' outside crates/feedbackr-tracing/
+  <file>:<line>  forbidden tracing-subscriber setup '<label>' outside crates/feedbackmonk-tracing/
 
 Probe B failure (canonical pattern-set hash):
   pattern-set hash drift: actual=<hex> expected=<hex> (parsed N patterns; review every tuple in <path>)
@@ -79,9 +79,9 @@ Probe B failure (canonical pattern-set hash):
 
 ## Updating the pattern set
 
-1. Edit `crates/feedbackr-tracing/src/scrubber.rs`. Keep the existing 20
+1. Edit `crates/feedbackmonk-tracing/src/scrubber.rs`. Keep the existing 20
    canonical patterns byte-for-byte unless the GitCellar source has changed.
-2. Run `cargo test -p feedbackr-tracing canonical_hash` — the test prints the
+2. Run `cargo test -p feedbackmonk-tracing canonical_hash` — the test prints the
    current SHA-256.
 3. Copy the printed hash into `expected_hash.txt`.
 4. Run `python .claude/oracles/pii-scrub-audit/oracle.py` — expect PASS.

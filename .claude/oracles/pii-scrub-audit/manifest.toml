@@ -1,6 +1,6 @@
 # pii-scrub-audit — TOML mirror of manifest.json.
 #
-# The Feedbackr oracle harness reads manifest.json (matches the existing
+# The feedbackmonk oracle harness reads manifest.json (matches the existing
 # multi-tenant-isolation-check oracle's convention). The brief specifies
 # manifest.toml — kept as a TOML mirror so anyone consulting the file by
 # brief-name lands on the same authoritative metadata. Drift between the
@@ -10,7 +10,7 @@ name = "pii-scrub-audit"
 version = "1.0.0"
 kind = "verification"
 category = "privacy"
-question = "Does every emitted log line pass through the canonical 20-pattern PII scrubber installed by feedbackr_tracing::install_global_subscriber, and does the in-tree pattern set still match the canonical hash?"
+question = "Does every emitted log line pass through the canonical 20-pattern PII scrubber installed by feedbackmonk_tracing::install_global_subscriber, and does the in-tree pattern set still match the canonical hash?"
 
 [invocation]
 unix = ".claude/oracles/pii-scrub-audit/oracle.sh"
@@ -23,13 +23,13 @@ schema = "PASS or FAIL <count> with file:line offenders + hash diff on FAIL; exi
 [freshness]
 strategy = "trigger-invalidate"
 triggers = [
-  "crates/feedbackr-tracing/**",
-  "crates/feedbackr-api/src/main.rs",
-  "crates/feedbackr-anon/**",
-  "crates/feedbackr-jwt/**",
-  "crates/feedbackr-core/**",
-  "crates/feedbackr-repository/**",
-  "crates/feedbackr-api/**",
+  "crates/feedbackmonk-tracing/**",
+  "crates/feedbackmonk-api/src/main.rs",
+  "crates/feedbackmonk-anon/**",
+  "crates/feedbackmonk-jwt/**",
+  "crates/feedbackmonk-core/**",
+  "crates/feedbackmonk-repository/**",
+  "crates/feedbackmonk-api/**",
   "migrations/**",
   ".claude/oracles/pii-scrub-audit/expected_hash.txt",
 ]

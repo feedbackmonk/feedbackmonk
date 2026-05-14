@@ -11,37 +11,37 @@ and widget instructions.
 
 ## Postgres dev container
 
-Feedbackr uses Postgres 17 in a local Docker container on port **5433**
+feedbackmonk uses Postgres 17 in a local Docker container on port **5433**
 (deliberately offset from the default `5432` to avoid clashing with peer
 projects on this machine -- e.g. `gitcellar-cloud-postgres-1`).
 
 ### Start
 
 ```bash
-docker run -d --name feedbackr-pg-dev \
+docker run -d --name feedbackmonk-pg-dev \
   -p 5433:5432 \
   -e POSTGRES_PASSWORD=dev \
-  -e POSTGRES_DB=feedbackr_dev \
+  -e POSTGRES_DB=feedbackmonk_dev \
   postgres:17-alpine
 ```
 
 ### Connection string
 
 ```
-DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev
+DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev
 ```
 
 Persist this in a local `.env` (gitignored — see `.gitignore`):
 
 ```bash
-echo 'DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev' > .env
+echo 'DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev' > .env
 ```
 
 ### Apply schema
 
 ```bash
-docker exec -i feedbackr-pg-dev \
-  psql -U postgres -d feedbackr_dev \
+docker exec -i feedbackmonk-pg-dev \
+  psql -U postgres -d feedbackmonk_dev \
   < migrations/00001_p0_schema.sql
 ```
 
@@ -50,14 +50,14 @@ Or via sqlx-cli once a project-level migration runner is wired in Stage 2.
 ### Tear down
 
 ```bash
-docker rm -f feedbackr-pg-dev
+docker rm -f feedbackmonk-pg-dev
 ```
 
 ## Building
 
 ```bash
 # Online build (uses live DB for sqlx::query! macro type-checking):
-DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev cargo build --workspace
+DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev cargo build --workspace
 
 # Offline build (uses .sqlx/ query cache; no DB required):
 SQLX_OFFLINE=true cargo build --workspace
@@ -67,7 +67,7 @@ CI runs in offline mode (`SQLX_OFFLINE=true`). After modifying any
 `sqlx::query!` invocation, regenerate the cache:
 
 ```bash
-DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev \
+DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev \
   cargo sqlx prepare --workspace
 git add .sqlx/
 ```
@@ -75,12 +75,12 @@ git add .sqlx/
 ## Running tests
 
 ```bash
-DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev \
+DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev \
   cargo test --workspace
 ```
 
 `#[sqlx::test]` creates an isolated database per test (rolled back at the
-end), so test runs never pollute `feedbackr_dev`. The pool created for each
+end), so test runs never pollute `feedbackmonk_dev`. The pool created for each
 test reuses the connection in a fresh per-test database.
 
 ## Verification Oracle
@@ -104,13 +104,13 @@ on PASS.
 
 ## Backend dev port
 
-`FEEDBACKR_PORT` env var; default **`14304`** (claimed in
+`FEEDBACKMONK_PORT` env var; default **`14304`** (claimed in
 `~/.claude/MACHINE_CONFIG.md` Dev Port Registry under the `14300-14399`
 backend range).
 
 ```bash
-DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev \
-  cargo run -p feedbackr-api
+DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev \
+  cargo run -p feedbackmonk-api
 ```
 
 Stage 1 ships a placeholder binary that binds the port and serves a static

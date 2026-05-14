@@ -3,12 +3,12 @@
 
 Two probes:
   A) No direct `tracing_subscriber::fmt(`, `tracing_subscriber::registry(`,
-     or custom `impl ...Layer<...> for ...` OUTSIDE crates/feedbackr-tracing/.
+     or custom `impl ...Layer<...> for ...` OUTSIDE crates/feedbackmonk-tracing/.
      The PII scrubber installs the SOLE global subscriber via
-     `feedbackr_tracing::install_global_subscriber`. Any other call site is a
+     `feedbackmonk_tracing::install_global_subscriber`. Any other call site is a
      potential bypass of the scrubbing layer (FR-FBR-10).
   B) SHA-256 of CANONICAL_PATTERNS in
-     `crates/feedbackr-tracing/src/scrubber.rs` matches
+     `crates/feedbackmonk-tracing/src/scrubber.rs` matches
      `expected_hash.txt`. Pattern-set drift (a new pattern, a missing pattern,
      a tweaked regex, a re-ordered slice) surfaces as oracle FAIL.
 
@@ -35,7 +35,7 @@ from typing import List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[2]
 CRATES_DIR = REPO_ROOT / "crates"
-TRACING_CRATE = CRATES_DIR / "feedbackr-tracing"
+TRACING_CRATE = CRATES_DIR / "feedbackmonk-tracing"
 SCRUBBER_RS = TRACING_CRATE / "src" / "scrubber.rs"
 EXPECTED_HASH = SCRIPT_DIR / "expected_hash.txt"
 
@@ -67,7 +67,7 @@ def rel(p: Path) -> str:
 
 
 def probe_a() -> List[str]:
-    """Forbidden tracing-subscriber setup outside crates/feedbackr-tracing/."""
+    """Forbidden tracing-subscriber setup outside crates/feedbackmonk-tracing/."""
     offenders: List[str] = []
     if not CRATES_DIR.exists():
         return offenders
@@ -91,14 +91,14 @@ def probe_a() -> List[str]:
             for pat, label in PROBE_A_PATTERNS:
                 if pat.search(line):
                     offenders.append(
-                        f"{rel(path)}:{i}  forbidden tracing-subscriber setup '{label}' outside crates/feedbackr-tracing/"
+                        f"{rel(path)}:{i}  forbidden tracing-subscriber setup '{label}' outside crates/feedbackmonk-tracing/"
                     )
     return offenders
 
 
 # Probe B: canonical-pattern hash.
 #
-# Parses CANONICAL_PATTERNS from feedbackr-tracing/src/scrubber.rs and computes
+# Parses CANONICAL_PATTERNS from feedbackmonk-tracing/src/scrubber.rs and computes
 # SHA-256 over the line-serialised `name\tregex\treplacement\n` for each tuple.
 # Returns the hex digest + (count, list of (name, regex, replacement)) for
 # diagnostics on mismatch.
@@ -183,7 +183,7 @@ def main() -> int:
         # Vacuous pass during early P1 Stage 1 commit ordering: the oracle is
         # built BEFORE the crate. Once the crate lands, the freshness trigger
         # re-invalidates and the probes run for real.
-        print("PASS pii-scrub-audit (crates/feedbackr-tracing/ not yet present - vacuous pass)")
+        print("PASS pii-scrub-audit (crates/feedbackmonk-tracing/ not yet present - vacuous pass)")
         return 0
 
     a = probe_a()
@@ -192,14 +192,14 @@ def main() -> int:
     fails = len(a) + (1 if b_err else 0)
     if fails == 0:
         print("PASS pii-scrub-audit")
-        print("  Probe A (no tracing setup outside crates/feedbackr-tracing/): clean")
+        print("  Probe A (no tracing setup outside crates/feedbackmonk-tracing/): clean")
         print("  Probe B (CANONICAL_PATTERNS hash matches expected_hash.txt): clean")
         return 0
 
     print(f"FAIL pii-scrub-audit ({fails} offender(s))")
     if a:
         print()
-        print("Probe A offenders (forbidden tracing-subscriber setup outside crates/feedbackr-tracing/):")
+        print("Probe A offenders (forbidden tracing-subscriber setup outside crates/feedbackmonk-tracing/):")
         for o in a:
             print(f"  {o}")
     if b_err:

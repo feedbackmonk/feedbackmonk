@@ -1,4 +1,4 @@
-# Feedbackr — Architecture
+# feedbackmonk — Architecture
 
 **Status**: P0 Stage 1 SHIPPED — repository layer + core types + placeholder API crate. P0 Stage 2 (signup + submission path) is next; arc continues through P4.
 
@@ -8,9 +8,9 @@
 
 | Component ID | Component | Crate | Layer | Purpose |
 |---|---|---|---|---|
-| **CMP-FBR-CORE-01** | `feedbackr-core` | `crates/feedbackr-core/` | data | Pure domain types (no DB, no async, no network). Records mirror P0 schema; backs the request/response shapes that Stage 2 surfaces will use. |
-| **CMP-FBR-REPO-01** | `feedbackr-repository` | `crates/feedbackr-repository/` | DB | The SOLE query path. Four repository traits (`TenantRepo`, `ProjectRepo`, `SigningKeyRepo`, `FeedbackRepo`) with sqlx-backed implementations. `TenantScope` / `ProjectScope` newtypes enforce tenant isolation at the type system. Contract C1 frozen for Stage 2 consumption. |
-| **CMP-FBR-API-01** | `feedbackr-api` | `crates/feedbackr-api/` | HTTP | Stage 1 ships a placeholder axum binary binding `FEEDBACKR_PORT` (default `14304`). Stage 2 Workers A + B add the real router tree. |
+| **CMP-FBR-CORE-01** | `feedbackmonk-core` | `crates/feedbackmonk-core/` | data | Pure domain types (no DB, no async, no network). Records mirror P0 schema; backs the request/response shapes that Stage 2 surfaces will use. |
+| **CMP-FBR-REPO-01** | `feedbackmonk-repository` | `crates/feedbackmonk-repository/` | DB | The SOLE query path. Four repository traits (`TenantRepo`, `ProjectRepo`, `SigningKeyRepo`, `FeedbackRepo`) with sqlx-backed implementations. `TenantScope` / `ProjectScope` newtypes enforce tenant isolation at the type system. Contract C1 frozen for Stage 2 consumption. |
+| **CMP-FBR-API-01** | `feedbackmonk-api` | `crates/feedbackmonk-api/` | HTTP | Stage 1 ships a placeholder axum binary binding `FEEDBACKMONK_PORT` (default `14304`). Stage 2 Workers A + B add the real router tree. |
 | **CMP-FBR-SCHEMA-01** | P0 schema | `migrations/00001_p0_schema.sql` | persistence | Tables for `tenants`, `projects`, `signing_keys`, `feedback`, `anon_submissions`, `rate_limit_counters`. Authoritative source for column names. |
 | **CMP-FBR-ORACLE-01** | `multi-tenant-isolation-check` | `.claude/oracles/multi-tenant-isolation-check/` | verification | Verification Oracle (built as P0 Task Zero). AST-grade enforcement of DEC-FBR-03 "raw SQL outside repository = security incident." Three-leg defense: type system (CMP-FBR-REPO-01) + AST oracle (this) + clippy/cargo-deny (workspace baseline + pedantic on repo crate). |
 
@@ -18,8 +18,8 @@
 
 | Component ID | Component | Crate | Layer | Owner |
 |---|---|---|---|---|
-| **CMP-FBR-JWT-01** | `feedbackr-jwt` | `crates/feedbackr-jwt/` (forthcoming) | auth | Worker B Task Zero |
-| **CMP-FBR-ANON-01** | `feedbackr-anon` | `crates/feedbackr-anon/` (forthcoming) | rate-limit | Worker B |
+| **CMP-FBR-JWT-01** | `feedbackmonk-jwt` | `crates/feedbackmonk-jwt/` (forthcoming) | auth | Worker B Task Zero |
+| **CMP-FBR-ANON-01** | `feedbackmonk-anon` | `crates/feedbackmonk-anon/` (forthcoming) | rate-limit | Worker B |
 
 ## Components (later phases — DEFERRED)
 
@@ -31,12 +31,12 @@
 
 ## Reference implementation
 
-The GitCellar-integrated feedback system at `gitcellar-cloud/src/feedback/` is the working reference. Feedbackr's architecture borrows from it but diverges on:
+The GitCellar-integrated feedback system at `gitcellar-cloud/src/feedback/` is the working reference. feedbackmonk's architecture borrows from it but diverges on:
 
-- **Multi-tenancy** — GitCellar is single-tenant; Feedbackr must support multiple customer organizations
-- **Auth** — GitCellar uses PassKey-native (Ed25519); Feedbackr customers' end-users will not
-- **Roadmap backend** — GitCellar uses a Gitea fork (Cloud Forge); Feedbackr likely uses native DB + UI
-- **Storage** — GitCellar's B2/R2 dual-region is GitCellar-specific (home-region routing on a GitCellar user); Feedbackr needs a generic storage abstraction
+- **Multi-tenancy** — GitCellar is single-tenant; feedbackmonk must support multiple customer organizations
+- **Auth** — GitCellar uses PassKey-native (Ed25519); feedbackmonk customers' end-users will not
+- **Roadmap backend** — GitCellar uses a Gitea fork (Cloud Forge); feedbackmonk likely uses native DB + UI
+- **Storage** — GitCellar's B2/R2 dual-region is GitCellar-specific (home-region routing on a GitCellar user); feedbackmonk needs a generic storage abstraction
 - **Branding** — Hardcoded "GitCellar" strings need to be config-driven
 
 ## Components (legacy speculative shape — superseded by the table above)

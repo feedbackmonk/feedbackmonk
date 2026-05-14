@@ -17,7 +17,7 @@
 #   rationale = "Repo constructor; no DB access."
 #
 # Probe A (raw-SQL outside repository) has NO allowlist by design - DEC-FBR-03
-# declares any raw SQL outside crates/feedbackr-repository/ a security incident.
+# declares any raw SQL outside crates/feedbackmonk-repository/ a security incident.
 
 [[methods]]
 trait = "TenantRepo"

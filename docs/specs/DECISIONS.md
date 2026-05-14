@@ -1,4 +1,4 @@
-# Feedbackr — Decision Log
+# feedbackmonk — Decision Log
 
 **Format**: WHY, not WHAT. No dated entries (per ULADP). Decisions are immutable once recorded; superseded decisions get a SUPERSEDED-BY pointer rather than rewriting.
 
@@ -13,7 +13,7 @@ The user explicitly chose "standalone SaaS product" over "internal reuse in othe
 GitCellar is in pre-launch hardening. Destabilizing the working reference implementation before the abstraction is designed risks both projects. Extraction begins only after spec converges and a plan exists.
 
 ### DEC-FBR-INTAKE-03: New spec home (`docs/specs/feedbackr/`)
-Feedbackr's spec is a separate artifact from GitCellar's `docs/specs/feedback-system/` (which documents the GitCellar-integrated version). Editing the GitCellar spec for Feedbackr concerns would muddy both. Move trivially if repo split happens later (per Q7).
+feedbackmonk's spec is a separate artifact from GitCellar's `docs/specs/feedback-system/` (which documents the GitCellar-integrated version). Editing the GitCellar spec for feedbackmonk concerns would muddy both. Move trivially if repo split happens later (per Q7).
 
 ---
 
@@ -32,7 +32,7 @@ Feedbackr's spec is a separate artifact from GitCellar's `docs/specs/feedback-sy
 - ❌ Persona C (mid-market customer-success) — requires sales motion (LinkedIn outreach, demos, MSAs) destructive to solo-founder focus. Long-term upmarket move possible (Plausible-style) but not v1.
 
 **Why this persona combination**:
-1. **Defensible niche given founder asset** — GitCellar's brand DNA is privacy-first/encryption-first/self-host-friendly. That brand asset transfers to Feedbackr and CAN'T transfer to Canny/Featurebase/Productboard. Without it, Feedbackr would be a worse Canny.
+1. **Defensible niche given founder asset** — GitCellar's brand DNA is privacy-first/encryption-first/self-host-friendly. That brand asset transfers to feedbackmonk and CAN'T transfer to Canny/Featurebase/Productboard. Without it, feedbackmonk would be a worse Canny.
 2. **Solo-founder go-to-market fit** — Product-led: SEO + Show HN + Twitter + GitCellar's eventual user base as a channel. No sales motion required.
 3. **Underserved segment** — Canny is US-default and ad-tech-y; Fider is dated and SaaS-less; Featurebase targets B; Productboard targets C. The "modern, privacy-first, indie-friendly" slot is open.
 4. **Proven template** — Plausible Analytics did this exact maneuver in adjacent category (privacy-first analytics vs Google Analytics): ~80M ARR, founder-controlled, no VCs, self-host + SaaS, EU-hosted. Replicable shape.
@@ -89,7 +89,7 @@ Feedbackr's spec is a separate artifact from GitCellar's `docs/specs/feedback-sy
 **What this opens up later**:
 - ✅ Show HN narrative ("open-source product feedback") — strong SEO + organic for A+D audience
 - ✅ Sponsorship angle (Plausible-style: indie podcasts, GitHub Sponsors, conf sponsorships)
-- ✅ Widget as viral artifact — free tier carries "powered by Feedbackr" link; paid tiers opt-out. Low-key distribution.
+- ✅ Widget as viral artifact — free tier carries "powered by feedbackmonk" link; paid tiers opt-out. Low-key distribution.
 
 ---
 
@@ -99,10 +99,10 @@ Feedbackr's spec is a separate artifact from GitCellar's `docs/specs/feedback-sy
 
 **Shape**: shared PostgreSQL DB, every domain row carries `tenant_id` (org) and `project_id` (product). Row-level filtering enforced at the data-access layer (every query funnels through a tenant-scoped repository — no raw SQL bypass). Self-host distribution ships with the same schema; `tenant_id` defaults to a single seeded org and the UI hides cross-tenant affordances.
 
-**Multi-product-per-tenant is mandatory**, not optional. Surfaced from user's sibling-projects context (GitCellar + quiqpic + SessionHelm = same buyer, three products). The canonical Feedbackr customer shape is **one organization with N products**, each with its own widget URL, roadmap board, inbox, status emails, and branding. The admin UI is org-level (triage all products from one place); end-users are product-isolated (a GitCellar feedback submitter cannot see quiqpic feedback).
+**Multi-product-per-tenant is mandatory**, not optional. Surfaced from user's sibling-projects context (GitCellar + quiqpic + SessionHelm = same buyer, three products). The canonical feedbackmonk customer shape is **one organization with N products**, each with its own widget URL, roadmap board, inbox, status emails, and branding. The admin UI is org-level (triage all products from one place); end-users are product-isolated (a GitCellar feedback submitter cannot see quiqpic feedback).
 
 **Pricing tier flow** (informs Q5 / DEC-FBR-05):
-- **Free**: 1 project, capped feedback volume (~50/mo), "powered by Feedbackr" widget footer.
+- **Free**: 1 project, capped feedback volume (~50/mo), "powered by feedbackmonk" widget footer.
 - **$9 / Starter**: 3 projects, higher volume, custom branding, no footer.
 - **$29 / Pro**: unlimited projects, custom domain, EU residency selectable.
 - **$79 / Self-host**: license key for own deployment, full multi-tenancy schema (in case customer hosts for their own customers — rare but the schema supports it).
@@ -133,8 +133,8 @@ Feedbackr's spec is a separate artifact from GitCellar's `docs/specs/feedback-sy
 **Three modes**, customer selects per project (multiple modes can be enabled simultaneously per project):
 
 **(a) Authenticated — JWT (primary)** — for app-embedded widgets where customer's product already has logged-in users (GitCellar Desktop, SessionHelm, customer SaaS dashboards).
-- Customer's backend signs a short-lived JWT for the current user with a project-specific signing key registered to Feedbackr.
-- Widget passes JWT in `Authorization` header. Feedbackr verifies signature, extracts `sub`, `email`, `name`, `external_metadata`.
+- Customer's backend signs a short-lived JWT for the current user with a project-specific signing key registered to feedbackmonk.
+- Widget passes JWT in `Authorization` header. feedbackmonk verifies signature, extracts `sub`, `email`, `name`, `external_metadata`.
 - Algorithm: **EdDSA (Ed25519)**. Aligns with existing GitCellar crypto stack; smaller signatures than RS256; supported by every modern JWT library.
 - Token TTL: **5 min sliding** (widget re-mounts re-issue). Leaked tokens low-risk; no thrash.
 - Customer registers public keys per project; multiple active keys supported for rotation.
@@ -147,18 +147,18 @@ Feedbackr's spec is a separate artifact from GitCellar's `docs/specs/feedback-sy
 - Optional anti-spam: customer can require verified email for submissions (magic-link verify step).
 
 **(c) Magic-link (optional)** — for customers without their own user auth (rare for our persona).
-- Feedbackr sends one-time link, sets signed cookie. Substack-style.
+- feedbackmonk sends one-time link, sets signed cookie. Substack-style.
 
 **Per-project config flags** (admin UI):
 - Allowed modes for this project (default: `auth` + `anonymous`)
 - Domain allowlist for widget embed (CORS + iframe X-Frame-Options + CSP frame-ancestors)
 - Optional: require verified email for anonymous submissions
 
-**Privacy invariant (load-bearing — extends DEC-FBR-02 positioning)**: The JWT customer signs is the **only** identity Feedbackr ever has for an end-user. Feedbackr never calls back to the customer's auth provider, never syncs user lists, never accepts long-lived bearer tokens. **No identity-tracking surface area beyond what the customer hands us per-session.**
+**Privacy invariant (load-bearing — extends DEC-FBR-02 positioning)**: The JWT customer signs is the **only** identity feedbackmonk ever has for an end-user. feedbackmonk never calls back to the customer's auth provider, never syncs user lists, never accepts long-lived bearer tokens. **No identity-tracking surface area beyond what the customer hands us per-session.**
 
 **Why this and not alternatives**:
 - ❌ OAuth-via-customer-provider — redirect dance is jarring for "leave feedback" UX (Featurebase fumbled this); reserved for enterprise we're not targeting.
-- ❌ PassKey-native (GitCellar's pattern) — doesn't generalize; not every Feedbackr customer is a PassKey shop.
+- ❌ PassKey-native (GitCellar's pattern) — doesn't generalize; not every feedbackmonk customer is a PassKey shop.
 - ❌ Anonymous-only — loses identity continuity for status emails ("Hey Alice, we shipped your request"). Auth must be the default for app-embedded use.
 
 **Coverage check against sibling-projects portfolio**:
@@ -196,7 +196,7 @@ These are **not alternatives**. The hosted SaaS is the same product as the self-
 - For Persona D specifically, AGPL is the entry ticket — without it, the privacy differentiation collapses.
 - GitHub stars are free marketing. Plausible's 19k+ stars drive constant organic traffic at near-zero CAC.
 
-**Estimate**: AGPL+SaaS produces ~2-3× the revenue of closed-source SaaS for Feedbackr's specific positioning over a 3-year horizon. TAM expansion + cheap GTM compensates for the small self-host leakage (~5-10% of would-be paying customers).
+**Estimate**: AGPL+SaaS produces ~2-3× the revenue of closed-source SaaS for feedbackmonk's specific positioning over a 3-year horizon. TAM expansion + cheap GTM compensates for the small self-host leakage (~5-10% of would-be paying customers).
 
 **Concrete commitments** (lock now so they don't drift):
 - All product code AGPL. No private "pro features" branch.
@@ -211,9 +211,9 @@ These are **not alternatives**. The hosted SaaS is the same product as the self-
 | Targeting Persona C primary | Yes — some F500 have AGPL bans |
 | Consumer (B2C) product | Yes — consumers don't care |
 | Network-effects monopoly play | Maybe |
-| **Feedbackr** (B2D, privacy-first, indie/small-team) | **No — AGPL is right** |
+| **feedbackmonk** (B2D, privacy-first, indie/small-team) | **No — AGPL is right** |
 
-Feedbackr hits the "AGPL works" markers and none of the "AGPL hurts" ones.
+feedbackmonk hits the "AGPL works" markers and none of the "AGPL hurts" ones.
 
 ---
 
@@ -221,7 +221,7 @@ Feedbackr hits the "AGPL works" markers and none of the "AGPL hurts" ones.
 
 **Resolved**: 2026-05-13.
 
-**Decision**: Roadmap is a first-class native feature of Feedbackr. No Gitea / Forge / external-issue-tracker dependency.
+**Decision**: Roadmap is a first-class native feature of feedbackmonk. No Gitea / Forge / external-issue-tracker dependency.
 
 **Why drop the Forge bridge** (GitCellar uses Gitea-as-roadmap, but that's GitCellar-specific reuse):
 - Customers won't run Gitea forks — no reasonable expectation to ask them to.
@@ -264,15 +264,15 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 **Cloudflare Pages / Workers deploys** point at the GitHub repo (for `feedbackr.com` landing site).
 
 **Why a new public repo and NOT in-place extraction in GitCellar's workspace**:
-- **AGPL only has business value if visible.** GitCellar's repo is private (local Gitea). Embedding Feedbackr there means nobody can find it, star it, fork it, audit it — killing the OSS-as-marketing channel that DEC-FBR-05's revenue math depends on.
-- **No source-level dependency** — GitCellar consumes Feedbackr via API + widget (DEC-FBR-04 mode a JWT), NOT via Rust-crate imports. The "library in Shared/" instinct from intake assumed a Rust-level dependency; that disappears with the API-only consumption model.
+- **AGPL only has business value if visible.** GitCellar's repo is private (local Gitea). Embedding feedbackmonk there means nobody can find it, star it, fork it, audit it — killing the OSS-as-marketing channel that DEC-FBR-05's revenue math depends on.
+- **No source-level dependency** — GitCellar consumes feedbackmonk via API + widget (DEC-FBR-04 mode a JWT), NOT via Rust-crate imports. The "library in Shared/" instinct from intake assumed a Rust-level dependency; that disappears with the API-only consumption model.
 - **License hygiene** — GitCellar isn't AGPL. Mixing licenses in one repo is messy and confusing for contributors.
-- **Release-cadence independence** — GitCellar's pre-launch hardening shouldn't gate Feedbackr's release pace. Separate repos = each evolves at its own pace.
+- **Release-cadence independence** — GitCellar's pre-launch hardening shouldn't gate feedbackmonk's release pace. Separate repos = each evolves at its own pace.
 
-**GitCellar's role flips** from "host of feedback module" to "Feedbackr's customer #1":
-- GitCellar's internal `gitcellar-cloud/src/feedback/` keeps running unchanged until Feedbackr v1 ships.
-- GitCellar embeds Feedbackr's widget (via DEC-FBR-04 mode a JWT) as customer-side validation — runs both internal feedback and embedded Feedbackr in parallel during transition.
-- Eventually GitCellar exports historical feedback → imports into Feedbackr via admin API → removes internal feedback code.
+**GitCellar's role flips** from "host of feedback module" to "feedbackmonk's customer #1":
+- GitCellar's internal `gitcellar-cloud/src/feedback/` keeps running unchanged until feedbackmonk v1 ships.
+- GitCellar embeds feedbackmonk's widget (via DEC-FBR-04 mode a JWT) as customer-side validation — runs both internal feedback and embedded feedbackmonk in parallel during transition.
+- Eventually GitCellar exports historical feedback → imports into feedbackmonk via admin API → removes internal feedback code.
 - quiqpic + SessionHelm onboard post-GitCellar-launch or in parallel (simpler integrations than GitCellar's).
 
 **Pre-registration recommendation**: lock `github.com/feedbackr` org and `feedbackr.com` domain now (cost: ~$10/yr for domain; org is free). Prevents squatters; defer rename if final product name differs (Q9).
@@ -353,11 +353,11 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 ---
 
-### DEC-FBR-09: Product name — "Feedbackr" as working name; real branding pass at P4 (pre-launch)
+### DEC-FBR-09: Product name — "feedbackmonk" as working name; real branding pass at P4 (pre-launch)
 
 **Resolved**: 2026-05-13.
 
-**Working name**: "Feedbackr". Used throughout spec, plan, implementation phases P0-P3.
+**Working name**: "feedbackmonk". Used throughout spec, plan, implementation phases P0-P3.
 
 **Real branding pass**: scheduled for **P4** (marketing site + go-public phase). Logo, color, font, voice all done together with the landing site. If a better name surfaces during brand work, rename then — costs are low pre-launch.
 
@@ -366,7 +366,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 - Check WHOIS on `feedbackr.com`, `feedbackr.io`, `feedbackr.app`, `feedbackr.dev` — register the first available `.com`/`.app`/`.dev` (~$10-15/yr). If `.com` is squatted, signal to consider a different name rather than collecting hodgepodge TLDs.
 - If both org AND domain are squatted: decide a different working name BEFORE P0 starts. Candidates worth investigating (unverified): Earshot, Plumbline, Listenly.
 
-**Why workmanlike naming, not artistic**: matches founder's existing portfolio (GitCellar, quiqpic, SessionHelm — all clear, none precious). "Feedbackr" fits the vibe; signals what it is; in the Flickr/Twittr lineage that's slightly dated but harmless for a dev tool.
+**Why workmanlike naming, not artistic**: matches founder's existing portfolio (GitCellar, quiqpic, SessionHelm — all clear, none precious). "feedbackmonk" fits the vibe; signals what it is; in the Flickr/Twittr lineage that's slightly dated but harmless for a dev tool.
 
 **Don't optimize naming now** — spend the energy on the product. If brand work surfaces a clearly-better name at P4, rename then.
 
@@ -376,7 +376,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 **Resolved**: 2026-05-13.
 
-**Stage 1 — Dogfood alpha** (~2 weeks): triggered at end of P3 (commercial gate works). Audience: you. GitCellar embeds Feedbackr's widget; you triage your own feedback through it. Goal: find UX bugs only real usage surfaces. Rapid iteration cadence.
+**Stage 1 — Dogfood alpha** (~2 weeks): triggered at end of P3 (commercial gate works). Audience: you. GitCellar embeds feedbackmonk's widget; you triage your own feedback through it. Goal: find UX bugs only real usage surfaces. Rapid iteration cadence.
 
 **Stage 2 — Public AGPL beta** (~1-2 months): triggered at end of P4 (marketing site ready). Action: Show HN post + Twitter thread + GitHub repo public. Free tier open; paid tiers visible but NOT marketed. Goal: 100 free-tier signups, 5-10 self-host installs, qualitative widget UX feedback.
 
@@ -385,7 +385,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 **Coordination with GitCellar**:
 - ⚠️ **Stage 3 MUST wait for GitCellar 1.0 to ship**. Running two cold-start marketing motions in parallel splits founder bandwidth in the worst way.
 - ✅ Stages 1-2 can overlap with GitCellar pre-launch hardening — they're low-marketing-volume.
-- ✅ GitCellar 1.0 → Feedbackr Stage 3 as a coordinated launch arc is a real win (Desktop users see Feedbackr; Feedbackr roadmap hosted by GitCellar; cross-reference organic).
+- ✅ GitCellar 1.0 → feedbackmonk Stage 3 as a coordinated launch arc is a real win (Desktop users see feedbackmonk; feedbackmonk roadmap hosted by GitCellar; cross-reference organic).
 
 **Anti-patterns ruled out**:
 - ❌ "Stealth mode" → public-launch big bang. Rarely works for indie OSS; build in public quietly.
@@ -394,9 +394,53 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 ---
 
+### DEC-FBR-11: Working name changed to "feedbackmonk" — DEC-FBR-09 squat-contingency enacted
+
+**Resolved**: 2026-05-14 (post-DEC-FBR-09 enactment, mid-P1 Stage 2 close).
+
+**Trigger**: pre-public-commit availability scan (run from a fresh planning-completion session before the Stage 2→Stage 3 boundary) found:
+- `github.com/feedbackmonk` org **TAKEN** (dormant since 2024-05-20, owner `b.invisibilities@outlook.com`, blog claims `feedbackr.live`)
+- `feedbackr.com` **TAKEN** (Verisign authoritative; registrar Namecheap; "client transfer prohibited")
+- `feedbackr.app` and `feedbackr.dev` AVAILABLE
+
+DEC-FBR-09's contingency activated: *"If both org AND domain are squatted: decide a different working name BEFORE P0 starts."* The work had already moved past the literal pre-P0 deadline, but the contingency principle still applies for any pre-public-commit moment — the rename must land before any public push references the name.
+
+DEC-FBR-09's three suggested-candidate names (Earshot / Plumbline / Listenly) all blocked at `.com` on rescan. A second-batch brainstorm (8 candidates including compounds matching the founder's portfolio pattern) and a third-batch user-proposed set (`glitchjuggle`, `glitchjuggler`, `bugglitch`, `feedbackmonk`, `feedbackamole`, `gnufeedback`) were evaluated. **`feedbackmonk`** chosen.
+
+**Why `feedbackmonk`**:
+- Both `github.com/feedbackmonk` and `feedbackmonk.com` confirmed open (RDAP HTTP 404 + `gh api orgs/feedbackmonk` HTTP 404).
+- Strongest alignment with DEC-FBR-02 brand promise *"Privacy-first product feedback. Hear your users without spying on them."* — "monk" semantically reinforces *quiet, disciplined craft, listening* without amending DEC-FBR-02.
+- Dev-tool register matches founder portfolio (GitCellar, quiqpic, SessionHelm — workmanlike, none precious).
+- Clean spell-out and pronunciation (vs. `feedbackamole`, the clever whack-a-mole alternative, whose pronunciation was ambiguous in spell-out tests).
+- No trademark / political baggage (vs. `gnufeedback`, where FSF's GNU mark carries risk).
+- Avoids bug-tracker miscategorization (vs. `glitchjuggle` / `bugglitch`, which read as Sentry/Bugsnag competitors — wrong market).
+
+**Identifier-stability rule**: existing decision IDs `DEC-FBR-01..11` and requirement IDs `FR-FBR-01..18` **keep the `FBR` prefix permanently**. ID prefixes outlive renames in mature codebases (e.g., GitHub's `gh_` URL stem is durable across any future GitHub rebrand). From this point forward `FBR` is a stable identifier-prefix divorced from the brand. No bulk-rename of IDs.
+
+**Identity-rename scope (executed in the session that recorded this decision)**:
+- `CLAUDE.md`, `README.md`, `.claude/project.json` (name + description fields)
+- Spec front-matter and §"What X is" sections in `SPECIFICATION.md`
+- This decision entry; OPEN_QUESTIONS.md Q9 status note
+- `LICENSE` body left as-is (canonical 661-line AGPL-3.0 text is name-independent)
+
+**Identity-rename scope (DEFERRED — tracked as Pending Follow-Up in CLAUDE.md)**:
+- Cargo crate prefixes `feedbackr-*` → `feedbackmonk-*` (workspace + member crate names + `Cargo.toml [dependencies]` entries)
+- Env-var prefix `FEEDBACKMONK_*` → `FEEDBACKMONK_*` in code + docs + `.env.example`
+- Postgres schema items if any are `feedbackr_*`-prefixed (audit at rename time)
+- `admin-ui/package.json` name field
+- `cargo sqlx prepare` cache regeneration after env-var rename
+- Working directory `E:\Developer\SourceControlled\Apps\Feedbackr` → `\feedbackmonk` (the agent recording this decision cannot rename its own CWD; live PODS sibling sessions also have CWD-locked terminals; must be done by user after autopilot chain reaches quiescence)
+- Future git remote URL: `github.com/feedbackmonk/feedbackmonk` (no remote currently set; user-action when pre-registering the org)
+
+**Why defer the code-level rename**: the live PODS workers (CLAUDE-A backend + CLAUDE-B frontend) and the LD session are mid-arc on P1. A 50+-file rename committed during their flight creates merge friction and forces them to re-resolve sqlx compile-time checks. The natural quiescent window is the P1 finalize → P2 plan transition; the rename becomes a single atomic commit there.
+
+**Brand pass at P4 unchanged**: DEC-FBR-09's scheduling of the FULL branding pass (logo, color, font, voice, possible re-rename) for P4 stands. DEC-FBR-11 is the WORKING-name swap pulled forward by the squat contingency. If P4 surfaces a clearly-better name, rename then per DEC-FBR-09.
+
+---
+
 ## Spec session — COMPLETE ✅
 
-All 10 critical questions resolved. Foundational triad (Q1-Q3) + 7 next-tier (Q4-Q10) closed. 10 decisions (DEC-FBR-01..10) recorded. 18 functional requirements derive from DEC-FBR-08. Ready for `/0-uldf-ldis-plan`.
+All 10 critical questions resolved. Foundational triad (Q1-Q3) + 7 next-tier (Q4-Q10) closed. 10 decisions (DEC-FBR-01..10) plus 1 contingency amendment (DEC-FBR-11) recorded. 18 functional requirements derive from DEC-FBR-08. Ready for `/0-uldf-ldis-plan`.
 
 ---
 
@@ -419,7 +463,7 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 
 **Trade-offs**: Mild departure from the plan's literal §C1 sketch. If a future Contract C1 amendment ratifies the other direction, both are trivially removable (one parameter removal + one method removal).
 
-**Implementation**: `crates/feedbackr-repository/src/feedback.rs` trait definitions. Reflected in `docs/planning/handoffs/stage1-to-stage2.md` as the frozen surface for Stage 2 workers.
+**Implementation**: `crates/feedbackmonk-repository/src/feedback.rs` trait definitions. Reflected in `docs/planning/handoffs/stage1-to-stage2.md` as the frozen surface for Stage 2 workers.
 
 ---
 
@@ -433,7 +477,7 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 
 **Trade-offs**: Adds a third entry to the pre-auth allowlist. Risk is gradual allowlist growth. Mitigated by required-rationale convention and oracle freshness trigger on allowlist edits.
 
-**Implementation**: `crates/feedbackr-repository/src/tenants.rs`. Allowlist entry: `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` lines 32-35.
+**Implementation**: `crates/feedbackmonk-repository/src/tenants.rs`. Allowlist entry: `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` lines 32-35.
 
 ---
 
@@ -441,7 +485,7 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 
 **Resolved**: 2026-05-13 (P0 Stage 1, oracle build).
 
-**Decision**: The `multi-tenant-isolation-check` oracle's canonical implementation is `oracle.py` (Python 3.8+). `oracle.ps1` and `oracle.sh` are thin shims that delegate to `python3 oracle.py`. This pattern is the recommended default for future Feedbackr Verification Oracles that need non-trivial parsing.
+**Decision**: The `multi-tenant-isolation-check` oracle's canonical implementation is `oracle.py` (Python 3.8+). `oracle.ps1` and `oracle.sh` are thin shims that delegate to `python3 oracle.py`. This pattern is the recommended default for future feedbackmonk Verification Oracles that need non-trivial parsing.
 
 **Rationale**: Probe B requires balanced-paren multi-line Rust signature parsing with context tracking. The initial bash port produced 25 false positives on a clean tree due to POSIX shell's context-tracking limitations. A false-positive oracle silently degrades to no-oracle (trained-to-ignore) within weeks. Python 3.8+ is ubiquitous on CI Ubuntu and developer machines; the dependency cost is real but small (and bounded — no `pip install` required for stdlib-only oracles).
 
@@ -455,12 +499,12 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 
 **Resolved**: 2026-05-13 (P0 Stage 1, dev-environment setup).
 
-**Decision**: Feedbackr's local-dev Postgres container binds **port 5433**, not the Postgres default of 5432.
+**Decision**: feedbackmonk's local-dev Postgres container binds **port 5433**, not the Postgres default of 5432.
 
-**Rationale**: The peer gitcellar-cloud repo already runs a Postgres container on 5432 on this development machine. A clash would either prevent both containers from running simultaneously OR — worse — silently write Feedbackr test data into gitcellar's database. The 5433 choice preserves project isolation and matches the Dev Port Registry convention (each project gets its own port range; see `~/.claude/MACHINE_CONFIG.md`).
+**Rationale**: The peer gitcellar-cloud repo already runs a Postgres container on 5432 on this development machine. A clash would either prevent both containers from running simultaneously OR — worse — silently write feedbackmonk test data into gitcellar's database. The 5433 choice preserves project isolation and matches the Dev Port Registry convention (each project gets its own port range; see `~/.claude/MACHINE_CONFIG.md`).
 
-**Trade-offs**: Developers need to remember `localhost:5433` for Feedbackr. Documented in `docs/operations/LOCAL_DEV.md` and the `DATABASE_URL` env vars used by `sqlx::test`.
+**Trade-offs**: Developers need to remember `localhost:5433` for feedbackmonk. Documented in `docs/operations/LOCAL_DEV.md` and the `DATABASE_URL` env vars used by `sqlx::test`.
 
-**Implementation**: `docs/operations/LOCAL_DEV.md` documents the container shape. `~/.claude/MACHINE_CONFIG.md` records the port claim. `sqlx::test` macros consume `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev`.
+**Implementation**: `docs/operations/LOCAL_DEV.md` documents the container shape. `~/.claude/MACHINE_CONFIG.md` records the port claim. `sqlx::test` macros consume `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev`.
 
 ---

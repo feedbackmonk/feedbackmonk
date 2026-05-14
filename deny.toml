@@ -21,7 +21,7 @@ multiple-versions = "allow"
 wildcards = "deny"
 
 # DENIED CRATES -- introducing any of these is a security-policy violation
-# (would establish a second DB query path outside crates/feedbackr-repository/).
+# (would establish a second DB query path outside crates/feedbackmonk-repository/).
 deny = [
     { name = "rusqlite", reason = "Forbidden second DB driver - DEC-FBR-03 mandates sqlx as sole query path." },
     { name = "mysql",    reason = "Forbidden second DB driver - DEC-FBR-03 mandates sqlx as sole query path." },

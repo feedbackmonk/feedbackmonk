@@ -1,4 +1,4 @@
-# Feedbackr P0 end-to-end curl pipeline (PowerShell variant).
+# feedbackmonk P0 end-to-end curl pipeline (PowerShell variant).
 #
 # Mirrors `scripts/e2e-p0-curl.sh` for Windows-native PowerShell. Same
 # preconditions, same exit semantics:
@@ -18,11 +18,11 @@
 
 $ErrorActionPreference = 'Stop'
 
-$ApiBase     = if ($env:FEEDBACKR_API_BASE) { $env:FEEDBACKR_API_BASE } else { 'http://127.0.0.1:14304' }
+$ApiBase     = if ($env:FEEDBACKMONK_API_BASE) { $env:FEEDBACKMONK_API_BASE } else { 'http://127.0.0.1:14304' }
 $MailpitBase = if ($env:MAILPIT_BASE)       { $env:MAILPIT_BASE }       else { 'http://127.0.0.1:8025' }
 $TestEmail   = "e2e-$([DateTimeOffset]::Now.ToUnixTimeSeconds())@example.com"
 $TestPassword= 'correct horse battery staple 9!'
-$WorkDir     = Join-Path $env:TEMP "feedbackr-e2e-$([guid]::NewGuid())"
+$WorkDir     = Join-Path $env:TEMP "feedbackmonk-e2e-$([guid]::NewGuid())"
 New-Item -ItemType Directory -Path $WorkDir | Out-Null
 $KeysDir     = Join-Path $WorkDir 'keys'
 New-Item -ItemType Directory -Path $KeysDir | Out-Null
@@ -75,8 +75,8 @@ $verifyBody = @{ token = $token } | ConvertTo-Json -Compress
 $verifyResp = Invoke-WebRequest -Method Post -Uri "$ApiBase/api/v1/verify-email" `
     -ContentType 'application/json' -Body $verifyBody -WebSession $session
 if ($verifyResp.StatusCode -ne 200) { Fail "verify-email did not return 200: $($verifyResp.StatusCode)" }
-$haveSessionCookie = $session.Cookies.GetCookies($ApiBase) | Where-Object { $_.Name -eq 'feedbackr_session' }
-if (-not $haveSessionCookie) { Fail 'verify-email did not set feedbackr_session cookie' }
+$haveSessionCookie = $session.Cookies.GetCookies($ApiBase) | Where-Object { $_.Name -eq 'feedbackmonk_session' }
+if (-not $haveSessionCookie) { Fail 'verify-email did not set feedbackmonk_session cookie' }
 Pass 'step 2 -- email verified, session cookie set'
 
 # ---------- step 3: create project -----------------------------------------
@@ -167,14 +167,14 @@ $cookie = 'e2e-cookie-deterministic'
 foreach ($i in 1..10) {
     $code = (Invoke-WebRequest -Method Post -Uri "$ApiBase/api/v1/projects/$ProjectId/feedback" `
         -ContentType 'application/json' `
-        -Headers @{ 'X-Feedbackr-Anon-Cookie' = $cookie } `
+        -Headers @{ 'X-Feedbackmonk-Anon-Cookie' = $cookie } `
         -Body (@{ body = "burst $i"; kind = 'other' } | ConvertTo-Json -Compress) `
         -SkipHttpErrorCheck).StatusCode
     if ($code -ne 200) { Fail "anon submission $i returned $code (expected 200)" }
 }
 $code11 = (Invoke-WebRequest -Method Post -Uri "$ApiBase/api/v1/projects/$ProjectId/feedback" `
     -ContentType 'application/json' `
-    -Headers @{ 'X-Feedbackr-Anon-Cookie' = $cookie } `
+    -Headers @{ 'X-Feedbackmonk-Anon-Cookie' = $cookie } `
     -Body (@{ body = 'burst 11'; kind = 'other' } | ConvertTo-Json -Compress) `
     -SkipHttpErrorCheck).StatusCode
 if ($code11 -ne 429) { Fail "11th anon submission returned $code11 (expected 429)" }

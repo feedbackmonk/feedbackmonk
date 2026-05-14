@@ -10,8 +10,8 @@ Answers the question: *Does every domain-touching code path go through tenant-sc
 
 Two probes:
 
-- **Probe A** — raw SQL outside the repository crate: greps every `.rs` file under `crates/` (except `crates/feedbackr-repository/`) for forbidden patterns: `sqlx::query`, `&mut Connection`, `&mut PgConnection`, `&mut Transaction`, `Pool<Postgres>`, `pool.acquire(`.
-- **Probe B** — repository-method scope discipline: parses every `pub fn` / `pub async fn` signature in `crates/feedbackr-repository/src/**.rs` and verifies the first non-`&self` argument is `&TenantScope` or `&ProjectScope` (or appears in `allowlist.toml`).
+- **Probe A** — raw SQL outside the repository crate: greps every `.rs` file under `crates/` (except `crates/feedbackmonk-repository/`) for forbidden patterns: `sqlx::query`, `&mut Connection`, `&mut PgConnection`, `&mut Transaction`, `Pool<Postgres>`, `pool.acquire(`.
+- **Probe B** — repository-method scope discipline: parses every `pub fn` / `pub async fn` signature in `crates/feedbackmonk-repository/src/**.rs` and verifies the first non-`&self` argument is `&TenantScope` or `&ProjectScope` (or appears in `allowlist.toml`).
 
 Output: `PASS` (exit 0) when both probes are clean; `FAIL <count>` with `file:line` offenders and exit 1 otherwise.
 
@@ -36,18 +36,18 @@ pwsh   .claude/oracles/multi-tenant-isolation-check/oracle.ps1
 # Exit 0 + "PASS" on success; exit 1 + "FAIL <count>" with offender lines on failure.
 ```
 
-Triggered by changes to: `migrations/**`, `crates/feedbackr-repository/**`, `crates/feedbackr-core/**`, `crates/feedbackr-api/**`, `crates/feedbackr-jwt/**` (Stage 2), `crates/feedbackr-anon/**` (Stage 2), `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`.
+Triggered by changes to: `migrations/**`, `crates/feedbackmonk-repository/**`, `crates/feedbackmonk-core/**`, `crates/feedbackmonk-api/**`, `crates/feedbackmonk-jwt/**` (Stage 2), `crates/feedbackmonk-anon/**` (Stage 2), `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`.
 
 ## Constraints & Business Rules
 
-- **Probe A has NO allowlist.** DEC-FBR-03 declares any raw SQL outside `crates/feedbackr-repository/` a security incident — there is no legitimate use case. Don't add one without a written DEC-FBR-* amendment.
+- **Probe A has NO allowlist.** DEC-FBR-03 declares any raw SQL outside `crates/feedbackmonk-repository/` a security incident — there is no legitimate use case. Don't add one without a written DEC-FBR-* amendment.
 - **Probe B allowlist requires inline rationale.** Adding an entry to `allowlist.toml` without a rationale comment is forbidden; the oracle's value comes from making each exception explicit.
 - **CI gate from commit 1.** The build fails on oracle red. This is by design — a passing CI with a red isolation oracle is worse than no oracle at all.
 - **Speed contract**: <2s end-to-end on a clean tree. Currently ~250ms.
 
 ## Relationships & Dependencies
 
-- **Type-system half (leg 1)**: `crates/feedbackr-repository/src/scope.rs` — `TenantScope` / `ProjectScope` with `pub(crate)` constructors.
+- **Type-system half (leg 1)**: `crates/feedbackmonk-repository/src/scope.rs` — `TenantScope` / `ProjectScope` with `pub(crate)` constructors.
 - **Lint half (leg 3)**: `Cargo.toml` workspace `clippy::all = deny` + per-crate `clippy::pedantic`, plus `cargo-deny` checks in `deny.toml`.
 - **Consumed by**: every commit in P0+; CI workflow at `.github/workflows/ci.yml`; Stage 2 Workers A and B (gates their commits); future P1+ code (gates indefinitely).
 
@@ -61,7 +61,7 @@ Triggered by changes to: `migrations/**`, `crates/feedbackr-repository/**`, `cra
 
 **Trade-offs**: Three legs to maintain. The maintenance cost is bounded — the oracle is `<300` lines of Python, the newtypes are `~60` lines of Rust, and clippy/cargo-deny are config-only. The cost of one undetected cross-tenant leak (months in the wild, customer trust damage, GDPR exposure) dwarfs the maintenance.
 
-**Implementation**: All three legs live in this repo and are exercised on every commit. See `crates/feedbackr-repository/README.md` for the leg-1 details and `Cargo.toml` + `deny.toml` for leg-3.
+**Implementation**: All three legs live in this repo and are exercised on every commit. See `crates/feedbackmonk-repository/README.md` for the leg-1 details and `Cargo.toml` + `deny.toml` for leg-3.
 
 ### Canonical implementation in Python, not pure shell
 

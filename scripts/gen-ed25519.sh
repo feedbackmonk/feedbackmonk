@@ -10,7 +10,7 @@
 # (Contract C4) and then mint a JWT signed by the private key (Contract C2).
 #
 # Usage:
-#   ./scripts/gen-ed25519.sh /tmp/feedbackr-e2e-keys
+#   ./scripts/gen-ed25519.sh /tmp/feedbackmonk-e2e-keys
 #
 # Requires: openssl 3+ (Ed25519 support).
 

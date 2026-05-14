@@ -47,7 +47,7 @@ jobs:
         image: postgres:17-alpine
         env:
           POSTGRES_PASSWORD: dev
-          POSTGRES_DB: feedbackr_test
+          POSTGRES_DB: feedbackmonk_test
         ports:
           - 5432:5432
         options: >-
@@ -56,7 +56,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://postgres:dev@localhost:5432/feedbackr_test
+      DATABASE_URL: postgres://postgres:dev@localhost:5432/feedbackmonk_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

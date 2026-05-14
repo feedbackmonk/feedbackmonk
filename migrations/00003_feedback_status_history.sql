@@ -34,7 +34,7 @@
 -- Lineage:
 --   FR-FBR-08 (status workflow + audit trail)
 --   Contract C6 (P1 plan §Interface Contracts)
---   DEC-FBR-03 (sole query path through feedbackr-repository)
+--   DEC-FBR-03 (sole query path through feedbackmonk-repository)
 --   GitCellar peer reference: gitcellar-cloud/src/feedback/db.rs
 --
 -- Idempotency: standard sqlx migrator semantics — each migration runs

@@ -1,11 +1,11 @@
 # admin-ui
 
-> Feedbackr tenant-admin web UI — triage, transition, and reply.
+> feedbackmonk tenant-admin web UI — triage, transition, and reply.
 > React 18 + Vite 5 + TypeScript 5 + TanStack Query.
 
 ## Purpose & Responsibilities
 
-Browser-facing UI that consumes Contracts C7 (transition + reply) and C8 (list + detail) from the `feedbackr-api` Rust backend. Lets tenant admins:
+Browser-facing UI that consumes Contracts C7 (transition + reply) and C8 (list + detail) from the `feedbackmonk-api` Rust backend. Lets tenant admins:
 
 1. Log in (cookie issued by backend; `withCredentials: true`).
 2. Browse a status-filtered, paginated feedback list.
@@ -65,15 +65,15 @@ Environment toggles:
 2. **`src/shared/types.gen.ts` is the only place that defines backend response shapes.** Never hand-roll alternative TypeScript types for C7/C8. If CLAUDE-A widens a shape per pre-authorized widenings, mirror here.
 3. **No `dangerouslySetInnerHTML`, anywhere.** Submitter-provided bodies render as plain text (`<p>` with `white-space: pre-wrap` in CSS). Stored-XSS defense per handoff doc Contract C8 invariant.
 4. **No third-party trackers, ever.** No Segment, Mixpanel, GA, Intercom, Hotjar, Sentry-browser-SDK, PostHog. DEC-FBR-02 brand promise.
-5. **No JWT, no `localStorage`/`sessionStorage` for auth.** Auth = the HttpOnly `feedbackr_session` cookie; the browser ships it via `withCredentials: true`. End-user JWTs are a different auth scheme that never appears in the admin UI.
+5. **No JWT, no `localStorage`/`sessionStorage` for auth.** Auth = the HttpOnly `feedbackmonk_session` cookie; the browser ships it via `withCredentials: true`. End-user JWTs are a different auth scheme that never appears in the admin UI.
 6. **State-machine UI invariant** (`StatusControls.tsx`): `LEGAL_TRANSITIONS[currentStatus]` is the only source of which transition buttons render. Backend 409 fallback is belt-and-braces.
 7. **Reply body length 1..16384 chars.** Mirrors backend validation; UI rejects locally before submit.
 8. **Color never carries meaning alone.** `StatusBadge` always pairs a glyph + text label with status color (WCAG 1.4.1).
-9. **CORS is NOT this app's responsibility.** Vite dev proxy makes `/api` same-origin in dev; prod serves both backend and built `dist/` from `feedbackr-api`. Deferred to P1 Stage 3 e2e integration per the P1 plan.
+9. **CORS is NOT this app's responsibility.** Vite dev proxy makes `/api` same-origin in dev; prod serves both backend and built `dist/` from `feedbackmonk-api`. Deferred to P1 Stage 3 e2e integration per the P1 plan.
 
 ## Relationships & Dependencies
 
-- **Depends on**: `feedbackr-api` (Contracts C7/C8/C11) running at `http://localhost:14304` for the live dev proxy.
+- **Depends on**: `feedbackmonk-api` (Contracts C7/C8/C11) running at `http://localhost:14304` for the live dev proxy.
 - **Frozen contract source**: `docs/planning/handoffs/p1-stage1-to-stage2.md` (Stage 1 → Stage 2 handoff doc).
 - **Spec authority**: `docs/specs/SPECIFICATION.md` FR-FBR-07.
 - **No cross-module imports** within the repo; this is a self-contained npm project peer to `crates/`.

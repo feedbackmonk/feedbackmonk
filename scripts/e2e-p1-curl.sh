@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Feedbackr P1 end-to-end curl pipeline -- the P1-exit-gate "closes the loop" witness.
+# feedbackmonk P1 end-to-end curl pipeline -- the P1-exit-gate "closes the loop" witness.
 #
 # Extends e2e-p0-curl.sh with the status-workflow + admin reply pipeline that
 # P1 ships (Stage 2 backend + Stage 2 frontend + Stage 3 witness):
 #
 #   1. signup
-#   2. verify-email   (issues feedbackr_session cookie; doubles as admin-login
+#   2. verify-email   (issues feedbackmonk_session cookie; doubles as admin-login
 #                      since no separate /api/v1/admin/login endpoint exists --
 #                      per Contract C11, the verify-email cookie IS the admin
 #                      session)
@@ -24,7 +24,7 @@
 #
 # Pre-conditions:
 #   - Postgres dev container on localhost:5433 (DATABASE_URL set in API env)
-#   - feedbackr-api binary on http://127.0.0.1:14304
+#   - feedbackmonk-api binary on http://127.0.0.1:14304
 #   - Mailpit dev (HTTP API :8025 + SMTP :1025) -- optional but recommended
 #   - jq, curl, openssl 3+ on PATH
 #
@@ -38,12 +38,12 @@
 
 set -euo pipefail
 
-API_BASE="${FEEDBACKR_API_BASE:-http://127.0.0.1:14304}"
+API_BASE="${FEEDBACKMONK_API_BASE:-http://127.0.0.1:14304}"
 MAILPIT_BASE="${MAILPIT_BASE:-http://127.0.0.1:8025}"
 TEST_EMAIL="e2e-p1-$(date +%s)@example.com"
 SUBMITTER_EMAIL="submitter-p1-$(date +%s)@example.com"
 TEST_PASSWORD="correct horse battery staple 9!"
-WORK_DIR="$(mktemp -d -t feedbackr-e2e-p1.XXXXXX)"
+WORK_DIR="$(mktemp -d -t feedbackmonk-e2e-p1.XXXXXX)"
 COOKIE_JAR="$WORK_DIR/cookies.txt"
 
 log()  { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -101,7 +101,7 @@ echo "$SIGNUP_RESP" | jq . > "$WORK_DIR/signup.json"
 echo "$SIGNUP_RESP" | jq -e '.tenant_id' >/dev/null || fail "signup did not return tenant_id"
 pass "step 1 -- tenant created"
 
-# ---------- step 2: verify-email (issues feedbackr_session cookie) ----------
+# ---------- step 2: verify-email (issues feedbackmonk_session cookie) ----------
 
 log "step 2: read verify-email token + POST /api/v1/verify-email (Contract C11 admin-session cookie)"
 if [ "$MAILPIT_READY" = "1" ]; then
@@ -131,9 +131,9 @@ VERIFY_RESP="$(curl -sS -i -X POST "$API_BASE/api/v1/verify-email" \
     -c "$COOKIE_JAR" \
     -d "{\"token\":\"$VERIFY_TOKEN\"}")"
 echo "$VERIFY_RESP" | grep -qi 'HTTP/1.1 200\|HTTP/2 200' || fail "verify-email did not return 200"
-grep -q feedbackr_session "$COOKIE_JAR" \
-    || fail "verify-email did not set feedbackr_session cookie (Contract C11)"
-pass "step 2 -- verify-email OK; feedbackr_session admin cookie set"
+grep -q feedbackmonk_session "$COOKIE_JAR" \
+    || fail "verify-email did not set feedbackmonk_session cookie (Contract C11)"
+pass "step 2 -- verify-email OK; feedbackmonk_session admin cookie set"
 
 # ---------- step 3: create project ------------------------------------------
 

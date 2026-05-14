@@ -1,4 +1,4 @@
--- 00001_p0_schema.sql -- Feedbackr P0 (Foundation) initial schema
+-- 00001_p0_schema.sql -- feedbackmonk P0 (Foundation) initial schema
 --
 -- Authoritative source for column names and constraints. Stage 2 workers and
 -- all P1+ code hard-depend on these names; renames require a follow-up

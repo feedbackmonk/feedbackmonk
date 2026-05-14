@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Feedbackr P0 end-to-end curl pipeline -- the P0-exit-gate witness.
+# feedbackmonk P0 end-to-end curl pipeline -- the P0-exit-gate witness.
 #
 # Drives the full signup -> project -> key-register -> JWT-signed submission
 # -> anonymous submission -> rate-limit pipeline against a running dev
@@ -10,7 +10,7 @@
 #
 # Pre-conditions:
 #   - Postgres dev container running on localhost:5433 (DATABASE_URL set)
-#   - feedbackr-api binary running on http://127.0.0.1:14304
+#   - feedbackmonk-api binary running on http://127.0.0.1:14304
 #   - Mailpit dev container running with HTTP API on :8025 + SMTP on :1025
 #   - jq, curl, openssl 3+ on PATH
 #   - Optional: Python 3 (for the JWT minting helper) OR Node 18+
@@ -25,11 +25,11 @@
 
 set -euo pipefail
 
-API_BASE="${FEEDBACKR_API_BASE:-http://127.0.0.1:14304}"
+API_BASE="${FEEDBACKMONK_API_BASE:-http://127.0.0.1:14304}"
 MAILPIT_BASE="${MAILPIT_BASE:-http://127.0.0.1:8025}"
 TEST_EMAIL="e2e-$(date +%s)@example.com"
 TEST_PASSWORD="correct horse battery staple 9!"
-WORK_DIR="$(mktemp -d -t feedbackr-e2e.XXXXXX)"
+WORK_DIR="$(mktemp -d -t feedbackmonk-e2e.XXXXXX)"
 COOKIE_JAR="$WORK_DIR/cookies.txt"
 
 log() { printf '[%s] %s\n' "$(date +%H:%M:%S)" "$*"; }
@@ -89,7 +89,7 @@ VERIFY_RESP="$(curl -sS -i -X POST "$API_BASE/api/v1/verify-email" \
     -c "$COOKIE_JAR" \
     -d "{\"token\":\"$VERIFY_LINK\"}")"
 echo "$VERIFY_RESP" | grep -qi 'HTTP/1.1 200\|HTTP/2 200' || fail "verify-email did not return 200"
-grep -q feedbackr_session "$COOKIE_JAR" || fail "verify-email did not set session cookie"
+grep -q feedbackmonk_session "$COOKIE_JAR" || fail "verify-email did not set session cookie"
 pass "step 2 -- email verified, session cookie set"
 
 # ---------- step 3: create project ------------------------------------------
@@ -174,14 +174,14 @@ for i in 1 2 3 4 5 6 7 8 9 10; do
     R="$(curl -sS -o /dev/null -w '%{http_code}' \
         -X POST "$API_BASE/api/v1/projects/$PROJECT_ID/feedback" \
         -H 'Content-Type: application/json' \
-        -H "X-Feedbackr-Anon-Cookie: $ANON_COOKIE_VAL" \
+        -H "X-Feedbackmonk-Anon-Cookie: $ANON_COOKIE_VAL" \
         -d "{\"body\":\"burst $i\",\"kind\":\"other\"}")"
     [ "$R" = "200" ] || fail "anon submission $i returned $R (expected 200)"
 done
 R11="$(curl -sS -o /dev/null -w '%{http_code}' \
     -X POST "$API_BASE/api/v1/projects/$PROJECT_ID/feedback" \
     -H 'Content-Type: application/json' \
-    -H "X-Feedbackr-Anon-Cookie: $ANON_COOKIE_VAL" \
+    -H "X-Feedbackmonk-Anon-Cookie: $ANON_COOKIE_VAL" \
     -d '{"body":"burst 11","kind":"other"}')"
 [ "$R11" = "429" ] || fail "11th anon submission returned $R11 (expected 429)"
 pass "step 7 -- 11th submission correctly rate-limited"

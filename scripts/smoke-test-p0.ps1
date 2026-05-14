@@ -1,12 +1,12 @@
 # Worker A smoke test -- exercise the binary end-to-end against Mailpit + Postgres dev container.
 $ErrorActionPreference = 'Stop'
-$env:DATABASE_URL = 'postgres://postgres:dev@localhost:5433/feedbackr_dev'
-$env:FEEDBACKR_SESSION_SECRET = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
-$env:FEEDBACKR_MAILER = 'mailpit'
-$env:FEEDBACKR_PORT = '14304'
-$env:FEEDBACKR_PUBLIC_URL = 'http://localhost:14304'
+$env:DATABASE_URL = 'postgres://postgres:dev@localhost:5433/feedbackmonk_dev'
+$env:FEEDBACKMONK_SESSION_SECRET = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+$env:FEEDBACKMONK_MAILER = 'mailpit'
+$env:FEEDBACKMONK_PORT = '14304'
+$env:FEEDBACKMONK_PUBLIC_URL = 'http://localhost:14304'
 
-$proc = Start-Process -FilePath 'target\debug\feedbackr-api.exe' -PassThru -NoNewWindow -RedirectStandardOutput stdout.log -RedirectStandardError stderr.log
+$proc = Start-Process -FilePath 'target\debug\feedbackmonk-api.exe' -PassThru -NoNewWindow -RedirectStandardOutput stdout.log -RedirectStandardError stderr.log
 try {
     Start-Sleep -Seconds 3
     Write-Host "Server PID: $($proc.Id)"

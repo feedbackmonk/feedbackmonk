@@ -165,7 +165,7 @@ This is the canonical case for routing to `/0-uldf-ldis-spec`.
 
 | Decision | Deferred Until | Default if Unresolved | Why Defer |
 |---|---|---|---|
-| Product name | Pre-launch | "Feedbackr" placeholder | Identity work needs the product to feel real first |
+| Product name | Pre-launch | "feedbackmonk" placeholder | Identity work needs the product to feel real first |
 | Pricing tiers | Post-MVP | $X / month / N teammates | Need market signal |
 | GDPR data-residency | First EU customer | Single-region US | Reduces ops complexity at MVP |
 | Payment provider setup | Pre-monetization | None (free beta) | Polar setup can mirror GitCellar's pattern when ready |
@@ -200,12 +200,12 @@ These streams have decent independence after spec stabilizes. **PODS likely bene
 
 4. **Do NOT touch any feedback-system code yet** — GitCellar is in pre-launch hardening; destabilizing the reference implementation before the abstraction is designed risks both projects. Extraction begins after spec converges and a plan exists.
 
-5. **Park the GitCellar LTADS session cleanly if switching focus** — the active LTADS session at PAUSED relates to GitCellar work; if the user wants to invest serious time into Feedbackr spec, formalize the context switch via `/0-uldf-ltads-stop` rather than letting GitCellar's session drift further into staleness.
+5. **Park the GitCellar LTADS session cleanly if switching focus** — the active LTADS session at PAUSED relates to GitCellar work; if the user wants to invest serious time into feedbackmonk spec, formalize the context switch via `/0-uldf-ltads-stop` rather than letting GitCellar's session drift further into staleness.
 
 ---
 
 ## NOTES
 
-- This intake DOES NOT decide whether to actually pursue Feedbackr. It surfaces the question set and the verdict that the current spec is insufficient to start implementation. The user retains the option to spec-explore and *then* decide whether it's worth pursuing — that's the value of running spec before committing.
-- The existing `docs/specs/feedback-system/` (GitCellar's spec) is a strong starting reference, but should NOT be edited directly — it documents the GitCellar-integrated system. Feedbackr's spec is a separate artifact.
+- This intake DOES NOT decide whether to actually pursue feedbackmonk. It surfaces the question set and the verdict that the current spec is insufficient to start implementation. The user retains the option to spec-explore and *then* decide whether it's worth pursuing — that's the value of running spec before committing.
+- The existing `docs/specs/feedback-system/` (GitCellar's spec) is a strong starting reference, but should NOT be edited directly — it documents the GitCellar-integrated system. feedbackmonk's spec is a separate artifact.
 - If user signals "let's just spec this," route to `/0-uldf-ldis-spec` with the foundational triad as the opening agenda.

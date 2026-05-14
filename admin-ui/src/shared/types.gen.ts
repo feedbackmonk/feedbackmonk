@@ -1,7 +1,7 @@
 // admin-ui/src/shared/types.gen.ts
 //
 // Hand-rolled mirror of the backend response shapes. KEEP IN SYNC with
-// `crates/feedbackr-api/src/handlers/admin_feedback.rs` (Stage 2 Worker A).
+// `crates/feedbackmonk-api/src/handlers/admin_feedback.rs` (Stage 2 Worker A).
 //
 // Source of truth: docs/planning/handoffs/p1-stage1-to-stage2.md
 // §TypeScript type mirror (Worker B starting kit). Verbatim copy.

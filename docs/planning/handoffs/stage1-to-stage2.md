@@ -1,9 +1,9 @@
-# Stage 1 → Stage 2 Handoff (Feedbackr P0 Foundation)
+# Stage 1 → Stage 2 Handoff (feedbackmonk P0 Foundation)
 
 **Stage 1 worker**: stage1-worker (orchestrated session, autopilot:continuous)
 **Concluded**: 2026-05-13
-**Plan**: `docs/planning/plans/20260513T210133-feedbackr-p0-foundation.md`
-**Arc plan**: `docs/planning/plans/20260513T185711-feedbackr-v1-build-arc.md`
+**Plan**: `docs/planning/plans/20260513T210133-feedbackmonk-p0-foundation.md`
+**Arc plan**: `docs/planning/plans/20260513T185711-feedbackmonk-v1-build-arc.md`
 
 This document is the FROZEN carry-state for Stage 2 Workers A and B. Worker A
 owns FR-FBR-02 (signup/onboarding) + Contract C4 (signing-key registration).
@@ -14,7 +14,7 @@ FR-FBR-06 (anonymous mode) + Contracts C2/C3 + JWT fixture corpus.
 
 ## Frozen Contract C1 — Repository Surface
 
-The `feedbackr-repository` crate IS Contract C1. **DO NOT widen any signature
+The `feedbackmonk-repository` crate IS Contract C1. **DO NOT widen any signature
 without escalating via `channels/messages.md` and Lead Developer involvement.**
 The `multi-tenant-isolation-check` Verification Oracle will fail the build if
 you add a public method that lacks `&TenantScope` or `&ProjectScope` as the
@@ -26,13 +26,13 @@ boundary").
 
 | Path | Public surface |
 |---|---|
-| `crates/feedbackr-repository/src/lib.rs` | Re-exports of all traits, impls, scope types, errors. Read this first. |
-| `crates/feedbackr-repository/src/scope.rs` | `TenantScope`, `ProjectScope` newtypes (`pub(crate)` constructors). Methods: `tenant_id()`, `project_id()`, `tenant()`. |
-| `crates/feedbackr-repository/src/error.rs` | `RepoError { Sqlx, NotFound, Conflict, TenantProjectMismatch }`, `Result<T>` alias. |
-| `crates/feedbackr-repository/src/tenants.rs` | `TenantRepo` trait + `SqlxTenantRepo` impl. |
-| `crates/feedbackr-repository/src/projects.rs` | `ProjectRepo` trait + `SqlxProjectRepo` impl. **`open(&TenantScope, project_id) -> Result<ProjectScope>` is the SOLE constructor of `ProjectScope`.** |
-| `crates/feedbackr-repository/src/signing_keys.rs` | `SigningKeyRepo` trait + `SqlxSigningKeyRepo` impl. |
-| `crates/feedbackr-repository/src/feedback.rs` | `FeedbackRepo` trait + `SqlxFeedbackRepo` impl. Auth-mode + anonymous-mode submission, scoped list. |
+| `crates/feedbackmonk-repository/src/lib.rs` | Re-exports of all traits, impls, scope types, errors. Read this first. |
+| `crates/feedbackmonk-repository/src/scope.rs` | `TenantScope`, `ProjectScope` newtypes (`pub(crate)` constructors). Methods: `tenant_id()`, `project_id()`, `tenant()`. |
+| `crates/feedbackmonk-repository/src/error.rs` | `RepoError { Sqlx, NotFound, Conflict, TenantProjectMismatch }`, `Result<T>` alias. |
+| `crates/feedbackmonk-repository/src/tenants.rs` | `TenantRepo` trait + `SqlxTenantRepo` impl. |
+| `crates/feedbackmonk-repository/src/projects.rs` | `ProjectRepo` trait + `SqlxProjectRepo` impl. **`open(&TenantScope, project_id) -> Result<ProjectScope>` is the SOLE constructor of `ProjectScope`.** |
+| `crates/feedbackmonk-repository/src/signing_keys.rs` | `SigningKeyRepo` trait + `SqlxSigningKeyRepo` impl. |
+| `crates/feedbackmonk-repository/src/feedback.rs` | `FeedbackRepo` trait + `SqlxFeedbackRepo` impl. Auth-mode + anonymous-mode submission, scoped list. |
 
 ### Trait method enumeration (frozen — no widening without escalation)
 
@@ -153,9 +153,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/oracles/multi-tenant
 Exit 0 = PASS. Exit 1 = FAIL with file:line offenders printed.
 
 Freshness invalidation triggers (per `manifest.json`): any change under
-`migrations/`, `crates/feedbackr-repository/`, `crates/feedbackr-core/`,
-`crates/feedbackr-api/`, `crates/feedbackr-jwt/` (when added by Worker B),
-`crates/feedbackr-anon/` (when added by Worker B), or the allowlist.
+`migrations/`, `crates/feedbackmonk-repository/`, `crates/feedbackmonk-core/`,
+`crates/feedbackmonk-api/`, `crates/feedbackmonk-jwt/` (when added by Worker B),
+`crates/feedbackmonk-anon/` (when added by Worker B), or the allowlist.
 
 **If you (Worker A or B) introduce a new crate**, update `manifest.json`'s
 `freshness.triggers` list to include the new crate path so the oracle
@@ -168,7 +168,7 @@ invalidates correctly.
 - **No JWT verifier.** Stage 2 Worker B's Task Zero is the JWT fixture corpus
   (per the plan's Testability Gate finding for FR-FBR-05). Contract C2 in the
   plan is the verifier API to implement.
-- **No HTTP handlers.** `feedbackr-api/src/main.rs` ships a placeholder that
+- **No HTTP handlers.** `feedbackmonk-api/src/main.rs` ships a placeholder that
   binds the port and returns a banner. Worker A and Worker B add the real
   router tree (no overlap: A owns `/api/v1/signup`, `/api/v1/projects`,
   `/api/v1/projects/.../signing-keys`; B owns
@@ -182,7 +182,7 @@ invalidates correctly.
 
 ## Test discipline
 
-19 tests pass at Stage 1 (6 in `feedbackr-core`, 13 in `feedbackr-repository`).
+19 tests pass at Stage 1 (6 in `feedbackmonk-core`, 13 in `feedbackmonk-repository`).
 **Workers A and B may add tests, but may not delete or weaken existing
 assertions** (per the autopilot test-immutability rule).
 
@@ -197,10 +197,10 @@ end. Use the same pattern for any new repo-touching tests in Stage 2.
 See `docs/operations/LOCAL_DEV.md`. Key points for Workers A and B:
 
 - Postgres dev container on **port 5433** (deconflicted from gitcellar's 5432).
-- `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackr_dev`.
+- `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev`.
 - After modifying any `sqlx::query!` invocation: re-run `cargo sqlx prepare
   --workspace` and commit `.sqlx/`. CI uses `SQLX_OFFLINE=true`.
-- Backend dev port: **`14304`** (env `FEEDBACKR_PORT`).
+- Backend dev port: **`14304`** (env `FEEDBACKMONK_PORT`).
 
 ---
 

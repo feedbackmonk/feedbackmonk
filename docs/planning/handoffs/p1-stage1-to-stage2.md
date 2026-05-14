@@ -1,6 +1,6 @@
 # P1 Stage 1 → Stage 2 Handoff — Frozen Contracts
 
-**Predecessor**: `docs/planning/plans/20260513T231115-feedbackr-p1-closes-the-loop.md` (Stage 1 plan)
+**Predecessor**: `docs/planning/plans/20260513T231115-feedbackmonk-p1-closes-the-loop.md` (Stage 1 plan)
 **Predecessor (P0)**: `docs/planning/handoffs/stage1-to-stage2.md` (P0 handoff — still authoritative for everything P0 froze; this doc adds P1 deltas only)
 **Stage 1 commit**: `b9a672a` + the upcoming P1-Stage-1 commit
 **Generated**: 2026-05-13T23:55:00Z
@@ -14,14 +14,14 @@
 
 | Surface | Where it lives | Stable for Stage 2 |
 |---|---|---|
-| 20-pattern PII scrubber + `install_global_subscriber` | `crates/feedbackr-tracing/` | Yes. Pattern set is hash-locked by `.claude/oracles/pii-scrub-audit/expected_hash.txt`. New emit paths inherit scrubbing automatically. |
-| `FeedbackStatus` enum + `legal_transitions_from` + `TransitionError` | `crates/feedbackr-core/src/status.rs` | Yes. Variants frozen; transition table frozen. Worker A's `transition_status` consumes; Worker B's UI renders `legal_transitions_from(current_status)`. |
+| 20-pattern PII scrubber + `install_global_subscriber` | `crates/feedbackmonk-tracing/` | Yes. Pattern set is hash-locked by `.claude/oracles/pii-scrub-audit/expected_hash.txt`. New emit paths inherit scrubbing automatically. |
+| `FeedbackStatus` enum + `legal_transitions_from` + `TransitionError` | `crates/feedbackmonk-core/src/status.rs` | Yes. Variants frozen; transition table frozen. Worker A's `transition_status` consumes; Worker B's UI renders `legal_transitions_from(current_status)`. |
 | `feedback_status_history` table + `feedback.status` column | `migrations/00003_feedback_status_history.sql` | Yes. Column added with CHECK constraint on the six canonical values. |
 | Tenant brand columns + backfilled defaults | `migrations/00005_tenant_email_brand.sql` | Yes. `unsubscribe_url` nullable; others NOT NULL with sensible defaults from `tenants.email` local-part. |
-| `FeedbackRepo::list_for_admin` + `get_with_history` | `crates/feedbackr-repository/src/feedback.rs` | Yes. Pre-authorized widenings spelled out below. |
-| `FeedbackStatusHistoryRepo` (`append`, `list_for_feedback`) | `crates/feedbackr-repository/src/feedback_status_history.rs` | Yes. Stage 2 Worker A composes a same-transaction variant atop `append` for atomicity. |
-| `TenantRepo::get_brand` / `update_brand` | `crates/feedbackr-repository/src/tenants.rs` | Yes. Pre-authorized brand-field additions: optional `Option<String>` columns. |
-| `EmailTenantBrand` value type | `crates/feedbackr-repository/src/tenants.rs` | Yes. `sender_display_name` is computed (`"{brand_name} via Feedbackr"`); never read from a DB column. |
+| `FeedbackRepo::list_for_admin` + `get_with_history` | `crates/feedbackmonk-repository/src/feedback.rs` | Yes. Pre-authorized widenings spelled out below. |
+| `FeedbackStatusHistoryRepo` (`append`, `list_for_feedback`) | `crates/feedbackmonk-repository/src/feedback_status_history.rs` | Yes. Stage 2 Worker A composes a same-transaction variant atop `append` for atomicity. |
+| `TenantRepo::get_brand` / `update_brand` | `crates/feedbackmonk-repository/src/tenants.rs` | Yes. Pre-authorized brand-field additions: optional `Option<String>` columns. |
+| `EmailTenantBrand` value type | `crates/feedbackmonk-repository/src/tenants.rs` | Yes. `sender_display_name` is computed (`"{brand_name} via feedbackmonk"`); never read from a DB column. |
 | `pii-scrub-audit` oracle (CI gate) | `.claude/oracles/pii-scrub-audit/` | Yes. Probe A + Probe B; pattern-set hash refresh requires a deliberate `expected_hash.txt` commit. |
 
 ## Stage 1 deviations from the brief (documented)
@@ -71,7 +71,7 @@ Per the P1 plan's §PODS Coordination Protocol → Pre-authorized widenings:
 - New entries in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`.
 - Non-backwards-compatible JSON shape changes on any C7/C8 endpoint.
 - New `FeedbackStatus` variants (would break Contract C6's frozen state machine).
-- Pattern-set changes in `crates/feedbackr-tracing/src/scrubber.rs` (the
+- Pattern-set changes in `crates/feedbackmonk-tracing/src/scrubber.rs` (the
   `pii-scrub-audit` oracle is the gate; a deliberate `expected_hash.txt`
   refresh commit IS the ratification — but it's a per-change LD decision).
 
@@ -83,7 +83,7 @@ Verbatim from the P1 plan §Interface Contracts, supplemented with the actual
 Stage 1 Rust API.
 
 ```rust
-// crates/feedbackr-core/src/status.rs
+// crates/feedbackmonk-core/src/status.rs
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -128,7 +128,7 @@ pub enum TransitionError {
 **Worker A's transition function signature** (NOT IMPLEMENTED in Stage 1; freeze only):
 
 ```rust
-// crates/feedbackr-api/src/handlers/admin_feedback.rs  (Worker A writes this)
+// crates/feedbackmonk-api/src/handlers/admin_feedback.rs  (Worker A writes this)
 
 pub async fn transition_status(
     scope: &ProjectScope,
@@ -163,7 +163,7 @@ is belt-and-braces for invariant #3.
 
 ```http
 POST /api/v1/admin/feedback/{feedback_id}/transition
-Cookie: feedbackr_session=<value>           # NOT feedbackr_admin_session — see Contract C11 below
+Cookie: feedbackmonk_session=<value>           # NOT feedbackmonk_admin_session — see Contract C11 below
 Content-Type: application/json
 
 Request:
@@ -192,7 +192,7 @@ Request:
 
 ```http
 POST /api/v1/admin/feedback/{feedback_id}/reply
-Cookie: feedbackr_session=<value>
+Cookie: feedbackmonk_session=<value>
 Content-Type: application/json
 
 Request:
@@ -221,7 +221,7 @@ storage shape.
 
 ```http
 GET /api/v1/admin/feedback?status=triaged&limit=20&offset=0
-Cookie: feedbackr_session=<value>
+Cookie: feedbackmonk_session=<value>
 
 200 OK:
 {
@@ -268,7 +268,7 @@ not a column on the row).
 
 ```http
 GET /api/v1/admin/feedback/{feedback_id}
-Cookie: feedbackr_session=<value>
+Cookie: feedbackmonk_session=<value>
 
 200 OK:
 {
@@ -315,7 +315,7 @@ auto-conversion) to defend against stored-XSS from submitter content.
 **Public API**:
 
 ```rust
-// crates/feedbackr-tracing/src/lib.rs
+// crates/feedbackmonk-tracing/src/lib.rs
 
 pub fn install_global_subscriber(level: LogLevel, format: LogFormat) -> Result<(), TracingError>;
 
@@ -333,7 +333,7 @@ directive (matches the P0 baseline).
 **Internal pattern set**:
 
 ```rust
-// crates/feedbackr-tracing/src/scrubber.rs
+// crates/feedbackmonk-tracing/src/scrubber.rs
 
 pub(crate) static CANONICAL_PATTERNS: &[(&str, &str, &str)] = &[
     ("dsn",                  r"https?://[a-f0-9]{32,}@[a-zA-Z0-9.\-]+/\d+", "[dsn]"),
@@ -359,7 +359,7 @@ pub(crate) static CANONICAL_PATTERNS: &[(&str, &str, &str)] = &[
 ];
 ```
 
-Full source: `crates/feedbackr-tracing/src/scrubber.rs`. ORDER MATTERS (see
+Full source: `crates/feedbackmonk-tracing/src/scrubber.rs`. ORDER MATTERS (see
 module docs). SHA-256 of the canonical serialisation
 `name\tregex\treplacement\n` per row is locked in
 `.claude/oracles/pii-scrub-audit/expected_hash.txt`.
@@ -369,7 +369,7 @@ module docs). SHA-256 of the canonical serialisation
 1. SHA-256 of `CANONICAL_PATTERNS` matches `expected_hash.txt`.
 2. Each pattern has at least one positive-match test + one near-miss-no-match test.
 3. No `tracing_subscriber::fmt(`, `tracing_subscriber::registry(`, or
-   `impl Layer<...> for ...` outside `crates/feedbackr-tracing/`.
+   `impl Layer<...> for ...` outside `crates/feedbackmonk-tracing/`.
 4. `scrub(scrub(x)) == scrub(x)` (idempotent — replacement sigils never
    match any pattern).
 
@@ -378,7 +378,7 @@ module docs). SHA-256 of the canonical serialisation
 ## Contract C10 — Email Template Tenant-Brand Parameters
 
 ```rust
-// crates/feedbackr-repository/src/tenants.rs
+// crates/feedbackmonk-repository/src/tenants.rs
 
 pub struct EmailTenantBrand {
     pub brand_name: String,
@@ -386,7 +386,7 @@ pub struct EmailTenantBrand {
     pub support_email: String,
     pub unsubscribe_url: Option<String>,
     pub footer_signature: String,
-    pub sender_display_name: String,   // computed: "{brand_name} via Feedbackr"
+    pub sender_display_name: String,   // computed: "{brand_name} via feedbackmonk"
 }
 
 impl EmailTenantBrand {
@@ -443,21 +443,21 @@ rows.
 
 ## Contract C11 — Admin Session Cookie (carry-state from P0)
 
-> **The P1 plan referenced this cookie as `feedbackr_admin_session`. The
-> actual P0 cookie name is `feedbackr_session`.** Worker A and Worker B
-> use `feedbackr_session` exactly. The cookie has admin privileges (all
+> **The P1 plan referenced this cookie as `feedbackmonk_admin_session`. The
+> actual P0 cookie name is `feedbackmonk_session`.** Worker A and Worker B
+> use `feedbackmonk_session` exactly. The cookie has admin privileges (all
 > admin endpoints sit behind the `AdminSession` extractor); there is no
 > separate non-admin session cookie in P0/P1.
 
-Source of truth: `crates/feedbackr-api/src/auth/session.rs`.
+Source of truth: `crates/feedbackmonk-api/src/auth/session.rs`.
 
 | Property | Value |
 |---|---|
-| Cookie name | `feedbackr_session` |
-| Constant | `feedbackr_api::auth::session::SESSION_COOKIE_NAME` |
+| Cookie name | `feedbackmonk_session` |
+| Constant | `feedbackmonk_api::auth::session::SESSION_COOKIE_NAME` |
 | Format | `<b64url(tenant_uuid_bytes_16)>.<b64url(issued_unix_be_8)>.<b64url(hmac_sha256_32)>` (URL-safe base64, no padding, `.` separators) |
 | HMAC input | concat(tenant_uuid_16, issued_unix_be_8) |
-| HMAC key | `FEEDBACKR_SESSION_SECRET` (64 hex chars → 32 raw bytes) |
+| HMAC key | `FEEDBACKMONK_SESSION_SECRET` (64 hex chars → 32 raw bytes) |
 | Max-Age | 7 × 24 × 60 × 60 = 604800 seconds (7 days) |
 | HttpOnly | `true` |
 | Secure | `true` (HTTPS-only on the wire — dev runs over HTTP but browsers tolerate Secure cookies on `localhost`) |
@@ -513,7 +513,7 @@ suffix). The Rust-side response struct shapes for Contracts C7 + C8 map to:
 // admin-ui/src/shared/types.gen.ts
 //
 // Hand-rolled mirror of the backend response shapes. KEEP IN SYNC with
-// `crates/feedbackr-api/src/handlers/admin_feedback.rs` (Stage 2 Worker A).
+// `crates/feedbackmonk-api/src/handlers/admin_feedback.rs` (Stage 2 Worker A).
 //
 // Stage 3 e2e includes a Vitest test asserting an admin-feedback fetch
 // response parses against these types. Drift between Rust + TS surfaces
@@ -652,7 +652,7 @@ is belt-and-braces.
   HTTP-layer label lookup joins through this table when it exists; until
   then, the JSON exposes a raw UUID (Worker B can render `(unknown admin)`
   as fallback).
-- **`FEEDBACKR_LOG_FORMAT=text` vs `=json`**: unchanged from P0; defaults to
+- **`FEEDBACKMONK_LOG_FORMAT=text` vs `=json`**: unchanged from P0; defaults to
   `json`. Worker A's tests should not call `install_global_subscriber` —
   they should compose per-test subscribers (or use `SharedBufferScrubbing`
   if asserting scrubbed output) so the global subscriber doesn't conflict.
@@ -674,7 +674,7 @@ is belt-and-braces.
   comments.
 - **CORS / static-file serving for the admin-ui**: Stage 2 Worker B's Vite
   dev server proxies `/api` → `http://localhost:14304`; same-origin in
-  prod (admin-ui builds to `admin-ui/dist/` and is served by `feedbackr-api`
+  prod (admin-ui builds to `admin-ui/dist/` and is served by `feedbackmonk-api`
   via a `tower-http::services::ServeDir`). The CORS layer is deferred to
   Stage 3 e2e integration per the P1 plan §PODS Coordination Protocol.
 
@@ -685,7 +685,7 @@ is belt-and-braces.
 - [x] `.claude/oracles/pii-scrub-audit/` exists with `oracle.py`,
       `oracle.sh`, `manifest.json` (+ TOML mirror), `expected_hash.txt`,
       `README.md`. Oracle returns PASS against the scrubber crate.
-- [x] `crates/feedbackr-tracing/` ships clean (`cargo build --workspace` GREEN).
+- [x] `crates/feedbackmonk-tracing/` ships clean (`cargo build --workspace` GREEN).
 - [x] `cargo clippy --workspace --all-targets -- -D warnings` GREEN.
 - [x] 20 canonical patterns match GitCellar byte-for-byte; SHA-256 locked.
 - [x] `migrations/00003_feedback_status_history.sql` applies cleanly.
@@ -696,13 +696,13 @@ is belt-and-braces.
 - [x] `FeedbackStatusHistoryRepo` trait + `SqlxFeedbackStatusHistoryRepo`
       impl with `append` + `list_for_feedback`.
 - [x] `TenantRepo::get_brand` + `update_brand` + `EmailTenantBrand`.
-- [x] `bin/feedbackr-api/src/main.rs` wired to
-      `feedbackr_tracing::install_global_subscriber`.
+- [x] `bin/feedbackmonk-api/src/main.rs` wired to
+      `feedbackmonk_tracing::install_global_subscriber`.
 - [x] `cargo test --workspace` GREEN (Stage 1 commit's snapshot:
       185 tests passing — see `ltads/execution/development-complete.md`).
 - [x] `multi-tenant-isolation-check` oracle STILL GREEN.
 - [x] `docs/planning/handoffs/p1-stage1-to-stage2.md` (this file).
-- [x] `crates/feedbackr-tracing/README.md` follows ULADP module standard.
+- [x] `crates/feedbackmonk-tracing/README.md` follows ULADP module standard.
 
 Items the brief flagged that this Stage explicitly DOES NOT do (Stage 2 scope):
 

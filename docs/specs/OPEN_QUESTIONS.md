@@ -1,4 +1,4 @@
-# Feedbackr — Open Questions
+# feedbackmonk — Open Questions
 
 **Source**: inherited from [`intake assessment`](../../planning/intakes/20260512T221154-extract-feedback-system-as-standalone-product.md).
 
@@ -57,9 +57,11 @@ Resolution: New public GitHub repo at `github.com/<handle>/feedbackr`, local wor
 Resolution: 18 IN-scope items across 5 phases (P0 foundation → P1 closes-loop → P2 customer-facing → P3 commercial → P4 go-public). ~12 weeks FTE to public launch. Attachments / Crash Reporting / Forge Bridge / SSO all deferred or ruled out.
 
 ### Q9 — Product name / branding
-**Status**: RESOLVED 2026-05-13 → [`DEC-FBR-09`](DECISIONS.md#dec-fbr-09-product-name)
+**Status**: RESOLVED 2026-05-13 → [`DEC-FBR-09`](DECISIONS.md#dec-fbr-09-product-name); **AMENDED 2026-05-14** → [`DEC-FBR-11`](DECISIONS.md#dec-fbr-11-working-name-changed-to-feedbackmonk--dec-fbr-09-squat-contingency-enacted)
 
-Resolution: "Feedbackr" as working name; real branding pass at P4 (pre-launch). Pre-register `github.com/feedbackr` and `.com`/`.app`/`.dev` early.
+Original resolution: "feedbackmonk" as working name; real branding pass at P4 (pre-launch). Pre-register `github.com/feedbackr` and `.com`/`.app`/`.dev` early.
+
+**Amendment (DEC-FBR-11)**: pre-public-commit availability scan found `github.com/feedbackmonk` and `feedbackr.com` taken by a dormant squatter. DEC-FBR-09's squat-contingency clause activated. Working name changed to **feedbackmonk** (both `github.com/feedbackmonk` and `feedbackmonk.com` confirmed open). DEC-FBR-09's scheduling of the FULL brand pass for P4 is unchanged. ID prefixes `DEC-FBR-*` / `FR-FBR-*` are stable and do NOT rename.
 
 ### Q10 — Launch posture
 **Status**: RESOLVED 2026-05-13 → [`DEC-FBR-10`](DECISIONS.md#dec-fbr-10-launch-posture)

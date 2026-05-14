@@ -38,7 +38,7 @@ export function Login() {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={onSubmit} noValidate>
-        <h1>Feedbackr Admin</h1>
+        <h1>feedbackmonk Admin</h1>
         <p className="muted">Sign in to triage feedback.</p>
 
         <label htmlFor="login-email">Email</label>

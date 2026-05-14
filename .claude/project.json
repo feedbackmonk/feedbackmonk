@@ -1,5 +1,6 @@
 {
-  "name": "Feedbackr",
+  "name": "feedbackmonk",
+  "renameNote": "Working name changed from 'Feedbackr' to 'feedbackmonk' on 2026-05-14 per DEC-FBR-11. ID prefixes DEC-FBR-* / FR-FBR-* are stable and do NOT rename. Code-level rename of feedbackr-* crates / FEEDBACKR_* env vars completed in PF-RENAME-01. Working-dir rename remains tracked in CLAUDE.md Pending Follow-Ups (PF-RENAME-02 is user-action).",
   "description": "Standalone open-source SaaS user-feedback platform. Submission widget + status-workflow triage + public roadmap with voting + status emails. Multi-product per tenant. AGPL-3.0-or-later.",
   "license": "AGPL-3.0-or-later",
   "stage": "pre-P0",
@@ -33,7 +34,7 @@
     "openQuestions": "docs/specs/OPEN_QUESTIONS.md"
   },
   "planning": {
-    "arcPlan": "docs/planning/plans/20260513T185711-feedbackr-v1-build-arc.md"
+    "arcPlan": "docs/planning/plans/20260513T185711-feedbackmonk-v1-build-arc.md"
   },
   "devPorts": {
     "frontend": 14204,

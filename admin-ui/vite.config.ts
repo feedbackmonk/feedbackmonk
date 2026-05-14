@@ -2,7 +2,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// Dev port 14204 is reserved for Feedbackr admin UI in
+// Dev port 14204 is reserved for feedbackmonk admin UI in
 // ~/.claude/MACHINE_CONFIG.md Dev Port Registry. strictPort: true MUST stay
 // — the 2026-04-26 SessionHelm/WinLocksmith incident showed that silent
 // fallback to the next free port renders one project's frontend inside

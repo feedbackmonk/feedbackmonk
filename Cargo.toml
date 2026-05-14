@@ -1,18 +1,18 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/feedbackr-anon",
-    "crates/feedbackr-api",
-    "crates/feedbackr-core",
-    "crates/feedbackr-jwt",
-    "crates/feedbackr-repository",
-    "crates/feedbackr-tracing",
+    "crates/feedbackmonk-anon",
+    "crates/feedbackmonk-api",
+    "crates/feedbackmonk-core",
+    "crates/feedbackmonk-jwt",
+    "crates/feedbackmonk-repository",
+    "crates/feedbackmonk-tracing",
 ]
 
 [workspace.package]
 edition = "2021"
 license = "AGPL-3.0-or-later"
-authors = ["Feedbackr Contributors"]
+authors = ["feedbackmonk Contributors"]
 version = "0.1.0"
 rust-version = "1.80"
 

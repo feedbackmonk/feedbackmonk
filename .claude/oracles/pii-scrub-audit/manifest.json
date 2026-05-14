@@ -2,7 +2,7 @@
   "name": "pii-scrub-audit",
   "version": "1.0.0",
   "kind": "verification",
-  "question": "Does every emitted log line (from tracing subscribers) pass through the canonical 20-pattern PII scrubber installed by feedbackr-tracing::install_global_subscriber? Has the pattern set drifted from the canonical source ported byte-for-byte from GitCellar?",
+  "question": "Does every emitted log line (from tracing subscribers) pass through the canonical 20-pattern PII scrubber installed by feedbackmonk-tracing::install_global_subscriber? Has the pattern set drifted from the canonical source ported byte-for-byte from GitCellar?",
   "category": "privacy",
   "invocation": {
     "unix": ".claude/oracles/pii-scrub-audit/oracle.sh",
@@ -15,13 +15,13 @@
   "freshness": {
     "strategy": "trigger-invalidate",
     "triggers": [
-      "crates/feedbackr-tracing/**",
-      "crates/feedbackr-api/src/main.rs",
-      "crates/feedbackr-anon/**",
-      "crates/feedbackr-jwt/**",
-      "crates/feedbackr-core/**",
-      "crates/feedbackr-repository/**",
-      "crates/feedbackr-api/**",
+      "crates/feedbackmonk-tracing/**",
+      "crates/feedbackmonk-api/src/main.rs",
+      "crates/feedbackmonk-anon/**",
+      "crates/feedbackmonk-jwt/**",
+      "crates/feedbackmonk-core/**",
+      "crates/feedbackmonk-repository/**",
+      "crates/feedbackmonk-api/**",
       "migrations/**",
       ".claude/oracles/pii-scrub-audit/expected_hash.txt"
     ],
@@ -37,10 +37,10 @@
     "self_test_windows": null,
     "last_validated": "2026-05-13T23:30:00Z"
   },
-  "fallback": "Probe A: grep every .rs file under crates/ for the pattern (tracing_subscriber::fmt\\(|tracing_subscriber::registry\\(|impl ... Layer<...> for ...) OUTSIDE crates/feedbackr-tracing/. Probe B: read crates/feedbackr-tracing/src/scrubber.rs, extract each CANONICAL_PATTERNS tuple (name, regex, replacement), serialise as name\\tregex\\treplacement\\n, SHA-256 the bytes, compare to .claude/oracles/pii-scrub-audit/expected_hash.txt.",
+  "fallback": "Probe A: grep every .rs file under crates/ for the pattern (tracing_subscriber::fmt\\(|tracing_subscriber::registry\\(|impl ... Layer<...> for ...) OUTSIDE crates/feedbackmonk-tracing/. Probe B: read crates/feedbackmonk-tracing/src/scrubber.rs, extract each CANONICAL_PATTERNS tuple (name, regex, replacement), serialise as name\\tregex\\treplacement\\n, SHA-256 the bytes, compare to .claude/oracles/pii-scrub-audit/expected_hash.txt.",
   "provenance": {
     "authored_by": "stage1-worker (P1 Foundation, Task Zero)",
     "created": "2026-05-13T23:30:00Z",
-    "rationale": "FR-FBR-10 + DEC-FBR-01 Persona D (privacy). Three-leg defense per D-FBR-02: (1) type-system chokepoint in feedbackr_tracing::install_global_subscriber; (2) this oracle (AST probe + hash probe); (3) clippy + cargo-deny rejecting direct tracing_subscriber::fmt() builder calls outside the binary's main entrypoint."
+    "rationale": "FR-FBR-10 + DEC-FBR-01 Persona D (privacy). Three-leg defense per D-FBR-02: (1) type-system chokepoint in feedbackmonk_tracing::install_global_subscriber; (2) this oracle (AST probe + hash probe); (3) clippy + cargo-deny rejecting direct tracing_subscriber::fmt() builder calls outside the binary's main entrypoint."
   }
 }

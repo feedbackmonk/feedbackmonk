@@ -580,7 +580,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
-name = "feedbackr-anon"
+name = "feedbackmonk-anon"
 version = "0.1.0"
 dependencies = [
  "base64",
@@ -592,7 +592,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "feedbackr-api"
+name = "feedbackmonk-api"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -603,11 +603,11 @@ dependencies = [
  "base64",
  "chrono",
  "ed25519-dalek",
- "feedbackr-anon",
- "feedbackr-core",
- "feedbackr-jwt",
- "feedbackr-repository",
- "feedbackr-tracing",
+ "feedbackmonk-anon",
+ "feedbackmonk-core",
+ "feedbackmonk-jwt",
+ "feedbackmonk-repository",
+ "feedbackmonk-tracing",
  "hmac",
  "http-body-util",
  "insta",
@@ -632,7 +632,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "feedbackr-core"
+name = "feedbackmonk-core"
 version = "0.1.0"
 dependencies = [
  "chrono",
@@ -644,13 +644,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "feedbackr-jwt"
+name = "feedbackmonk-jwt"
 version = "0.1.0"
 dependencies = [
  "base64",
  "chrono",
  "ed25519-dalek",
- "feedbackr-core",
+ "feedbackmonk-core",
  "hmac",
  "serde",
  "serde_json",
@@ -660,12 +660,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "feedbackr-repository"
+name = "feedbackmonk-repository"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
- "feedbackr-core",
+ "feedbackmonk-core",
  "serde",
  "serde_json",
  "sqlx",
@@ -676,7 +676,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "feedbackr-tracing"
+name = "feedbackmonk-tracing"
 version = "0.1.0"
 dependencies = [
  "once_cell",
