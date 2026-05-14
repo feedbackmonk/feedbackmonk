@@ -25,6 +25,7 @@ pub mod roadmap_votes;
 pub mod scope;
 pub mod signing_keys;
 pub mod tenants;
+pub mod tier_quota;
 
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
@@ -42,3 +43,7 @@ pub use roadmap_votes::{
 pub use scope::{ProjectScope, TenantScope};
 pub use signing_keys::{SigningKeyRepo, SqlxSigningKeyRepo};
 pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo};
+pub use tier_quota::{
+    QuotaStatus, SqlxTierQuotaRepo, TierQuotaRepo, TierStatus, TierUsage,
+    ROLLING_FEEDBACK_WINDOW_DAYS,
+};

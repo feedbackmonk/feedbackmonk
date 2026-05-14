@@ -12,6 +12,7 @@ pub mod ids;
 pub mod models;
 pub mod roadmap;
 pub mod status;
+pub mod tier;
 
 pub use ids::{FeedbackId, SigningKeyId};
 pub use models::{
@@ -20,3 +21,4 @@ pub use models::{
 };
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use status::{legal_transitions_from, FeedbackStatus, TransitionError};
+pub use tier::{tier_quotas, ResourceKind, Tier, TierParseError, TierQuotas};

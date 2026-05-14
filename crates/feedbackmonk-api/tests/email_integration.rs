@@ -89,6 +89,26 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
         // Real defaults live in `SqlxTenantRepo::get_widget_brand`.
         unimplemented!()
     }
+
+    // P3 Stage 1 fixture extension — see
+    // docs/test-modifications/20260514-p3-appstate-tier-quotas.md.
+    // This file's mailpit integration test exercises the email-send
+    // chokepoint; tier-cap reads are out of scope. Stubs are
+    // unimplemented! — calling any of these from this test path would
+    // be a bug, and the panic is the early-warning surface.
+    async fn get_tier(&self, _scope: &TenantScope) -> Result<feedbackmonk_core::Tier, RepoError> {
+        unimplemented!()
+    }
+    async fn count_projects(&self, _scope: &TenantScope) -> Result<i64, RepoError> {
+        unimplemented!()
+    }
+    async fn count_feedback_in_window(
+        &self,
+        _scope: &TenantScope,
+        _window_days: i64,
+    ) -> Result<i64, RepoError> {
+        unimplemented!()
+    }
 }
 
 // ----- Synthesise a TenantScope ----------------------------------------------

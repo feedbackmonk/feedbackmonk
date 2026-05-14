@@ -16,6 +16,7 @@ use feedbackmonk_anon::AnonGate;
 use feedbackmonk_repository::{
     EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo, FeedbackStatusHistoryRepo,
     ProjectRepo, RoadmapItemRepo, RoadmapVoteRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
+    TierQuotaRepo,
 };
 
 use crate::email::{EmailNotifier, Mailer};
@@ -80,4 +81,13 @@ pub struct AppState {
     /// the `multi-tenant-isolation-check` oracle's raw-SQL ban remains
     /// honored). Used by `/health` + `/health/ready`.
     pub health: SqlxHealthCheck,
+
+    // -- P3 Stage 1: commercial gate (FR-FBR-14, Contract C17) -------------
+    /// Tier-cap predicate repository. Every domain-write handler MUST
+    /// consult `check_tier_quota(scope, ResourceKind::*)` BEFORE its
+    /// first write — the `tier-enforcement-status` Verification Oracle
+    /// Probe A enforces this at AST grade, and the schema's
+    /// `tenants_tier_check` CHECK constraint enforces canonical values
+    /// at the DB layer.
+    pub tier_quotas: Arc<dyn TierQuotaRepo>,
 }

@@ -698,6 +698,14 @@ mod tests {
             voting_cache: crate::roadmap_voting_cache::VotingCache::new(),
             started_at: Utc::now(),
             health: SqlxHealthCheck::new(pool.clone()),
+            // P3 Stage 1 fixture extension — see
+            // docs/test-modifications/20260514-p3-appstate-tier-quotas.md.
+            // Admin transition/reply tests don't exercise tier caps; this
+            // tenant defaults to Free (1 project / 50 feedback) which is
+            // well above the seed counts in every admin_feedback test.
+            tier_quotas: Arc::new(feedbackmonk_repository::SqlxTierQuotaRepo::new(
+                pool.clone(),
+            )),
         };
         (state, recorder)
     }

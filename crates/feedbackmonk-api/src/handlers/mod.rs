@@ -23,3 +23,6 @@ pub mod widget_config;
 
 // P2: public + admin roadmap endpoints (FR-FBR-11 + FR-FBR-13, Contract C15, Worker B).
 pub mod roadmap;
+
+// P3 Stage 1: admin tier-status endpoint (FR-FBR-14, Contract C17).
+pub mod admin_tier;

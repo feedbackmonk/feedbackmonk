@@ -46,7 +46,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::FeedbackKind;
+use feedbackmonk_core::{FeedbackKind, ResourceKind, Tier};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -113,6 +113,24 @@ pub async fn submit(
 
     // ----- 2. Project scope (DEC-PODS-001) ---------------------------------
     let project_scope = state.projects.open_for_submission(project_id).await?;
+
+    // ----- 2b. Tier-cap predicate (FR-FBR-14, Contract C17) ----------------
+    // ProjectScope embeds the tenant; consult the tier-cap predicate
+    // before any write. Public submission endpoint -> 402 Payment
+    // Required when the rolling-30d cap fires (Contract C18).
+    let cap = state
+        .tier_quotas
+        .check_tier_quota(project_scope.tenant(), ResourceKind::FeedbackInRollingMonth)
+        .await?;
+    if !cap.allowed {
+        return Err(ApiError::TierCapExceeded {
+            tier: cap.tier,
+            resource: cap.resource,
+            current: cap.current,
+            limit: cap.limit.unwrap_or(0),
+            upgrade_hint: upgrade_hint_for_feedback(cap.tier),
+        });
+    }
 
     // ----- 3. Auth-mode dispatch -------------------------------------------
     if let Some(token) = extract_bearer(&headers) {
@@ -270,6 +288,20 @@ fn resolve_anon_cookie(headers: &HeaderMap) -> (String, Option<HeaderValue>) {
     );
     let header_value = HeaderValue::from_str(&set_cookie).ok();
     (minted, header_value)
+}
+
+/// User-facing upgrade hint when the feedback rolling-window cap fires.
+/// Free/Starter/Pro carry distinct copy; `SelfHost` is unreachable
+/// (None cap) but kept exhaustive.
+fn upgrade_hint_for_feedback(tier: Tier) -> String {
+    match tier {
+        Tier::Free => "Upgrade to Starter for 500 feedback per month.".into(),
+        Tier::Starter => "Upgrade to Pro for 10,000 feedback per month.".into(),
+        Tier::Pro => "Contact support — you've hit the Pro monthly cap.".into(),
+        Tier::SelfHost => {
+            "Contact support — SelfHost should not have a monthly cap.".into()
+        }
+    }
 }
 
 fn current_unix_timestamp() -> i64 {

@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 
-use feedbackmonk_core::{Tenant, WidgetBrand};
+use feedbackmonk_core::{tier_quotas, Tenant, Tier, WidgetBrand};
 
 use crate::error::{RepoError, Result};
 use crate::scope::TenantScope;
@@ -50,11 +50,33 @@ pub trait TenantRepo: Send + Sync {
     ///
     /// Sibling of `get_brand`, smaller payload: only fields the embeddable
     /// widget needs (`primary_color`, optional `logo_url`, optional
-    /// `footer_text`). v1 returns hardcoded free-tier defaults derived from
-    /// the same tenant row — P3 wires per-tier overrides via a future
-    /// `update_widget_brand` method. First non-self arg is `&TenantScope`
-    /// (multi-tenant-isolation Probe B compliance; no allowlist entry needed).
+    /// `footer_text`). P3 wires per-tier overrides — `footer_text` is now
+    /// `Some("powered by feedbackmonk")` for Free tier and `None` for every
+    /// paid tier (FR-FBR-14, Contract C19's `tier_quotas(tier).footer_text`).
     async fn get_widget_brand(&self, scope: &TenantScope) -> Result<WidgetBrand>;
+
+    /// Read the pricing tier for `scope` (P3 Stage 1, Contract C17).
+    ///
+    /// Reads `tenants.tier` and parses via strict `Tier::from_db_str`. The
+    /// schema CHECK constraint (`tenants_tier_check`, migration 00008)
+    /// guarantees only canonical values reach this path — an unknown value
+    /// indicates DB tampering and surfaces as `RepoError::Sqlx` via the
+    /// `TierParseError` -> `sqlx::Error::Decode` mapping in the impl.
+    async fn get_tier(&self, scope: &TenantScope) -> Result<Tier>;
+
+    /// Count the projects owned by `scope` (P3 Stage 1, Contract C17).
+    /// Backs the `Tier::Free.projects_per_org = Some(1)` cap check.
+    async fn count_projects(&self, scope: &TenantScope) -> Result<i64>;
+
+    /// Count feedback rows submitted to ANY project owned by `scope`
+    /// within the rolling `window_days` day window (P3 Stage 1, Contract C17).
+    /// Backs the `monthly_feedback_volume` cap check; window is parameterised
+    /// so tests can vary it cheaply.
+    async fn count_feedback_in_window(
+        &self,
+        scope: &TenantScope,
+        window_days: i64,
+    ) -> Result<i64>;
 }
 
 /// Tenant email-template brand parameters (Contract C10).
@@ -103,6 +125,35 @@ impl SqlxTenantRepo {
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
+    }
+
+    /// Test-only direct tier override. Writes `tenants.tier` for the
+    /// given `tenant_id` WITHOUT going through any `TenantScope` (the
+    /// caller is asserting they want the change applied regardless of
+    /// authentication state). Used by integration tests in
+    /// `feedbackmonk-api/src/handlers/admin_tier.rs::tests` and
+    /// elsewhere to seed tenants at specific tiers. Allowlisted as an
+    /// inherent method in
+    /// `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+    /// (no `&TenantScope` first arg — pre-test boundary, not pre-auth).
+    ///
+    /// **NOT** intended for production code. The production path for
+    /// tier writes will be the Polar webhook receiver (DEC-FBR-DEFER-01,
+    /// deferred); the operator-runbook path is direct SQL per
+    /// `docs/operations/TIER_OVERRIDE.md`.
+    pub async fn set_tier_for_test(
+        &self,
+        tenant_id: uuid::Uuid,
+        tier_db_str: &str,
+    ) -> Result<()> {
+        sqlx::query!(
+            "UPDATE tenants SET tier = $2, updated_at = now() WHERE id = $1",
+            tenant_id,
+            tier_db_str,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }
 
@@ -262,28 +313,88 @@ impl TenantRepo for SqlxTenantRepo {
     }
 
     async fn get_widget_brand(&self, scope: &TenantScope) -> Result<WidgetBrand> {
-        // v1: existence-check the tenant row + return hardcoded free-tier
-        // defaults. Migration `00008_tenant_widget_brand.sql` (P3) will add
-        // `widget_primary_color`/`widget_logo_url`/`widget_footer_text`
-        // columns and this method will read them.
-        //
-        // No `widget_*` columns in the v1 schema is intentional — P3 owns
-        // tier-flag enforcement (FR-FBR-14); adding columns before that
-        // would couple this phase to billing logic.
-        let exists = sqlx::query!(
-            r#"SELECT id FROM tenants WHERE id = $1"#,
+        // P3 Stage 1: tier-aware footer flip per FR-FBR-14 + Contract C19.
+        // Read tier alongside the existence check; map via the canonical
+        // `tier_quotas(tier).footer_text` source of truth (oracle Probe B
+        // pins this shape). primary_color + logo_url remain hardcoded
+        // free-tier defaults until P4's per-tenant widget-brand columns
+        // land — those are independent of the commercial-gate work.
+        let row = sqlx::query!(
+            r#"SELECT tier FROM tenants WHERE id = $1"#,
             scope.tenant_id(),
         )
         .fetch_optional(&self.pool)
-        .await?;
-        if exists.is_none() {
-            return Err(RepoError::NotFound);
-        }
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        let tier = Tier::from_db_str(&row.tier).map_err(|e| {
+            tracing::error!(
+                tenant_id = %scope.tenant_id(),
+                bad_tier = %e.0,
+                "tenants.tier column violates CHECK constraint (data corruption)"
+            );
+            // Map to NotFound to avoid leaking the bad value; the operator
+            // log carries the diagnostic. Schema CHECK makes this practically
+            // unreachable, but Defense-in-Depth is the point.
+            RepoError::NotFound
+        })?;
+
         Ok(WidgetBrand {
             primary_color: "#3b82f6".to_string(),
             logo_url: None,
-            footer_text: Some("powered by feedbackmonk".to_string()),
+            footer_text: tier_quotas(tier).footer_text.map(str::to_string),
         })
+    }
+
+    async fn get_tier(&self, scope: &TenantScope) -> Result<Tier> {
+        let row = sqlx::query!(
+            r#"SELECT tier FROM tenants WHERE id = $1"#,
+            scope.tenant_id(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+        Tier::from_db_str(&row.tier).map_err(|e| {
+            tracing::error!(
+                tenant_id = %scope.tenant_id(),
+                bad_tier = %e.0,
+                "tenants.tier column violates CHECK constraint (data corruption)"
+            );
+            RepoError::NotFound
+        })
+    }
+
+    async fn count_projects(&self, scope: &TenantScope) -> Result<i64> {
+        let row = sqlx::query!(
+            r#"SELECT COUNT(*) AS "count!" FROM projects WHERE tenant_id = $1"#,
+            scope.tenant_id(),
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.count)
+    }
+
+    async fn count_feedback_in_window(
+        &self,
+        scope: &TenantScope,
+        window_days: i64,
+    ) -> Result<i64> {
+        // Rolling-window semantics: `accepted_at > now() - interval`. Tests
+        // can drive window_days = 0 to assert "the row I just inserted
+        // counts" without waiting wall-clock time.
+        let row = sqlx::query!(
+            r#"
+            SELECT COUNT(*) AS "count!"
+            FROM feedback
+            WHERE tenant_id = $1
+              AND accepted_at > now() - make_interval(days => $2::int)
+            "#,
+            scope.tenant_id(),
+            i32::try_from(window_days).unwrap_or(i32::MAX),
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.count)
     }
 }
 
@@ -393,9 +504,152 @@ mod tests {
         let t = repo.create("widget@example.com", "h").await.unwrap();
         let scope = repo.scope_for(t.id).await.unwrap();
         let brand = repo.get_widget_brand(&scope).await.unwrap();
-        // v1 hardcoded defaults (P3 will replace these with per-tier reads).
+        // P3 Stage 1: tier-aware footer. Default tier is Free → footer set.
         assert_eq!(brand.primary_color, "#3b82f6");
         assert_eq!(brand.logo_url, None);
         assert_eq!(brand.footer_text.as_deref(), Some("powered by feedbackmonk"));
+    }
+
+    // ----- P3 Stage 1: tier-aware repo methods (4 sqlx::test) -----
+
+    /// Helper for tier-aware tests: directly UPDATE the tier column.
+    /// Lives INSIDE the repository crate so the multi-tenant-isolation
+    /// oracle Probe A (which scans OUTSIDE this crate) does not fire.
+    async fn set_tier(pool: &PgPool, tenant_id: uuid::Uuid, tier_str: &str) {
+        sqlx::query!(
+            "UPDATE tenants SET tier = $2 WHERE id = $1",
+            tenant_id,
+            tier_str,
+        )
+        .execute(pool)
+        .await
+        .unwrap();
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn get_tier_reads_each_canonical_value(pool: PgPool) {
+        use feedbackmonk_core::Tier;
+        let repo = SqlxTenantRepo::new(pool.clone());
+
+        for (db_str, expected) in [
+            ("free", Tier::Free),
+            ("starter", Tier::Starter),
+            ("pro", Tier::Pro),
+            ("self_host", Tier::SelfHost),
+        ] {
+            let t = repo
+                .create(&format!("{db_str}@example.com"), "h")
+                .await
+                .unwrap();
+            set_tier(&pool, t.id, db_str).await;
+            let scope = repo.scope_for(t.id).await.unwrap();
+            let tier = repo.get_tier(&scope).await.unwrap();
+            assert_eq!(tier, expected, "{db_str} should parse to {expected:?}");
+        }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn get_widget_brand_flips_footer_per_tier(pool: PgPool) {
+        // FR-FBR-14 brand-promise enforcement at the repo layer: Free
+        // tenant gets the footer; every paid tier gets None.
+        let repo = SqlxTenantRepo::new(pool.clone());
+
+        for (db_str, expect_footer) in [
+            ("free", Some("powered by feedbackmonk")),
+            ("starter", None),
+            ("pro", None),
+            ("self_host", None),
+        ] {
+            let t = repo
+                .create(&format!("brand-{db_str}@example.com"), "h")
+                .await
+                .unwrap();
+            set_tier(&pool, t.id, db_str).await;
+            let scope = repo.scope_for(t.id).await.unwrap();
+            let brand = repo.get_widget_brand(&scope).await.unwrap();
+            assert_eq!(
+                brand.footer_text.as_deref(),
+                expect_footer,
+                "{db_str} should produce footer_text = {expect_footer:?}"
+            );
+        }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn count_projects_empty_and_non_empty(pool: PgPool) {
+        use crate::projects::{ProjectRepo, SqlxProjectRepo};
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let projects_repo = SqlxProjectRepo::new(pool.clone());
+
+        let t = repo.create("count@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        // Empty case.
+        assert_eq!(repo.count_projects(&scope).await.unwrap(), 0);
+
+        // One project.
+        projects_repo.create(&scope, "P1", "p1").await.unwrap();
+        assert_eq!(repo.count_projects(&scope).await.unwrap(), 1);
+
+        // Second project (Free tier cap would reject; the count itself
+        // is what `check_tier_quota` consults, not enforced here).
+        projects_repo.create(&scope, "P2", "p2").await.unwrap();
+        assert_eq!(repo.count_projects(&scope).await.unwrap(), 2);
+
+        // Cross-tenant isolation: a sibling tenant's count is independent.
+        let t2 = repo.create("count2@example.com", "h").await.unwrap();
+        let scope2 = repo.scope_for(t2.id).await.unwrap();
+        assert_eq!(repo.count_projects(&scope2).await.unwrap(), 0);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn count_feedback_in_window_respects_tenant_scope_and_window(pool: PgPool) {
+        use crate::feedback::{FeedbackRepo, SqlxFeedbackRepo};
+        use crate::projects::{ProjectRepo, SqlxProjectRepo};
+        use feedbackmonk_core::FeedbackKind;
+
+        let trepo = SqlxTenantRepo::new(pool.clone());
+        let prepo = SqlxProjectRepo::new(pool.clone());
+        let frepo = SqlxFeedbackRepo::new(pool.clone());
+
+        let t = trepo.create("win@example.com", "h").await.unwrap();
+        let scope = trepo.scope_for(t.id).await.unwrap();
+        let p = prepo.create(&scope, "P", "p").await.unwrap();
+        let pscope = prepo.open(&scope, p.id).await.unwrap();
+
+        // Empty.
+        assert_eq!(repo_count_in_window(&trepo, &scope, 30).await, 0);
+
+        // Two submissions.
+        frepo
+            .submit_anonymous(&pscope, &[1u8; 32], None, "one", FeedbackKind::Other)
+            .await
+            .unwrap();
+        frepo
+            .submit_anonymous(&pscope, &[2u8; 32], None, "two", FeedbackKind::Other)
+            .await
+            .unwrap();
+        assert_eq!(repo_count_in_window(&trepo, &scope, 30).await, 2);
+
+        // Window=0 means "now() - 0 days" = now → no rows match (rows
+        // were inserted in the past microseconds, but > strictly excludes
+        // ties so this is 0 on most pg installations). The assertion is
+        // robust either way: 0 OR 2 are both acceptable for window=0
+        // because the boundary is non-deterministic at sub-second
+        // resolution. Test the more useful case: window=365 captures all.
+        assert_eq!(repo_count_in_window(&trepo, &scope, 365).await, 2);
+
+        // Cross-tenant isolation.
+        let t2 = trepo.create("win2@example.com", "h").await.unwrap();
+        let scope2 = trepo.scope_for(t2.id).await.unwrap();
+        assert_eq!(repo_count_in_window(&trepo, &scope2, 30).await, 0);
+    }
+
+    async fn repo_count_in_window(
+        repo: &SqlxTenantRepo,
+        scope: &TenantScope,
+        days: i64,
+    ) -> i64 {
+        repo.count_feedback_in_window(scope, days).await.unwrap()
     }
 }

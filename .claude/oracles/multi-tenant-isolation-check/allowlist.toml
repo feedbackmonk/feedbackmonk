@@ -106,3 +106,15 @@ rationale = "Constructor: stores PgPool handle; performs no queries. Structural 
 type_name = "SqlxRoadmapVoteRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxRoadmapItemRepo::new (this commit) and SqlxFeedbackRepo::new (P0). Backs migration 00007's roadmap_votes table. All public methods on the trait take &ProjectScope as their first non-self argument (Probe B compliance verified). The cast() method's INSERT...SELECT enforces scope at the SQL level (cross-tenant item_id returns RepoError::NotFound, not silent insert). Pre-authorized per GUIDE.md §8."
+
+# --- P3 Stage 1 additions (Contract C17 / tier-cap predicate) ---
+
+[[inherent_methods]]
+type_name = "SqlxTierQuotaRepo"
+method = "new"
+rationale = "Constructor: stores a SqlxTenantRepo handle (no raw pool); performs no queries. Structural mirror of SqlxRoadmapItemRepo::new (P2 pre-authorized) and SqlxFeedbackRepo::new (P0). Backs the P3 Stage 1 tier-cap predicate (Contract C17). Both public trait methods (`check_tier_quota`, `get_tier_status`) take `&TenantScope` as their first non-self argument (Probe B compliance verified directly, no allowlist entry needed). Pre-authorized per the P3 Stage 1 task brief Phase 2 step 7."
+
+[[inherent_methods]]
+type_name = "SqlxTenantRepo"
+method = "set_tier_for_test"
+rationale = "P3 Stage 1 test-support helper. Production tier writes will land via the Polar webhook receiver (DEC-FBR-DEFER-01 deferred) or operator-runbook SQL (`docs/operations/TIER_OVERRIDE.md`). This helper exists ONLY so integration tests in feedbackmonk-api/handlers/admin_tier.rs and tier_quota.rs::tests can seed a tenant at a specific tier without going through a TenantScope. Naming-suffixed `_for_test` makes the boundary explicit at every call-site; no production code path reaches it. Lives in the repository crate (where raw SQL is permitted by DEC-FBR-03) so Probe A's outside-crate scan stays clean."

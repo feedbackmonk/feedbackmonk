@@ -116,6 +116,14 @@ Invocation: `pwsh .claude/oracles/multi-tenant-isolation-check/oracle.ps1` (Wind
 
 Invocation: `bash .claude/oracles/widget-bundle-size/oracle.sh` (Unix) or `pwsh .claude/oracles/widget-bundle-size/oracle.ps1` (Windows); `python .claude/oracles/widget-bundle-size/oracle.py` (cross-platform direct).
 
+### tiers
+
+| Oracle | Question | Kind | Strategy | Consumer Scope | Est. savings/call |
+|---|---|---|---|---|---|
+| **`tier-enforcement-status`** | Does every domain-write handler under `crates/feedbackmonk-api/src/handlers/` either consult `check_tier_quota()` before its first write OR appear in the allowlist? Does `tier_quotas()` in `crates/feedbackmonk-core/src/tier.rs` return the Contract C19 canonical shape per `Tier` variant? With `--full`: do the end-to-end cap-firing smoke tests pass? *(P3 Stage 1 Task Zero; three-leg defense leg 2 — paired with `Tier` enum + `TierQuotas` type-system chokepoint (leg 1) + `sqlx::test` integration smoke (leg 3); enforces FR-FBR-14 cap-firing + DEC-FBR-03 pricing tier matrix; cold-start vacuous-PASS supports Task Zero order-of-operations)* | verification | trigger-invalidate (`crates/feedbackmonk-api/src/handlers/**`, `crates/feedbackmonk-core/src/tier.rs`, `crates/feedbackmonk-repository/src/tier_quota.rs`, allowlist) | P3+ all handlers + tier model + tier-quota repo (every commit; CI gate from P3 start with `--full`) | ~1000 tokens |
+
+Invocation: `bash .claude/oracles/tier-enforcement-status/oracle.sh` (Unix; `--full` runs Probe C integration smoke) or `pwsh .claude/oracles/tier-enforcement-status/oracle.ps1` (Windows); `python .claude/oracles/tier-enforcement-status/oracle.py [--full]` (cross-platform direct).
+
 ---
 
 ## Invocation Quick Reference

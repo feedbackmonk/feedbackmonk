@@ -43,7 +43,7 @@ use feedbackmonk_api::{admin_feedback_routes, submission_router, worker_a_router
 use feedbackmonk_repository::{
     ProjectScope, SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxSigningKeyRepo,
-    SqlxTenantRepo,
+    SqlxTenantRepo, SqlxTierQuotaRepo,
 };
 
 // ----- Fakes ------------------------------------------------------------------
@@ -102,6 +102,13 @@ fn build_test_state(pool: &PgPool, anon_quota_per_hour: u32) -> AppState {
         voting_cache: feedbackmonk_api::VotingCache::new(),
         started_at: chrono::Utc::now(),
         health: SqlxHealthCheck::new(pool.clone()),
+        // P3 Stage 1 fixture extension — see
+        // docs/test-modifications/20260514-p3-appstate-tier-quotas.md.
+        // Seeded tenants default to Free. Each router-submission test
+        // exercises ≤ 4 submissions per tenant — well within Free's
+        // 50/month cap, so the new tier-check at the submission path
+        // (Phase 4 wiring) does not alter test outcomes.
+        tier_quotas: Arc::new(SqlxTierQuotaRepo::new(pool.clone())),
     }
 }
 

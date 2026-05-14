@@ -279,3 +279,59 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 **Where this pays off again**: Any future port from gitcellar or peer repos; any golden-output fixture asserted byte-for-byte thereafter (insta snapshots in CI mode, JSON regression fixtures, fixture-recorded HTTP traces).
 
 ---
+
+## P3 Stage 1 (2026-05-14)
+
+### D-FBR-19: Defense-in-depth pairing — schema CHECK + Rust strict codec catches drift the other can't
+
+**Surfaced by**: P3 Stage 1 worker authoring `Tier` enum + `migrations/00008_tenant_tier_check.sql`. The plan offered "schema CHECK **OR** Rust strict parser." The worker chose **AND**.
+
+**What was discovered**: For tier-shaped invariants (small enumerated set of canonical string values stored as `TEXT`), schema-layer and code-layer constraints catch **structurally different** drift surfaces — they are not redundant:
+
+| Layer | Catches | Misses |
+|---|---|---|
+| **Schema CHECK** (`CHECK (tier IN ('free','starter','pro','self_host'))`) | Direct DB writes from `psql`, ad-hoc operator scripts, future migrations that bypass the Rust codec, third-party tools touching the table | Programmatic Rust paths that *read* a row written before the CHECK was added (none in our case, but generally a risk during gradual rollout) |
+| **Rust strict codec** (`Tier::from_db_str` returns `Err` for unknown values) | Programmatic mistakes earlier in the develop/test/fix loop (compile-time exhaustiveness via `match`); silent fallback-to-default that would mask data corruption at security cost (e.g. an unexpectedly-Free Pro tenant suddenly hitting caps) | Direct DB writes that the codec never sees |
+
+The cost of pairing both is trivial — the migration is 3 SQL lines, the codec is 8 Rust lines plus a `TierParseError` type. The cost of picking one is asymmetric: skip the CHECK and a stray DB write goes silently undetected; skip the codec and Rust code can read corrupted state with no signal.
+
+**Generalizable insight**: For small enumerated value sets stored as `TEXT` (status enums, kind enums, tier enums, role enums, feature-flag enums), the default pattern should be: (1) Rust enum + serde rename, (2) strict `from_db_str` codec with `Err` on unknown, (3) schema CHECK that mirrors the enum's set byte-for-byte, (4) a Verification Oracle Probe that asserts (1) and (3) stay in sync. The four-leg pairing is canonical when the set is **small and load-bearing**; it's overkill for large open-vocabulary string columns (e.g. `country_code`).
+
+**Where this pays off again**: The same pattern is already in `feedbackmonk-core` for `FeedbackKind` (P0) and `FeedbackStatus` (P1), but neither paired with an explicit schema CHECK + Rust-codec defense-in-depth Decision Log entry. Future enumerated-set columns (P3 Stage 2 admin role enum if multi-admin lands; P4 self-host edition flag) should follow the four-leg default. DEC-FBR-IMPL-* family on this pattern is a candidate for next finalize.
+
+---
+
+### D-FBR-20: Eager Probe C tests change a vacuous-PASS oracle into an active-PASS oracle for marginal cost
+
+**Surfaced by**: P3 Stage 1 worker authoring `tier-enforcement-status` oracle. The plan said "Probe C is gated behind `--full`; cold-start it as vacuous-PASS until integration tests exist." The worker authored 3 actively-passing smoke tests now (`crates/feedbackmonk-api/tests/tier_enforcement_smoke.rs`).
+
+**What was discovered**: A Verification Oracle that "passes vacuously" because the assertion target doesn't exist yet is structurally weaker than a passing oracle that proves the assertion target is GREEN. The vacuous mode is honest — it doesn't lie about coverage — but it also doesn't *defend* anything until the assertion target lands. If Probe C is vacuous-PASS through the entire phase, a downstream regression that breaks tier-cap firing won't be caught by the oracle; the bug surfaces in production usage instead.
+
+The cost of authoring 3 smoke tests up front (~297 LOC including helpers) is small relative to (a) the test-coverage debt deferred to a later phase that will then carry its own cost (planning + worker + review), and (b) the cost of a regression caught by an end-user at P4 launch readiness. Probe C now has *both* paths intact — it cold-starts as vacuous-PASS on workspaces without the smoke tests (the `--full` flag triggers `cargo test --test tier_enforcement_smoke` which returns 0 cleanly even if the test crate is absent in some hypothetical future minimal-checkout), AND it active-PASSes when the tests are present.
+
+**Generalizable insight**: For Verification Oracles where a probe has a clear "assert X" semantics, prefer **author-the-assertion-now** over **defer-until-X-exists** when the assertion target is small (≤ a few tests, ≤ a few hundred LOC). Vacuous-PASS is for probes whose assertion target genuinely doesn't exist yet (e.g. an oracle written in P0 anticipating a P3 invariant); it is *not* a default for "we're going to add the test infra later." The oracle author is also the right author for the smoke tests — they have the freshest model of what the probe is asserting.
+
+**Where this pays off again**: Future feedbackmonk Verification Oracles with deferred-active probes — particularly any P4-launch-readiness oracle (e.g. `self-host-bootstrap-status`, `marketing-site-link-validity`) where authoring the integration smoke alongside the oracle costs less than retrofitting it after first launch. Pair with D-FBR-19's three-leg defense pattern: enum + codec + schema CHECK + active-PASS Verification Oracle is the four-layer story for tier-shaped invariants.
+
+---
+
+### D-FBR-21: Test-mod justification frontmatter as gate input — fixture enumeration upfront prevents D-FBR-17 recurrence
+
+**Surfaced by**: P3 Stage 1 worker authoring AppState `tier_quotas` extension + the YAML frontmatter at `docs/test-modifications/20260514-p3-appstate-tier-quotas.md`. The artifact enumerates all 5 fixture sites in the YAML `tests_modified[]` field. The worker then ran `git diff --name-only` and cross-checked the list at exit; matched exactly.
+
+**What was discovered**: D-FBR-17 (P2 convergence) surfaced the missed-fixture-site failure mode. P3 Stage 1 actively defended against it by treating the test-mod artifact's `tests_modified[]` frontmatter as a **pre-edit checklist**, not a post-hoc summary. Workflow:
+
+1. Before editing: enumerate every `AppState { ... }` literal site by `git grep` + reading callers of the relevant constructor.
+2. List all sites in the artifact's YAML frontmatter under `tests_modified[]`.
+3. Edit each site.
+4. After editing: `git diff --name-only` and verify the set matches the YAML list (set-equal, not subset).
+
+This adds maybe 5 minutes upfront and saves the entire mid-test-run-recovery + debug round when a missed site surfaces. The cost is asymmetric in favor of upfront enumeration.
+
+**Generalizable insight**: For mechanical-class change artifacts (fixture extensions, schema-migration downstream propagation, lint-allow-attribute mass-application), the YAML `tests_modified[]` (or analogous `files_changed[]`) frontmatter is **a contract between worker and gate**, not a summary. Treat it as an upfront enumeration with cross-check at exit; the validator-step is cheap. This is a stronger version of D-FBR-17's recommendation — D-FBR-17 said "enumerate"; D-FBR-21 says "enumerate **and** cross-check at exit using the artifact as the source of truth."
+
+**Where this pays off again**: All future mechanical-class changes. Specifically: P3 Stage 2 may extend `AppState` again (admin-UI surface for tier display); any P4 self-host bootstrap that propagates env-var renames across docker-compose + handlers + docs. The candidate Verification Oracle `test-mod-coverage-check` proposed in D-FBR-17 would automate step 4 — D-FBR-21 demonstrates the workflow value before the oracle exists.
+
+---
+
+---

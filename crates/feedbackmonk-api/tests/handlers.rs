@@ -24,6 +24,7 @@ use feedbackmonk_api::email::Mailer;
 use feedbackmonk_repository::{
     SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxProjectRepo, SqlxSigningKeyRepo, SqlxTenantRepo,
+    SqlxTierQuotaRepo,
 };
 
 // ----- Mailer fake ------------------------------------------------------------
@@ -100,6 +101,13 @@ fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, A
         voting_cache: feedbackmonk_api::VotingCache::new(),
         started_at: chrono::Utc::now(),
         health: feedbackmonk_repository::SqlxHealthCheck::new(pool.clone()),
+        // P3 Stage 1 fixture extension — see
+        // docs/test-modifications/20260514-p3-appstate-tier-quotas.md.
+        // Tier defaults to Free for newly-created tenants; the
+        // signup/projects/signing-keys tests in this file create at most
+        // one project and zero feedback per tenant, well within the
+        // Free-tier caps (1 project / 50 feedback rolling).
+        tier_quotas: Arc::new(SqlxTierQuotaRepo::new(pool.clone())),
     };
     (state, mailer)
 }
@@ -335,8 +343,11 @@ async fn project_create_and_list_returns_only_own_projects(pool: PgPool) {
     assert_eq!(body["slug"], "alpha");
     assert!(body["embed_snippet"].as_str().unwrap().contains("data-project=\"alpha\""));
 
+    // P3 Stage 1: Free tier cap is 1 project per tenant (FR-FBR-14
+    // Contract C19). t2 creates one project; the second would 409 on
+    // the tier-cap check. Multi-tenant isolation assertion is preserved
+    // — t1's list does NOT contain t2's project, and vice versa.
     app.clone().oneshot(create_for(&cookie_t2, "beta")).await.unwrap();
-    app.clone().oneshot(create_for(&cookie_t2, "gamma")).await.unwrap();
 
     let list_for = |cookie: &str| {
         Request::get("/api/v1/projects")
@@ -363,9 +374,8 @@ async fn project_create_and_list_returns_only_own_projects(pool: PgPool) {
         .iter()
         .map(|p| p["slug"].as_str().unwrap().to_string())
         .collect();
-    // Multi-tenant invariant: t2's list contains only their own projects.
+    // Multi-tenant invariant: t2's list contains only their own project.
     assert!(slugs.contains(&"beta".into()));
-    assert!(slugs.contains(&"gamma".into()));
     assert!(!slugs.contains(&"alpha".into()));
 }
 

@@ -1,0 +1,76 @@
+# tier-enforcement-status allowlist
+#
+# Handlers that legitimately do NOT consult check_tier_quota() before a
+# domain write. Each entry MUST cite the rationale.
+#
+# Format:
+#   [[handlers]]
+#   module = "<filename without .rs>"   # e.g. "signup"
+#   function = "<pub async fn name>"    # e.g. "signup"
+#   rationale = "<why this handler is exempt>"
+#
+# The oracle Probe A scans every `pub async fn` in
+# `crates/feedbackmonk-api/src/handlers/*.rs`. Functions whose body
+# contains a domain-write pattern (.create(, .submit_*, .update_*, etc.)
+# must either call check_tier_quota() before the first write OR be listed
+# here. Adding a handler to this list is a reviewable surface — the
+# rationale field is the drift defender.
+
+# --- Pre-auth / signup boundary --------------------------------------------
+
+[[handlers]]
+module = "signup"
+function = "signup"
+rationale = "Pre-tier: signup creates the tenant. The tier column gets its default ('free') at INSERT time. No TenantScope exists yet, hence no tier to check. The 1-project / 50-feedback caps apply post-verification."
+
+[[handlers]]
+module = "verify_email"
+function = "verify"
+rationale = "Pre-tier: verify-email redeems an opaque token and marks the tenant verified. No domain write that produces a new chargeable resource — it transitions an existing tenant row from pending to active."
+
+# --- Admin / read-only domain writes that do NOT produce chargeable rows ---
+
+[[handlers]]
+module = "signing_keys"
+function = "register"
+rationale = "Signing-key registration is an admin operational write (project-scoped JWT verification material). Signing keys are not a tier-capped resource per Contract C19 / DEC-FBR-03 — only projects and monthly feedback volume carry caps. If signing keys ever become tier-capped, add a ResourceKind variant and wire here."
+
+[[handlers]]
+module = "signing_keys"
+function = "deactivate"
+rationale = "Same as register: signing-key operations are not tier-capped per Contract C19."
+
+[[handlers]]
+module = "admin_feedback"
+function = "transition_status"
+rationale = "Admin status transitions write an audit row but do NOT create a chargeable resource — the feedback row already exists from the public submission path (where the cap fires). Transitioning is a tenant-internal triage action."
+
+[[handlers]]
+module = "admin_feedback"
+function = "reply"
+rationale = "Admin replies write reply rows scoped to existing feedback. Reply rows are not in Contract C19's cap matrix — only project count and rolling-monthly feedback submissions are capped. Replies follow the existing feedback's tenant ownership."
+
+[[handlers]]
+module = "promote"
+function = "promote_to_roadmap"
+rationale = "Promote-to-roadmap is an admin-driven transformation of an existing feedback row into a roadmap item; it does not create a NEW chargeable resource — the feedback row already cleared the FeedbackInRollingMonth cap at submission time, and roadmap items are not in Contract C19's cap matrix."
+
+[[handlers]]
+module = "roadmap"
+function = "cast_vote"
+rationale = "Roadmap voting is end-user (anonymous or authenticated) write that produces a vote row. Votes are not in Contract C19's cap matrix — only project count and monthly feedback are capped. Votes carry FR-FBR-13's own rate-limit / dedup invariants (handled in the repository's `cast` method) which are orthogonal to commercial tiers."
+
+[[handlers]]
+module = "roadmap"
+function = "retract_vote"
+rationale = "Same as cast_vote — retraction is a vote-row mutation, not a chargeable resource."
+
+[[handlers]]
+module = "roadmap"
+function = "admin_create_item"
+rationale = "Admin-created roadmap items are not in Contract C19's cap matrix; the cap is on customer-submitted feedback volume, not on the tenant's own roadmap-item creation."
+
+[[handlers]]
+module = "roadmap"
+function = "admin_update_item"
+rationale = "Admin roadmap-item edits update an existing row; no new chargeable resource produced."

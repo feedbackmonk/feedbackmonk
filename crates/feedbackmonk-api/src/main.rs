@@ -30,7 +30,7 @@ use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
     SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRoadmapItemRepo,
-    SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo,
+    SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo,
 };
 
 use feedbackmonk_api::email::{
@@ -39,8 +39,9 @@ use feedbackmonk_api::email::{
 use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
-    admin_feedback_routes, admin_roadmap_router, promote_router, roadmap_router,
-    spawn_voting_cache_refresh, submission_router, widget_config_router, VotingCache,
+    admin_feedback_routes, admin_roadmap_router, admin_tier_router, promote_router,
+    roadmap_router, spawn_voting_cache_refresh, submission_router, widget_config_router,
+    VotingCache,
 };
 
 #[tokio::main]
@@ -130,6 +131,7 @@ fn build_state(pool: PgPool) -> Result<AppState> {
     let email_verifications = Arc::new(SqlxEmailVerificationRepo::new(pool.clone()));
     let roadmap_items = Arc::new(SqlxRoadmapItemRepo::new(pool.clone()));
     let roadmap_votes = Arc::new(SqlxRoadmapVoteRepo::new(pool.clone()));
+    let tier_quotas = Arc::new(SqlxTierQuotaRepo::new(pool.clone()));
     let voting_cache = VotingCache::new();
     let health = SqlxHealthCheck::new(pool.clone());
 
@@ -178,6 +180,7 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         voting_cache,
         started_at: Utc::now(),
         health,
+        tier_quotas,
     })
 }
 
@@ -296,6 +299,7 @@ fn build_app(state: AppState) -> Router {
         .merge(widget_config_router(state.clone()))
         .merge(roadmap_router(state.clone()))
         .merge(admin_roadmap_router(state.clone()))
+        .merge(admin_tier_router(state.clone()))
         .merge(promote_router(state));
     app.layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace_layer)

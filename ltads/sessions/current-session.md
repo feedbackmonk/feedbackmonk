@@ -1,45 +1,48 @@
 # Current Session
 
-**Session ID**: S001
-**Role**: orchestrator (Stage 1 monitor + autopilot:continuous chain coordinator)
-**Started**: 2026-05-13T22:00:00Z
-**Paused-At**: 2026-05-13T22:15:00Z
-**Resumed-At**: 2026-05-13T23:25:03Z
-**Re-Paused-At**: 2026-05-14T00:11:35Z
-**Re-Resumed-At**: 2026-05-14T02:30:00Z
-**Status**: CONCLUDED
-**Paused-By**: /0-uldf-proceed HANDOFF→PODS at P1 Stage 2 boundary (mid-arc, NOT arc-terminus; successor session inherits via .claude/handoff/handoff-20260514-001135.md and continues autopilot:continuous chain through /0-uldf-pods-parallelize)
-**Resumed-By**: /0-uldf-ltads-start arrival from .claude/handoff/handoff-20260514-022752.md (P1 Stage 3 single-agent converging tree — e2e witness + critic C-002 + 5 module READMEs; Stage 2 closed at d6f247a)
-**Concluded-By**: P1 Stage 3 commit (arc-terminus) via complete-arc-flag
-**Phase**: P1 (Closes the Loop), Stage 3 (e2e witness + critic C-002 + READMEs)
-**Plan**: docs/planning/plans/20260513T231115-feedbackr-p1-closes-the-loop.md
-**P0 Plan (reference)**: docs/planning/plans/20260513T210133-feedbackr-p0-foundation.md
-**Arc Plan**: docs/planning/plans/20260513T185711-feedbackr-v1-build-arc.md
+**Session ID**: S002
+**Role**: orchestrator (P3 Stage 1 monitor + autopilot:continuous chain coordinator)
+**Started**: 2026-05-14T14:11:05Z
+**Status**: ACTIVE
+**Started-By**: /0-uldf-ltads-start arrival from .claude/handoff/handoff-20260514-140326-p3-stage1.md (P3 Stage 1 — backend tier model + cap enforcement + tier-enforcement-status oracle; STAGED strategy, single orchestrated worker)
+**Phase**: P3 (Commercial Gate), Stage 1 (Backend tier model + enforcement + oracle)
+**Plan**: docs/planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md
+**P2 Plan (reference)**: docs/planning/plans/20260514T034730-feedbackmonk-p2-customer-facing.md
+**Arc Plan**: docs/planning/plans/20260513T185711-feedbackmonk-v1-build-arc.md
 
-**Autonomy Override**: autopilot:continuous (from .claude/session-state/task-arc-autonomy.json; arc grant active until 2026-05-14T21:06:21Z OR spec exhausted)
+**Autonomy Override**: autopilot:continuous (orchestrator-resolved; arc grant active in `.claude/session-state/task-arc-autonomy.json` until 2026-05-15T03:53:00Z OR spec exhausted)
 
-**BoundConsent**: mode=autopilot:continuous, scope=open-ended, source=cli-/0-uldf-autonomy-set autopilot:continuous, boundUntil=on /0-uldf-ltads-stop, expired=true
+**BoundConsent**: mode=autopilot:continuous, scope=open-ended (P3 Stage 1 → Stage 2 → P4), source=cli-/0-uldf-autonomy-set autopilot:continuous, boundUntil=on /0-uldf-ltads-stop OR spec-exhaustion, expired=false
 
-## Active Work
+## Active Work — P3 Stage 1 (orchestrated, single worker, STAGED strategy)
 
-Stage 1 of P1 (Closes the Loop) (SEQUENTIAL, single orchestrated worker):
-- Task Zero: build `pii-scrub-audit` Verification Oracle (Probe A AST + Probe B hash)
-- Sub-task 1: `crates/feedbackr-tracing/` PII scrubber (canonical 20-pattern port from GitCellar) + Layer + main.rs wire-in
-- Sub-task 2: migrations 00003_feedback_status_history.sql + 00005_tenant_email_brand.sql
-- Sub-task 3: repository surface extensions (FeedbackRepo + new FeedbackStatusHistoryRepo + TenantRepo brand surface)
-- Sub-task 4: frozen contracts handoff doc (C6/C7/C8/C9/C10/C11 + TypeScript type-mirror code block) at `docs/planning/handoffs/p1-stage1-to-stage2.md`
+Per `docs/planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md` § Stage 1:
 
-## Chain Plan (autopilot:continuous — P1)
+- **Phase 0 (Task Zero)**: Build `tier-enforcement-status` Verification Oracle (Probe A AST + Probe B config-shape + Probe C integration smoke gated behind `--full`). Mirror canonical `widget-bundle-size` pattern.
+- **Phase 1 (tier model)**: `crates/feedbackmonk-core/src/tier.rs` — Tier enum, ResourceKind enum, TierQuotas struct, `tier_quotas()` const fn per Contract C19.
+- **Phase 2 (repo extensions)**: `crates/feedbackmonk-repository/src/tenants.rs` (`get_tier`, tier-aware `get_widget_brand`, `count_projects`, `count_feedback_in_window`); new `tier_quota.rs` (`TierQuotaRepo` trait + `SqlxTierQuotaRepo` impl per Contract C17). Append to `multi-tenant-isolation-check/allowlist.toml`.
+- **Phase 3 (AppState + error)**: Extend AppState with `tier_quotas: Arc<dyn TierQuotaRepo>`; author test-mod justification artifact enumerating all fixture sites; add `ApiError::TierCapExceeded` per Contract C18.
+- **Phase 4 (cap enforcement)**: Wire `check_tier_quota` into project-create + feedback submission handlers. Re-run all four oracles.
+- **Phase 5 (admin tier-status endpoint)**: `crates/feedbackmonk-api/src/handlers/admin_tier.rs` — `GET /api/v1/admin/tier`.
+- **Phase 6 (operations + deferred docs)**: `docs/operations/TIER_OVERRIDE.md`, `docs/deferred/polar-integration.md`, `DEC-FBR-DEFER-01` to `docs/specs/DECISIONS.md`.
+- **Phase 7 (verification + contract freeze)**: Full workspace verification; author `docs/planning/handoffs/p3-stage1-to-stage2.md` with Contracts C17/C18/C19 frozen verbatim; `/0-uldf-finalize --skip-push`.
 
-1. P1 Stage 1 (this session, orchestrated worker) — Foundation Contracts + PII Oracle
-2. P1 Stage 2 (PODS, 2 workers) — Worker A (backend: status workflow + emails, FR-FBR-08+09) + Worker B (frontend: admin UI React+Vite, FR-FBR-07) — auto-triggered at Stage 1 exit gate
-3. P1 Stage 3 (single session in converging tree) — e2e-p1-curl.sh witness + carry-forward critic C-002 + 5 missing module READMEs (ULADP)
-4. P1 exit gate → /0-uldf-finalize --skip-push → P2 begins via fresh /0-uldf-ldis-plan
+## Chain Plan (autopilot:continuous — P3 → P4)
+
+1. **P3 Stage 1** (this session, orchestrated worker) — Backend tier model + cap enforcement + `tier-enforcement-status` oracle
+2. **P3 Stage 2** (auto-spawned via /0-uldf-proceed at Stage 1 exit gate) — Admin UI tier settings + cap-aware error rendering (consumes frozen Contracts C17/C18/C19)
+3. **P3 close** → /0-uldf-finalize --skip-push → P4 begins via fresh /0-uldf-ldis-plan
+
+## Constraints (from handoff brief)
+
+- **Polar billing DEFERRED** per user direction. Stage 1 Phase 6 writes `docs/deferred/polar-integration.md` stub + `DEC-FBR-DEFER-01`. Do NOT implement Polar webhook receiver. Admin UI Upgrade button is a stub ("Contact support to upgrade").
+- `/0-uldf-finalize` MUST pass `--skip-push` until PF-REGISTER-01 clears (github.com/feedbackmonk org + feedbackmonk.com purchase).
+- Q24 byte-for-byte invariant from P2 is permanent — do NOT modify `crates/feedbackmonk-api/src/handlers/promote.rs` render functions or q24_* tests.
+- Local Postgres dev container `feedbackr-pg-dev` on port 5433 (`DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev`).
+- Stage 1 exit gate REQUIRES `docs/planning/handoffs/p3-stage1-to-stage2.md` with Contracts C17/C18/C19 frozen verbatim before Stage 2 begins.
+- Test-mod justification artifact MUST enumerate ALL fixture sites in YAML frontmatter (lesson from P2 D-FBR-17): expected sites `crates/feedbackmonk-api/src/handlers/admin_feedback.rs`, `tests/handlers.rs`, `tests/router_submission_integration.rs`, plus any TenantRepo mock that needs `get_tier`/`count_*` stubs.
 
 ## Mid-arc Checkpoint
 
-- **2026-05-13** — Stage 1 complete. FR-FBR-01 DONE. Contract C1 frozen for Stage 2 fan-out. `multi-tenant-isolation-check` oracle GREEN. 19 tests pass (6 core + 13 repository). Next: `/0-uldf-pods-parallelize` for Stage 2 (Worker A signup + Worker B submission path). See `docs/PROJECT_TRAJECTORY.md` for next-best-steps.
-- **2026-05-13 (P0 CLOSE)** — Stages 2+3 complete. FR-FBR-02/03/05/06/18 all DONE. P0 Foundation is closed. PODS session `collab-20260513-221600` converged with DEC-PODS-001 + DEC-PODS-002 ratified. 118 tests pass (Stage 2's 116 + Stage 3's 2 health unit tests). `multi-tenant-isolation-check` oracle GREEN. E2E P0-exit-gate witness `scripts/e2e-p0-curl.sh` PASS 7/7. Arc continues — NOT arc-terminus; autopilot:continuous arc carries through to P1. Next: fresh `/0-uldf-ldis-plan "Feedbackr P1 — Closes the Loop"`.
-- **2026-05-13 (P1 STAGE 1)** — Stage 1 complete (commit `f63c66b`). `pii-scrub-audit` Verification Oracle built (Task Zero); `feedbackr-tracing` crate shipped with `install_global_subscriber` chokepoint + canonical 20-pattern scrubber (byte-for-byte GitCellar port); migrations 00003 (`feedback.status` + audit history table) + 00005 (tenant email brand) applied; repository surface extended (`FeedbackRepo::list_for_admin`/`get_with_history` + `FeedbackStatusHistoryRepo` + `TenantRepo::get_brand`/`update_brand`/`EmailTenantBrand`). 118 → 185 tests (+67). Both Verification Oracles GREEN; clippy clean. Contracts C6/C7/C8/C9/C10/C11 frozen verbatim in `docs/planning/handoffs/p1-stage1-to-stage2.md` for Stage 2 fan-out. FR-FBR-10 progress: oracle + scrubber + chokepoint shipped; end-to-end verification awaits Stage 2 (email-emit paths) + Stage 3 (e2e witness) — NOT yet DONE. Arc continues — NOT arc-terminus; autopilot:continuous carries through. Next: `/0-uldf-pods-parallelize "Feedbackr P1 Stage 2 — Status Workflow + Admin UI"` consuming the handoff doc as freeze surface.
-- **2026-05-14 (P1 STAGE 2)** — Stage 2 complete (commit `d6f247a`). PODS session `collab-20260514-001500` converged with critic verdict PASS. Worker A (backend) shipped admin transition + reply endpoints (Contract C7), list + detail endpoints (Contract C8), `feedback_replies` migration 00004, three plain-text email templates with tenant-brand parameterization (Contract C10), and a Mailpit integration test. Worker B (frontend) shipped the new `admin-ui/` React+Vite+TypeScript directory on port 14204 with state-machine-aware StatusControls, plain-text body rendering (stored-XSS defense), and a Playwright + `@axe-core/playwright` a11y smoke. Five self-mediated widenings (DEC-PODS-003..007) LD-ratified at convergence — all map to pre-authorized shapes in the Stage 1 handoff doc or structural mirrors thereof. Tests: 185 → 213 backend (+28) + 13 admin-ui Vitest + 1 Playwright a11y smoke. Both Verification Oracles GREEN; clippy clean; tsc strict + vite build GREEN. FR-FBR-07 + FR-FBR-08 + FR-FBR-09 implementation DONE (end-to-end verification awaits Stage 3 e2e witness). Arc continues — NOT arc-terminus; autopilot:continuous carries through. PODS session archived at `.claude/collaboration/archived/collab-20260514-001500/`. Next: Stage 3 (single session in converging tree) — `scripts/e2e-p1-curl.sh` extension + carry-forward critic C-002 (Router-level submission integration tests) + 5 missing module READMEs (feedbackr-anon, feedbackr-jwt, feedbackr-api/{auth,handlers}). Stage 3 may run inline (HERE topology) since this session has plenty of context, OR route via `/0-uldf-proceed` to a fresh session.
-- **2026-05-14 (P1 STAGE 3 — ARC TERMINUS)** — P1 CLOSED. Stage 3 in converging session delivered the three exit-gate deliverables: (1) `scripts/e2e-p1-curl.sh` closes-the-loop witness extending `e2e-p0-curl.sh` (signup → submit → admin verify-email → list → transition → status-email-observed → public-reply → public-reply-email-observed); Mailpit-required steps fail loud, Mailpit-arrival assertions skip-gracefully. Per Stage 1 Contract C11 the cookie name is `feedbackr_session` (not `feedbackr_admin_session` — P1-plan misnomer reconciled). (2) `crates/feedbackr-api/tests/router_submission_integration.rs` closing carry-forward critic C-002: 5 axum-Router-level cases (JWT happy path, anon happy path, 401 on `alg=none` — Contract C2 invariant 1 load-bearing JWT-attack defense, 429 rate-limit via custom AnonGate quota, 400 empty body). The brief's "401 missing-cookie" was a typo (submission endpoint is public). `ConnectInfo<SocketAddr>` injected via request extensions because `tower::ServiceExt::oneshot` doesn't populate it (production binary uses `into_make_service_with_connect_info`) — documented in helper. (3) Four module READMEs with ULADP Agent Context Headers + Decision Logs: `crates/feedbackr-anon/`, `crates/feedbackr-jwt/`, `crates/feedbackr-api/src/auth/`, `crates/feedbackr-api/src/handlers/`. 213 → 218 workspace tests (+5). `cargo clippy --workspace --all-targets -- -D warnings` GREEN. Both Verification Oracles (`multi-tenant-isolation-check`, `pii-scrub-audit`) GREEN. FR-FBR-07/08/09/10 flipped DONE in `docs/specs/SPECIFICATION.md`. Two new D-FBR discoveries: D-FBR-13 (`ConnectInfo` injection for production-parity test harnesses), D-FBR-14 (plan-doc identifier drift caught at use-site by integration code). Arc terminates here per autopilot:continuous chain plan; next phase is P2 via fresh `/0-uldf-ldis-plan` after PF-RENAME-01 + PF-RENAME-02 execute at the next quiescent boundary.
+- **2026-05-14 (P3 Stage 1 START)** — Session opened from handoff brief `.claude/handoff/handoff-20260514-140326-p3-stage1.md`. Predecessor session S001 CONCLUDED at P2 close (commit `9f1a28b`). PF-RENAME-01 (code-level rename feedbackr → feedbackmonk) DONE. PF-RENAME-02 (working-dir rename) and PF-REGISTER-01 (org + domain) still pending — both user-action; do NOT block P3 Stage 1 implementation. Topology: orchestrated single worker (Tier 1 sufficient per capacity estimate). STAGED strategy chosen over PARALLEL/SEQUENTIAL — see plan § Strategy Rationale.
+- **2026-05-14 (P3 Stage 1 CLOSED — backend mid-arc-checkpoint commit)** — Worker delivered all 14 tasks GREEN (`ltads/execution/development-complete.md`). Backend tier model + cap-firing predicate + admin status endpoint + `tier-enforcement-status` Verification Oracle (3-probe, active-PASS including Probe C smoke trio) + `migrations/00008_tenant_tier_check.sql` defense-in-depth + Polar deferred-stub all committed in one staged commit. 302 workspace tests pass (P2 closed at 271; +31 net-new). All 4 Verification Oracles GREEN. FR-FBR-14 backend portion DONE in `docs/specs/SPECIFICATION.md`; FR-FBR-15 DEFERRED per `DEC-FBR-DEFER-01`. Three new generalizable patterns surfaced and documented in `docs/specs/DISCOVERIES.md` (D-FBR-19/20/21). Status remains ACTIVE per CSI-03 (Stage 2 admin UI ahead via `/0-uldf-proceed` chain continuation; arc not yet terminating).

@@ -508,3 +508,20 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 **Implementation**: `docs/operations/LOCAL_DEV.md` documents the container shape. `~/.claude/MACHINE_CONFIG.md` records the port claim. `sqlx::test` macros consume `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev`.
 
 ---
+
+### DEC-FBR-DEFER-01: Polar billing deferred from P3
+
+**Resolved**: 2026-05-14 (P3 Stage 1 planning, ratified by user direction).
+
+**Decision**: FR-FBR-15 (Polar billing integration) is **deferred** from P3's commercial-gate phase. P3 ships the tier model + cap enforcement + free-tier footer + admin tier-status endpoint per FR-FBR-14, but does NOT ship a Polar webhook receiver, customer/subscription schema columns, or a self-service upgrade flow. Stage 2's admin "Upgrade" button is a stub reading *"Contact support to upgrade"*. Operators promote tenants between tiers via the SQL helper in `docs/operations/TIER_OVERRIDE.md` until Polar lands.
+
+The deferred Polar contract — webhook envelope, event → tier mapping, schema migration shape, GitCellar port pointers — is captured in `docs/deferred/polar-integration.md` so a future worker can implement without re-deriving.
+
+**Rationale**: Per user direction during P3 planning: *"we just don't need to set up billing yet for consumers"*. The founder is dogfooding their own feedbackmonk instance via the `self_host` tier override and has no public-paying-customer pressure on P3's exit gate. Decoupling tier enforcement (load-bearing for P4 launch readiness — the free-tier footer is the brand-promise surface) from the consumer-billing flow (NOT load-bearing until consumer GTM motion exists) lets P3 close on the commercial-gate **mechanism** without paying the Polar integration cost up front. The arc plan's original P3 exit gate ("Polar webhook → tier flip end-to-end on Polar sandbox") is **relaxed** to: tier caps fire correctly + footer tier-flip works + oracle GREEN + admin UI displays current tier and usage.
+
+**Trade-offs**: Two concrete: (1) The Stage 2 "Upgrade" stub button is a deliberate user-experience seam — anyone clicking it gets pointed at email, not checkout. Documented at `docs/deferred/polar-integration.md` so the seam is intentional, not stale. (2) Self-service tier downgrade/upgrade requires an operator-in-the-loop until Polar lands; manageable at the dogfood scale (≤10 tenants expected through P4). When consumer-billing pressure arrives, the worker reads `docs/deferred/polar-integration.md` and ports from `gitcellar-cloud/src/billing/polar.rs` (per DEC-FBR-07 read-only reference convention).
+
+**Implementation**: `docs/deferred/polar-integration.md` (deferred-work stub); `docs/operations/TIER_OVERRIDE.md` (interim operator workflow); P3 Stage 1 ships everything in `docs/planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md` §Stage 1 minus FR-FBR-15.
+
+---
+

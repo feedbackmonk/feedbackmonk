@@ -11,6 +11,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use feedbackmonk_core::ResourceKind;
+
 use crate::auth::AdminSession;
 use crate::error::ApiError;
 use crate::state::AppState;
@@ -86,6 +88,24 @@ fn build_embed_snippet(public_url: &str, slug: &str) -> String {
     )
 }
 
+/// User-facing upgrade hint when the project cap fires. Stage 1 ships
+/// these as `&'static str`-formatted defaults; Stage 2's admin UI
+/// renders them verbatim into the `UpgradePrompt` toast (Contract C18
+/// `upgrade_hint` field).
+fn upgrade_hint_for_project(tier: feedbackmonk_core::Tier) -> String {
+    use feedbackmonk_core::Tier;
+    match tier {
+        Tier::Free => "Upgrade to Starter for 3 projects per org.".into(),
+        Tier::Starter => "Upgrade to Pro for unlimited projects.".into(),
+        // Pro / SelfHost have None cap, so this path is unreachable —
+        // but a defensible default keeps the match exhaustive without
+        // a panic.
+        Tier::Pro | Tier::SelfHost => {
+            "Contact support — your tier should allow unlimited projects.".into()
+        }
+    }
+}
+
 pub async fn create(
     State(state): State<AppState>,
     session: AdminSession,
@@ -93,6 +113,23 @@ pub async fn create(
 ) -> Result<Json<ProjectResponse>, ApiError> {
     validate_name(&req.name)?;
     validate_slug(&req.slug)?;
+
+    // FR-FBR-14 (Contract C17) — tier-cap predicate. Consulted BEFORE
+    // any write. `allowed = false` → ApiError::TierCapExceeded (HTTP 409
+    // per Contract C18 for ResourceKind::Project).
+    let status = state
+        .tier_quotas
+        .check_tier_quota(&session.scope, ResourceKind::Project)
+        .await?;
+    if !status.allowed {
+        return Err(ApiError::TierCapExceeded {
+            tier: status.tier,
+            resource: status.resource,
+            current: status.current,
+            limit: status.limit.unwrap_or(0),
+            upgrade_hint: upgrade_hint_for_project(status.tier),
+        });
+    }
 
     let project = state
         .projects

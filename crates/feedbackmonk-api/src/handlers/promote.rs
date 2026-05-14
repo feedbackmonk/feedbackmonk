@@ -650,6 +650,7 @@ mod tests {
         let email_verifications = Arc::new(SqlxEmailVerificationRepo::new(pool.clone()));
         let roadmap_items = Arc::new(SqlxRoadmapItemRepo::new(pool.clone()));
         let roadmap_votes = Arc::new(SqlxRoadmapVoteRepo::new(pool.clone()));
+        let tier_quotas = Arc::new(feedbackmonk_repository::SqlxTierQuotaRepo::new(pool.clone()));
         let recorder = Arc::new(RecordingEmailNotifier::new());
         AppState {
             pool: pool.clone(),
@@ -672,6 +673,9 @@ mod tests {
             voting_cache: VotingCache::new(),
             started_at: Utc::now(),
             health: SqlxHealthCheck::new(pool.clone()),
+            // P3 Stage 1 fixture extension — see
+            // docs/test-modifications/20260514-p3-appstate-tier-quotas.md.
+            tier_quotas,
         }
     }
 
