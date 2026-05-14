@@ -49,7 +49,7 @@ Resolution: Native PostgreSQL data model + UI. Drop Forge dependency entirely. S
 ### Q7 — Repository home
 **Status**: RESOLVED 2026-05-13 → [`DEC-FBR-07`](DECISIONS.md#dec-fbr-07-repository-home)
 
-Resolution: New public GitHub repo at `github.com/<handle>/feedbackr`, local working dir `E:\Developer\SourceControlled\Apps\Feedbackr`. Recommendation shifted from intake-time (a) "in-place" to (b) "new repo" because AGPL changed the calculus — visibility is required for the OSS-as-marketing channel that revenue depends on.
+Resolution: New public GitHub repo at `github.com/feedbackmonk/feedbackmonk` (planned; PF-REGISTER-01 pending), local working dir `E:\Developer\SourceControlled\Apps\feedbackmonk` (initially `Apps\Feedbackr`; renamed 2026-05-14 per PF-RENAME-02). Recommendation shifted from intake-time (a) "in-place" to (b) "new repo" because AGPL changed the calculus — visibility is required for the OSS-as-marketing channel that revenue depends on.
 
 ### Q8 — Scope of v1 MVP
 **Status**: RESOLVED 2026-05-13 → [`DEC-FBR-08`](DECISIONS.md#dec-fbr-08-mvp-scope)

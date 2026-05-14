@@ -255,7 +255,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 **Resolved**: 2026-05-13.
 
-**Local working directory**: `E:\Developer\SourceControlled\Apps\Feedbackr` (peer to GitCellar, quiqpic, SessionHelm).
+**Local working directory**: `E:\Developer\SourceControlled\Apps\feedbackmonk` (peer to GitCellar, quiqpic, SessionHelm; originally `Apps\Feedbackr` per DEC-FBR-07, renamed 2026-05-14 per PF-RENAME-02).
 
 **Primary remote**: public GitHub repo at `github.com/<handle>/feedbackr` (or `github.com/feedbackr/feedbackr` if pre-registering the org). Stars, issues, PRs, Show HN posts live here.
 
@@ -279,7 +279,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 **Spec migration plan**:
 - During spec session: spec stays at `docs/specs/feedbackr/` in this GitCellar working dir (don't halt the session to switch directories).
-- Post-spec, pre-implementation: move `docs/specs/feedbackr/` → `E:\Developer\SourceControlled\Apps\Feedbackr\docs\specs\` (canonical home). Leave a breadcrumb pointer in GitCellar's `docs/specs/feedbackr/README.md`.
+- Post-spec, pre-implementation: move `docs/specs/feedbackr/` → `E:\Developer\SourceControlled\Apps\feedbackmonk\docs\specs\` (canonical home; the directory existed as `Apps\Feedbackr` at the time the migration step executed; renamed 2026-05-14 per PF-RENAME-02). Leave a breadcrumb pointer in GitCellar's `docs/specs/feedbackr/README.md`.
 
 ---
 

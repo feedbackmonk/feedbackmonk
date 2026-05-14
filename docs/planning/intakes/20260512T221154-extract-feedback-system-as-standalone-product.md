@@ -124,7 +124,7 @@ This is the canonical case for routing to `/0-uldf-ldis-spec`.
 6. **Roadmap backend** — keep Forge-as-issues (means each customer needs a Gitea fork — unlikely)? Native DB+UI? Both as options?
 7. **Repository home** — three viable shapes; pick one before code moves:
    - **(a) In-place extraction**: `Shared/feedback-core/` (library) + new top-level folders here (`feedbackr-cloud/`, `feedbackr-web/`, `feedbackr-widget/`). GitCellar becomes customer #1.
-   - **(b) New repo from start**: `E:\Developer\SourceControlled\Apps\Feedbackr` with separate workspace; GitCellar imports the published crate/package.
+   - **(b) New repo from start**: `E:\Developer\SourceControlled\Apps\feedbackmonk` with separate workspace; GitCellar imports the published crate/package. *(Originally proposed as `Apps\Feedbackr`; renamed 2026-05-14 per PF-RENAME-02.)*
    - **(c) Hybrid**: Library in `Shared/` here (so GitCellar consumes it locally as a path dependency), product code in a new repo.
    - My lean from the prior turn was (a) — working reference implementation right there, GitCellar as forcing function for the abstraction, split out later. User responded that "Shared/" feels right — that's consistent with (a) for the library part, but the *product code* still needs a home. Worth confirming in spec.
 8. **Branding/name** — placeholder OK during spec; actual identity work can be deferred.

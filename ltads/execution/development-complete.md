@@ -144,7 +144,7 @@ test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 **Command**: `cargo clippy --workspace --all-targets -- -D warnings`
 
 ```text
-    Checking feedbackmonk-api v0.1.0 (E:\Developer\SourceControlled\Apps\Feedbackr\crates\feedbackmonk-api)
+    Checking feedbackmonk-api v0.1.0 (E:\Developer\SourceControlled\Apps\feedbackmonk\crates\feedbackmonk-api)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.30s
 ```
 

@@ -59,7 +59,7 @@ DEC-FBR-07 mandates spec migration to the feedbackmonk repo before any code begi
    - Check `github.com/feedbackr` org availability → register if free.
    - Check WHOIS on `feedbackr.com`, `feedbackr.app`, `feedbackr.dev` → register first available.
    - If both squatted: pause and reopen Q9 in spec session before P0.
-2. **Create new repo** at `E:\Developer\SourceControlled\Apps\Feedbackr`:
+2. **Create new repo** at `E:\Developer\SourceControlled\Apps\feedbackmonk` (created as `Apps\Feedbackr` 2026-05-13; renamed 2026-05-14 per PF-RENAME-02):
    - `git init`, AGPL-3.0-or-later LICENSE, README.md, `.gitignore`.
    - First commit: empty skeleton.
    - Create `github.com/<org>/feedbackr` remote, push.
