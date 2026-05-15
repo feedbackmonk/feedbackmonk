@@ -102,6 +102,22 @@ Executed at the v1 arc-terminus (2026-05-14). Scope delivered:
 - Historical records left intact per DEC-FBR-11 identifier-stability rule (planning/intakes, commit-log, decision-record narrative, OPEN_QUESTIONS resolution narrative).
 - No git remote existed at rename time (PF-REGISTER-01 still pending), so no remote-URL update required.
 
+### ~~PF-RENAME-03: Local dev container rename `feedbackr-*-dev` → `feedbackmonk-*-dev`~~ — DONE
+
+Executed 2026-05-15 post-arc-terminus. Scope delivered:
+- `docker rename feedbackr-pg-dev feedbackmonk-pg-dev` (Postgres dev container on port 5433; `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev` unchanged).
+- `docker rename feedbackr-mailpit-dev feedbackmonk-mailpit-dev` (Mailpit SMTP-capture dev container on ports 1025/8025; ad-hoc dev container originally created during P1 status-emails work, not under `deploy/docker/docker-compose.yml` control).
+- `ltads/execution/development-brief.md` constraint row updated to reflect new container name (the row had explicitly flagged the rename as a future item).
+- `docs/operations/LOCAL_DEV.md` already prescribed `feedbackmonk-pg-dev` (updated in PF-RENAME-01); the rename brings live state into agreement with the doc.
+- Concluded LTADS session records (`current-session.md`, `commit-log.md`, etc.) left intact per append-only history rule — they correctly describe the container name as it was during the concluded session.
+- Stale gitignored routing artifacts cleaned up: `.claude/handoff/handoff-*.md` (14 unpinned files referencing dead `crates/feedbackr-*` paths) and `.claude/session-state/finalize-session-files-S001-*.json` / `-S002-*.json` / `-p4-stage1.json` (per-session caches referencing pre-rename paths). All gitignored — local hygiene only, no commit churn.
+
+### ~~Documentation rename fixup (PF-RENAME-FIXUP)~~ — DONE
+
+Executed 2026-05-15 in commit `b73a7b4`. Fixed two categories of issues introduced by PF-RENAME-02's path-rename sweep:
+- **Over-rename** (6 fixes): historical "Feedbackr"/`github.com/Feedbackr`/`FEEDBACKR_*` references in `README.md`, `DECISIONS.md` DEC-FBR-11, `OPEN_QUESTIONS.md` Q9 had been corrupted to `feedbackmonk`/`github.com/feedbackmonk`/`FEEDBACKMONK_*`, inverting the meaning of the squat-contingency narrative.
+- **Stale forward-references** (6 fixes): `feedbackr.com` → `feedbackmonk.com` (public roadmap URL in DECISIONS.md, Cloudflare deploy landing, scope-table row 16, P4 exit-gate line in arc plan); `feedbackr-tier-quotas` oracle name → `feedbackmonk-tier-quotas` (SPECIFICATION.md); planned P3 webhook signing headers `x-feedbackr-*` → `x-feedbackmonk-*` (DISCOVERIES.md D-FBR-07).
+
 ### PF-REGISTER-01: Register `github.com/feedbackmonk` org + buy `feedbackmonk.com` (user action)
 
 **Trigger**: before first public push.

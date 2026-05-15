@@ -53,6 +53,8 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
   - **DEC-PODS-LEAD-01 framework improvement** — `monitor-pods.ps1` regex should accept `CONVERGENCE-READY` alongside `COMPLETED` as a terminal status label (TIMEOUT artifact observed at convergence; not a real blocker).
   - **rollup-win32-x64-msvc npm bug 4828 workaround** — when widget CI lands, automate the manual binary-extraction fallback.
 - **PF-RENAME-02 (DONE 2026-05-14)** — Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk` completed at v1 arc-terminus.
+- **PF-RENAME-FIXUP (DONE 2026-05-15, commit `b73a7b4`)** — Repaired PF-RENAME-02 over-rename (historical "Feedbackr" / `github.com/Feedbackr` / `FEEDBACKR_*` references that got swept) + stale forward-refs (`feedbackr.com` → `feedbackmonk.com`, `feedbackr-tier-quotas` oracle, planned `x-feedbackr-*` webhook headers).
+- **PF-RENAME-03 (DONE 2026-05-15)** — Local dev containers renamed via `docker rename`: `feedbackr-pg-dev` → `feedbackmonk-pg-dev`; `feedbackr-mailpit-dev` → `feedbackmonk-mailpit-dev`. Live state brought into agreement with `docs/operations/LOCAL_DEV.md`. Concurrent stale-routing-artifact cleanup: gitignored `.claude/handoff/*.md` (14 unpinned) + 3 stale `finalize-session-files-*.json` referencing dead `crates/feedbackr-*` paths.
 - **LTADS S001** — CONCLUDED at P1 close (commit `835fbf8`). P2 convergence ran outside LTADS (LTADS-not-active path through `/0-uldf-pods-converge --finalize`).
 - **GitCellar widget-embed touchpoint — DEFERRED to late P2 / early P3**: first cross-repo integration when GitCellar embeds the feedbackmonk widget as customer #1.
 
