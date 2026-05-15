@@ -100,7 +100,7 @@ Project-state oracles (not Verification Oracles):
 
 | Oracle | Question | Strategy | Build Status |
 |---|---|---|---|
-| `feedbackr-tier-quotas` | Current per-org project count + monthly volume vs configured tier limits | trigger-invalidate (on tier change / monthly rollover) | Optional — useful for admin dashboard; defer to v1.1 |
+| `feedbackmonk-tier-quotas` | Current per-org project count + monthly volume vs configured tier limits | trigger-invalidate (on tier change / monthly rollover) | Optional — useful for admin dashboard; defer to v1.1 |
 
 ---
 

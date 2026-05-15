@@ -132,7 +132,7 @@ This shifts the question from "wait for LD" → "is this change one the LD alrea
 2. **Use a single canonical verifier crate** (ed25519-dalek for EdDSA; future: ring or hmac for symmetric) and reject the urge to abstract over algorithm-families.
 3. **Manual base64url decode for header parsing** — `serde_json` parsing the decoded header is fine, but defer signature work until alg-allowlist + claim-presence is confirmed. This is the only way to get clean error precedence.
 
-**Where this pays off again**: Forward-binding for P3 webhook signing (planned at `/0-uldf-ldis-plan "feedbackmonk P3 — Self-Service Distribution"`). Likely shape: HMAC-SHA256 over canonical request body + `x-feedbackr-timestamp` + `x-feedbackr-signature` header. Author the fixture corpus first with the same 8-category structure (a-h: valid, valid-with-rotation, expired, wrong-secret, missing-header, oversize, attack-class-1, attack-class-2).
+**Where this pays off again**: Forward-binding for P3 webhook signing (planned at `/0-uldf-ldis-plan "feedbackmonk P3 — Self-Service Distribution"`). Likely shape: HMAC-SHA256 over canonical request body + `x-feedbackmonk-timestamp` + `x-feedbackmonk-signature` header. Author the fixture corpus first with the same 8-category structure (a-h: valid, valid-with-rotation, expired, wrong-secret, missing-header, oversize, attack-class-1, attack-class-2).
 
 ---
 

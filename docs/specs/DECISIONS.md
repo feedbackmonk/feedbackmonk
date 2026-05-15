@@ -241,7 +241,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 **Voting**: 1 vote per `(item, voter)`. `voter_id` is JWT `sub` for authenticated mode (DEC-FBR-04 mode a) or hashed cookie+IP for anonymous mode (mode b). Top-voted endpoint with 60s cache (port of GitCellar's `roadmap_voting.rs` algorithm).
 
-**Public browse**: anonymous by default at `feedbackr.com/{tenant}/{project}/roadmap` (custom domain in $29+ tier). Browse without auth; auth required to vote (per Q4 modes).
+**Public browse**: anonymous by default at `feedbackmonk.com/{tenant}/{project}/roadmap` (custom domain in $29+ tier). Browse without auth; auth required to vote (per Q4 modes).
 
 **Promote-from-feedback**: admin clicks "Promote to roadmap" on a feature_request. Creates `roadmap_items` row, links via `roadmap_promotes`, transitions source feedback to `duplicate`. **Q24 privacy invariant carries over from GitCellar (load-bearing)**: rendered roadmap-item body contains the feedback message verbatim with NO submitter attribution and NO feedback ID reference. Inline test asserts byte-for-byte.
 
@@ -261,7 +261,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 **Optional local Gitea mirror**: standard backup workflow per user's machine setup; does NOT replace the public GitHub remote.
 
-**Cloudflare Pages / Workers deploys** point at the GitHub repo (for `feedbackr.com` landing site).
+**Cloudflare Pages / Workers deploys** point at the GitHub repo (for `feedbackmonk.com` landing site).
 
 **Why a new public repo and NOT in-place extraction in GitCellar's workspace**:
 - **AGPL only has business value if visible.** GitCellar's repo is private (local Gitea). Embedding feedbackmonk there means nobody can find it, star it, fork it, audit it — killing the OSS-as-marketing channel that DEC-FBR-05's revenue math depends on.
@@ -306,7 +306,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 | 13 | Roadmap voting + top-voted aggregator (60s cache) | Port |
 | 14 | Tier enforcement (projects + volume caps, free-tier footer) | New |
 | 15 | Billing (Polar integration, $9/$29/$79 + free) | Port pattern |
-| 16 | Marketing site + landing (feedbackr.com or final-name.com) | NEW (Astro, like GitCellar landing) |
+| 16 | Marketing site + landing (feedbackmonk.com) | NEW (Astro, like GitCellar landing) |
 | 17 | Self-host distribution (`docker compose up`, env config) | NEW |
 | 18 | Health/observability (`/health`, structured logs, error rates) | Port |
 
@@ -399,7 +399,7 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 **Resolved**: 2026-05-14 (post-DEC-FBR-09 enactment, mid-P1 Stage 2 close).
 
 **Trigger**: pre-public-commit availability scan (run from a fresh planning-completion session before the Stage 2→Stage 3 boundary) found:
-- `github.com/feedbackmonk` org **TAKEN** (dormant since 2024-05-20, owner `b.invisibilities@outlook.com`, blog claims `feedbackr.live`)
+- `github.com/Feedbackr` org **TAKEN** (dormant since 2024-05-20, owner `b.invisibilities@outlook.com`, blog claims `feedbackr.live`)
 - `feedbackr.com` **TAKEN** (Verisign authoritative; registrar Namecheap; "client transfer prohibited")
 - `feedbackr.app` and `feedbackr.dev` AVAILABLE
 
@@ -425,7 +425,7 @@ DEC-FBR-09's three suggested-candidate names (Earshot / Plumbline / Listenly) al
 
 **Identity-rename scope (DEFERRED — tracked as Pending Follow-Up in CLAUDE.md)**:
 - Cargo crate prefixes `feedbackr-*` → `feedbackmonk-*` (workspace + member crate names + `Cargo.toml [dependencies]` entries)
-- Env-var prefix `FEEDBACKMONK_*` → `FEEDBACKMONK_*` in code + docs + `.env.example`
+- Env-var prefix `FEEDBACKR_*` → `FEEDBACKMONK_*` in code + docs + `.env.example`
 - Postgres schema items if any are `feedbackr_*`-prefixed (audit at rename time)
 - `admin-ui/package.json` name field
 - `cargo sqlx prepare` cache regeneration after env-var rename

@@ -207,7 +207,7 @@ Each phase below lists: (1) FRs in scope, (2) intra-phase parallelization recomm
 **Brand pass at P4** (DEC-FBR-09): real branding pass — logo, color, font, voice — done jointly with landing. If a better name surfaces, rename here (costs are low pre-launch).
 
 **Exit gate (DEC-FBR-10 Stage 2 trigger — public AGPL beta)**:
-- `feedbackr.com` (or final-name.com) live with hero / pricing / docs / OSS repo link.
+- `feedbackmonk.com` live with hero / pricing / docs / OSS repo link.
 - `docker compose up && curl /health` works on a fresh VM per the self-host docs.
 - Show HN post drafted; Twitter/X thread drafted; GitHub repo flipped public.
 

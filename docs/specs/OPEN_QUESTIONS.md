@@ -59,9 +59,9 @@ Resolution: 18 IN-scope items across 5 phases (P0 foundation → P1 closes-loop 
 ### Q9 — Product name / branding
 **Status**: RESOLVED 2026-05-13 → [`DEC-FBR-09`](DECISIONS.md#dec-fbr-09-product-name); **AMENDED 2026-05-14** → [`DEC-FBR-11`](DECISIONS.md#dec-fbr-11-working-name-changed-to-feedbackmonk--dec-fbr-09-squat-contingency-enacted)
 
-Original resolution: "feedbackmonk" as working name; real branding pass at P4 (pre-launch). Pre-register `github.com/feedbackr` and `.com`/`.app`/`.dev` early.
+Original resolution: "Feedbackr" as working name; real branding pass at P4 (pre-launch). Pre-register `github.com/feedbackr` and `.com`/`.app`/`.dev` early.
 
-**Amendment (DEC-FBR-11)**: pre-public-commit availability scan found `github.com/feedbackmonk` and `feedbackr.com` taken by a dormant squatter. DEC-FBR-09's squat-contingency clause activated. Working name changed to **feedbackmonk** (both `github.com/feedbackmonk` and `feedbackmonk.com` confirmed open). DEC-FBR-09's scheduling of the FULL brand pass for P4 is unchanged. ID prefixes `DEC-FBR-*` / `FR-FBR-*` are stable and do NOT rename.
+**Amendment (DEC-FBR-11)**: pre-public-commit availability scan found `github.com/Feedbackr` and `feedbackr.com` taken by a dormant squatter. DEC-FBR-09's squat-contingency clause activated. Working name changed to **feedbackmonk** (both `github.com/feedbackmonk` and `feedbackmonk.com` confirmed open). DEC-FBR-09's scheduling of the FULL brand pass for P4 is unchanged. ID prefixes `DEC-FBR-*` / `FR-FBR-*` are stable and do NOT rename.
 
 ### Q10 — Launch posture
 **Status**: RESOLVED 2026-05-13 → [`DEC-FBR-10`](DECISIONS.md#dec-fbr-10-launch-posture)

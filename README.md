@@ -6,7 +6,7 @@ Privacy-first product feedback. Hear your users without spying on them.
 
 **License**: AGPL-3.0-or-later (see `LICENSE`).
 
-> **Naming note**: the project was working-named "feedbackmonk" through P0 and most of P1. The name was changed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11, enacting DEC-FBR-09's squat-contingency clause after `github.com/feedbackmonk` and `feedbackr.com` were found taken by an inactive squatter. Decision and requirement ID prefixes `DEC-FBR-*` / `FR-FBR-*` are stable identifiers and do NOT rename. Working-directory and Cargo-crate code-level renames are tracked as Pending Follow-Ups in `CLAUDE.md`.
+> **Naming note**: the project was working-named "Feedbackr" through P0 and most of P1. The name was changed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11, enacting DEC-FBR-09's squat-contingency clause after `github.com/Feedbackr` and `feedbackr.com` were found taken by an inactive squatter. Decision and requirement ID prefixes `DEC-FBR-*` / `FR-FBR-*` are stable identifiers and do NOT rename. Working-directory and Cargo-crate code-level renames are tracked as Pending Follow-Ups in `CLAUDE.md`.
 
 ---
 
