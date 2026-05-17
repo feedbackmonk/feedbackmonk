@@ -35,8 +35,8 @@ function Mk-Sandbox {
     $oracleSub = Join-Path $proj ".claude/oracles/stranded-dirty-files"
     New-Item -ItemType Directory -Path $oracleSub -Force | Out-Null
     # Canonicalize to long path form. $env:TEMP often resolves to a DOS 8.3
-    # short name (e.g. C:\Users\CARBON~1\...) on Windows, but the spawned
-    # oracle's (Get-Location).Path returns the long form (C:\Users\Carbonadmin\...).
+    # short name (e.g. C:\Users\SOMEUS~1\...) on Windows, but the spawned
+    # oracle's (Get-Location).Path returns the long form (C:\Users\someuser\...).
     # If we don't canonicalize, T5's workDir comparison (registry vs. oracle's
     # Get-Location) silently mismatches. Push-Location + Get-Location resolves
     # the long form via the filesystem.

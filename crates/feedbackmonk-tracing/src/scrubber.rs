@@ -195,7 +195,7 @@ mod tests {
     #[test]
     fn windows_user_path_scrubbed() {
         assert_eq!(
-            scrub(r"C:\Users\Carbonadmin\AppData\Local"),
+            scrub(r"C:\Users\someuser\AppData\Local"),
             r"[user-path]\AppData\Local"
         );
     }
@@ -372,7 +372,7 @@ mod tests {
         let inputs = [
             "user mark@example.com from 10.0.0.1 with id=550e8400-e29b-41d4-a716-446655440000",
             "Bearer abc123def456ghi789jkl012mno345",
-            r"C:\Users\Carbonadmin opening /home/alice and AKIAIOSFODNN7EXAMPLE",
+            r"C:\Users\someuser opening /home/alice and AKIAIOSFODNN7EXAMPLE",
             "machine_id=abc-xyz user_id=550e8400-e29b-41d4-a716-446655440000",
         ];
         for input in inputs {
