@@ -327,8 +327,8 @@ v1), follow these steps in order:
 
 ## 7. Where to get help
 
-- **Bug reports**: GitHub Issues at `https://github.com/feedbackmonk/feedbackmonk/issues` (org currently pending registration; see project CLAUDE.md PF-REGISTER-01).
-- **Security issues**: security@feedbackmonk.com once the domain is registered (placeholder; do not publicly disclose vulnerabilities until then).
+- **Bug reports**: GitHub Issues at `https://github.com/feedbackmonk/feedbackmonk/issues` (repo is live and public).
+- **Security issues**: security@feedbackmonk.com (mailbox provisioning depends on domain mail setup; do not publicly disclose vulnerabilities — use a private GitHub security advisory if the mailbox is not yet live).
 - **License**: AGPL-3.0-or-later. Source code is in the same repo you cloned. Modifications must be made available under AGPL.
 - **Contracts**: this runbook is the cold-readable surface for FR-FBR-17. The Verification Oracle `selfhost-compose-smoke` (`.claude/oracles/selfhost-compose-smoke/`) defends the contract between this doc, `docs/operations/SELFHOST_ENV.md` (C21), and `deploy/docker/docker-compose.yml`.
 

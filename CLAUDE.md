@@ -67,7 +67,7 @@ Verification Oracles built so far + scheduled:
 ## Constraints not in spec artifacts
 
 - **LICENSE** is now the full canonical AGPL-3.0 text (replaced 2026-05-13). Repo can be pushed publicly.
-- **GitHub org + domain**: as of 2026-05-14, `github.com/feedbackmonk` and `feedbackmonk.com` are confirmed AVAILABLE but **not yet registered**. User action: register the org via `gh api orgs --method POST -f login=feedbackmonk` (or via web UI) and purchase `feedbackmonk.com` (~$10/yr) before first public push.
+- **GitHub org + domain**: **DONE** (PF-REGISTER-01). The `github.com/feedbackmonk` org is registered (2026-05-16) and the public repo `github.com/feedbackmonk/feedbackmonk` is live with `main` pushed (last push 2026-05-17; local `main` in sync with `origin/main`). `feedbackmonk.com` is purchased. First public push is **no longer gated** — `/0-uldf-finalize` no longer requires `--skip-push`, and normal propagation consent rules apply. Remaining is operational, not registration: the domain is not yet pointed at a running deployment (see PF-DEPLOY-01 below).
 - **GitCellar peer repo** is in pre-launch hardening. feedbackmonk work neither blocks on nor modifies GitCellar; the only cross-repo touchpoint is late P2 / early P3 when GitCellar embeds feedbackmonk's widget as customer #1 (forward-looking integration, NOT extraction).
 
 ## Privacy invariants (load-bearing — never silently relax)
@@ -118,12 +118,26 @@ Executed 2026-05-15 in commit `b73a7b4`. Fixed two categories of issues introduc
 - **Over-rename** (6 fixes): historical "Feedbackr"/`github.com/Feedbackr`/`FEEDBACKR_*` references in `README.md`, `DECISIONS.md` DEC-FBR-11, `OPEN_QUESTIONS.md` Q9 had been corrupted to `feedbackmonk`/`github.com/feedbackmonk`/`FEEDBACKMONK_*`, inverting the meaning of the squat-contingency narrative.
 - **Stale forward-references** (6 fixes): `feedbackr.com` → `feedbackmonk.com` (public roadmap URL in DECISIONS.md, Cloudflare deploy landing, scope-table row 16, P4 exit-gate line in arc plan); `feedbackr-tier-quotas` oracle name → `feedbackmonk-tier-quotas` (SPECIFICATION.md); planned P3 webhook signing headers `x-feedbackr-*` → `x-feedbackmonk-*` (DISCOVERIES.md D-FBR-07).
 
-### PF-REGISTER-01: Register `github.com/feedbackmonk` org + buy `feedbackmonk.com` (user action)
+### ~~PF-REGISTER-01: Register `github.com/feedbackmonk` org + buy `feedbackmonk.com`~~ — DONE
 
-**Trigger**: before first public push.
-- `gh api orgs --method POST -f login=feedbackmonk -f admin=<your-username>` (or web UI at https://github.com/account/organizations/new)
-- Purchase `feedbackmonk.com` via Namecheap/Cloudflare/etc. (~$10-15/yr)
-- Optionally also `feedbackmonk.app` and `feedbackmonk.dev` (both currently AVAILABLE per 2026-05-14 RDAP scan)
+Completed by user action (verified 2026-06-02 via `gh api`):
+- `github.com/feedbackmonk` org registered 2026-05-16.
+- Public repo `github.com/feedbackmonk/feedbackmonk` created (public, default branch `main`) and pushed — last push 2026-05-17; local `main` (`5bf9878`) in sync with `origin/main` (ahead 0 / behind 0). The `origin` remote is configured locally.
+- `feedbackmonk.com` purchased.
+- **Effect**: the first-public-push gate is cleared. `/0-uldf-finalize` no longer needs `--skip-push`; normal propagation-consent rules apply.
+
+### PF-DEPLOY-01: Stand up a reachable feedbackmonk instance for the GitCellar integration (decision + ops)
+
+**Trigger**: when wiring GitCellar (customer #1) to embed the feedbackmonk widget.
+
+The v1 code is content-complete and the full embed→auth→submit loop is built and tested — GitCellar needs **no further feedbackmonk feature work**. What it needs is a *running, reachable* instance. Two hosting models (decision pending — depends on infra preference):
+
+- **Self-host (recommended for GitCellar-ASAP)**: GitCellar runs the stack via `docker compose up` (FR-FBR-17, smoke-tested to `/health/ready`) on a GitCellar-controlled host (e.g. `feedback.gitcellar.com`). Widget `<script src>` + API base point there. **Does NOT require `feedbackmonk.com` to be live.** Runbook: `docs/operations/SELFHOST.md` + `SELFHOST_ENV.md`.
+- **SaaS**: deploy feedbackmonk behind `api.feedbackmonk.com` + `cdn.feedbackmonk.com`; point `feedbackmonk.com` DNS at it. More infra/ops; needed only if feedbackmonk is offered as a hosted service rather than self-hosted by GitCellar.
+
+Integration handshake either way (all built): customer signs up → gets `project_id` → registers an Ed25519 **public** key (`POST /api/v1/projects/{id}/signing-keys`, Contract C4) → mints EdDSA JWTs (`sub`/`iat`/`exp`/`aud`=project_id; Contract C2) → embeds widget with `data-project-id` + `data-jwt`.
+
+The separate Astro **marketing site** (`feedbackmonk.com` landing page, FR-FBR-16) is product marketing — not required for GitCellar's functional integration.
 
 ---
 

@@ -3,7 +3,7 @@
 <!-- Agent Context Header (ULADP) -->
 **Synopsis (1-5 lines)**:
 Greenfield Astro static site (built at P4 Stage 2 — collab-20260514-170323)
-serving `feedbackmonk.com` (once PF-REGISTER-01 clears). Seven pages per
+serving `feedbackmonk.com` (PF-REGISTER-01 cleared — org + domain registered; site not yet deployed to the domain). Seven pages per
 Contract C23 — home / pricing / docs index + widget + api + self-host /
 Show HN draft. Pricing tiers are sourced **at build time** from
 `feedbackmonk-core::tier::tier_quotas()` via a Rust→JSON prebuild step

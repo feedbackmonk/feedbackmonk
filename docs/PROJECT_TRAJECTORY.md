@@ -4,18 +4,15 @@ Rolling high-level state. Auto-maintained by `/0-uldf-finalize` Phase 12. Cheap 
 
 **Last updated**: 2026-05-14 (**P4 Stage 2 CLOSED — v1-arc-terminus**; PODS collab-20260514-170323 converged with both workers GREEN; Astro marketing site (7 pages, brand kit C20, build-time pricing-parity SSOT, Playwright+axe 11/11) + `docker compose up` self-host stack (api + admin-ui nginx edge + postgres + migrate + backup/restore + new `selfhost-compose-smoke` Verification Oracle 3-probe active-PASS) + DEC-FBR-IMPL-07 (FEEDBACKMONK_BIND_ADDR widening) all shipped in one commit; FR-FBR-16 + FR-FBR-17 flipped DONE; all 5 Verification Oracles GREEN; v1 spec content-complete (17/18 FRs DONE, FR-FBR-15 Polar DEFERRED per DEC-FBR-DEFER-01); user-action gates PF-REGISTER-01 + PF-RENAME-02 remain before first public push)
 
-> **Working name**: "Feedbackr" through P0/P1; renamed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11. Identifier prefixes `FR-FBR-*` / `DEC-FBR-*` are stable per the ID-stability rule. Code-level `feedbackr-*` → `feedbackmonk-*` rename committed in PF-RENAME-01 (commit `82a2e59`). Pending user actions: PF-RENAME-02 (working-dir rename) + PF-REGISTER-01 (org+domain registration).
+> **Working name**: "Feedbackr" through P0/P1; renamed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11. Identifier prefixes `FR-FBR-*` / `DEC-FBR-*` are stable per the ID-stability rule. Code-level `feedbackr-*` → `feedbackmonk-*` rename committed in PF-RENAME-01 (commit `82a2e59`). Pending user actions: **none** — PF-RENAME-02 (working-dir rename, 2026-05-14) and PF-REGISTER-01 (org+domain registration, org 2026-05-16) both DONE.
 
 ---
 
 ## Current Focus
 
-**v1 arc CONTENT-COMPLETE — awaiting user-action gates for first public push.** P4 Stage 2 closed in this commit as the v1-arc-terminus. The autopilot:continuous BoundConsent expires here per its `boundUntil=on /0-uldf-ltads-stop OR spec-exhaustion` clause; both conditions are satisfied (this stop ran AND every non-deferred FR is DONE). No further autonomous code work for v1.
+**v1 arc CONTENT-COMPLETE and PUBLIC.** P4 Stage 2 closed as the v1-arc-terminus. PF-REGISTER-01 cleared (org registered 2026-05-16; public repo `github.com/feedbackmonk/feedbackmonk` live, `main` pushed 2026-05-17; `feedbackmonk.com` purchased; local `main` in sync with `origin/main`). The first-public-push gate is no longer in effect. No further autonomous code work for v1.
 
-Remaining work is **user-action only**:
-
-1. **PF-REGISTER-01** — Register `github.com/feedbackmonk` GitHub org + purchase `feedbackmonk.com` domain (~$10-15/yr). Both confirmed AVAILABLE 2026-05-14; not yet claimed.
-2. **First public push** — Unblocked once PF-REGISTER-01 clears.
+**Remaining work for the GitCellar (customer #1) go-live is OPERATIONAL, not development** — see PF-DEPLOY-01 in CLAUDE.md. Decision made (2026-06-02): **self-host** for GitCellar — GitCellar runs the `docker compose` stack (FR-FBR-17, already built + smoke-tested) on a GitCellar-controlled host; `feedbackmonk.com` does NOT need to be live for this. The full embed→auth→submit loop (signup → signing-key registration C4 → EdDSA JWT minting C2 → widget embed) is built and tested; GitCellar needs no further feedbackmonk feature work.
 
 PF-RENAME-02 (working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`) completed at v1 arc-terminus 2026-05-14.
 
@@ -46,9 +43,9 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
 - **P1 CLOSED — arc-terminus** (commit `835fbf8`): Stage 3 e2e witness + critic C-002 + 4 module READMEs. 218 workspace tests; FR-FBR-07/08/09/10 all DONE.
 - **P1 Stage 2 — DONE** (commit `d6f247a`): admin transition + reply HTTP (C7), admin list + detail HTTP (C8), `feedback_replies` migration 00004, three plain-text email templates (C10), Mailpit integration test, `admin-ui/` React+Vite directory + Playwright+axe a11y smoke.
 - **P0 Foundation — COMPLETE** (commit `b9a672a`): all 5 P0 FRs DONE; e2e P0 PASS 7/7.
-- **Pending pre-public-push gates (USER ACTION)**:
-  - **PF-REGISTER-01** — Register `github.com/feedbackmonk` org + buy `feedbackmonk.com` (~$10/yr). Confirmed AVAILABLE 2026-05-14; not yet claimed. Push remains GATED until this clears.
-  - **AGPL LICENSE**: full AGPL-3.0 text in `LICENSE` (replaced 2026-05-13) — gate CLEARED on the LICENSE side.
+- **Pre-public-push gates — ALL CLEARED**:
+  - **PF-REGISTER-01 — DONE**: `github.com/feedbackmonk` org registered 2026-05-16; public repo live + `main` pushed 2026-05-17; `feedbackmonk.com` purchased. Push gate cleared.
+  - **AGPL LICENSE**: full AGPL-3.0 text in `LICENSE` (replaced 2026-05-13) — CLEARED.
 - **Pending follow-ups**:
   - **DEC-PODS-LEAD-01 framework improvement** — `monitor-pods.ps1` regex should accept `CONVERGENCE-READY` alongside `COMPLETED` as a terminal status label (TIMEOUT artifact observed at convergence; not a real blocker).
   - **rollup-win32-x64-msvc npm bug 4828 workaround** — when widget CI lands, automate the manual binary-extraction fallback.
@@ -79,7 +76,7 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
 
 | Risk | Stage | Notes |
 |---|---|---|
-| **GitHub org + domain registration** | Pre-public | User-action pending (PF-REGISTER-01). Push remains GATED on this until cleared. Both `github.com/feedbackmonk` and `feedbackmonk.com` confirmed AVAILABLE 2026-05-14; `gh api orgs --method POST -f login=feedbackmonk` + `feedbackmonk.com` purchase (~$10/yr). |
+| **GitHub org + domain registration** | Pre-public | **RESOLVED** (PF-REGISTER-01 DONE) — org registered 2026-05-16, public repo live + `main` pushed 2026-05-17, `feedbackmonk.com` purchased. Push gate cleared. |
 | **Q24 byte-for-byte invariant drift** | P2 → forever | **MITIGATED** — `promote.rs::tests` module has `#[allow(clippy::uninlined_format_args, clippy::doc_markdown)]` to preserve byte-for-byte invariant against future lint drift; ULADP module-doc explicitly marks render functions + 6 ported tests as UNTOUCHABLE. Drift is unlikely without deliberate edit. |
 | **In-memory anonymous rate-limiter loses state on restart** | P0 (deferred to v1.1) | Acceptable for single-instance dogfood; non-breaking Redis backend swap planned for v1.1. See DISCOVERIES.md D-FBR-08. |
 | **Voting cache cold-start cost** | P2 → P3 | First request for a project after restart triggers lazy warming; 60s thereafter cached. If P3 launches show cold-start latency issues, consider eager warming for top-N projects at boot. |
@@ -91,10 +88,10 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
 
 ## Next-Best-Steps
 
-**v1 arc is content-complete. The remaining items are user-action gates (1+2) and post-launch follow-ups (3+). No autonomous code work for v1.**
+**v1 arc is content-complete AND public (PF-REGISTER-01 cleared). The next concrete step is operational — self-host deploy for GitCellar (PF-DEPLOY-01). Items 3+ are post-launch follow-ups. No autonomous code work for v1.**
 
-1. **PF-REGISTER-01 (USER ACTION — blocks first push)** — Register `github.com/feedbackmonk` org and purchase `feedbackmonk.com` (~$10-15/yr). Both confirmed AVAILABLE 2026-05-14. Commands: `gh api orgs --method POST -f login=feedbackmonk -f admin=<your-username>` (or web UI at https://github.com/account/organizations/new), then domain purchase via Namecheap/Cloudflare/etc. Optionally also `feedbackmonk.app` / `feedbackmonk.dev` (both also AVAILABLE).
-2. **First public push** — Unblocked once PF-REGISTER-01 clears. Add remote (`git remote add origin git@github.com:feedbackmonk/feedbackmonk.git`), push `main`, then enable GitHub Actions + branch protection. Domain DNS → wherever the marketing site will deploy (Cloudflare Pages / Vercel / static-S3 / etc — Astro site is `marketing/dist/` after `npm run build`).
+1. **PF-DEPLOY-01 (self-host for GitCellar — OPS, not feedbackmonk dev)** — Stand up the `docker compose` stack (FR-FBR-17, built + smoke-tested) on a GitCellar-controlled host (e.g. `feedback.gitcellar.com`); does NOT need `feedbackmonk.com` live. Runbook: `docs/operations/SELFHOST.md` + `SELFHOST_ENV.md`. Then the GitCellar-side integration handshake: create project → register Ed25519 public key (`POST /api/v1/projects/{id}/signing-keys`, C4) → mint EdDSA JWTs (C2) → embed widget with `data-project-id` + `data-jwt`. This is GitCellar-side ops/glue work, not feedbackmonk feature work.
+2. **(Optional) SaaS at `feedbackmonk.com`** — Only if offering feedbackmonk as a hosted service later: deploy behind `api.`/`cdn.feedbackmonk.com`, point DNS, deploy the Astro marketing site (`marketing/dist/` after `npm run build`) to Cloudflare Pages / Vercel / static-S3. Not required for GitCellar.
 3. **Build `marketing-selfhost-page-parity` Verification Oracle** (D-FBR-26 follow-up, post-launch) — Defends the `/docs/self-host` content-mirror against drift from `docs/operations/SELFHOST.md`. Simple diff oracle: pre-commit hook that fails if either file changes without the other.
 4. **Un-defer FR-FBR-15 Polar billing** (DEC-FBR-DEFER-01 reversal, post-launch) — Port webhook receiver + customer-subscription schema from `gitcellar-cloud/src/billing/` per stub at `docs/deferred/polar-integration.md`. Address D-FBR-25 (PricingCard SSOT-asymmetry — at that point, code↔site for pricing tiers is structural via DEC-FBR-IMPL-05, but billing flows are still operator-in-the-loop via TIER_OVERRIDE.md).
 5. **Widget CI hardening** — automate the rollup-win32-x64-msvc fallback when widget e2e CI lands (npm bug 4828).
