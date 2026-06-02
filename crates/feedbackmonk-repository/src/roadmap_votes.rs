@@ -39,6 +39,9 @@ use crate::scope::ProjectScope;
 
 /// Default vote-retraction window. The final value flows through the API
 /// layer's `RETRACTION_WINDOW_SECS` constant.
+// `from_secs(60)` is kept intentionally: this constant mirrors the seconds-based
+// `RETRACTION_WINDOW_SECS` API constant, so the seconds unit is the readable form here.
+#[allow(clippy::duration_suboptimal_units)]
 pub const DEFAULT_RETRACTION_WINDOW: Duration = Duration::from_secs(60);
 
 /// Outcome of `retract`. The `Removed` variant carries the row that was

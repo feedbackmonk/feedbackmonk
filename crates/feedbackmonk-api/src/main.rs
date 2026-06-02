@@ -230,8 +230,7 @@ fn build_mailer() -> Result<Arc<dyn Mailer>> {
                 pass: env::var("FEEDBACKMONK_SMTP_PASS").context("FEEDBACKMONK_SMTP_PASS")?,
                 from,
                 starttls: env::var("FEEDBACKMONK_SMTP_STARTTLS")
-                    .map(|s| s != "false")
-                    .unwrap_or(true),
+                    .map_or(true, |s| s != "false"),
             };
             Ok(Arc::new(EnvSmtpMailer::new(cfg)?))
         }
@@ -268,8 +267,7 @@ fn build_email_notifier(
             let user = env::var("FEEDBACKMONK_SMTP_USER").context("FEEDBACKMONK_SMTP_USER")?;
             let pass = env::var("FEEDBACKMONK_SMTP_PASS").context("FEEDBACKMONK_SMTP_PASS")?;
             let starttls = env::var("FEEDBACKMONK_SMTP_STARTTLS")
-                .map(|s| s != "false")
-                .unwrap_or(true);
+                .map_or(true, |s| s != "false");
             let builder = if starttls {
                 AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&host)?
             } else {
