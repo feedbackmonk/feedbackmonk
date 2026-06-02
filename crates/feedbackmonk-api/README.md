@@ -12,9 +12,14 @@ HTTP surface of feedbackmonk. Stage 1 ships a placeholder binary binding `FEEDBA
 
 | File | Purpose |
 |---|---|
-| `src/lib.rs` | Crate root. Currently exports only `placeholder() -> &'static str` so the workspace links and downstream consumers can probe build health. |
-| `src/main.rs` | Stage 1 binary. Reads `FEEDBACKMONK_PORT` (default `14304`), binds axum on `127.0.0.1`, serves a banner route. |
-| `Cargo.toml` | Depends on `axum`, `tokio`, `tracing`, `feedbackmonk-core`, `feedbackmonk-repository`. |
+| `src/lib.rs` | Crate root. Exports the router composers + shared state/error/auth surface. |
+| `src/main.rs` | Binary entrypoint. Reads `FEEDBACKMONK_PORT` (default `14304`), binds axum on `127.0.0.1`, composes the full router tree. |
+| `src/handlers/` | HTTP handler families — see `handlers/README.md` for the per-endpoint file index. |
+| `src/crash_correlation.rs` | **GitCellar parity gap #2.** Best-effort pull-mode crash-event correlation worker. Runs OFF the submit hot path: a Glitchtip outage degrades correlation to null, it never fails a submission. Populates `feedback.crash_event_id` (migration `00010`). |
+| `src/storage.rs` | **GitCellar parity gap #1.** Attachment storage abstraction: `LocalFs` (dev/self-host) + `S3` (SigV4-signed) backends behind one trait. Consumed by `handlers/attachments.rs` via the `AttachmentState` sub-state. |
+| `Cargo.toml` | Depends on `axum`, `tokio`, `tracing`, `feedbackmonk-core`, `feedbackmonk-repository`, `feedbackmonk-jwt`, `feedbackmonk-anon`, multipart + S3/SigV4 deps. |
+
+> **File-index drift note** (surfaced during convergence): this index predates most of P1–P4 and still reads as the Stage-1 placeholder. Modules built across earlier phases (`auth/`, `email/`, `state.rs`, `error.rs`, `router.rs`, the existing `handlers/` set) are not all listed here. Pre-existing gap, out of this convergence's session scope — flagged in `docs/specs/DISCOVERIES.md` for a follow-up crate-README refresh.
 
 ## Public API & Usage
 

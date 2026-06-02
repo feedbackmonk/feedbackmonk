@@ -46,4 +46,32 @@ export interface MountOptions {
   jwt?: string;
   projectId?: string;
   apiBase?: string;
+  // Embedder opt-in to console-log capture (default OFF — privacy-by-default
+  // per DEC-FBR-02). When true, the widget patches `console.*` from mount into
+  // a bounded ring buffer; the captured text is only ever SENT if the end-user
+  // leaves the "Include diagnostic logs" consent checkbox on. Logs are sent raw
+  // and PII-scrubbed server-side (the single canonical `feedbackmonk-tracing`
+  // chokepoint — never a second scrub path).
+  captureConsole?: boolean;
+}
+
+// One entry of the attachment-upload response (GUIDE §6 frozen contract):
+// `POST …/feedback/:fb/attachments` → 200 + `AttachmentResult[]`.
+export interface AttachmentResult {
+  attachment_id: string;
+  url: string;
+}
+
+// A user-attached image staged for upload. `file` is the CURRENT blob — it is
+// replaced in place when the user redacts the image via the canvas tool.
+export interface AttachmentInput {
+  file: Blob;
+  name: string;
+}
+
+// Captured diagnostic logs sent as multipart text parts alongside `files[]`.
+// Both optional; server scrubs PII before persist.
+export interface CapturedLogs {
+  service_log?: string;
+  console_log?: string;
 }

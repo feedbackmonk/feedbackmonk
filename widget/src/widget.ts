@@ -13,10 +13,19 @@ import {
   createLauncher,
   createModal,
   createRoot,
+  getFocusable,
   showError,
   showToast,
   type ModalElements,
 } from "./ui.js";
+import {
+  createAttachments,
+  getServiceLog,
+  installConsoleCapture,
+  uploadAttachments,
+  type AttachmentsController,
+} from "./attachments.js";
+import type { CapturedLogs } from "./types.js";
 
 // feedbackmonk widget entry point.
 //
@@ -42,6 +51,10 @@ interface WidgetState {
   escListener: ((e: KeyboardEvent) => void) | null;
   trapListener: ((e: KeyboardEvent) => void) | null;
   submitting: boolean;
+  // Console-log getter, installed at mount only if capture is opted in.
+  consoleLog: (() => string) | null;
+  // Per-modal attachments controller; null while the modal is closed.
+  attachments: AttachmentsController | null;
 }
 
 function resolveProjectId(opts: MountOptions): string | null {
@@ -80,12 +93,25 @@ function resolveApiBase(opts: MountOptions): MountOptions {
   return opts;
 }
 
+function resolveCaptureConsole(opts: MountOptions): MountOptions {
+  if (opts.captureConsole !== undefined) return opts;
+  const scripts = document.querySelectorAll<HTMLScriptElement>(
+    "script[data-capture-console]",
+  );
+  for (const s of Array.from(scripts)) {
+    if (s.hasAttribute("data-capture-console")) {
+      return { ...opts, captureConsole: true };
+    }
+  }
+  return opts;
+}
+
 function trapFocus(state: WidgetState, e: KeyboardEvent): void {
   if (!state.modalEls) return;
   if (e.key !== "Tab") return;
-  const focusables = state.modalEls.focusables.filter(
-    (el) => !el.hidden && !(el as HTMLButtonElement).disabled,
-  );
+  // Live query so dynamically-added attachment controls are included in the
+  // trap boundary (static `focusables` would miss them).
+  const focusables = getFocusable(state.modalEls.modal);
   if (focusables.length === 0) return;
   const first = focusables[0];
   const last = focusables[focusables.length - 1];
@@ -105,6 +131,10 @@ function trapFocus(state: WidgetState, e: KeyboardEvent): void {
 
 function closeModal(state: WidgetState): void {
   if (!state.modalEls) return;
+  if (state.attachments) {
+    state.attachments.destroy();
+    state.attachments = null;
+  }
   state.modalEls.scrim.remove();
   state.modalEls = null;
   if (state.escListener) {
@@ -144,9 +174,41 @@ async function performSubmit(state: WidgetState): Promise<void> {
   els.submitBtn.disabled = true;
   els.submitBtn.textContent = "Sending…";
   try {
-    await submitFeedback(state.projectId, payload, state.opts);
+    const resp = await submitFeedback(state.projectId, payload, state.opts);
+    // Gather attachments + consented logs BEFORE closeModal (which destroys
+    // the attachments controller). Blobs stay valid after URL revocation.
+    const inputs = state.attachments ? state.attachments.getInputs() : [];
+    const wantLogs = els.logConsent ? els.logConsent.checked : false;
+    let attachOk = true;
+    if (inputs.length > 0 || wantLogs) {
+      const logs: CapturedLogs = {};
+      if (wantLogs) {
+        if (state.consoleLog) logs.console_log = state.consoleLog();
+        const svc = getServiceLog();
+        if (svc) logs.service_log = svc;
+      }
+      try {
+        await uploadAttachments(
+          state.projectId,
+          resp.feedback_id,
+          inputs,
+          logs,
+          state.opts,
+        );
+      } catch {
+        // Soft failure: the feedback itself is already recorded. Never lose
+        // the submission because an attachment upload failed.
+        attachOk = false;
+      }
+    }
     closeModal(state);
-    showToast(state.root, "Thanks — your feedback was sent.", "success");
+    showToast(
+      state.root,
+      attachOk
+        ? "Thanks — your feedback was sent."
+        : "Feedback sent — but attachments couldn't be uploaded.",
+      attachOk ? "success" : "error",
+    );
   } catch (err) {
     const apiErr = err as ApiError;
     if (apiErr && typeof apiErr.code === "string") {
@@ -168,13 +230,20 @@ function openModal(state: WidgetState): void {
   if (!state.config || state.modalEls) return;
   const mode: "auth" | "anonymous" = state.opts.jwt ? "auth" : "anonymous";
   state.previousFocus = document.activeElement as HTMLElement | null;
+  const logCaptureAvailable =
+    state.consoleLog !== null || getServiceLog() !== undefined;
   const els = createModal(
     state.config,
     mode,
     () => performSubmit(state),
     () => closeModal(state),
+    logCaptureAvailable,
   );
   state.modalEls = els;
+  // Mount the attachments UI inside the modal (within the focus trap).
+  const attachments = createAttachments(state.root);
+  els.attachContainer.appendChild(attachments.element);
+  state.attachments = attachments;
   state.root.appendChild(els.scrim);
   // initial focus on the subject input
   window.setTimeout(() => {
@@ -197,11 +266,14 @@ function openModal(state: WidgetState): void {
 export async function mountFeedbackMonk(
   options: MountOptions = {},
 ): Promise<void> {
-  const opts = resolveApiBase(resolveJwt(options));
+  const opts = resolveCaptureConsole(resolveApiBase(resolveJwt(options)));
   const projectId = resolveProjectId(opts);
   if (!projectId) {
     return;
   }
+  // Install console capture eagerly (if opted in) so logs that precede the
+  // user opening the modal are still captured. No-op + zero overhead otherwise.
+  const consoleLog = opts.captureConsole ? installConsoleCapture() : null;
   const root = createRoot();
   document.body.appendChild(root);
   const state: WidgetState = {
@@ -215,6 +287,8 @@ export async function mountFeedbackMonk(
     escListener: null,
     trapListener: null,
     submitting: false,
+    consoleLog,
+    attachments: null,
   };
   let config: WidgetConfig;
   try {

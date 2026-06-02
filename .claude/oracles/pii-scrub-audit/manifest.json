@@ -35,7 +35,7 @@
   "validation": {
     "self_test_unix": null,
     "self_test_windows": null,
-    "last_validated": "2026-05-13T23:30:00Z"
+    "last_validated": "2026-06-02T17:30:00Z"
   },
   "fallback": "Probe A: grep every .rs file under crates/ for the pattern (tracing_subscriber::fmt\\(|tracing_subscriber::registry\\(|impl ... Layer<...> for ...) OUTSIDE crates/feedbackmonk-tracing/. Probe B: read crates/feedbackmonk-tracing/src/scrubber.rs, extract each CANONICAL_PATTERNS tuple (name, regex, replacement), serialise as name\\tregex\\treplacement\\n, SHA-256 the bytes, compare to .claude/oracles/pii-scrub-audit/expected_hash.txt.",
   "provenance": {

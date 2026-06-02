@@ -6,8 +6,9 @@
   "description": "Embeddable feedbackmonk widget (vanilla JS+CSS, <30KB, CSP-safe, no third-party trackers).",
   "license": "AGPL-3.0-or-later",
   "scripts": {
-    "build": "vite build",
-    "build:check": "tsc -b && vite build",
+    "build": "vite build && npm run minify",
+    "minify": "terser dist/widget.js -m -c passes=2,drop_console=true --module -o dist/widget.js && terser dist/redact.js -m -c passes=2,drop_console=true --module -o dist/redact.js",
+    "build:check": "tsc -b && npm run build",
     "preview": "vite preview",
     "test:e2e": "playwright test"
   },

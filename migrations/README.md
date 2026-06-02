@@ -15,6 +15,11 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 | File | Purpose |
 |---|---|
 | `00001_p0_schema.sql` | P0 Foundation schema: `tenants`, `projects`, `signing_keys`, `feedback`, `anon_submissions`, `rate_limit_counters`. Backs FR-FBR-01..06. |
+| `00009_attachments.sql` | `attachments` table (screenshot + captured-log parts). GitCellar customer-#1 parity gap #1. Tenant/project-scoped; `feedback_id` FK; storage-backend-agnostic (URI + content metadata). |
+| `00010_feedback_crash_event.sql` | Adds nullable first-class `crash_event_id` column to `feedback`. GitCellar parity gap #2. NOT stored via `external_metadata` — a real column so the pull-mode correlation worker can index/join on it. |
+| `00011_feedback_fts.sql` | Full-text search: `tsvector` generated column + GIN index on `feedback`. GitCellar parity gap #3. Backs `GET /api/v1/admin/feedback/search` via `websearch_to_tsquery`. |
+
+> **File-index drift note** (surfaced during convergence): migrations `00002`–`00008` (P1–P4 work) are not yet listed in this index. Pre-existing gap from earlier phases — out of this convergence's session scope. Flagged in `docs/specs/DISCOVERIES.md` for a follow-up backfill.
 
 ## Constraints & Business Rules
 

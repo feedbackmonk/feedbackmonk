@@ -30,7 +30,7 @@ function authHeaders(opts: MountOptions): Record<string, string> {
   return headers;
 }
 
-async function readError(response: Response): Promise<ApiError> {
+export async function readError(response: Response): Promise<ApiError> {
   try {
     const data = (await response.json()) as Partial<ApiError>;
     if (data && typeof data.code === "string" && typeof data.message === "string") {

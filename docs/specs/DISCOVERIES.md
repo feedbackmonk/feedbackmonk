@@ -442,3 +442,23 @@ The third path — a `marketing-selfhost-page-parity` Verification Oracle that d
 **Follow-up tracked**: pending — author `marketing-selfhost-page-parity` Verification Oracle candidate at P4 finalize Phase 11 oracle-candidate sweep (if drift-risk surfaces in practice).
 
 ---
+
+### D-FBR-27: A detection-from-code-state Verification Oracle is the right gate for a cross-repo "no-feature-loss" cutover
+
+**Context**: GitCellar's Path-C adoption of feedbackmonk is a "no-feature-loss" contract spanning two repos and multiple PODS workers. Every phase boundary re-asks "are we at parity yet?" — a classic redundant-re-derivation cost, multiplied by N workers + the GitCellar-side sessions.
+
+**Insight**: One `feedback-parity-status` oracle that detects each gap's closure **from code state** (migrations / handlers / routes / widget present?) — not from a self-reported checklist — collapses that re-derivation to a single deterministic call, AND doubles as the anti-reward-hacking leg: a worker cannot mark a gap "done" without the artifact existing. The same oracle is consumed by feedbackmonk workers *and* the GitCellar adoption sessions (cross-repo consumer). Exit-code semantics (0=gate open, 3=gaps remain, 2=error) make it scriptable as a literal cutover gate.
+
+**Where this pays off again**: any multi-party migration/parity effort where "are we there yet?" is asked repeatedly across sessions/repos. Detection-from-artifacts beats self-reported-flags every time the reporter has an incentive to over-report progress.
+
+### D-FBR-28: Crate-level README File Indexes drift silently across phases — they need a periodic reverse-check, not just per-PR additions
+
+**Context**: During this convergence's ULADP Phase 4 pass, two crate READMEs were found badly stale: `crates/feedbackmonk-api/README.md` still described the Stage-1 "placeholder" state and omitted the entire `auth/` / `email/` / `state.rs` / `error.rs` / `router.rs` / `handlers/` tree built across P1–P4; `migrations/README.md`'s File Index listed only `00001` despite `00002`–`00008` existing. The per-phase finalize pattern reliably adds *this session's* files but never reverse-checks the *existing* index against the actual directory contents — so drift accumulates invisibly.
+
+**Insight**: File-Index parity has two directions. Forward ("did I add my new files?") is covered by finalize Phase 4. Reverse ("does every file in the dir appear in the index, and does every index row still exist?") is not — and that's where multi-phase drift hides. This is exactly the gap a `synopsis-coverage`-style oracle covers for synopses; a sibling check for File-Index completeness would catch it mechanically.
+
+**Where this pays off again**: any long-lived multi-phase project with crate/module READMEs. The forward-only update discipline is necessary but not sufficient.
+
+**Follow-up tracked**: pending — (1) backfill `crates/feedbackmonk-api/README.md` File Index (P1–P4 modules) + `migrations/README.md` (`00002`–`00008`) as a focused doc task; (2) consider a `readme-file-index-parity` Verification Oracle candidate (dir-listing ⊆ index rows ∧ index rows ⊆ dir-listing) at a future Phase 11 sweep.
+
+---

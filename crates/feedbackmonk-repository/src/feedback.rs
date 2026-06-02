@@ -22,6 +22,12 @@ pub trait FeedbackRepo: Send + Sync {
         end_user_email: Option<&str>,
         end_user_name: Option<&str>,
         external_metadata: Option<&JsonValue>,
+        // crash_event_id — external crash-event correlation key (parity Gap #2;
+        // migration 00010). A FIRST-CLASS column, deliberately NOT smuggled
+        // through `external_metadata` (collaboration decisions.md). `None` when
+        // not crash-linked. Persisted atomically in the same INSERT so a
+        // crash-linked submit can never land without its link.
+        crash_event_id: Option<&str>,
         body: &str,
         kind: FeedbackKind,
     ) -> Result<FeedbackId>;
@@ -44,6 +50,24 @@ pub trait FeedbackRepo: Send + Sync {
         &self,
         scope: &ProjectScope,
         status_filter: Option<FeedbackStatus>,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<FeedbackListItem>, u32)>;
+
+    /// Admin full-text search (GitCellar parity gap #3). Tenant + project
+    /// scoped FTS over `feedback.body_tsv` (migration 00011) using
+    /// `websearch_to_tsquery` for forgiving Google-style query syntax.
+    /// Returns `(items, total_matching_count)` exactly like `list_for_admin`
+    /// so the admin UI reuses the same row shape. Results are ordered by
+    /// `ts_rank` (relevance) then `accepted_at DESC` as a stable tiebreak.
+    ///
+    /// A blank/whitespace `query` yields zero rows (the handler short-circuits
+    /// before calling this, but the SQL is defensive: an empty
+    /// `websearch_to_tsquery` matches nothing).
+    async fn search_for_admin(
+        &self,
+        scope: &ProjectScope,
+        query: &str,
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<FeedbackListItem>, u32)>;
@@ -78,6 +102,51 @@ pub trait FeedbackRepo: Send + Sync {
         feedback_id: &FeedbackId,
         new_status: FeedbackStatus,
     ) -> Result<FeedbackStatus>;
+
+    // ==== Gap #4 (DELTA) — end-user (JWT-sub-scoped) read surface ===========
+    // GitCellar customer-#1 parity gap #4. No schema change. These methods
+    // back the public `/me/feedback` + `/me/feedback/:fb/thread` routes. They
+    // return the NARROW `EndUserFeedback` projection (never the full
+    // `Feedback` model) so the end-user surface cannot leak internal columns
+    // (anon_token_hash, external_metadata, other users' email) and stays
+    // decoupled from sibling-worker additions to the `Feedback` struct.
+
+    /// List the CALLER'S OWN feedback, newest-first, paged. Filtered by
+    /// `(tenant, project, end_user_sub)`. Anonymous rows (`end_user_sub IS
+    /// NULL`) are structurally excluded by the `end_user_sub = $sub`
+    /// predicate. Returns `(page, total_matching)`; `total` counts all of the
+    /// caller's rows, not the page slice.
+    async fn list_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<EndUserFeedback>, u32)>;
+
+    /// Fetch ONE feedback row that belongs to the caller. Scoped by
+    /// `(tenant, project, short_code, end_user_sub)` — a `short_code` that
+    /// exists but belongs to a different `end_user_sub` (or is anonymous, or
+    /// is in another tenant/project) returns `NotFound`, never another user's
+    /// data. Backs the `/thread` endpoint's status header.
+    async fn get_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        feedback_id: &FeedbackId,
+    ) -> Result<EndUserFeedback>;
+}
+
+/// Narrow projection of a feedback row for the end-user (JWT) read surface
+/// (Gap #4). Deliberately omits every internal/other-party column — the
+/// end-user only ever sees their own submission's public-facing fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndUserFeedback {
+    pub feedback_id: FeedbackId,
+    pub kind: FeedbackKind,
+    pub status: FeedbackStatus,
+    pub body: String,
+    pub submitted_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Trimmed list item — the columns the admin list page renders, plus the
@@ -140,6 +209,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         end_user_email: Option<&str>,
         end_user_name: Option<&str>,
         external_metadata: Option<&JsonValue>,
+        crash_event_id: Option<&str>,
         body: &str,
         kind: FeedbackKind,
     ) -> Result<FeedbackId> {
@@ -150,9 +220,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
                 end_user_sub, end_user_email, end_user_name,
-                external_metadata, body, kind
+                external_metadata, crash_event_id, body, kind
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             "#,
             short_code.as_str(),
             scope.project_id(),
@@ -161,6 +231,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             end_user_email,
             end_user_name,
             external_metadata,
+            crash_event_id,
             body,
             kind_str,
         )
@@ -222,7 +293,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             SELECT id, short_code, project_id, tenant_id,
                    end_user_sub, end_user_email, end_user_name,
-                   external_metadata, anon_token_hash, body, kind, accepted_at, status
+                   external_metadata, crash_event_id, anon_token_hash, body, kind, accepted_at, status
             FROM feedback
             WHERE project_id = $1 AND tenant_id = $2
             ORDER BY accepted_at DESC
@@ -246,6 +317,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 end_user_email: r.end_user_email,
                 end_user_name: r.end_user_name,
                 external_metadata: r.external_metadata,
+                crash_event_id: r.crash_event_id,
                 anon_token_hash: r.anon_token_hash,
                 body: r.body,
                 kind: FeedbackKind::from_db_str(&r.kind),
@@ -329,6 +401,82 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         Ok((list, total))
     }
 
+    async fn search_for_admin(
+        &self,
+        scope: &ProjectScope,
+        query: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<FeedbackListItem>, u32)> {
+        // Same `(tenant_id, project_id)` scope clause as every other feedback
+        // read (DEC-FBR-03 sole-query-path). `websearch_to_tsquery` parses the
+        // raw admin query forgivingly (quoted phrases, `-exclude`, `or`) and
+        // never raises a parse error, so a malformed/blank query simply matches
+        // nothing. Ordering: relevance first, then newest-first as a stable
+        // tiebreak so equal-rank rows page deterministically.
+        let items = sqlx::query!(
+            r#"
+            SELECT short_code,
+                   kind,
+                   status,
+                   left(body, 200) AS body_excerpt,
+                   end_user_email,
+                   anon_token_hash IS NOT NULL AS is_anonymous,
+                   accepted_at
+            FROM feedback
+            WHERE tenant_id = $1
+              AND project_id = $2
+              AND body_tsv @@ websearch_to_tsquery('english', $3)
+            ORDER BY ts_rank(body_tsv, websearch_to_tsquery('english', $3)) DESC,
+                     accepted_at DESC
+            LIMIT $4
+            OFFSET $5
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            query,
+            i64::from(limit),
+            i64::from(offset),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total_row = sqlx::query!(
+            r#"
+            SELECT count(*) AS "count!"
+            FROM feedback
+            WHERE tenant_id = $1
+              AND project_id = $2
+              AND body_tsv @@ websearch_to_tsquery('english', $3)
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            query,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let total: u32 = total_row.count.try_into().unwrap_or(u32::MAX);
+
+        let list = items
+            .into_iter()
+            .map(|r| FeedbackListItem {
+                feedback_id: FeedbackId::from(r.short_code),
+                kind: FeedbackKind::from_db_str(&r.kind),
+                status: FeedbackStatus::from_db_str(&r.status),
+                body_excerpt: r.body_excerpt.unwrap_or_default(),
+                submitted_at: r.accepted_at,
+                submitter_email: r.end_user_email,
+                is_anonymous: r.is_anonymous.unwrap_or(false),
+                // Mirrors list_for_admin: the HTTP layer enriches the real
+                // reply_count per row (the repository's search method stays a
+                // pure feedback read).
+                reply_count: 0,
+            })
+            .collect();
+
+        Ok((list, total))
+    }
+
     async fn get_with_history(
         &self,
         scope: &ProjectScope,
@@ -338,7 +486,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             SELECT id, short_code, project_id, tenant_id,
                    end_user_sub, end_user_email, end_user_name,
-                   external_metadata, anon_token_hash, body, kind, accepted_at, status
+                   external_metadata, crash_event_id, anon_token_hash, body, kind, accepted_at, status
             FROM feedback
             WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
             "#,
@@ -359,6 +507,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             end_user_email: row.end_user_email,
             end_user_name: row.end_user_name,
             external_metadata: row.external_metadata,
+            crash_event_id: row.crash_event_id,
             anon_token_hash: row.anon_token_hash,
             body: row.body,
             kind: FeedbackKind::from_db_str(&row.kind),
@@ -439,6 +588,97 @@ impl FeedbackRepo for SqlxFeedbackRepo {
 
         Ok(from_status)
     }
+
+    // ==== Gap #4 (DELTA) — end-user read surface impl =======================
+
+    async fn list_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<EndUserFeedback>, u32)> {
+        // `end_user_sub = $3` is the isolation predicate: a caller sees ONLY
+        // their own rows, and anonymous rows (end_user_sub IS NULL) never
+        // match. No internal columns are selected.
+        let rows = sqlx::query!(
+            r#"
+            SELECT short_code, kind, status, body, accepted_at
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND end_user_sub = $3
+            ORDER BY accepted_at DESC
+            LIMIT $4 OFFSET $5
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            end_user_sub,
+            i64::from(limit),
+            i64::from(offset),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total_row = sqlx::query!(
+            r#"
+            SELECT count(*) AS "count!"
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND end_user_sub = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            end_user_sub,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let total: u32 = total_row.count.try_into().unwrap_or(u32::MAX);
+
+        let items = rows
+            .into_iter()
+            .map(|r| EndUserFeedback {
+                feedback_id: FeedbackId::from(r.short_code),
+                kind: FeedbackKind::from_db_str(&r.kind),
+                status: FeedbackStatus::from_db_str(&r.status),
+                body: r.body,
+                submitted_at: r.accepted_at,
+            })
+            .collect();
+
+        Ok((items, total))
+    }
+
+    async fn get_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        feedback_id: &FeedbackId,
+    ) -> Result<EndUserFeedback> {
+        // The `AND end_user_sub = $4` clause is the load-bearing isolation
+        // check: a short_code belonging to a DIFFERENT sub (or anonymous, or
+        // another tenant/project) returns NotFound, never another user's row.
+        let row = sqlx::query!(
+            r#"
+            SELECT short_code, kind, status, body, accepted_at
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2
+              AND short_code = $3 AND end_user_sub = $4
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+            end_user_sub,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+
+        Ok(EndUserFeedback {
+            feedback_id: FeedbackId::from(row.short_code),
+            kind: FeedbackKind::from_db_str(&row.kind),
+            status: FeedbackStatus::from_db_str(&row.status),
+            body: row.body,
+            submitted_at: row.accepted_at,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -471,6 +711,7 @@ mod tests {
                 Some("u@example.com"),
                 Some("Alice"),
                 Some(&meta),
+                None, // crash_event_id — not crash-linked here
                 "It crashed when I clicked save",
                 FeedbackKind::Bug,
             )
@@ -484,6 +725,45 @@ mod tests {
         assert_eq!(recent[0].kind, FeedbackKind::Bug);
         assert_eq!(recent[0].end_user_sub.as_deref(), Some("auth0|sub-123"));
         assert!(recent[0].anon_token_hash.is_none());
+        // Not crash-linked → crash_event_id is NULL.
+        assert_eq!(recent[0].crash_event_id, None);
+    }
+
+    // ---- Gap #2 crash-event correlation (BRAVO) ----
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn submit_authenticated_persists_crash_event_id(pool: PgPool) {
+        // A crash-linked auth-mode submission stores crash_event_id as a
+        // first-class column (NOT inside external_metadata) and round-trips
+        // through both read paths (list_recent + get_with_history).
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "crash-link@example.com").await;
+
+        let crash_id = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        let id = repo
+            .submit_authenticated(
+                &scope,
+                "auth0|sub-crash",
+                Some("dev@example.com"),
+                Some("Dev"),
+                None,
+                Some(crash_id),
+                "App panicked on save",
+                FeedbackKind::Bug,
+            )
+            .await
+            .unwrap();
+
+        // list_recent read path.
+        let recent = repo.list_recent(&scope, 10).await.unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].crash_event_id.as_deref(), Some(crash_id));
+        // First-class column — must NOT have been smuggled into metadata.
+        assert!(recent[0].external_metadata.is_none());
+
+        // get_with_history read path.
+        let (fb, _hist) = repo.get_with_history(&scope, &id).await.unwrap();
+        assert_eq!(fb.crash_event_id.as_deref(), Some(crash_id));
     }
 
     #[sqlx::test(migrations = "../../migrations")]
@@ -623,5 +903,92 @@ mod tests {
         assert!(s1_bodies.contains(&"from s1"));
         assert!(!s1_bodies.iter().any(|b| b.starts_with("from s2")));
         assert!(s2_bodies.iter().all(|b| b.starts_with("from s2")));
+    }
+
+    // ---- Gap #3 full-text search (Task Zero: isolation-first) ----
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn search_for_admin_matches_body_terms(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "fts-match@example.com").await;
+
+        repo.submit_anonymous(&scope, &[1u8; 32], None, "the checkout button is broken", FeedbackKind::Bug)
+            .await
+            .unwrap();
+        repo.submit_anonymous(&scope, &[2u8; 32], None, "please add a dark theme", FeedbackKind::Feature)
+            .await
+            .unwrap();
+
+        // Multi-term query: both lexemes present in the first row's body.
+        let (hits, total) = repo.search_for_admin(&scope, "broken checkout", 20, 0).await.unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].body_excerpt.contains("checkout"));
+
+        // Non-matching term returns nothing (not an error).
+        let (none, none_total) = repo.search_for_admin(&scope, "nonexistentterm", 20, 0).await.unwrap();
+        assert!(none.is_empty());
+        assert_eq!(none_total, 0);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn search_for_admin_cross_tenant_negative(pool: PgPool) {
+        // THE load-bearing invariant for gap #3: search must never leak
+        // another tenant's feedback. Mirrors list_for_admin_cross_tenant_negative.
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let s1 = seed_project_scope(&pool, "fts-owner1@example.com").await;
+        let s2 = seed_project_scope(&pool, "fts-owner2@example.com").await;
+        repo.submit_anonymous(&s1, &[1u8; 32], None, "secret roadmap leak details", FeedbackKind::Other)
+            .await
+            .unwrap();
+
+        // s2 searches for s1's distinctive term — must return 0 rows, not error.
+        let (page, total) = repo.search_for_admin(&s2, "secret roadmap", 20, 0).await.unwrap();
+        assert!(page.is_empty(), "cross-tenant FTS must not leak rows");
+        assert_eq!(total, 0);
+
+        // s1 (the owner) finds its own row.
+        let (own, own_total) = repo.search_for_admin(&s1, "secret roadmap", 20, 0).await.unwrap();
+        assert_eq!(own.len(), 1);
+        assert_eq!(own_total, 1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn search_for_admin_paginates_with_total(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "fts-page@example.com").await;
+        for i in 0..3 {
+            repo.submit_anonymous(
+                &scope,
+                &[i as u8; 32],
+                None,
+                "shared keyword in every row",
+                FeedbackKind::Other,
+            )
+            .await
+            .unwrap();
+        }
+
+        let (page1, total) = repo.search_for_admin(&scope, "keyword", 2, 0).await.unwrap();
+        assert_eq!(page1.len(), 2);
+        assert_eq!(total, 3);
+
+        let (page2, total2) = repo.search_for_admin(&scope, "keyword", 2, 2).await.unwrap();
+        assert_eq!(page2.len(), 1);
+        assert_eq!(total2, 3);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn search_for_admin_blank_query_matches_nothing(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "fts-blank@example.com").await;
+        repo.submit_anonymous(&scope, &[1u8; 32], None, "some body text", FeedbackKind::Other)
+            .await
+            .unwrap();
+
+        // websearch_to_tsquery('') yields an empty query that matches nothing.
+        let (page, total) = repo.search_for_admin(&scope, "   ", 20, 0).await.unwrap();
+        assert!(page.is_empty());
+        assert_eq!(total, 0);
     }
 }

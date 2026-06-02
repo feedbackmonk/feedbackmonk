@@ -75,6 +75,15 @@ pub struct FeedbackRequest {
     /// the verified JWT claims). Optional.
     #[serde(default)]
     pub email: Option<String>,
+    /// External crash-event correlation key (parity Gap #2; e.g. GitCellar's
+    /// Glitchtip event id). **Auth-mode only** — it comes from the signed-in
+    /// Desktop context, so it is read from the request body ONLY when a
+    /// verified JWT is present and ignored on the anonymous path. Persisted as
+    /// a first-class `feedback.crash_event_id` column (NOT `external_metadata`).
+    /// Correlation to crash detail is best-effort/off-path (see
+    /// `crash_correlation`); storing the link never blocks or fails a submit.
+    #[serde(default)]
+    pub crash_event_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,8 +143,16 @@ pub async fn submit(
 
     // ----- 3. Auth-mode dispatch -------------------------------------------
     if let Some(token) = extract_bearer(&headers) {
-        submit_authenticated_path(&state, &project_scope, &token, project_id, &req.body, kind)
-            .await
+        submit_authenticated_path(
+            &state,
+            &project_scope,
+            &token,
+            project_id,
+            req.crash_event_id.as_deref(),
+            &req.body,
+            kind,
+        )
+        .await
     } else {
         let client_ip = addr.ip().to_string();
         submit_anonymous_path(
@@ -156,11 +173,13 @@ pub async fn submit(
 // Auth-mode path
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::too_many_arguments)]
 async fn submit_authenticated_path(
     state: &AppState,
     project_scope: &feedbackmonk_repository::ProjectScope,
     token: &str,
     project_id: Uuid,
+    crash_event_id: Option<&str>,
     body: &str,
     kind: FeedbackKind,
 ) -> Result<Response, ApiError> {
@@ -186,6 +205,7 @@ async fn submit_authenticated_path(
             claims.email.as_deref(),
             claims.name.as_deref(),
             claims.external_metadata.as_ref(),
+            crash_event_id,
             body,
             kind,
         )

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>feedbackmonk widget — capture fixture</title>
+    <!--
+      Variant of fixture.html with `data-capture-console` set, so the
+      widget installs console capture at mount and renders the diagnostic-log
+      consent checkbox. Used by widget-a11y.spec.ts to exercise console_log
+      capture + the multipart text-part upload path.
+    -->
+    <link rel="stylesheet" href="../dist/widget.css" />
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; color: #111; }
+      main { max-width: 720px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>feedbackmonk widget — console-capture fixture</h1>
+      <button class="host-launcher" type="button" id="host-launcher">
+        Host page launcher
+      </button>
+    </main>
+    <script
+      type="module"
+      src="../dist/widget.js"
+      data-project-id="00000000-0000-0000-0000-000000000001"
+      data-api-base="http://localhost:14206/e2e/mock"
+      data-capture-console
+    ></script>
+  </body>
+</html>

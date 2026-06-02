@@ -41,7 +41,9 @@ and respects three load-bearing patterns:
 | `projects.rs` | `POST /api/v1/projects` + `GET /api/v1/projects` | Admin-gated CRUD over tenant's projects; emits the embed-snippet for the widget. |
 | `signing_keys.rs` | `POST /api/v1/projects/:id/signing-keys` + `DELETE /api/v1/projects/:id/signing-keys/:key_id` | Ed25519 public-key registration / deactivation (FR-FBR-05, Contract C4). Admin-gated, scope-bound. |
 | `feedback.rs` | `POST /api/v1/projects/:id/feedback` | Public submission endpoint (Contract C3). Auth-mode JWT dispatch + anonymous-mode rate-limit + cookie dedup. |
-| `admin_feedback.rs` | `GET /api/v1/admin/feedback` + `GET /api/v1/admin/feedback/:id` + `POST /api/v1/admin/feedback/:id/transition` + `POST /api/v1/admin/feedback/:id/reply` | Admin status-workflow + reply endpoints (FR-FBR-07/08, Contracts C7 + C8). |
+| `admin_feedback.rs` | `GET /api/v1/admin/feedback` + `GET /api/v1/admin/feedback/:id` + `POST /api/v1/admin/feedback/:id/transition` + `POST /api/v1/admin/feedback/:id/reply` + `GET /api/v1/admin/feedback/search` | Admin status-workflow + reply + full-text search endpoints (FR-FBR-07/08, Contracts C7 + C8). Search uses `websearch_to_tsquery` over the `00011`-migration tsvector+GIN index (GitCellar parity gap #3). |
+| `me_feedback.rs` | `GET /api/v1/projects/:id/me/feedback` + `GET /api/v1/projects/:id/me/feedback/:fb/thread` | End-user JWT-`sub`-scoped read API (GitCellar parity gap #4). Own-`sub`-only + public-replies-only, enforced at the SQL predicate layer. No schema change. |
+| `attachments.rs` | `POST` multipart upload (≤4 images, ≤5MB each, MIME allowlist) | Screenshot attachments + opted-in captured-log part (GitCellar parity gap #1). Uses a dedicated `AttachmentState` axum sub-state; captured logs route through the canonical `feedbackmonk_tracing::scrub` chokepoint. Backed by `storage.rs` (LocalFs + S3/SigV4) and migration `00009`. |
 | `health.rs` | `GET /health` + `GET /health/ready` | 12-factor liveness/readiness (FR-FBR-18, Contract C5). |
 | `README.md` | — | This file. |
 
@@ -158,3 +160,31 @@ extension manually when using `tower::ServiceExt::oneshot`.
   to the tenant's first project. Per-project admin URLs are FR-FBR-15
   / P3 work. Documented inline; the helper is the migration point when
   the surface widens.
+- **Attachments use a dedicated `AttachmentState` axum sub-state, not new
+  `AppState` fields.** Gap #1 (GitCellar parity) needs storage-backend
+  config (LocalFs vs S3) and image/log limits that the rest of the API
+  doesn't touch. Threading those through `AppState` would force edits to
+  every existing `AppState` constructor (and every test that builds one).
+  Instead `attachments.rs` carries its own `AttachmentState` sub-state
+  merged at router-composition time. Zero edits to existing `AppState`
+  constructors; the attachment surface is self-contained and independently
+  testable. Trade-off: one extra `State<...>` extractor on attachment
+  handlers — acceptable for the isolation it buys.
+- **Captured logs route through the single `feedbackmonk-tracing` scrubber
+  chokepoint — no second scrub path.** The attachment log-capture part
+  (opt-in) is PII-scrubbed via the same `feedbackmonk_tracing::scrub`
+  chain that all tracing output uses. A second, attachment-local scrubber
+  would be a divergence risk (two patterns to keep in sync; one could
+  silently fall behind). The `pii-scrub-audit` oracle Probe A enforces
+  "no tracing/scrub setup outside `crates/feedbackmonk-tracing/`" as a
+  code-level invariant, so this is mechanically defended, not just
+  convention.
+- **Gap-#4 end-user privacy isolation is enforced at the SQL predicate
+  layer, not just in tests.** `me_feedback` handlers scope every query to
+  the caller's own `end_user_sub` (from the JWT) AND to
+  `visibility = 'public'` replies only — both as `WHERE` predicates in the
+  repository query, not as post-fetch filtering. A caller can never see
+  another end-user's feedback or internal/private replies even if the
+  handler logic were bypassed, because the rows never leave Postgres.
+  `tests/me_feedback_isolation.rs` is the regression guard, but the
+  predicate is the actual boundary.

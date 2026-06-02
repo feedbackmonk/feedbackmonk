@@ -1,0 +1,41 @@
+{
+  "name": "feedback-parity-status",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Which of the GitCellar customer-#1 parity gaps (1-4) are closed in the feedbackmonk codebase, and is the GitCellar cutover gate OPEN? Detected from actual code state (migrations/handlers/routes/widget), never a self-reported flag.",
+  "category": "integration",
+  "invocation": {
+    "unix": ".claude/oracles/feedback-parity-status/oracle.sh",
+    "windows": ".claude/oracles/feedback-parity-status/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "Per-gap CLOSED/OPEN table + CUTOVER GATE OPEN/CLOSED line. --json emits {gaps[], gate_open, closed_count, total}. Exit 0 = gate open (all 4 closed); 3 = gate closed (gaps remain); 2 = oracle error."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "migrations/**",
+      "crates/feedbackmonk-api/src/handlers/**",
+      "crates/feedbackmonk-api/src/router.rs",
+      "widget/src/**"
+    ],
+    "compute_cost_ms": 120
+  },
+  "consultation": {
+    "typical_sessions_using": "every-phase-boundary-during-gap-closing + GitCellar cutover gate",
+    "estimated_token_savings_per_call": 1500
+  },
+  "consumer_scope": "All Stage-2 PODS workers (B-ALPHA/BRAVO/CHARLIE/DELTA) + the GitCellar adoption sessions (both repos). Gates GitCellar Phase 3 cutover.",
+  "validation": {
+    "self_test_unix": ".claude/oracles/feedback-parity-status/oracle.sh",
+    "self_test_windows": ".claude/oracles/feedback-parity-status/oracle.ps1",
+    "last_validated": "2026-06-02T12:30:00Z"
+  },
+  "fallback": "For each gap, grep the tree: #1 `CREATE TABLE attachments` in migrations/; #2 `crash_event_id` in migrations/; #3 `/admin/feedback/search` in handlers OR `tsvector`/`to_tsvector` in migrations/; #4 existence of crates/feedbackmonk-api/src/handlers/me_feedback.rs OR `/me/feedback` route. Gate OPEN iff all four present. Gap #5 (Forge bridge) is N/A — GitCellar drops it.",
+  "provenance": {
+    "authored_by": "LD (GitCellar customer-#1 enablement, Stage 1 pre-spawn)",
+    "created": "2026-06-02T12:30:00Z",
+    "rationale": "Convergence gate for GitCellar's Path-C adoption (no-feature-loss). Multi-phase cross-repo effort where every boundary re-asks 'are we at parity yet?'. One detection oracle consumed by N workers + GitCellar inverts redundant checklist re-derivation. Surfaced as a candidate in both the GitCellar adoption intake and feedbackmonk's 20260602 intake. Detection-from-code-state is the anti-reward-hacking leg: a worker cannot mark a gap done without the artifact existing."
+  }
+}

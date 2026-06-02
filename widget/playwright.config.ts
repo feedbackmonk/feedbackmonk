@@ -29,7 +29,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `vite preview --port ${PORT} --strictPort`,
+    // `--outDir .` makes preview serve the widget project ROOT statically (not
+    // just dist/), so `/e2e/fixture.html` and the fixture's `../dist/widget.js`
+    // both resolve — and the bundle is served as the real minified artifact,
+    // not a dev-transformed module. (Bare `vite preview` serves only dist/.)
+    command: `vite preview --outDir . --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}/e2e/fixture.html`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,

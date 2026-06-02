@@ -26,3 +26,9 @@ pub mod roadmap;
 
 // P3 Stage 1: admin tier-status endpoint (FR-FBR-14, Contract C17).
 pub mod admin_tier;
+
+// Gap #1 (GitCellar parity): feedback attachment multipart upload.
+pub mod attachments;
+
+// Gap #4 (GitCellar parity): end-user (JWT-sub-scoped) my-feedback read API.
+pub mod me_feedback;

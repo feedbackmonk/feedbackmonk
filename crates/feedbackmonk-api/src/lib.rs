@@ -15,17 +15,24 @@
 //!   - `router` -- composes the signup/onboarding subtree (Stage 1 carry-over)
 
 pub mod auth;
+pub mod crash_correlation;
 pub mod email;
 pub mod error;
 pub mod handlers;
 pub mod roadmap_voting_cache;
 pub mod router;
 pub mod state;
+pub mod storage;
 
+pub use crash_correlation::{
+    CorrelationOutcome, CrashCorrelator, CrashEvent, GlitchtipCorrelator,
+};
 pub use error::ApiError;
+pub use handlers::attachments::{attachments_router, scrub_log_for_storage, AttachmentState};
 pub use handlers::admin_feedback::routes as admin_feedback_routes;
 pub use handlers::admin_tier::admin_tier_router;
 pub use handlers::feedback::submission_router;
+pub use handlers::me_feedback::me_feedback_router;
 pub use handlers::promote::routes as promote_router;
 pub use handlers::roadmap::{admin_roadmap_router, roadmap_router};
 pub use handlers::widget_config::widget_config_router;

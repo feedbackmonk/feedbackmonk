@@ -96,6 +96,17 @@ pub trait FeedbackReplyRepo: Send + Sync {
         scope: &ProjectScope,
         feedback_id: &FeedbackId,
     ) -> Result<i64>;
+
+    /// Gap #4 (DELTA): list ONLY `public`-visibility replies for a feedback
+    /// row, oldest-first. `internal` replies are NEVER returned through this
+    /// surface — it backs the end-user (JWT) thread endpoint, which must
+    /// never expose admin-internal triage notes. Cross-tenant lookups return
+    /// an empty Vec (the JOIN against `feedback` filters by scope).
+    async fn list_public_for_feedback(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<Vec<FeedbackReply>>;
 }
 
 #[derive(Clone)]
@@ -218,6 +229,46 @@ impl FeedbackReplyRepo for SqlxFeedbackReplyRepo {
         .await?;
         Ok(row.count)
     }
+
+    async fn list_public_for_feedback(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<Vec<FeedbackReply>> {
+        // `AND r.visibility = 'public'` is the load-bearing filter: internal
+        // replies are excluded at the query layer, not the handler, so there
+        // is no path by which an internal reply reaches the end-user thread.
+        let rows = sqlx::query!(
+            r#"
+            SELECT r.id, r.feedback_id, r.body, r.visibility,
+                   r.author_user_id, r.created_at
+            FROM feedback_replies AS r
+            JOIN feedback AS f ON f.id = r.feedback_id
+            WHERE f.tenant_id = $1
+              AND f.project_id = $2
+              AND f.short_code = $3
+              AND r.visibility = 'public'
+            ORDER BY r.created_at ASC
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| FeedbackReply {
+                id: r.id,
+                feedback_id: r.feedback_id,
+                body: r.body,
+                visibility: ReplyVisibility::from_db_str(&r.visibility),
+                author_user_id: r.author_user_id,
+                created_at: r.created_at,
+            })
+            .collect())
+    }
 }
 
 #[cfg(test)]
@@ -327,6 +378,56 @@ mod tests {
 
         let count = reply_repo.count_for_feedback(&scope, &fb_id).await.unwrap();
         assert_eq!(count, 0);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn list_public_for_feedback_excludes_internal_replies(pool: PgPool) {
+        // Gap #4 (DELTA): the end-user thread surface must NEVER return
+        // internal replies. Seed one public + one internal reply and assert
+        // only the public one comes back.
+        let fb_repo = SqlxFeedbackRepo::new(pool.clone());
+        let reply_repo = SqlxFeedbackReplyRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "pub-only@example.com").await;
+        let fb_id = fb_repo
+            .submit_anonymous(&scope, &[8u8; 32], None, "body", FeedbackKind::Other)
+            .await
+            .unwrap();
+        let admin = Uuid::new_v4();
+        reply_repo
+            .create(&scope, &fb_id, "public answer", ReplyVisibility::Public, admin)
+            .await
+            .unwrap();
+        reply_repo
+            .create(&scope, &fb_id, "internal triage note", ReplyVisibility::Internal, admin)
+            .await
+            .unwrap();
+
+        let public = reply_repo.list_public_for_feedback(&scope, &fb_id).await.unwrap();
+        assert_eq!(public.len(), 1, "only the public reply is returned");
+        assert_eq!(public[0].body, "public answer");
+        assert_eq!(public[0].visibility, ReplyVisibility::Public);
+        // The full (admin) listing still sees both — confirms the filter is
+        // in the new method, not the data.
+        assert_eq!(reply_repo.list_for_feedback(&scope, &fb_id).await.unwrap().len(), 2);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn list_public_for_feedback_cross_tenant_returns_empty(pool: PgPool) {
+        let fb_repo = SqlxFeedbackRepo::new(pool.clone());
+        let reply_repo = SqlxFeedbackReplyRepo::new(pool.clone());
+        let s1 = seed_project_scope(&pool, "pub-ct1@example.com").await;
+        let s2 = seed_project_scope(&pool, "pub-ct2@example.com").await;
+        let fb_id = fb_repo
+            .submit_anonymous(&s1, &[9u8; 32], None, "body", FeedbackKind::Other)
+            .await
+            .unwrap();
+        reply_repo
+            .create(&s1, &fb_id, "s1 public", ReplyVisibility::Public, Uuid::new_v4())
+            .await
+            .unwrap();
+
+        let rows = reply_repo.list_public_for_feedback(&s2, &fb_id).await.unwrap();
+        assert!(rows.is_empty(), "cross-tenant must not leak public replies");
     }
 
     #[test]

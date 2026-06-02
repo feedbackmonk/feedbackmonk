@@ -91,6 +91,12 @@ pub struct Feedback {
     pub end_user_name: Option<String>,
     /// JWT `external_metadata` claim (auth mode); enforced <= 4KB at app layer.
     pub external_metadata: Option<serde_json::Value>,
+    /// External crash-event correlation key (parity Gap #2; migration 00010).
+    /// Auth-mode only — set when GitCellar Desktop links the feedback to a
+    /// Glitchtip crash event; `None` otherwise. Resolved to crash detail
+    /// off-path by the `crash_correlation` worker, never on the submit hot path.
+    #[serde(default)]
+    pub crash_event_id: Option<String>,
     /// 32-byte hash of (cookie + project_id + IP). Anonymous mode only.
     pub anon_token_hash: Option<Vec<u8>>,
     pub body: String,

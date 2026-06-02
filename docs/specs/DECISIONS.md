@@ -598,3 +598,29 @@ Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python c
 
 ---
 
+### DEC-FBR-IMPL-08: GitCellar customer-#1 parity gaps — implementation decisions (collab-20260602-123000)
+
+**Resolved**: 2026-06-02 (PODS convergence `collab-20260602-123000` — GitCellar customer-#1 enablement, parity gaps #1–#4).
+
+**Context**: GitCellar adopts feedbackmonk as its feedback backend under a "no-feature-loss" contract (Path-C adoption). Four capabilities in GitCellar's internal feedback module were not in feedbackmonk's v1 FR-FBR-01..18 scope: attachments (#1), crash correlation (#2), admin full-text search (#3), and an end-user my-feedback read API (#4). Gap #5 (Forge bridge) is dropped by GitCellar (DEC-FBR-06), so it is excluded from the parity gate. These were specified as FR-FBR-PARITY-01..04 and built across four parallel workers. The decisions below are load-bearing for anyone modifying these surfaces.
+
+**Decisions**:
+
+1. **Crash correlation is pull-poll, best-effort, OFF the submit hot path.** The pull-mode worker (`crash_correlation.rs`) polls Glitchtip and populates `feedback.crash_event_id` asynchronously. A Glitchtip outage degrades correlation to null — it MUST NEVER fail a feedback submission. Rationale: submission availability is a hard product invariant; crash correlation is an enrichment. Coupling them would make a third-party monitoring outage into a feedback-loss incident. `crash_event_id` is a **first-class nullable column** (migration `00010`), never stored via `external_metadata` — so the worker can index/join on it and admin queries can filter by it.
+
+2. **Attachments use a dedicated `AttachmentState` axum sub-state, NOT new `AppState` fields.** Storage-backend config (LocalFs vs S3/SigV4) and image/log limits are attachment-local concerns. Threading them through `AppState` would force edits to every existing `AppState` constructor and every test that builds one. The sub-state keeps the attachment surface self-contained, independently testable, and edit-free for existing constructors. Trade-off: one extra `State<...>` extractor on attachment handlers — accepted.
+
+3. **Captured logs route through the single existing `feedbackmonk-tracing` scrubber chokepoint — no second scrub path.** The opt-in captured-log attachment part is PII-scrubbed via the same `feedbackmonk_tracing::scrub` chain all tracing uses. A second attachment-local scrubber would be a divergence risk (two pattern sets to keep in sync). The `pii-scrub-audit` Probe A enforces "no scrub/tracing setup outside `crates/feedbackmonk-tracing/`" as a code-level invariant, mechanically defending this.
+
+4. **Gap-#4 privacy isolation is enforced at the SQL predicate layer, not just in tests.** `me_feedback` handlers scope every query to the caller's own `end_user_sub` (from the JWT) AND to `visibility='public'` replies, as `WHERE` predicates — not post-fetch filtering. Another end-user's feedback or internal/private replies never leave Postgres. `tests/me_feedback_isolation.rs` is the regression guard; the predicate is the boundary. Consistent with DEC-FBR-04 (the customer-signed JWT `sub` is the only end-user identity feedbackmonk holds).
+
+5. **Frozen migration numbering 00009/00010/00011 (LD-assigned).** To avoid collisions across four parallel workers, the LD pre-assigned migration numbers: 00009 attachments, 00010 crash_event, 00011 fts. Append-only migration rule (see `migrations/README.md`) holds.
+
+**New Verification Oracle**: `feedback-parity-status` (`.claude/oracles/feedback-parity-status/`) gates GitCellar's Path-C cutover. It detects each gap's closure **from code state** (migrations / handlers / routes / widget), never a self-reported flag — the anti-reward-hacking leg: a worker cannot mark a gap done without the artifact existing. Gate OPEN iff all four closed; GATE OPEN 4/4 at convergence. Registered in SPECIFICATION.md Oracles table.
+
+**Deploy-prep (PF-DEPLOY-01 enabling artifacts)**: `docs/integrations/gitcellar-adoption.md` (integration contract), `docs/operations/RAILWAY_GITCELLAR.md`, `scripts/provision-gitcellar.sh`, and de-deferred attachment-storage env vars in `docs/operations/SELFHOST_ENV.md` (C21 catalog). The v1 embed→auth→submit loop is content-complete; PF-DEPLOY-01 remains an ops/hosting decision, not feature work.
+
+**Witnesses**: full quality gate GREEN at convergence — 349 Rust tests + 43 admin-ui vitest + 9 Playwright/axe (incl. 6 new attachment specs); `feedback-parity-status` GATE OPEN 4/4 + `multi-tenant-isolation-check` + `pii-scrub-audit` + `widget-bundle-size` all PASS; independent fresh-context critic returned PASS.
+
+---
+

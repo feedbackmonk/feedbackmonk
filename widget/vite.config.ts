@@ -32,6 +32,12 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
+        // Stable, unhashed names: customers load `widget.js`; the redaction
+        // editor is the same-origin `redact.js` chunk fetched lazily on first
+        // use. No content hashes — `dist/` is committed for the size oracle, so
+        // churn-free filenames keep the diff reviewable.
+        entryFileNames: "widget.js",
+        chunkFileNames: "[name].js",
         assetFileNames: (asset) => {
           if (asset.name === "style.css" || asset.name === "widget.css") {
             return "widget.css";

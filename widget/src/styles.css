@@ -11,7 +11,11 @@
  */
 
 .fbm-root {
-  --fbm-primary: #3b82f6;
+  /* --fbm-primary defaults to blue-600 (#2563eb), not blue-500 (#3b82f6):
+     white text on blue-500 is only 3.67:1 (fails WCAG AA 4.5:1), while
+     blue-600 clears it (~5.2:1). Customer brand colors override this at
+     runtime via applyTheme — see the contrast caveat in the README. */
+  --fbm-primary: #2563eb;
   --fbm-on-primary: #ffffff;
   --fbm-text: #111827;
   --fbm-muted: #6b7280;
@@ -19,7 +23,7 @@
   --fbm-surface: #ffffff;
   --fbm-scrim: rgba(17, 24, 39, 0.5);
   --fbm-error: #dc2626;
-  --fbm-success: #16a34a;
+  --fbm-success: #15803d;
   --fbm-radius: 8px;
   --fbm-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   position: fixed;
@@ -204,6 +208,80 @@
 .fbm-footer a {
   color: inherit;
   text-decoration: underline;
+}
+
+/* Attachments */
+.fbm-attach { gap: 6px; }
+.fbm-attach-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fbm-text);
+}
+.fbm-attach-help { font-size: 12px; color: var(--fbm-muted); }
+.fbm-attach-btn { align-self: flex-start; }
+.fbm-attach-error { color: var(--fbm-error); font-size: 13px; }
+.fbm-attach-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fbm-attach-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--fbm-border);
+  border-radius: var(--fbm-radius);
+  padding: 6px;
+}
+.fbm-thumb {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex: 0 0 auto;
+  background: rgba(0, 0, 0, 0.04);
+}
+.fbm-attach-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.fbm-attach-name {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fbm-attach-controls { display: flex; gap: 4px; flex: 0 0 auto; }
+.fbm-attach-mini { padding: 4px 8px; font-size: 12px; }
+.fbm-consent {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.fbm-consent-label { font-size: 13px; color: var(--fbm-text); }
+
+/* Redaction overlay (lazy-loaded redact.ts) — reuses .fbm-scrim/.fbm-modal/
+   .fbm-actions; only the canvas + width override are bespoke. */
+.fbm-redact-panel { width: min(640px, calc(100vw - 24px)); }
+.fbm-redact-hint { margin: 0; font-size: 13px; color: var(--fbm-muted); }
+.fbm-redact-actions { flex-wrap: wrap; }
+.fbm-redact-canvas {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--fbm-border);
+  border-radius: 4px;
+  touch-action: none;
+  cursor: crosshair;
+}
+.fbm-redact-canvas:focus-visible {
+  outline: 3px solid var(--fbm-primary);
+  outline-offset: 2px;
 }
 
 .fbm-sr-only {

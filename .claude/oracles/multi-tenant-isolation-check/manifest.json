@@ -33,7 +33,7 @@
   "validation": {
     "self_test_unix": null,
     "self_test_windows": null,
-    "last_validated": "2026-05-13T23:30:00Z"
+    "last_validated": "2026-06-02T17:30:00Z"
   },
   "fallback": "Read every .rs file under crates/ and grep for sqlx::query, &mut Connection, &mut PgConnection, &mut Transaction, Pool<Postgres>, pool.acquire( OUTSIDE crates/feedbackmonk-repository/. For repository methods: read every pub fn / pub async fn signature in crates/feedbackmonk-repository/src/**.rs and check first non-&self argument is &TenantScope or &ProjectScope (or allow-listed in allowlist.toml).",
   "provenance": {

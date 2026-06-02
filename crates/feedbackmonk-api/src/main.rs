@@ -28,7 +28,7 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use feedbackmonk_anon::{AnonGate, DEFAULT_RATE_LIMIT_PER_HOUR};
 use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
-    SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
+    SqlxAttachmentRepo, SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRoadmapItemRepo,
     SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo,
 };
@@ -39,9 +39,9 @@ use feedbackmonk_api::email::{
 use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
-    admin_feedback_routes, admin_roadmap_router, admin_tier_router, promote_router,
-    roadmap_router, spawn_voting_cache_refresh, submission_router, widget_config_router,
-    VotingCache,
+    admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
+    me_feedback_router, promote_router, roadmap_router, spawn_voting_cache_refresh,
+    submission_router, widget_config_router, AttachmentState, VotingCache,
 };
 
 #[tokio::main]
@@ -68,6 +68,17 @@ async fn main() -> Result<()> {
     let pool = connect_pg().await?;
     let state = build_state(pool)?;
 
+    // Gap #1: attachment upload sub-router state — its own state type (NOT
+    // AppState) so attachments add zero edits to AppState constructors. The
+    // object store is env-selected (local FS default for self-host;
+    // S3-compatible for SaaS/MinIO — docs/operations/SELFHOST_ENV.md C21).
+    let attachment_state = AttachmentState {
+        projects: Arc::clone(&state.projects),
+        attachments: Arc::new(SqlxAttachmentRepo::new(state.pool.clone())),
+        storage: feedbackmonk_api::storage::from_env()
+            .context("failed to configure attachment object store")?,
+    };
+
     // P2: spawn the 60s roadmap voting-cache refresh tick. JoinHandle is
     // intentionally not held — process exit aborts the task. The cache
     // tolerates per-project refresh failures internally (logs WARN, keeps
@@ -78,7 +89,7 @@ async fn main() -> Result<()> {
         Arc::clone(&state.roadmap_items),
     );
 
-    let app = build_app(state);
+    let app = build_app(state, attachment_state);
 
     let addr: SocketAddr = (bind_addr, port).into();
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -294,7 +305,7 @@ fn load_session_secret() -> Result<[u8; 32]> {
     Ok(out)
 }
 
-fn build_app(state: AppState) -> Router {
+fn build_app(state: AppState, attachment_state: AttachmentState) -> Router {
     // FR-FBR-18: every request is wrapped in a span carrying a `request_id`
     // (UUIDv4) populated from `x-request-id` if the client supplied one, else
     // freshly generated. The TraceLayer emits structured INFO logs at request
@@ -312,6 +323,8 @@ fn build_app(state: AppState) -> Router {
         .merge(roadmap_router(state.clone()))
         .merge(admin_roadmap_router(state.clone()))
         .merge(admin_tier_router(state.clone()))
+        .merge(me_feedback_router(state.clone()))
+        .merge(attachments_router(attachment_state))
         .merge(promote_router(state));
     app.layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace_layer)

@@ -26,6 +26,10 @@ export interface ModalElements {
   errorRegion: HTMLDivElement;
   submitBtn: HTMLButtonElement;
   cancelBtn: HTMLButtonElement;
+  // Mount point for the attachments controller (built by attachments.ts).
+  attachContainer: HTMLDivElement;
+  // Diagnostic-log consent checkbox; null unless log capture is available.
+  logConsent: HTMLInputElement | null;
   focusables: HTMLElement[];
 }
 
@@ -33,7 +37,7 @@ function makeId(prefix: string): string {
   return prefix + "-" + Math.random().toString(36).slice(2, 10);
 }
 
-function createElement<K extends keyof HTMLElementTagNameMap>(
+export function createElement<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   className?: string,
   text?: string,
@@ -42,6 +46,18 @@ function createElement<K extends keyof HTMLElementTagNameMap>(
   if (className) el.className = className;
   if (text !== undefined) el.textContent = text;
   return el;
+}
+
+// Live focusable query for a container — robust to dynamically added controls
+// (attachment buttons, redaction overlay) that a static array would miss.
+const FOCUSABLE_SELECTOR =
+  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+export function getFocusable(container: HTMLElement): HTMLElement[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+  ).filter((el) => !el.hidden && el.getAttribute("aria-hidden") !== "true");
 }
 
 const LAUNCHER_ICON_SVG =
@@ -77,6 +93,7 @@ export function createModal(
   mode: "auth" | "anonymous",
   onSubmit: () => Promise<void>,
   onClose: Listener,
+  logCaptureAvailable: boolean,
 ): ModalElements {
   const titleId = makeId("fbm-title");
   const bodyId = makeId("fbm-body");
@@ -169,6 +186,30 @@ export function createModal(
     emailField.append(emailLabel, emailInput);
   }
 
+  // Attachments mount point — populated by attachments.ts after the modal
+  // is built (kept here so attachment controls live inside the focus trap).
+  const attachContainer = createElement("div", "fbm-attach-mount");
+
+  // Diagnostic-log consent. Only rendered when the embedder opted into log
+  // capture; the user gives per-submission consent (default on, can opt out).
+  let logConsentField: HTMLDivElement | null = null;
+  let logConsent: HTMLInputElement | null = null;
+  if (logCaptureAvailable) {
+    logConsentField = createElement("div", "fbm-field fbm-consent");
+    logConsent = createElement("input");
+    logConsent.type = "checkbox";
+    logConsent.checked = true;
+    const consentId = makeId("fbm-logs");
+    logConsent.id = consentId;
+    const consentLabel = createElement(
+      "label",
+      "fbm-consent-label",
+      "Include diagnostic logs to help us debug",
+    );
+    consentLabel.htmlFor = consentId;
+    logConsentField.append(logConsent, consentLabel);
+  }
+
   const errorRegion = createElement("div", "fbm-error");
   errorRegion.id = errorId;
   errorRegion.setAttribute("role", "alert");
@@ -187,7 +228,9 @@ export function createModal(
   actions.append(cancelBtn, submitBtn);
 
   modal.append(closeBtn, titleEl, descEl, subjectField, kindField, bodyField);
+  modal.appendChild(attachContainer);
   if (emailField) modal.appendChild(emailField);
+  if (logConsentField) modal.appendChild(logConsentField);
   modal.append(errorRegion, actions);
 
   if (config.brand.footer_text) {
@@ -225,6 +268,8 @@ export function createModal(
     errorRegion,
     submitBtn,
     cancelBtn,
+    attachContainer,
+    logConsent,
     focusables,
   };
 }

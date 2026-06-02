@@ -69,6 +69,22 @@
 | `FEEDBACKMONK_SMTP_PASS` | optional* | — | 🔒 | Production SMTP password. *Required iff `FEEDBACKMONK_MAILER=smtp`. Source: `crates/feedbackmonk-api/src/main.rs:207`. |
 | `FEEDBACKMONK_SMTP_STARTTLS` | optional | `true` | | Whether to negotiate STARTTLS with the SMTP server. `true` / `false`. Defaults to `true` (modern SMTP is always STARTTLS). Source: `crates/feedbackmonk-api/src/main.rs:209`. |
 
+### Attachment Storage
+
+Backs the feedback attachment upload endpoint (Gap #1 — `POST …/feedback/{id}/attachments`). Two backends, selected by `FEEDBACKMONK_STORAGE_BACKEND`. **Self-host default is `local`** (a docker volume); SaaS / large self-host use `s3` (any S3-compatible endpoint, incl. MinIO). Source: `crates/feedbackmonk-api/src/storage.rs`.
+
+| Name | Required | Default | 🔒 | Semantics |
+|---|---|---|---|---|
+| `FEEDBACKMONK_STORAGE_BACKEND` | optional | `local` | | Object-store backend: `local` (filesystem; self-host/dev default — needs no external service) or `s3` (S3-compatible). Anything else → startup error. |
+| `FEEDBACKMONK_STORAGE_LOCAL_DIR` | optional* | `./data/attachments` | | Filesystem root for the `local` backend. *Used iff backend=`local`. Mount a persistent docker volume here for self-host. Returned attachment URLs are `${FEEDBACKMONK_PUBLIC_URL}/attachments/<key>`. |
+| `FEEDBACKMONK_S3_BUCKET` | optional* | — | | Target S3 bucket. *Required iff backend=`s3`. |
+| `FEEDBACKMONK_S3_REGION` | optional* | `us-east-1` | | S3 region (also used in SigV4 signing). *Used iff backend=`s3`. |
+| `FEEDBACKMONK_S3_ENDPOINT` | optional* | AWS S3 | | Custom S3-compatible endpoint, e.g. `http://minio:9000`. Omit for AWS S3. *Used iff backend=`s3`. |
+| `FEEDBACKMONK_S3_ACCESS_KEY_ID` | optional* | — | 🔒 | S3 access key id. *Required iff backend=`s3`. |
+| `FEEDBACKMONK_S3_SECRET_ACCESS_KEY` | optional* | — | 🔒 | S3 secret access key. *Required iff backend=`s3`. |
+| `FEEDBACKMONK_S3_PUBLIC_BASE_URL` | optional* | derived | | Base URL for returned object URLs (CDN / public bucket URL). If omitted, derived from endpoint+bucket. *Used iff backend=`s3`. |
+| `FEEDBACKMONK_S3_FORCE_PATH_STYLE` | optional* | `true` if endpoint set, else `false` | | Path-style addressing (`{endpoint}/{bucket}/{key}`). Required `true` for MinIO. *Used iff backend=`s3`. |
+
 ---
 
 ## Self-Host Quickstart Env Profile
@@ -116,7 +132,7 @@ All other vars get their documented defaults.
 These vars do NOT exist yet but are anticipated for future phases. When their feature lands, they'll be appended to the table above:
 
 - `FEEDBACKMONK_POLAR_WEBHOOK_SECRET` — Polar billing webhook HMAC verification (FR-FBR-15, currently DEFERRED per DEC-FBR-DEFER-01).
-- `FEEDBACKMONK_S3_*` — attachment storage (DEC-FBR-08 OUT list, v1.1+).
+- ~~`FEEDBACKMONK_S3_*` — attachment storage (DEC-FBR-08 OUT list, v1.1+).~~ **Now LIVE** — attachments were pulled forward for the GitCellar customer-#1 parity work (collab-20260602-123000, Gap #1). See the **Attachment Storage** section above for the full `FEEDBACKMONK_STORAGE_*` / `FEEDBACKMONK_S3_*` catalog.
 - `FEEDBACKMONK_REDIS_URL` — distributed rate-limiter backend (D-FBR-08 deferred to v1.1).
 
 Do not introduce these in P4; they're enumerated here only so future work doesn't accidentally clash with the canonical naming pattern.

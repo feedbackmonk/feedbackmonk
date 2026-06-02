@@ -41,6 +41,10 @@ pub fn routes(state: AppState) -> Router {
             get(list_admin_feedback),
         )
         .route(
+            "/api/v1/admin/feedback/search",
+            get(search_admin_feedback),
+        )
+        .route(
             "/api/v1/admin/feedback/:feedback_id",
             get(get_admin_feedback),
         )
@@ -420,6 +424,73 @@ pub async fn list_admin_feedback(
         .await?;
 
     // Replace Stage-1's hard-zero reply_count with the real count per row.
+    let mut wire_items = Vec::with_capacity(items.len());
+    for it in items {
+        let count = state
+            .feedback_replies
+            .count_for_feedback(&project_scope, &it.feedback_id)
+            .await
+            .unwrap_or(0);
+        wire_items.push(FeedbackListItemWire {
+            feedback_id: it.feedback_id.as_str().to_string(),
+            kind: it.kind,
+            status: it.status,
+            body_excerpt: it.body_excerpt,
+            submitted_at: it.submitted_at,
+            submitter_label: format_submitter_label(it.submitter_email.as_deref(), it.is_anonymous),
+            reply_count: count,
+        });
+    }
+
+    Ok(Json(ListResponse {
+        items: wire_items,
+        total,
+        limit,
+        offset,
+    }))
+}
+
+// ---------- Gap #3: admin full-text search ----------
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchParams {
+    /// Raw user query — passed to `websearch_to_tsquery` (forgiving syntax).
+    pub q: Option<String>,
+    pub limit: Option<u32>,
+    pub offset: Option<u32>,
+}
+
+/// `GET /api/v1/admin/feedback/search?q=...` — tenant-scoped full-text search
+/// over feedback bodies (GitCellar parity gap #3). Shares the Contract C8 list
+/// response shape so the admin UI renders results with the same table. A blank
+/// `q` short-circuits to an empty page (no DB round-trip) so the UI can mount
+/// the box before the user has typed anything.
+pub async fn search_admin_feedback(
+    State(state): State<AppState>,
+    session: AdminSession,
+    Query(params): Query<SearchParams>,
+) -> Result<Json<ListResponse>, ApiError> {
+    let limit = params.limit.unwrap_or(DEFAULT_LIST_LIMIT).min(MAX_LIST_LIMIT);
+    let offset = params.offset.unwrap_or(0);
+
+    let query = params.q.unwrap_or_default();
+    if query.trim().is_empty() {
+        return Ok(Json(ListResponse {
+            items: Vec::new(),
+            total: 0,
+            limit,
+            offset,
+        }));
+    }
+
+    let project_scope = sole_project_scope(&state, &session.scope).await?;
+    let (items, total) = state
+        .feedback
+        .search_for_admin(&project_scope, &query, limit, offset)
+        .await?;
+
+    // Same reply_count enrichment as list_admin_feedback — the repository
+    // search method returns hard-zero; the HTTP layer resolves the real count.
     let mut wire_items = Vec::with_capacity(items.len());
     for it in items {
         let count = state

@@ -14,13 +14,19 @@ feedbackmonk-tracing = { path = "../feedbackmonk-tracing" }
 anyhow = { workspace = true }
 argon2 = { workspace = true }
 async-trait = { workspace = true }
-axum = { workspace = true }
+# `multipart` feature: attachment upload endpoint (Gap #1) uses axum's Multipart extractor.
+axum = { workspace = true, features = ["multipart"] }
 axum-extra = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 hmac = { workspace = true }
 lettre = { workspace = true }
 rand = { workspace = true }
+# Shared runtime HTTP client (rustls). Two consumers: Gap #2 crash-event
+# correlation (`crash_correlation` — outbound pulls to a Glitchtip/Sentry
+# tracker) and Gap #1 attachments (S3 object-store backend). Same feature set
+# already vetted in dev-dependencies; promoted to a runtime dep.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -41,7 +47,6 @@ http-body-util = "0.1"
 mime = "0.3"
 insta = "1"
 rand_core = "0.6"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

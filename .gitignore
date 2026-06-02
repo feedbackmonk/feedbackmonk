@@ -77,6 +77,16 @@ dist/
 build/
 out/
 coverage/
+# widget/dist IS committed: the widget-bundle-size Verification Oracle scans the
+# built artifacts, and the widget must be deployable from the repo. The blanket
+# `dist/` above would silently exclude it (and make CI vacuously pass), so
+# re-include it explicitly. (A negation in widget/.gitignore can't do this — a
+# higher-level `dist/` exclusion stops git descending into the dir.)
+!widget/dist/
+!widget/dist/**
+
+# Transient local scheduler lock (never committed)
+.claude/scheduled_tasks.lock
 
 # Playwright
 .playwright-mcp/

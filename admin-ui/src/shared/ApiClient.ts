@@ -104,6 +104,27 @@ export async function fetchFeedbackList(
   return r.data;
 }
 
+export interface SearchParams {
+  q: string;
+  limit?: number;
+  offset?: number;
+}
+
+// Gap #3 — admin full-text search. Shares the Contract C8 list response
+// shape, so the feedback table renders search hits with the same rows.
+export async function searchFeedback(
+  params: SearchParams,
+): Promise<FeedbackListResponse> {
+  const r = await api.get<FeedbackListResponse>("/admin/feedback/search", {
+    params: {
+      q: params.q,
+      limit: params.limit ?? 20,
+      offset: params.offset ?? 0,
+    },
+  });
+  return r.data;
+}
+
 export async function fetchFeedbackDetail(
   feedbackId: string,
 ): Promise<FeedbackDetail> {

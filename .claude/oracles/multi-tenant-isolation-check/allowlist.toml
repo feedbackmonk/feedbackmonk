@@ -107,6 +107,13 @@ type_name = "SqlxRoadmapVoteRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxRoadmapItemRepo::new (this commit) and SqlxFeedbackRepo::new (P0). Backs migration 00007's roadmap_votes table. All public methods on the trait take &ProjectScope as their first non-self argument (Probe B compliance verified). The cast() method's INSERT...SELECT enforces scope at the SQL level (cross-tenant item_id returns RepoError::NotFound, not silent insert). Pre-authorized per GUIDE.md §8."
 
+# --- Gap #1 additions (Attachments / migration 00009, collab-20260602-123000) ---
+
+[[inherent_methods]]
+type_name = "SqlxAttachmentRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0 pre-authorized). Backs migration 00009's attachments table (GitCellar customer-#1 parity gap #1). All four public AttachmentRepo trait methods (resolve_feedback_uuid, count_images, insert, list_for_feedback) take &ProjectScope as their first non-self argument (Probe B compliance verified directly, no method-level allowlist needed). Spawned under PODS collab-20260602-123000 GUIDE §6."
+
 # --- P3 Stage 1 additions (Contract C17 / tier-cap predicate) ---
 
 [[inherent_methods]]

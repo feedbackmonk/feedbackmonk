@@ -1,12 +1,13 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchFeedbackList } from "../shared/ApiClient";
+import { fetchFeedbackList, searchFeedback } from "../shared/ApiClient";
 import {
   KIND_LABELS,
   STATUS_LABELS,
   type FeedbackStatus,
 } from "../shared/types.gen";
 import { StatusBadge } from "../components/StatusBadge";
+import { SearchBox } from "../components/SearchBox";
 import { useRouter, useSearchParams } from "../shared/router";
 import { formatRelative } from "../shared/format";
 
@@ -27,12 +28,14 @@ interface ParsedParams {
   limit: number;
   offset: number;
   statusKey: string;
+  q: string;
 }
 
 function parseParams(p: URLSearchParams): ParsedParams {
   const status = p.get("status");
   const limit = Number(p.get("limit") ?? DEFAULT_LIMIT) || DEFAULT_LIMIT;
   const offset = Number(p.get("offset") ?? 0) || 0;
+  const q = (p.get("q") ?? "").trim();
   const statusFilter =
     status && status !== "all" && STATUS_FILTERS.includes(status as FeedbackStatus)
       ? (status as FeedbackStatus)
@@ -42,6 +45,7 @@ function parseParams(p: URLSearchParams): ParsedParams {
     limit,
     offset,
     statusKey: status ?? "all",
+    q,
   };
 }
 
@@ -50,19 +54,45 @@ export function FeedbackList() {
   const { navigate } = useRouter();
   const parsed = useMemo(() => parseParams(params), [params]);
 
+  const searching = parsed.q.length > 0;
+
   const query = useQuery({
     queryKey: [
       "admin-feedback",
-      { status: parsed.status, limit: parsed.limit, offset: parsed.offset },
-    ],
-    queryFn: () =>
-      fetchFeedbackList({
+      {
         status: parsed.status,
         limit: parsed.limit,
         offset: parsed.offset,
-      }),
+        q: parsed.q,
+      },
+    ],
+    // When a search query is present, hit the FTS endpoint (gap #3); otherwise
+    // the status-filtered list. Both return the identical response shape.
+    queryFn: () =>
+      searching
+        ? searchFeedback({
+            q: parsed.q,
+            limit: parsed.limit,
+            offset: parsed.offset,
+          })
+        : fetchFeedbackList({
+            status: parsed.status,
+            limit: parsed.limit,
+            offset: parsed.offset,
+          }),
     placeholderData: (prev) => prev,
   });
+
+  const setQuery = useCallback(
+    (next: string) => {
+      const p = new URLSearchParams(params);
+      if (next) p.set("q", next);
+      else p.delete("q");
+      p.delete("offset");
+      setParams(p);
+    },
+    [params, setParams],
+  );
 
   function setStatus(next: string) {
     const p = new URLSearchParams(params);
@@ -90,6 +120,7 @@ export function FeedbackList() {
     <main className="feedback-list-page">
       <header className="page-header">
         <h1>Feedback</h1>
+        <SearchBox value={parsed.q} onSearch={setQuery} />
       </header>
 
       <nav className="status-filters" aria-label="Filter by status">
@@ -122,8 +153,16 @@ export function FeedbackList() {
         <p className="muted">Loading…</p>
       ) : items.length === 0 ? (
         <div className="empty-state">
-          <p>No feedback matches this filter.</p>
-          {parsed.status ? (
+          <p>
+            {searching
+              ? `No feedback matches “${parsed.q}”.`
+              : "No feedback matches this filter."}
+          </p>
+          {searching ? (
+            <button type="button" onClick={() => setQuery("")}>
+              Clear search
+            </button>
+          ) : parsed.status ? (
             <button type="button" onClick={() => setStatus("all")}>
               Clear filter
             </button>

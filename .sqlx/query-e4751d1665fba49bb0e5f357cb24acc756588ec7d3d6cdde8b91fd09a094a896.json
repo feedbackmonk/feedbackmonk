@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM feedback\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND body_tsv @@ websearch_to_tsquery('english', $3)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "e4751d1665fba49bb0e5f357cb24acc756588ec7d3d6cdde8b91fd09a094a896"
+}
