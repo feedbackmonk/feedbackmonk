@@ -1,8 +1,8 @@
 # multi-tenant-isolation-check
 
-<!-- agent-synopsis -->
-Verification Oracle (P0 Task Zero). Polices DEC-FBR-03's "raw SQL outside the repository layer is a security incident" rule at AST grade on every commit. Leg 2 of the three-leg tenant-isolation defense.
-<!-- /agent-synopsis -->
+## Synopsis
+
+Verification Oracle (P0 Task Zero) policing DEC-FBR-03's "raw SQL outside the repository layer is a security incident" rule at AST grade on every commit. Leg 2 of the three-leg tenant-isolation defense. Triggers include the api crate and `migrations/**`; re-run after any change touching query code or schema.
 
 ## Purpose
 

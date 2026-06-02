@@ -1,6 +1,8 @@
 # `pages/settings/` — Admin tier settings page (P3 Stage 2)
 
-**Synopsis**: `/admin/settings/tier` "Plan & usage" page — current-tier card, per-resource UsageMeter, capability matrix, UpgradePrompt CTA. Read-only consumer of `GET /api/v1/admin/tier` (Contract C17). Polar billing deferred per DEC-FBR-DEFER-01 — Upgrade button is the explicit "Contact support to upgrade" mailto stub.
+## Synopsis
+
+`/admin/settings/tier` "Plan & usage" page — current-tier card, per-resource UsageMeter, capability matrix, UpgradePrompt CTA. Read-only consumer of `GET /api/v1/admin/tier` (Contract C17), closing the user-facing loop for FR-FBR-14. Polar billing deferred per DEC-FBR-DEFER-01 — the Upgrade button is an explicit "Contact support to upgrade" mailto stub.
 
 ## Purpose & Responsibilities
 

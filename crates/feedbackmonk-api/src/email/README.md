@@ -10,6 +10,10 @@ Agent Context Header (ULADP):
 
 # email/ — Feedback notification chokepoint
 
+## Synopsis
+
+Outbound feedback-notification email module (FR-FBR-09, plain-text). Every confirmation / status-change / public-reply email funnels through one `EmailNotifier::send_email` chokepoint so brand parameterisation (Contract C10) is uniform. Holds the `Mailer` trait + plain-text template renderers + the env-selected send path (Mailpit in dev, lettre SMTP in prod).
+
 ## 1. Purpose & Responsibilities
 
 Stage 2 Worker A's deliverable for **FR-FBR-09 (status emails, plain-text)**.

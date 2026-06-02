@@ -14,11 +14,24 @@ all-features = false
 
 [advisories]
 version = 2
-ignore = []
+ignore = [
+    # RUSTSEC-2026-0141: an inverted-boolean bug in lettre's `boring-tls`
+    # integration disables TLS hostname verification — affects ONLY callers
+    # using the `boring-tls` feature. feedbackmonk configures lettre with
+    # `tokio1-rustls-tls` (rustls backend; default-features = false — see root
+    # Cargo.toml), so we are NOT in the vulnerable configuration. Ignored with
+    # rationale (reviewed 2026-06-02). Revisit if the lettre TLS backend changes.
+    "RUSTSEC-2026-0141",
+]
 
 [bans]
 multiple-versions = "allow"
 wildcards = "deny"
+# The workspace-internal crates (feedbackmonk-api -> core/repository/jwt/anon/
+# tracing) are referenced as unversioned `path` deps, which cargo-deny counts as
+# wildcards. Those are first-party path references, not real `version = "*"`
+# wildcards on crates.io deps (which stay denied). Allow the path form only.
+allow-wildcard-paths = true
 
 # DENIED CRATES -- introducing any of these is a security-policy violation
 # (would establish a second DB query path outside crates/feedbackmonk-repository/).
@@ -51,6 +64,10 @@ allow = [
     "OpenSSL",
     "AGPL-3.0",
     "AGPL-3.0-or-later",
+    # Permissive, AGPL-compatible licenses encountered transitively (e.g. via the
+    # reqwest dependency tree added for S3 attachment storage + Glitchtip pulls).
+    "0BSD",
+    "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8
 

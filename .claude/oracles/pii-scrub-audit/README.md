@@ -6,6 +6,10 @@ scrubber installed by `feedbackmonk_tracing::install_global_subscriber`? Has the
 pattern set drifted from the canonical source ported byte-for-byte from
 GitCellar's `gitcellar-service/src/feedback_logs/scrubber.rs`?
 
+## Synopsis
+
+Verification Oracle (P1 Task Zero) enforcing FR-FBR-10: every emitted log line must pass through the canonical 20-pattern PII scrubber installed by `feedbackmonk_tracing::install_global_subscriber`, and the pattern set must not drift from the source ported byte-for-byte from GitCellar's scrubber. AST-grade check; leg 2 of the three-leg PII-scrub defense. Re-run after touching `feedbackmonk-tracing` or any logging setup.
+
 ## Probes
 
 ### Probe A — no tracing-subscriber setup outside the scrubber crate

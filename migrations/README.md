@@ -1,8 +1,8 @@
 # migrations
 
-<!-- agent-synopsis -->
-SQL migration files driving the feedbackmonk Postgres schema. `00001_p0_schema.sql` is the P0 Foundation schema; it is the authoritative source for column names that the repository crate hard-depends on.
-<!-- /agent-synopsis -->
+## Synopsis
+
+Ordered, append-only SQL migrations (`00001`–`00011`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
 
 ## Purpose & Responsibilities
 
@@ -15,11 +15,16 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 | File | Purpose |
 |---|---|
 | `00001_p0_schema.sql` | P0 Foundation schema: `tenants`, `projects`, `signing_keys`, `feedback`, `anon_submissions`, `rate_limit_counters`. Backs FR-FBR-01..06. |
+| `00002_email_verifications.sql` | P1 (FR-FBR-02). `email_verifications` token table backing Worker A's signup → verify-email flow; opaque 32-byte base64url token stored as `TEXT PRIMARY KEY`; `used_at` marks first redemption (replay-window idempotency handled in API layer). |
+| `00003_feedback_status_history.sql` | P1 Stage 1 (FR-FBR-08). Adds BOTH the `feedback.status` column (CHECK against the six canonical kebab-case Contract-C6 statuses) AND the `feedback_status_history` audit table (cohesion decision DEC-FBR-IMPL-PI-S1-01). |
+| `00004_feedback_replies.sql` | P1 Stage 2 (FR-FBR-08 reply + FR-FBR-09 public-reply email). `feedback_replies` table backing Contract C7's reply endpoint; `visibility ∈ {public, internal}` (public triggers a `PublicReplyEmail` send; internal is admin-only). Body window mirrors `feedback.body` (1..16384). |
+| `00005_tenant_email_brand.sql` | P1 Stage 1 (FR-FBR-09, Contract C10). Additive branding columns on `tenants` (`brand_name`, `email_subject_prefix`, `support_email`, nullable `unsubscribe_url`, `footer_signature`) consumed by the Stage 2 email-template renderers; defaults backfilled from the existing `tenants.email`. |
+| `00006_roadmap_items.sql` | P2 (FR-FBR-11, Contract C13). Schema half of the public roadmap surface: `roadmap_items` with the `considering → planned → in-progress → shipped` status machine and the `origin_feedback_id` UNIQUE constraint backing promote-to-roadmap idempotency (FR-FBR-12). Vote table lands in `00007`. |
+| `00007_roadmap_votes.sql` | P2 (FR-FBR-13, Contract C14). Companion to `00006`: `roadmap_votes` with the `(item_id, voter_id)` UNIQUE double-vote guard (duplicate INSERT → `RepoError::Conflict` → 409, never a silent upsert). Backs the voting aggregator. |
+| `00008_tenant_tier_check.sql` | P3 Stage 1 (FR-FBR-14, Contract C19). Adds a CHECK constraint on `tenants.tier` enumerating the four canonical pricing-tier values — defense-in-depth pairing with the Rust `Tier` enum + `Tier::from_db_str` strict parser. |
 | `00009_attachments.sql` | `attachments` table (screenshot + captured-log parts). GitCellar customer-#1 parity gap #1. Tenant/project-scoped; `feedback_id` FK; storage-backend-agnostic (URI + content metadata). |
 | `00010_feedback_crash_event.sql` | Adds nullable first-class `crash_event_id` column to `feedback`. GitCellar parity gap #2. NOT stored via `external_metadata` — a real column so the pull-mode correlation worker can index/join on it. |
 | `00011_feedback_fts.sql` | Full-text search: `tsvector` generated column + GIN index on `feedback`. GitCellar parity gap #3. Backs `GET /api/v1/admin/feedback/search` via `websearch_to_tsquery`. |
-
-> **File-index drift note** (surfaced during convergence): migrations `00002`–`00008` (P1–P4 work) are not yet listed in this index. Pre-existing gap from earlier phases — out of this convergence's session scope. Flagged in `docs/specs/DISCOVERIES.md` for a follow-up backfill.
 
 ## Constraints & Business Rules
 

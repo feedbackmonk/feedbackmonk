@@ -1,5 +1,9 @@
 # autonomy-status Oracle
 
+## Synopsis
+
+Project-state oracle resolving the current session's autonomy level (and its source) via the canonical four-step cascade from `commands/-autonomy/set.md`. Single source of truth for the consent gate governing model-invocable framework operations (DEC-39); consulted at session start and surfaced in the ORACLE BRIEFING. Come here for the resolution order, not to change autonomy (`/0-uldf-autonomy-set` does that).
+
 **Kind**: project-state
 **Question answered**: *What is the resolved autonomy level for this session, and what is its source?*
 

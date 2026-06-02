@@ -11,6 +11,10 @@ Agent Context Header (ULADP):
 
 # handlers/ — HTTP request handlers
 
+## Synopsis
+
+The thin axum-handler layer between HTTP requests and the repository / auth / email crates. One file per logical endpoint family — onboarding (signup, verify-email, projects, signing-keys), public submission (feedback, attachments, widget-config), end-user reads (me_feedback), admin (admin_feedback, admin_tier, roadmap, promote), and health. All DB-touching handlers resolve a `TenantScope`/`ProjectScope` that flows into every repository call (DEC-FBR-03). Open the File Index below to find the handler for an endpoint.
+
 ## 1. Purpose & Responsibilities
 
 The thin axum-handler layer between HTTP requests and the repository /

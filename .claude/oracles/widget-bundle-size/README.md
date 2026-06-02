@@ -7,6 +7,10 @@ at most 30720 bytes (30 KiB; FR-FBR-04 cap), and does it contain zero canonical
 third-party tracker hostnames (DEC-FBR-02 brand promise)? Has the canonical
 tracker-list drifted from its hashed baseline?
 
+## Synopsis
+
+Verification Oracle (P2 Task Zero) defending two widget brand promises as code-level invariants: the built bundle (`widget/dist/*.{js,mjs,css}`) is ≤30720 bytes (30 KiB, FR-FBR-04) and contains zero canonical third-party tracker hostnames (DEC-FBR-02), with the tracker list pinned to a hashed baseline. Re-run after any widget build or dependency change.
+
 ## Probes
 
 ### Probe A — Bundle size

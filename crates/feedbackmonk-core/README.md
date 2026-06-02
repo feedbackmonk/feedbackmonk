@@ -1,8 +1,8 @@
 # feedbackmonk-core
 
-<!-- agent-synopsis -->
-Pure domain types (no DB, no async, no network) shared across feedbackmonk crates. Built in P0 Stage 1 per FR-FBR-01 and P0 plan Contract C1.
-<!-- /agent-synopsis -->
+## Synopsis
+
+Pure domain vocabulary of feedbackmonk — ID newtypes, plain data records mirroring the P0 schema (`Tenant`, `Project`, `SigningKey`, `Feedback`, `AnonSubmission`, `RateLimitCounter`), and the `Tier` enum + quota table. No DB, no async, no network — the bottom layer every other crate depends on. Open it to find a domain type's shape or the canonical tier quotas. FR-FBR-01, Contract C1.
 
 ## Purpose & Responsibilities
 

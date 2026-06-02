@@ -459,6 +459,6 @@ The third path — a `marketing-selfhost-page-parity` Verification Oracle that d
 
 **Where this pays off again**: any long-lived multi-phase project with crate/module READMEs. The forward-only update discipline is necessary but not sufficient.
 
-**Follow-up tracked**: pending — (1) backfill `crates/feedbackmonk-api/README.md` File Index (P1–P4 modules) + `migrations/README.md` (`00002`–`00008`) as a focused doc task; (2) consider a `readme-file-index-parity` Verification Oracle candidate (dir-listing ⊆ index rows ∧ index rows ⊆ dir-listing) at a future Phase 11 sweep.
+**Follow-up tracked**: (1) **DONE** — backfilled `crates/feedbackmonk-api/README.md` File Index (top-level `src/` files + `auth/`/`email/` submodule rows + full `src/handlers/` sub-table, all current files including `00009`–`00011`-era modules) and `migrations/README.md` (`00002`–`00011`, every migration now has a one-line entry); both stale "file-index drift" notes removed. (2) pending — consider a `readme-file-index-parity` Verification Oracle candidate (dir-listing ⊆ index rows ∧ index rows ⊆ dir-listing) at a future Phase 11 sweep.
 
 ---

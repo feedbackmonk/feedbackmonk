@@ -1,0 +1,5 @@
+# Proper nouns that clippy::doc-markdown would otherwise flag as "missing
+# backticks" (CamelCase words look like code identifiers to the lint). These
+# are product/proper names that legitimately appear unbackticked in prose.
+# ".." preserves clippy's built-in doc-valid-idents list (GitHub, OAuth, etc.).
+doc-valid-idents = ["GitCellar", "FeedbackMonk", ".."]

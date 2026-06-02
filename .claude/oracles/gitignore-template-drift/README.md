@@ -1,6 +1,8 @@
 # gitignore-template-drift Oracle
 
-> **Synopsis** — Project-state oracle that flags when a project's `.gitignore` lacks any framework-managed patterns from the current `claude-template/.gitignore` baseline. Emits a `[gitignore-template-drift]` line in the session-start ORACLE BRIEFING when drift is detected, nudging the user to run `/0-uldf-migrate-hygiene`. Empty briefing on no-drift (gracefully absent).
+## Synopsis
+
+Project-state oracle that flags when a project's `.gitignore` lacks any framework-managed patterns from the current `claude-template/.gitignore` baseline. Emits a `[gitignore-template-drift]` line in the session-start ORACLE BRIEFING when drift is detected, nudging the user to run `/0-uldf-migrate-hygiene`. Empty briefing on no-drift (gracefully absent).
 
 ## Purpose & Responsibilities
 

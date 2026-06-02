@@ -256,6 +256,10 @@ async fn read_log_field(field: axum::extract::multipart::Field<'_>) -> Result<St
 /// Validate an image part: the declared MIME must be in the allowlist AND the
 /// leading bytes must match that type (magic-byte sniff). Returns
 /// `(canonical_content_type, file_extension)` on success, or a `415` response.
+// reason: the Err variant is an axum `Response` (large by nature); boxing it
+// would ripple into the call site and the `.unwrap_err()` test assertions for
+// no benefit, since the value is constructed and returned in one place.
+#[allow(clippy::result_large_err)]
 fn validate_image(declared_ct: &str, bytes: &[u8]) -> Result<(&'static str, &'static str), Response> {
     // Some clients append `; charset=…` — match on the media type prefix.
     let media = declared_ct.split(';').next().unwrap_or("").trim();
@@ -271,22 +275,22 @@ fn validate_image(declared_ct: &str, bytes: &[u8]) -> Result<(&'static str, &'st
             "webp",
             bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP",
         ),
-        other => return Err(unsupported_media_type(format!(
+        other => return Err(unsupported_media_type(&format!(
             "image content-type {other:?} not allowed (png/jpeg/webp only)"
         ))),
     };
     if !magic_ok {
-        return Err(unsupported_media_type(format!(
+        return Err(unsupported_media_type(&format!(
             "file bytes do not match declared content-type {content_type}"
         )));
     }
     Ok((content_type, ext))
 }
 
-/// Build a `415 Unsupported Media Type` response with the canonical ApiError
+/// Build a `415 Unsupported Media Type` response with the canonical `ApiError`
 /// body shape (`{"error": "<msg>"}`). Built inline rather than adding a 415
 /// variant to the shared `ApiError` enum (keeps `error.rs` untouched).
-fn unsupported_media_type(msg: String) -> Response {
+fn unsupported_media_type(msg: &str) -> Response {
     (StatusCode::UNSUPPORTED_MEDIA_TYPE, Json(json!({ "error": msg }))).into_response()
 }
 

@@ -15,7 +15,7 @@
 //! `ProjectRepo::open_for_submission` (the public pre-auth boundary, same as
 //! the submit handler — there is no admin session), then verifies the Bearer
 //! JWT against the project's active signing keys with
-//! `feedbackmonk_jwt::verify_with_leeway` (aud == project_id). The verified
+//! `feedbackmonk_jwt::verify_with_leeway` (aud == `project_id`). The verified
 //! `sub` is the ONLY identity used; every query is scoped to it.
 //!
 //! ## Privacy invariants (load-bearing — frozen by

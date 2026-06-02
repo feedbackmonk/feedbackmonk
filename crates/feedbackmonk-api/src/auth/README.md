@@ -10,6 +10,10 @@ Agent Context Header (ULADP):
 
 # auth/ — Admin authentication
 
+## Synopsis
+
+Admin-authentication primitives for the feedbackmonk-api binary — argon2id password hashing + verification and the signed-cookie (`feedbackmonk_session`, HMAC-SHA256) admin session. Sole source of the `AdminSession` axum extractor that gates every admin endpoint and yields the `TenantScope` flowing into every repository call (DEC-FBR-03). Contract C11.
+
 ## 1. Purpose & Responsibilities
 
 Stage 2 Worker A's admin-auth deliverable consumed by every admin

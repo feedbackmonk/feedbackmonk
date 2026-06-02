@@ -8,6 +8,10 @@ Privacy-first product feedback. Hear your users without spying on them.
 
 > **Naming note**: the project was working-named "Feedbackr" through P0 and most of P1. The name was changed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11, enacting DEC-FBR-09's squat-contingency clause after `github.com/Feedbackr` and `feedbackr.com` were found taken by an inactive squatter. Decision and requirement ID prefixes `DEC-FBR-*` / `FR-FBR-*` are stable identifiers and do NOT rename. Working-directory and Cargo-crate code-level renames are tracked as Pending Follow-Ups in `CLAUDE.md`.
 
+## Synopsis
+
+Repository root of feedbackmonk — a privacy-first open-source SaaS feedback platform ("Plausible Analytics for product feedback"): submission widget + status-workflow triage + public roadmap with voting + status emails, multi-product per tenant. Rust backend (`crates/`), React admin UI (`admin-ui/`), vanilla-TS embeddable widget (`widget/`), Astro marketing site (`marketing/`), Postgres migrations (`migrations/`), self-host docker stack (`deploy/docker/`). Start with `docs/specs/SPECIFICATION.md` and `CLAUDE.md`.
+
 ---
 
 ## What this is

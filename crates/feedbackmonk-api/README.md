@@ -1,25 +1,50 @@
 # feedbackmonk-api
 
-<!-- agent-synopsis -->
-HTTP surface of feedbackmonk. Stage 1 ships a placeholder binary binding `FEEDBACKMONK_PORT` (default 14304); Stage 2 Workers A and B add the real router tree.
-<!-- /agent-synopsis -->
+## Synopsis
+
+The HTTP surface of feedbackmonk (FR-FBR-02..18) — axum router + handlers mounted on the `feedbackmonk-repository` trait surface. Holds the full endpoint tree: signup/verify-email, projects, signing-keys, public feedback submission, end-user "my feedback", attachments, admin feedback triage, tier status, widget-config, public+admin roadmap, promote-to-roadmap, and health. Binds `FEEDBACKMONK_PORT` (default 14304). Open the File Index below to find the handler for an endpoint.
 
 ## Purpose & Responsibilities
 
-`feedbackmonk-api` will hold the axum router, request/response shapes (via `feedbackmonk-core` records), and the HTTP handlers that mount on top of the `feedbackmonk-repository` trait surface. In Stage 1 it is a **placeholder**: a single-route axum app and a library function used to demonstrate the workspace links together cleanly.
+`feedbackmonk-api` holds the axum router, request/response shapes (via `feedbackmonk-core` records), and the HTTP handlers that mount on top of the `feedbackmonk-repository` trait surface. It is built as both a library (exposing the composed router + `AppState` so integration tests wire the same router the binary uses) and a binary (`main.rs`). The full router tree spanning P1–P4 is now in place; the original Stage-1 placeholder note is preserved in the Decision Log below for historical context.
 
 ## File Index
 
+### Top-level (`src/`)
+
 | File | Purpose |
 |---|---|
-| `src/lib.rs` | Crate root. Exports the router composers + shared state/error/auth surface. |
-| `src/main.rs` | Binary entrypoint. Reads `FEEDBACKMONK_PORT` (default `14304`), binds axum on `127.0.0.1`, composes the full router tree. |
-| `src/handlers/` | HTTP handler families — see `handlers/README.md` for the per-endpoint file index. |
-| `src/crash_correlation.rs` | **GitCellar parity gap #2.** Best-effort pull-mode crash-event correlation worker. Runs OFF the submit hot path: a Glitchtip outage degrades correlation to null, it never fails a submission. Populates `feedback.crash_event_id` (migration `00010`). |
-| `src/storage.rs` | **GitCellar parity gap #1.** Attachment storage abstraction: `LocalFs` (dev/self-host) + `S3` (SigV4-signed) backends behind one trait. Consumed by `handlers/attachments.rs` via the `AttachmentState` sub-state. |
+| `src/lib.rs` | Crate root. Declares the modules (`auth`, `crash_correlation`, `email`, `error`, `handlers`, `roadmap_voting_cache`, `router`, `state`, `storage`) and exposes the composed router + `AppState` so integration tests wire the same router the binary uses. |
+| `src/main.rs` | Binary entrypoint. Loads env, connects Postgres, builds repo handles + env-selected mailer, constructs `AppState`, composes the full router tree, binds `FEEDBACKMONK_PORT` (default `14304`) and serves. |
+| `src/router.rs` | Composes the Worker A subtree (signup, verify-email, projects, signing-keys). Other handler modules expose their own routers that `main.rs` merges into the single binary `Router`. |
+| `src/state.rs` | `AppState` — the shared application context cloned into every handler via axum's `State` extractor. Holds the pool, `Arc<dyn _Repo>` handles (swappable for test fakes), env-selected mailer, session secret, and the voting cache. |
+| `src/error.rs` | `ApiError` — the single HTTP error type handlers return. Maps repository / validation / auth failures to status codes and implements `IntoResponse` so handlers can `?` freely. |
+| `src/auth/` | Admin authentication submodule — argon2id password hashing + signed-cookie admin session. See `auth/README.md`. |
+| `src/email/` | Outbound email submodule — `Mailer` trait + Mailpit (dev) / SMTP-env (prod) impls + template renderers. See `email/README.md`. |
+| `src/handlers/` | HTTP handler families — see `handlers/README.md` and the sub-table below. |
+| `src/roadmap_voting_cache.rs` | 60-second in-process per-project voting-cache aggregator (Contract C15). Held in `AppState`; refreshed by a background tokio task; consumed by the public-roadmap top-voted endpoint. Pattern adapted from `gitcellar-cloud/src/feedback/roadmap_voting.rs`. |
+| `src/crash_correlation.rs` | **GitCellar parity gap #2.** Best-effort pull-mode crash-event correlation worker. Runs OFF the submit hot path: a Glitchtip outage degrades correlation to null, it never fails a submission. Resolves `feedback.crash_event_id` (migration `00010`) to crash detail for the Desktop crash-link banner. |
+| `src/storage.rs` | **GitCellar parity gap #1.** Attachment storage abstraction: `LocalFsStorage` (dev/self-host default) + `S3Storage` (hand-rolled SigV4, S3/MinIO) behind one trait, env-selected via `from_env`. Consumed by `handlers/attachments.rs`. |
 | `Cargo.toml` | Depends on `axum`, `tokio`, `tracing`, `feedbackmonk-core`, `feedbackmonk-repository`, `feedbackmonk-jwt`, `feedbackmonk-anon`, multipart + S3/SigV4 deps. |
 
-> **File-index drift note** (surfaced during convergence): this index predates most of P1–P4 and still reads as the Stage-1 placeholder. Modules built across earlier phases (`auth/`, `email/`, `state.rs`, `error.rs`, `router.rs`, the existing `handlers/` set) are not all listed here. Pre-existing gap, out of this convergence's session scope — flagged in `docs/specs/DISCOVERIES.md` for a follow-up crate-README refresh.
+### Handlers (`src/handlers/`)
+
+| File | Purpose |
+|---|---|
+| `mod.rs` | Module declarations for the handler families (Worker A onboarding + Worker B public/admin endpoints). |
+| `health.rs` | `GET /health` (always 200; liveness + DB ping + version + uptime, `status` flips to `"degraded"` on DB failure) and `GET /health/ready` (200 healthy / 503 otherwise). FR-FBR-18, Contract C5. |
+| `signup.rs` | `POST /api/v1/signup` — tenant signup: validate, argon2id-hash, create pending-verification tenant (409 on conflict), mint + store verify token, send verify email, return 202. FR-FBR-02. |
+| `verify_email.rs` | `POST /api/v1/verify-email` — redeem a verify token: first redemption marks used + sets `verified_at` + mints session cookie; replay-window second hit re-mints; expired or post-window → 410 Gone. FR-FBR-02. |
+| `projects.rs` | `POST /api/v1/projects` (create) + `GET /api/v1/projects` (list). Admin-session-gated; the session's `TenantScope` enforces the tenant boundary at the type level. |
+| `signing_keys.rs` | `POST` (register) + `DELETE` (mark inactive) under `…/projects/{id}/signing-keys`. Contract C4: customer registers only the PUBLIC Ed25519 key (32 raw bytes, base64-encoded). DEC-FBR-04. |
+| `feedback.rs` | `POST /api/v1/projects/{id}/feedback` — public submission endpoint. Auth-mode dispatch on the `Authorization` header (JWT-verified authenticated vs. anonymous rate-limited). FR-FBR-03/05/06, Contract C3. |
+| `me_feedback.rs` | `GET …/me/feedback` + `GET …/me/feedback/{fb}/thread` — end-user (JWT-`sub`-scoped) read surface (GitCellar parity gap #4). No schema change; reads existing `feedback.end_user_sub` + public-visibility replies. |
+| `attachments.rs` | `POST …/feedback/{id}/attachments` — multipart attachment upload (Gap #1). `files[]` image parts (≤4, ≤5 MB, png/jpeg/webp, magic-byte sniffed) + optional `service_log`/`console_log` text parts. Stores via `storage.rs`. |
+| `admin_feedback.rs` | Admin feedback endpoints (Contracts C7 + C8) behind `AdminSession`: status `transition`, `reply`, list, and detail — all inside the session's resolved `TenantScope` (DEC-FBR-03). |
+| `admin_tier.rs` | `GET /api/v1/admin/tier` — read-only tier-status endpoint: current tier + static Contract-C19 quotas + live usage (projects count + rolling-30d feedback count + `period_start`). P3, FR-FBR-14, Contract C17. |
+| `widget_config.rs` | `GET …/projects/{id}/widget-config` — public (no-auth) endpoint returning the widget's runtime config; `project_id` is the widget's public key. Contract C12. |
+| `roadmap.rs` | Public + admin roadmap handlers (8 endpoints split across two routers). Public roadmap + voting + admin item management. Contract C15, FR-FBR-11/13. |
+| `promote.rs` | Admin one-shot promote-to-roadmap action — adds a `roadmap_items` row, atomically transitions the source feedback to `Duplicate` (`transition_reason = "promoted to roadmap"`); idempotent on `roadmap_items.origin_feedback_id` UNIQUE. FR-FBR-12, Contract C16. |
 
 ## Public API & Usage
 

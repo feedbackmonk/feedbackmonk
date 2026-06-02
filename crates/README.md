@@ -1,8 +1,8 @@
 # crates
 
-<!-- agent-synopsis -->
-feedbackmonk's Rust workspace crates. Three crates ship at P0 Stage 1 (`-core`, `-repository`, `-api`); two more land in Stage 2 (`-jwt`, `-anon`).
-<!-- /agent-synopsis -->
+## Synopsis
+
+feedbackmonk's Rust workspace crates, layered data → DB → HTTP and enforced at the crate-dependency level: `feedbackmonk-core` (pure domain types), `feedbackmonk-repository` (the SOLE query path, DEC-FBR-03), `feedbackmonk-api` (HTTP surface), plus `feedbackmonk-jwt` (EdDSA verifier), `feedbackmonk-anon` (anonymous-mode rate limiter), and `feedbackmonk-tracing` (PII-scrubbing log chokepoint). Open this directory's `Layout` table to pick the right crate.
 
 ## Purpose
 

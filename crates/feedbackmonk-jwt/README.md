@@ -10,12 +10,9 @@ Agent Context Header (ULADP):
 
 # feedbackmonk-jwt
 
-> **Synopsis**: EdDSA-only JWT verifier for the public submission endpoint.
-> Single public function (`verify` / `verify_with_leeway`) consuming the
-> end-user token signed by the customer's auth service (Contract C2).
-> Algorithm allow-list rejects `alg=none` + `alg=HS256` before any
-> signature work; `aud` precedes signature check so wrong-audience tokens
-> fail fast without leaking key-validity signal.
+## Synopsis
+
+EdDSA-only JWT verifier for the public submission endpoint (Contract C2, FR-FBR-05). Pure computation crate — no async, no I/O, no DB. Single public function (`verify` / `verify_with_leeway`) consuming the end-user token signed by the customer's auth service — the ONLY identity feedbackmonk ever has for an auth-mode submitter (DEC-FBR-04). Algorithm allow-list rejects `alg=none`/`HS256` before any signature work; `aud` is checked before signature so wrong-audience tokens fail fast.
 
 ## 1. Purpose & Responsibilities
 

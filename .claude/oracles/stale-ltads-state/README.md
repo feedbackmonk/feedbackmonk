@@ -1,6 +1,8 @@
 # stale-ltads-state oracle
 
-> Reflective leg of CSI Phase 1.6's three-leg session-end cleanup defense (CSI-12 hook + CSI-13 GC coupling + **CSI-14 this oracle**). Surfaces inconsistencies between `ltads/sessions/current-session.md` and `.claude/collaboration/active-sessions.json` that slipped through the proactive (SessionEnd) and reactive (GC sweep) defenses. Briefing line is gracefully absent when state is consistent.
+## Synopsis
+
+Reflective leg of CSI Phase 1.6's three-leg session-end cleanup defense (CSI-12 hook + CSI-13 GC coupling + CSI-14 this oracle). Surfaces inconsistencies between `ltads/sessions/current-session.md` and `.claude/collaboration/active-sessions.json` that slipped through the proactive (SessionEnd) and reactive (GC sweep) defenses, emitting `[stale-ltads-state]` at session start. Gracefully absent when state is consistent.
 
 ## Purpose & Responsibilities
 

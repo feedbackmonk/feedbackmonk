@@ -1,15 +1,8 @@
 # marketing/ — feedbackmonk Marketing Site
 
-<!-- Agent Context Header (ULADP) -->
-**Synopsis (1-5 lines)**:
-Greenfield Astro static site (built at P4 Stage 2 — collab-20260514-170323)
-serving `feedbackmonk.com` (PF-REGISTER-01 cleared — org + domain registered; site not yet deployed to the domain). Seven pages per
-Contract C23 — home / pricing / docs index + widget + api + self-host /
-Show HN draft. Pricing tiers are sourced **at build time** from
-`feedbackmonk-core::tier::tier_quotas()` via a Rust→JSON prebuild step
-(DEC-FBR-IMPL-05). Self-hosted Inter + JetBrains Mono fonts (no Google
-CDN — BRAND.md mandate extending DEC-FBR-02). Zero third-party trackers —
-verified by `grep dist/` on every build.
+## Synopsis
+
+Greenfield Astro static site (built at P4 Stage 2) serving `feedbackmonk.com` — seven pages per Contract C23 (home / pricing / docs index + widget + api + self-host / Show HN draft). Pricing tiers are sourced at build time from `feedbackmonk-core::tier::tier_quotas()` via a Rust→JSON prebuild step (DEC-FBR-IMPL-05). Self-hosted Inter + JetBrains Mono fonts and zero third-party trackers (BRAND.md, extending DEC-FBR-02). Org + domain registered (PF-REGISTER-01); not yet deployed to the domain.
 
 ## Purpose & Responsibilities
 

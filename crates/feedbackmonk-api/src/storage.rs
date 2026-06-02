@@ -5,17 +5,17 @@
 //!     directory (a docker volume in the self-host compose stack). This is the
 //!     default backend and needs no external service. (Recommended for the
 //!     GitCellar customer-#1 self-host path, PF-DEPLOY-01.)
-//!   - **SaaS / MinIO**: `S3Storage` — PUTs objects to any S3-compatible
-//!     endpoint via AWS SigV4. Works against AWS S3 and MinIO alike (set
-//!     `FEEDBACKMONK_S3_ENDPOINT` + path-style for MinIO).
+//!   - **`SaaS` / `MinIO`**: `S3Storage` — PUTs objects to any S3-compatible
+//!     endpoint via AWS `SigV4`. Works against AWS S3 and `MinIO` alike (set
+//!     `FEEDBACKMONK_S3_ENDPOINT` + path-style for `MinIO`).
 //!
 //! Backend selection + configuration is env-driven (`from_env`); every var is
 //! catalogued in `docs/operations/SELFHOST_ENV.md` (Contract C21).
 //!
-//! ## Why a hand-rolled SigV4 (not `aws-sdk-s3`)
+//! ## Why a hand-rolled `SigV4` (not `aws-sdk-s3`)
 //!
 //! The AWS SDK pulls ~50 crates and meaningfully slows the workspace build.
-//! Attachments need exactly one S3 verb (PUT object). The SigV4 signer here is
+//! Attachments need exactly one S3 verb (PUT object). The `SigV4` signer here is
 //! ~80 lines and is unit-tested against AWS's published GET test vector
 //! (`sigv4_matches_aws_documented_example`), so the signing chain
 //! (canonical request → string-to-sign → derived key → signature) is verified
@@ -159,7 +159,7 @@ pub struct S3Config {
     pub secret_access_key: String,
     /// Base URL for returned object URLs. `None` → derived from endpoint+bucket.
     pub public_base_url: Option<String>,
-    /// Path-style addressing (`{endpoint}/{bucket}/{key}`). Required for MinIO.
+    /// Path-style addressing (`{endpoint}/{bucket}/{key}`). Required for `MinIO`.
     pub force_path_style: bool,
 }
 
@@ -361,7 +361,7 @@ impl SigV4<'_> {
         )
     }
 
-    /// Derive the SigV4 signing key for `datestamp`.
+    /// Derive the `SigV4` signing key for `datestamp`.
     fn signing_key(&self, datestamp: &str) -> Vec<u8> {
         let k_secret = format!("AWS4{}", self.secret_key);
         let k_date = hmac_sha256(k_secret.as_bytes(), datestamp.as_bytes());
@@ -455,7 +455,7 @@ mod tests {
         assert_eq!(uri_encode_path("/k/uuid.png"), "/k/uuid.png");
     }
 
-    /// AWS SigV4 test-suite `get-vanilla` vector. Reproducing its signature
+    /// AWS `SigV4` test-suite `get-vanilla` vector. Reproducing its signature
     /// proves the entire signing chain: canonical request → string-to-sign →
     /// derived signing key → HMAC. The expected value below is the published
     /// `get-vanilla` signature, independently re-derived with a stdlib Python

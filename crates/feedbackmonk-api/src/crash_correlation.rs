@@ -208,16 +208,15 @@ impl CrashCorrelator for GlitchtipCorrelator {
             return CorrelationOutcome::NotFound;
         }
 
-        let resp = match self
+        let Ok(resp) = self
             .http
             .get(self.event_url(id))
             .bearer_auth(&self.token)
             .send()
             .await
-        {
-            Ok(r) => r,
+        else {
             // Network failure / timeout / DNS — tracker unreachable.
-            Err(_) => return CorrelationOutcome::Unavailable,
+            return CorrelationOutcome::Unavailable;
         };
 
         let status = resp.status();
@@ -229,9 +228,8 @@ impl CrashCorrelator for GlitchtipCorrelator {
             return CorrelationOutcome::Unavailable;
         }
 
-        let body = match resp.text().await {
-            Ok(b) => b,
-            Err(_) => return CorrelationOutcome::Unavailable,
+        let Ok(body) = resp.text().await else {
+            return CorrelationOutcome::Unavailable;
         };
 
         match Self::parse_event(id, &body) {
@@ -247,7 +245,7 @@ impl CrashCorrelator for GlitchtipCorrelator {
 
 /// In-memory mock correlator (Task Zero "mock Glitchtip"): canned events keyed
 /// by `crash_event_id`, plus a switch to simulate the tracker being down. Lets
-/// consumers test best-effort handling (Linked / NotFound / Unavailable)
+/// consumers test best-effort handling (`Linked` / `NotFound` / `Unavailable`)
 /// without any network. Exposed under `#[cfg(test)]` only — never compiled into
 /// the production binary.
 #[cfg(test)]

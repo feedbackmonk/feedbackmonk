@@ -1,5 +1,9 @@
 # Oracle: `feedback-parity-status`
 
+## Synopsis
+
+Integration Verification Oracle reporting which of the four GitCellar customer-#1 parity gaps (attachments, crash-correlation, full-text search, end-user reads) are closed in this codebase, and whether the GitCellar cutover gate is OPEN. The convergence gate for GitCellar's Path-C adoption of feedbackmonk. Come here before asserting GitCellar can cut over.
+
 **Kind**: Verification Oracle · **Category**: integration · **Gate exit codes**: 0 open / 3 closed / 2 error
 
 ## Question

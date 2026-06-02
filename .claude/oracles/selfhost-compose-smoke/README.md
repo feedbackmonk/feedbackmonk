@@ -8,6 +8,10 @@ do its application env-var references match the canonical C21 catalog in
 `docker compose down -v && up -d` from a clean state bring the stack to
 HTTP 200 on `/health/ready` within 90s?
 
+## Synopsis
+
+Verification Oracle (P4 Task Zero) defending FR-FBR-17 self-host distribution: `deploy/docker/docker-compose.yml` parses cleanly, its app env-var references match the canonical C21 catalog (`docs/operations/SELFHOST_ENV.md`), and (with `--full`) a clean `down -v && up -d` reaches HTTP 200 on `/health/ready` within 90s. Re-run after editing the compose file or the env catalog.
+
 ## Probes
 
 ### Probe A — yaml-lint

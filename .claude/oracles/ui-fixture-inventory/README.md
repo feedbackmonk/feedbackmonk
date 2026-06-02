@@ -1,6 +1,8 @@
 # `ui-fixture-inventory` Oracle
 
-> **Synopsis**: Project-state oracle answering *"what fixture/smoke-test infrastructure does this project have, and what conventions are in use?"* Composes with `ui-surface-detector` (ARIA-02) for the upstream "is there UI?" question; this oracle answers the downstream "is there fixture infrastructure?" question. Consumed by `/0-uldf-ldis-plan` Phase 4 testability gate Q4 (scaffolding-leverage scoring) and surfaced as `[fixture-inventory]` in the session-start ORACLE BRIEFING for surface-with-no-fixtures projects.
+## Synopsis
+
+Project-state oracle answering *"what fixture/smoke-test infrastructure does this project have, and what conventions are in use?"* Composes with `ui-surface-detector` (ARIA-02, the upstream "is there UI?" question) to answer the downstream "is there fixture infrastructure?" question. Consumed by `/0-uldf-ldis-plan` Phase 4 testability gate Q4 and surfaced as `[fixture-inventory]` in the session-start ORACLE BRIEFING.
 
 ## Purpose & Responsibilities
 

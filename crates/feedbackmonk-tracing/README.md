@@ -1,11 +1,8 @@
 # feedbackmonk-tracing
 
-> **Synopsis**: PII-scrubbing `tracing-subscriber` chokepoint (FR-FBR-10). All
-> log emissions from the feedbackmonk binary pass through the canonical
-> 20-pattern PII scrubber at the WRITE boundary. `install_global_subscriber`
-> is the sole public entry point; the `pii-scrub-audit` Verification Oracle
-> enforces "no other tracing-subscriber setup anywhere in the workspace" at
-> AST-grade.
+## Synopsis
+
+PII-scrubbing `tracing-subscriber` chokepoint (FR-FBR-10). All log emissions from the feedbackmonk binary pass through the canonical 20-pattern PII scrubber at the WRITE boundary. `install_global_subscriber` is the sole public entry point; the `pii-scrub-audit` Verification Oracle enforces "no other tracing-subscriber setup anywhere in the workspace" at AST grade.
 
 ## Purpose & Responsibilities
 

@@ -960,7 +960,7 @@ mod tests {
         for i in 0..3 {
             repo.submit_anonymous(
                 &scope,
-                &[i as u8; 32],
+                &[u8::try_from(i).unwrap(); 32],
                 None,
                 "shared keyword in every row",
                 FeedbackKind::Other,

@@ -9,6 +9,10 @@ before its first write OR appear in the allowlist? Does `tier_quotas()` in
 shape per `Tier` variant? With `--full`: do the end-to-end cap-firing
 smoke tests pass?
 
+## Synopsis
+
+Verification Oracle (P3 Task Zero) defending FR-FBR-14 tier enforcement: every domain-write handler under `crates/feedbackmonk-api/src/handlers/` either consults `check_tier_quota()` before its first write or is allowlisted, and `tier_quotas()` in `feedbackmonk-core::tier` returns the Contract C19 canonical shape per `Tier`. `--full` runs the end-to-end cap-firing smoke trio. Re-run after touching tier logic or adding a write handler.
+
 ## Probes
 
 ### Probe A — Handler tier-cap coverage (AST scan)

@@ -1,5 +1,9 @@
 # project-runtime-state Oracle
 
+## Synopsis
+
+Project-state oracle (WT-05, DEC-61) answering whether this project has live dev servers, shared build artifacts, file watchers, or stateful runtimes that would conflict under PODS worktree isolation. Consulted by `/0-uldf-pods-parallelize --worktrees` before deciding worktree-per-worker isolation is safe. Come here for the worktree-safety signal, not for general runtime status.
+
 **Kind**: project-state
 **Spec**: WT-05 in `docs/specs/SPECIFICATION.md`
 **Decision**: DEC-61 in `docs/specs/DECISIONS.md`

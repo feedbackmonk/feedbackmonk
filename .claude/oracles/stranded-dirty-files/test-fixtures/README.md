@@ -1,6 +1,8 @@
 # stranded-dirty-files fixtures
 
-> Synopsis — Five representative scenarios covering the strand classes the oracle must classify correctly. Inputs are git working-tree state + registry contents — not check-inable as static trees, so the `validate.{sh,ps1}` scripts build sandboxes inline using the patterns documented here.
+## Synopsis
+
+Five representative scenarios covering the strand classes the parent oracle must classify correctly. Inputs are git working-tree state + registry contents — not check-inable as static trees, so the `validate.{sh,ps1}` scripts build sandboxes inline using the patterns documented here. Test-input data, not a runtime module.
 
 ## Purpose
 

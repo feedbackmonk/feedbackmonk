@@ -1,13 +1,8 @@
 # widget/ — feedbackmonk embeddable widget
 
-<!-- Agent Context Header (ULADP) -->
-**Synopsis (1-5 lines)**:
-Greenfield vanilla-TS+CSS embeddable widget that customer sites load via a
-`<script type="module" data-project-id="...">` tag. Mounts a launcher button
-+ accessible modal that fetches widget-config (Contract C12) once on mount,
-then POSTs feedback to the P0 submission endpoint. Hard-capped at 30 KiB
-total bundle, zero third-party trackers (both enforced as code-level
-invariants by the `widget-bundle-size` Verification Oracle).
+## Synopsis
+
+Greenfield vanilla-TS+CSS embeddable widget that customer sites load via a `<script type="module" data-project-id="...">` tag. Mounts a launcher button + accessible modal that fetches widget-config (Contract C12) once on mount, then POSTs feedback to the submission endpoint. Hard-capped at 30 KiB total bundle and zero third-party trackers — both enforced as code-level invariants by the `widget-bundle-size` Verification Oracle (FR-FBR-04, DEC-FBR-02).
 
 ## Purpose & Responsibilities
 

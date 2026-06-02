@@ -10,11 +10,9 @@ Agent Context Header (ULADP):
 
 # feedbackmonk-anon
 
-> **Synopsis**: Anonymous-mode rate-limit gate for the public submission
-> endpoint (FR-FBR-06). In-memory governor keyed on `(BLAKE3(ip, cookie,
-> project_id), project_id)`; per-(bucket, project) hourly quota with
-> `Retry-After`-friendly exceedance reporting. No persistence — restarts
-> reset buckets (acceptable per the P0 threat model).
+## Synopsis
+
+Anonymous-mode rate-limit gate for the public submission endpoint (FR-FBR-06). In-memory governor keyed on `(BLAKE3(ip, cookie, project_id), project_id)`; per-(bucket, project) hourly quota with `Retry-After`-friendly exceedance reporting. No persistence — restarts reset buckets (acceptable per the P0 threat model). Contract C3.
 
 ## 1. Purpose & Responsibilities
 

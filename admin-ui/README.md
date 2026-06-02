@@ -3,6 +3,10 @@
 > feedbackmonk tenant-admin web UI — triage, transition, and reply.
 > React 18 + Vite 5 + TypeScript 5 + TanStack Query.
 
+## Synopsis
+
+The tenant-admin web UI for feedbackmonk — a React 18 + Vite 5 + TypeScript SPA (port 14204, `strictPort`) consuming the `feedbackmonk-api` backend. Lets admins log in, browse a status-filtered paginated feedback list, open a feedback drawer (body + status history + replies), reply (public/internal), and transition status along legal transitions. Consumes Contracts C7/C8 + the tier-settings page (C17). Open `src/pages/` and `src/components/` for the screens and building blocks.
+
 ## Purpose & Responsibilities
 
 Browser-facing UI that consumes Contracts C7 (transition + reply) and C8 (list + detail) from the `feedbackmonk-api` Rust backend. Lets tenant admins:

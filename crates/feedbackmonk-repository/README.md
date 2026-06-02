@@ -1,8 +1,8 @@
 # feedbackmonk-repository
 
-<!-- agent-synopsis -->
-The SOLE query path for feedbackmonk domain data. Tenant-scoped repository layer per DEC-FBR-03; raw SQL anywhere else is a security incident. Built in P0 Stage 1 per FR-FBR-01 + Contract C1.
-<!-- /agent-synopsis -->
+## Synopsis
+
+The SOLE path from application code to the database — every domain read/write goes through a tenant-scoped repository trait here (DEC-FBR-03; raw SQL anywhere else is a security incident enforced at AST grade by the `multi-tenant-isolation-check` oracle). Open it to add or change a query, or to understand the tenant-isolation defense. FR-FBR-01, Contract C1.
 
 ## Purpose & Responsibilities
 

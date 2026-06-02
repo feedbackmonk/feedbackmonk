@@ -9,6 +9,10 @@ Agent Context Header (ULADP):
 
 # components/ — admin UI reusable components
 
+## Synopsis
+
+Reusable presentational + small-interaction React components shared across admin pages (`ReplyComposer`, `StatusBadge`, `StatusControls`, `Toast`, `SearchBox`). Each is self-contained — receives data/callbacks via props, emits intent upward, and owns no routing or data-fetching. WCAG affordances are encoded directly (color never carries meaning alone). Open it to find a building block before composing a page.
+
 ## 1. Purpose & Responsibilities
 
 Presentational and small-interaction React components shared across admin

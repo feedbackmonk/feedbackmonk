@@ -24,6 +24,8 @@
 //! `tracing_subscriber` setup — it exercises only the public scrub + storage
 //! surface.
 
+use std::fmt::Write as _;
+
 use feedbackmonk_api::scrub_log_for_storage;
 use feedbackmonk_api::storage::{LocalFsStorage, ObjectStore};
 use sha2::{Digest, Sha256};
@@ -69,7 +71,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
     let digest = h.finalize();
     let mut out = String::with_capacity(digest.len() * 2);
     for b in digest {
-        out.push_str(&format!("{b:02x}"));
+        write!(out, "{b:02x}").unwrap();
     }
     out
 }
@@ -120,9 +122,9 @@ fn each_corpus_sample_is_scrubbed_of_its_pii() {
     }
 }
 
-/// Corpus probe (end-to-end) — scrub → LocalFsStorage → read-back: the bytes on
+/// Corpus probe (end-to-end) — scrub → `LocalFsStorage` → read-back: the bytes on
 /// disk carry NONE of the corpus's PII tokens, individually OR when all log
-/// lines are captured together (a realistic mixed console_log).
+/// lines are captured together (a realistic mixed `console_log`).
 #[tokio::test]
 async fn stored_log_bytes_contain_no_pii() {
     let tmp = std::env::temp_dir().join(format!("fbm-pii-corpus-{}", std::process::id()));
