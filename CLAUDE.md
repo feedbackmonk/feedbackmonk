@@ -129,14 +129,16 @@ Completed by user action (verified 2026-06-02 via `gh api`):
 
 ### PF-DEPLOY-01: Stand up a reachable feedbackmonk instance for the GitCellar integration (decision + ops)
 
-**Trigger**: when wiring GitCellar (customer #1) to embed the feedbackmonk widget.
+**Status (2026-06-03): decision MADE (self-host) and feedbackmonk-api DEPLOYED + LIVE.** The instance runs on GitCellar's Railway at `https://feedback.gitcellar.com` (`/health/ready` 200, verified live 2026-06-03; project `a1350be8-…`, tenant `triage@gitcellar.com`, anon submit verified, `FEEDBACKMONK_CORS_ORIGINS` set). **No feedbackmonk feature or deploy work remains** — the admin-ui re-auth gap that was the last feedbackmonk dev item is also closed (`POST /api/v1/login`, DEC-FBR-IMPL-10). What's left is **GitCellar-side ops, not this repo**: re-publish the gitcellar.com landing at launch (currently reverted to placeholder per user direction) + Stage 3 Desktop JWT cutover. **Authoritative resume record**: `docs/planning/feedbackmonk-deploy-state.md` (this repo's pointer) → GitCellar repo's `docs/planning/feedbackmonk-deploy-state.md` (commit `82eaf2ebea`) for the full IDs, WCM credential names, and re-publish command.
 
-The v1 code is content-complete and the full embed→auth→submit loop is built and tested — GitCellar needs **no further feedbackmonk feature work**. What it needs is a *running, reachable* instance. Two hosting models (decision pending — depends on infra preference):
+**Original trigger** (now fired): when wiring GitCellar (customer #1) to embed the feedbackmonk widget.
 
-- **Self-host (recommended for GitCellar-ASAP)**: GitCellar runs the stack via `docker compose up` (FR-FBR-17, smoke-tested to `/health/ready`) on a GitCellar-controlled host (e.g. `feedback.gitcellar.com`). Widget `<script src>` + API base point there. **Does NOT require `feedbackmonk.com` to be live.** Runbook: `docs/operations/SELFHOST.md` + `SELFHOST_ENV.md`.
-- **SaaS**: deploy feedbackmonk behind `api.feedbackmonk.com` + `cdn.feedbackmonk.com`; point `feedbackmonk.com` DNS at it. More infra/ops; needed only if feedbackmonk is offered as a hosted service rather than self-hosted by GitCellar.
+The two hosting models that were on the table (self-host was chosen):
 
-Integration handshake either way (all built): customer signs up → gets `project_id` → registers an Ed25519 **public** key (`POST /api/v1/projects/{id}/signing-keys`, Contract C4) → mints EdDSA JWTs (`sub`/`iat`/`exp`/`aud`=project_id; Contract C2) → embeds widget with `data-project-id` + `data-jwt`.
+- **Self-host (CHOSEN + EXECUTED)**: GitCellar runs the stack on its existing Railway (reusing its Postgres — `docs/operations/RAILWAY_GITCELLAR.md`), `docker compose up` for vanilla self-host (FR-FBR-17, smoke-tested to `/health/ready`). **Does NOT require `feedbackmonk.com` to be live.** Runbooks: `docs/operations/SELFHOST.md` + `SELFHOST_ENV.md`.
+- **SaaS (not pursued for GitCellar)**: deploy feedbackmonk behind `api.feedbackmonk.com` + `cdn.feedbackmonk.com`; point `feedbackmonk.com` DNS at it. Only needed if feedbackmonk is later offered as a hosted service rather than self-hosted by GitCellar.
+
+Integration handshake (all built + exercised): customer signs up → gets `project_id` → registers an Ed25519 **public** key (`POST /api/v1/projects/{id}/signing-keys`, Contract C4) → mints EdDSA JWTs (`sub`/`iat`/`exp`/`aud`=project_id; Contract C2) → embeds widget with `data-project-id` + `data-jwt`.
 
 The separate Astro **marketing site** (`feedbackmonk.com` landing page, FR-FBR-16) is product marketing — not required for GitCellar's functional integration.
 
