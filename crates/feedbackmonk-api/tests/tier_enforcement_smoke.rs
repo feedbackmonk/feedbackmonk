@@ -86,6 +86,7 @@ fn build_test_state(pool: &PgPool, anon_quota: u32) -> AppState {
         // High anon quota so the rate-limit gate doesn't fire before the
         // tier-cap predicate does (scenario 2 needs ~51 submissions).
         anon_gate: AnonGate::new(NonZeroU32::new(anon_quota).unwrap()),
+        login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
         jwt_iat_leeway_seconds: 5,
         roadmap_items: Arc::new(SqlxRoadmapItemRepo::new(pool.clone())),
         roadmap_votes: Arc::new(SqlxRoadmapVoteRepo::new(pool.clone())),

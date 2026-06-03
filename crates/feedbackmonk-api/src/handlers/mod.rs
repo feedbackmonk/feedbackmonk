@@ -6,6 +6,10 @@ pub mod signing_keys;
 pub mod signup;
 pub mod verify_email;
 
+// Admin (tenant) password login -- re-auth after the verify-email session
+// lapses (DEC-FBR-IMPL-10, post-v1 GitCellar admin-dashboard enabler).
+pub mod login;
+
 // Worker B's endpoint (public submission API, FR-FBR-03/05/06).
 pub mod feedback;
 

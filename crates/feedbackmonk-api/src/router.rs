@@ -6,13 +6,17 @@
 use axum::routing::{delete, get, post};
 use axum::Router;
 
-use crate::handlers::{health, projects, signing_keys, signup, verify_email};
+use crate::handlers::{health, login, projects, signing_keys, signup, verify_email};
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/signup", post(signup::signup))
         .route("/api/v1/verify-email", post(verify_email::verify))
+        // Admin password login -- re-auth after the one-time verify-email
+        // session lapses (DEC-FBR-IMPL-10). ConnectInfo-dependent (rate-limit
+        // bucket keys on client IP); served via into_make_service_with_connect_info.
+        .route("/api/v1/login", post(login::login))
         .route(
             "/api/v1/projects",
             post(projects::create).get(projects::list),

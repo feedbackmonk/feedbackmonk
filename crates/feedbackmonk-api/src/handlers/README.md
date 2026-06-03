@@ -42,6 +42,7 @@ and respects three load-bearing patterns:
 | `mod.rs` | — | Module surface. `pub mod` for each handler. |
 | `signup.rs` | `POST /api/v1/signup` | Tenant signup (FR-FBR-02). 202 + tenant_id; mailer queues verify-email; 409 on duplicate email. |
 | `verify_email.rs` | `POST /api/v1/verify-email` | Redeem verify-email token; on success, mark tenant verified + issue `feedbackmonk_session` cookie (Contract C11). |
+| `login.rs` | `POST /api/v1/login` | Admin password login (DEC-FBR-IMPL-10). email+password → same `feedbackmonk_session` cookie. Pre-argon2 `LoginGate` throttle (429), enumeration-resistant generic 401 (unknown email = wrong password, with dummy-verify timing equalization), 403 for correct-password-but-unverified. Re-auth path after the verify-email session lapses. |
 | `projects.rs` | `POST /api/v1/projects` + `GET /api/v1/projects` | Admin-gated CRUD over tenant's projects; emits the embed-snippet for the widget. |
 | `signing_keys.rs` | `POST /api/v1/projects/:id/signing-keys` + `DELETE /api/v1/projects/:id/signing-keys/:key_id` | Ed25519 public-key registration / deactivation (FR-FBR-05, Contract C4). Admin-gated, scope-bound. |
 | `feedback.rs` | `POST /api/v1/projects/:id/feedback` | Public submission endpoint (Contract C3). Auth-mode JWT dispatch + anonymous-mode rate-limit + cookie dedup. |

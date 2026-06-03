@@ -671,3 +671,37 @@ the integration test. This is the code-state guard half of DEC-FBR-04's domain a
 
 ---
 
+### DEC-FBR-IMPL-10: admin (tenant) password-login endpoint
+
+**Resolved**: 2026-06-03 (post-v1; surfaced while reconciling the GitCellar deploy state — the admin-ui triage dashboard was flagged as blocked because the only way to obtain an admin session was the one-time verify-email flow).
+
+**Context**: Signup collects a password and stores an argon2id hash (`tenants.password_hash`), but the only code path that minted an admin session cookie was `verify-email` (one-time, 7-day cookie). Once that session lapsed there was **no way to re-authenticate** — the stored password was dead weight, and the admin-ui triage dashboard could not be used after day 7. The repository groundwork was already present and built in anticipation: `TenantRepo::find_by_email` (allowlisted pre-auth in `multi-tenant-isolation-check/allowlist.toml`, with the rationale "login lookup runs before password verification"), `Tenant.password_hash` / `Tenant.verified_at`, `verify_password`, and `issue_session_cookie`. Only the API handler + route were missing.
+
+**Decision**: Add `POST /api/v1/login` (`{email, password}` → signed session cookie), minting the **same** cookie `verify-email` issues. Security properties, each chosen to match the rigor already present in signup/verify-email:
+
+1. **Pre-argon2 rate-limit (the load-bearing one).** A new `feedbackmonk_anon::LoginGate` (sibling of `AnonGate`; same `governor` substrate) keyed by `(client_ip, email)`, per-**minute** quota, default 10, env `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN`. The gate is checked **before** any password hashing. This was the decisive reason to include throttling in this slice rather than defer it: an unauthenticated endpoint that runs argon2id per request is a **CPU-exhaustion DoS vector**, not only a brute-force vector — the throttle caps both. New `AppState.login_gate` field (touched all 9 `AppState` construction sites — mechanical).
+2. **Account-enumeration resistance.** Unknown email and wrong password both return a generic **`401 unauthorized`** (never `404`). On the unknown-email path a dummy argon2 verify (`timing_equalizer_hash`, computed once with the same params as a real signup hash) runs so response timing does not distinguish "no such account" from "bad password".
+3. **Verified-gate.** A *correct* password for a not-yet-verified tenant returns **`403 forbidden`** (mirrors the `AdminSession` extractor's existing 403-for-unverified rule). This state is only revealed to a caller who already proved knowledge of the password, so it leaks nothing to an anonymous prober.
+4. **Constant-time compare.** argon2 PHC verification is constant-time (unchanged from signup).
+
+**Scope** (additive; no DB/migration/contract change — handler calls only pre-existing repo methods, so `.sqlx` cache is untouched):
+- `crates/feedbackmonk-anon/src/lib.rs` — new `LoginGate` + `DEFAULT_LOGIN_RATE_LIMIT_PER_MIN` + `LOGIN_HASH_DOMAIN_PREFIX` + 3 unit tests.
+- `crates/feedbackmonk-api/src/handlers/login.rs` (new) — the handler.
+- `crates/feedbackmonk-api/src/handlers/mod.rs` + `router.rs` — `pub mod login;` + `POST /api/v1/login` route.
+- `crates/feedbackmonk-api/src/state.rs` + `main.rs` — `login_gate` field + env wiring; 7 test-side `AppState` builders updated.
+- `crates/feedbackmonk-api/tests/handlers.rs` — 5 integration tests (happy-path → working session, wrong-password 401, unknown-email 401, unverified 403, rate-limit 429).
+- Env catalog `docs/operations/SELFHOST_ENV.md` (C21) — new `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN` row (grow-only; keeps `selfhost-compose-smoke` Probe B's compose ⊆ catalog invariant).
+
+**Backwards compatibility**: new optional env var (secure default 10/min). No existing behavior changes; verify-email continues to mint sessions exactly as before.
+
+**Deliberately deferred (recorded, not silently skipped)**:
+- *Distributed / persistent login throttle.* `LoginGate` is in-memory and resets on restart (same accepted single-instance posture as the anon limiter — see D-FBR-08). Adequate for single-instance self-host (the customer-#1 GitCellar deployment). When login moves multi-instance, back the limiter with the same store the anon limiter migrates to (Redis).
+- *IP-only / global throttle for credential-stuffing.* The `(ip, email)` key throttles targeted brute-force per account and per source IP; a pure spray across many accounts from rotating IPs is not separately capped. argon2id cost is the interim backstop. Revisit with the multi-admin work (FR-FBR-15 / `tenant_users`).
+- *Admin magic-link / password reset.* Out of scope here; password login is the v1 re-auth path. (DEC-FBR-04's "magic-link optional" is the *end-user* auth model, a different surface.)
+
+**Witnesses**: `cargo check -p feedbackmonk-anon -p feedbackmonk-api --all-targets` clean; `cargo clippy … --all-targets` clean (pedantic, deny-warnings); `multi-tenant-isolation-check` GREEN (no new unscoped repo method — reuses the already-allowlisted `find_by_email`); login unit + integration tests pass.
+
+**Rollback**: `git revert` of the change set; no DB/migration implicated.
+
+---
+

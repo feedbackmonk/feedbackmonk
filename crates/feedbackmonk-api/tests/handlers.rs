@@ -5,9 +5,11 @@
 //! verify-emails. The fake exposes the token via `latest_token()` so tests
 //! can complete the signup -> verify flow end-to-end.
 
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
 use axum::body::{to_bytes, Body};
+use axum::extract::ConnectInfo;
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{Request, StatusCode};
 use base64::engine::general_purpose::STANDARD;
@@ -89,6 +91,7 @@ fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, A
         public_url: Arc::from("http://test.local"),
         verify_token_ttl: Duration::hours(24),
         anon_gate: AnonGate::new(std::num::NonZeroU32::new(10).unwrap()),
+        login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
         jwt_iat_leeway_seconds: 5,
         // P2 fields — mechanical AppState extension per
         // docs/test-modifications/20260514-p2-appstate-roadmap-fields.md.
@@ -513,4 +516,129 @@ async fn signing_key_cross_tenant_forbidden(pool: PgPool) {
         .unwrap();
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+// ----- Login (DEC-FBR-IMPL-10) ------------------------------------------------
+
+/// Build a `POST /api/v1/login` request with a stable `ConnectInfo` peer so the
+/// handler's IP-keyed rate-limit bucket is shared across a test's attempts
+/// (`oneshot` has no real socket; the binary uses
+/// `into_make_service_with_connect_info`).
+fn login_request(email: &str, password: &str) -> Request<Body> {
+    let mut req = Request::post("/api/v1/login")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({"email": email, "password": password}).to_string()))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo::<SocketAddr>("127.0.0.1:40000".parse().unwrap()));
+    req
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn login_happy_path_issues_working_session(pool: PgPool) {
+    let mailer = Arc::new(RecordingMailer::default());
+    let (state, mailer) = build_test_state(&pool, mailer);
+    // signup_and_verify creates the tenant with password "hunter22".
+    let _ = signup_and_verify(state.clone(), &mailer, "login@example.com").await;
+    let app = router(state);
+
+    let resp = app
+        .clone()
+        .oneshot(login_request("login@example.com", "hunter22"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let cookie = extract_session_cookie(
+        resp.headers()
+            .get(SET_COOKIE)
+            .expect("Set-Cookie issued")
+            .to_str()
+            .unwrap(),
+    );
+    assert!(cookie.starts_with("feedbackmonk_session="));
+
+    // The freshly-minted cookie authenticates an admin-session-gated route.
+    let req = Request::get("/api/v1/projects")
+        .header(COOKIE, &cookie)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn login_wrong_password_yields_401(pool: PgPool) {
+    let mailer = Arc::new(RecordingMailer::default());
+    let (state, mailer) = build_test_state(&pool, mailer);
+    let _ = signup_and_verify(state.clone(), &mailer, "wp@example.com").await;
+    let app = router(state);
+    let resp = app
+        .oneshot(login_request("wp@example.com", "not-the-password"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn login_unknown_email_yields_generic_401(pool: PgPool) {
+    let mailer = Arc::new(RecordingMailer::default());
+    let (state, _) = build_test_state(&pool, mailer);
+    let app = router(state);
+    // No such account: must look identical to a wrong-password 401 (no
+    // enumeration). Returns 401, never 404.
+    let resp = app
+        .oneshot(login_request("nobody@example.com", "hunter22"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn login_unverified_tenant_with_correct_password_yields_403(pool: PgPool) {
+    let mailer = Arc::new(RecordingMailer::default());
+    let (state, _) = build_test_state(&pool, mailer);
+    let app = router(state);
+    // Signup only -- skip verify-email. Correct password, but the tenant is
+    // still pending verification, so login is forbidden (mirrors AdminSession).
+    let signup = Request::post("/api/v1/signup")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            json!({"email": "unverif@example.com", "password": "hunter22"}).to_string(),
+        ))
+        .unwrap();
+    assert_eq!(
+        app.clone().oneshot(signup).await.unwrap().status(),
+        StatusCode::ACCEPTED
+    );
+
+    let resp = app
+        .oneshot(login_request("unverif@example.com", "hunter22"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn login_rate_limit_trips_at_429_before_argon2(pool: PgPool) {
+    let mailer = Arc::new(RecordingMailer::default());
+    let (state, mailer) = build_test_state(&pool, mailer);
+    let _ = signup_and_verify(state.clone(), &mailer, "rl@example.com").await;
+    let app = router(state);
+    // build_test_state uses LoginGate::with_default_quota() = 10/min. Ten
+    // attempts pass the gate (each 401); the 11th is throttled BEFORE the
+    // argon2 verify -> 429 with Retry-After. Same IP + email = same bucket.
+    for _ in 0..10 {
+        let resp = app
+            .clone()
+            .oneshot(login_request("rl@example.com", "wrong"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+    let resp = app
+        .oneshot(login_request("rl@example.com", "wrong"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(resp.headers().get("Retry-After").is_some());
 }

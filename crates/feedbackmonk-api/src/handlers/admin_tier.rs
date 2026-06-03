@@ -130,6 +130,7 @@ mod tests {
             public_url: Arc::from("http://localhost:14304"),
             verify_token_ttl: Duration::hours(24),
             anon_gate: AnonGate::new(NonZeroU32::new(DEFAULT_RATE_LIMIT_PER_HOUR).unwrap()),
+            login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
             jwt_iat_leeway_seconds: 5,
             roadmap_items: Arc::new(SqlxRoadmapItemRepo::new(pool.clone())),
             roadmap_votes: Arc::new(SqlxRoadmapVoteRepo::new(pool.clone())),

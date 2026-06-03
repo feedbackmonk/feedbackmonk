@@ -25,7 +25,9 @@ use sqlx::PgPool;
 use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 
-use feedbackmonk_anon::{AnonGate, DEFAULT_RATE_LIMIT_PER_HOUR};
+use feedbackmonk_anon::{
+    AnonGate, LoginGate, DEFAULT_LOGIN_RATE_LIMIT_PER_MIN, DEFAULT_RATE_LIMIT_PER_HOUR,
+};
 use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
     SqlxAttachmentRepo, SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
@@ -193,6 +195,14 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         .context("FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR must be > 0")?;
     let anon_gate = AnonGate::new(anon_quota);
 
+    let login_quota: u32 = env::var("FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_LOGIN_RATE_LIMIT_PER_MIN);
+    let login_quota = NonZeroU32::new(login_quota)
+        .context("FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN must be > 0")?;
+    let login_gate = LoginGate::new(login_quota);
+
     let jwt_iat_leeway_seconds: i64 = env::var("FEEDBACKMONK_JWT_LEEWAY_SECONDS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -213,6 +223,7 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         public_url: Arc::from(public_url.as_str()),
         verify_token_ttl: Duration::hours(ttl_hours),
         anon_gate,
+        login_gate,
         jwt_iat_leeway_seconds,
         roadmap_items,
         roadmap_votes,

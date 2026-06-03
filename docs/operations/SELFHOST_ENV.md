@@ -60,6 +60,7 @@
 | Name | Required | Default | 🔒 | Semantics |
 |---|---|---|---|---|
 | `FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR` | optional | `10` | | Per-`(anon_hash, project)` hourly submissions cap for FR-FBR-06 anonymous mode. Integer ≥ 1. Higher = more permissive; lower = stricter. P3+ tier enforcement gates raises by tier. Source: `crates/feedbackmonk-api/src/main.rs:149`. |
+| `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN` | optional | `10` | | Per-`(client_ip, email)` per-**minute** attempt cap on `POST /api/v1/login` (admin password login, DEC-FBR-IMPL-10). Checked BEFORE the argon2 verify, so it caps both password brute-force and the argon2 CPU-DoS vector. Integer ≥ 1. A normal human login needs 1–2 attempts; lower = stricter. Source: `crates/feedbackmonk-api/src/main.rs`. |
 
 ### Email Delivery
 

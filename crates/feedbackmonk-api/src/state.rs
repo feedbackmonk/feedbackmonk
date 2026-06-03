@@ -12,7 +12,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
 
-use feedbackmonk_anon::AnonGate;
+use feedbackmonk_anon::{AnonGate, LoginGate};
 use feedbackmonk_repository::{
     EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo, FeedbackStatusHistoryRepo,
     ProjectRepo, RoadmapItemRepo, RoadmapVoteRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
@@ -56,6 +56,13 @@ pub struct AppState {
     /// `feedbackmonk_anon::DEFAULT_RATE_LIMIT_PER_HOUR = 10`; override via
     /// `FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR`.
     pub anon_gate: AnonGate,
+    /// Admin-login brute-force + argon2-CPU-DoS throttle (DEC-FBR-IMPL-10).
+    /// Keyed by (client-IP, email); per-minute quota. Checked BEFORE the
+    /// argon2 verify in `POST /api/v1/login` so an attacker cannot exhaust
+    /// CPU with unbounded password guesses. Default quota
+    /// `feedbackmonk_anon::DEFAULT_LOGIN_RATE_LIMIT_PER_MIN = 10`; override via
+    /// `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN`.
+    pub login_gate: LoginGate,
     /// `iat` clock-skew tolerance for the JWT verifier, in seconds. Read from
     /// `FEEDBACKMONK_JWT_LEEWAY_SECONDS` at startup; default 5s. Only `iat` is
     /// leeway-tolerant — `exp` is strict per Contract C2 invariant 5.

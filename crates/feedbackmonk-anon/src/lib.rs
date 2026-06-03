@@ -155,6 +155,93 @@ impl AnonGate {
     }
 }
 
+// ---------------------------------------------------------------------------
+// LoginGate -- brute-force + argon2-CPU-DoS throttle for admin login
+// (POST /api/v1/login, DEC-FBR-IMPL-10). Sibling of AnonGate: same governor
+// substrate, but keyed by (client_ip, email) with NO project coupling, and a
+// per-MINUTE quota (login attempts are far rarer than feedback submissions).
+// ---------------------------------------------------------------------------
+
+/// Domain-separation prefix for every `LoginGate::key_hash`. Disjoint from
+/// `HASH_DOMAIN_PREFIX` so a login bucket can never collide with an anon
+/// submission bucket. Bump the version suffix if the input layout changes.
+pub const LOGIN_HASH_DOMAIN_PREFIX: &[u8] = b"feedbackmonk-login-v1";
+
+/// Default admin-login attempts per minute, per (client-IP, email) bucket.
+/// Overridable via `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN`. Chosen low: a
+/// legitimate human login needs 1-2 attempts; 10/min leaves generous slack
+/// while capping both password brute-force and the argon2 CPU-DoS vector
+/// (each attempt below the gate costs a full argon2id verify).
+pub const DEFAULT_LOGIN_RATE_LIMIT_PER_MIN: u32 = 10;
+
+/// LoginGate key: BLAKE3 of the domain prefix + client IP + email. No project
+/// dimension (admin login is tenant-wide, not project-scoped).
+type LoginKey = [u8; 32];
+
+/// In-memory keyed rate limiter for admin login. `Arc`-backed so the gate can
+/// be cheaply cloned into `AppState` like `AnonGate`.
+#[derive(Clone)]
+pub struct LoginGate {
+    limiter: Arc<RateLimiter<LoginKey, DefaultKeyedStateStore<LoginKey>, DefaultClock>>,
+    clock: DefaultClock,
+    quota_per_min: NonZeroU32,
+}
+
+impl LoginGate {
+    /// Build a gate with the given per-(IP, email) per-minute attempt quota.
+    #[must_use]
+    pub fn new(attempts_per_min: NonZeroU32) -> Self {
+        let quota = Quota::per_minute(attempts_per_min);
+        let limiter = RateLimiter::keyed(quota);
+        Self {
+            limiter: Arc::new(limiter),
+            clock: DefaultClock::default(),
+            quota_per_min: attempts_per_min,
+        }
+    }
+
+    /// Build a gate at the documented default (10/min).
+    #[must_use]
+    pub fn with_default_quota() -> Self {
+        // SAFETY: 10 != 0 statically.
+        Self::new(NonZeroU32::new(DEFAULT_LOGIN_RATE_LIMIT_PER_MIN).expect("non-zero default"))
+    }
+
+    /// The configured quota; exposed for telemetry / debug.
+    #[must_use]
+    pub fn quota_per_min(&self) -> NonZeroU32 {
+        self.quota_per_min
+    }
+
+    /// Compute the login rate-limit bucket key. Pure / deterministic. Callers
+    /// MUST pass an already-normalized (trimmed + lowercased) email so the
+    /// bucket and the DB lookup agree. Same (ip, email) -> same bucket.
+    #[must_use]
+    pub fn key_hash(client_ip: &str, normalized_email: &str) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(LOGIN_HASH_DOMAIN_PREFIX);
+        hasher.update(client_ip.as_bytes());
+        hasher.update(b"\0");
+        hasher.update(normalized_email.as_bytes());
+        *hasher.finalize().as_bytes()
+    }
+
+    /// Check + decrement the attempt budget for `key`. On exceedance,
+    /// `retry_after_seconds` indicates the soonest the caller may retry.
+    pub fn check(&self, key: &[u8; 32]) -> Result<(), RateLimitError> {
+        match self.limiter.check_key(key) {
+            Ok(()) => Ok(()),
+            Err(not_until) => {
+                let wait = not_until.wait_time_from(self.clock.now());
+                let retry_after_seconds = wait.as_secs().max(1);
+                Err(RateLimitError::Exceeded {
+                    retry_after_seconds,
+                })
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -281,5 +368,48 @@ mod tests {
         let accepted = gate.check(&h, pid).unwrap();
         assert_eq!(accepted.token_hash, h);
         assert_eq!(accepted.project_id, pid);
+    }
+
+    // ----- LoginGate (DEC-FBR-IMPL-10) -----
+
+    #[test]
+    fn login_key_hash_is_deterministic_and_input_sensitive() {
+        let a = LoginGate::key_hash("10.0.0.1", "user@example.com");
+        let b = LoginGate::key_hash("10.0.0.1", "user@example.com");
+        assert_eq!(a, b, "same inputs -> same bucket");
+        // Different IP, different email -> different buckets.
+        assert_ne!(a, LoginGate::key_hash("10.0.0.2", "user@example.com"));
+        assert_ne!(a, LoginGate::key_hash("10.0.0.1", "other@example.com"));
+        // Disjoint from the anon hash domain even with coincidentally-similar
+        // inputs (domain-separation prefix differs).
+        assert_ne!(a, AnonGate::token_hash("10.0.0.1", "user@example.com", Uuid::nil()));
+    }
+
+    #[test]
+    fn login_rate_limit_trips_after_quota() {
+        // Default 10/min: a burst of 10 passes, the 11th is throttled.
+        let gate = LoginGate::with_default_quota();
+        let key = LoginGate::key_hash("1.2.3.4", "victim@example.com");
+        for i in 0..10 {
+            gate.check(&key).unwrap_or_else(|e| panic!("attempt {i} should pass: {e:?}"));
+        }
+        match gate.check(&key).unwrap_err() {
+            RateLimitError::Exceeded { retry_after_seconds } => {
+                assert!(retry_after_seconds >= 1);
+            }
+        }
+    }
+
+    #[test]
+    fn login_rate_limit_buckets_are_independent() {
+        // Exhausting one (ip, email) bucket does not throttle a different one.
+        let gate = LoginGate::with_default_quota();
+        let victim = LoginGate::key_hash("1.2.3.4", "victim@example.com");
+        let other = LoginGate::key_hash("1.2.3.4", "bystander@example.com");
+        for _ in 0..10 {
+            gate.check(&victim).unwrap();
+        }
+        assert!(gate.check(&victim).is_err());
+        gate.check(&other).expect("a different account's budget is independent");
     }
 }
