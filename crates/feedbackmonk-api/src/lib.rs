@@ -15,6 +15,7 @@
 //!   - `router` -- composes the signup/onboarding subtree (Stage 1 carry-over)
 
 pub mod auth;
+pub mod cors;
 pub mod crash_correlation;
 pub mod email;
 pub mod error;
@@ -24,6 +25,7 @@ pub mod router;
 pub mod state;
 pub mod storage;
 
+pub use cors::{parse_origins, public_cors_layer};
 pub use crash_correlation::{
     CorrelationOutcome, CrashCorrelator, CrashEvent, GlitchtipCorrelator,
 };

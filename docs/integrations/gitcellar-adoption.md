@@ -1,6 +1,6 @@
 # GitCellar ⇄ feedbackmonk — Integration Contract (Customer #1)
 
-**Status**: DRAFT — pre-deploy. Authored 2026-06-02 by the feedbackmonk side in response to
+**Status**: ACTIVE — deployed 2026-06-02 on GitCellar Railway (`feedbackmonk-api` service). `project_id` = `a1350be8-3ff5-4744-9e1d-e35c97cc8aad`; tenant `triage@gitcellar.com`; signing key registered. API base `https://feedback.gitcellar.com` (cert provisioning) + `https://feedbackmonk-api-production.up.railway.app` (live). Originally drafted DRAFT — pre-deploy 2026-06-02 by the feedbackmonk side in response to
 GitCellar's adoption intake (`../GitCellar/docs/planning/intakes/20260602T104026-adopt-feedbackmonk-as-feedback-system.md`).
 
 > **DEPLOY DECISION (2026-06-02, resolved with user)**: **GitCellar self-hosts feedbackmonk on its
@@ -63,6 +63,8 @@ Notes:
   (or map it). Default bind is `127.0.0.1` for local dev (DEC-FBR-IMPL-07).
 - `FEEDBACKMONK_PUBLIC_URL=https://api.feedbackmonk.com` (no trailing slash) — used in
   verify-email links and customer-facing URLs.
+- `FEEDBACKMONK_CORS_ORIGINS=https://gitcellar.com` — **required** for the cross-origin widget
+  embed (DEC-FBR-IMPL-09; see §4). Unset ⇒ the browser blocks every submission from gitcellar.com.
 - Mailer: set `FEEDBACKMONK_MAILER=smtp` + the `FEEDBACKMONK_SMTP_*` vars (Mailpit is dev-only).
 - Generate `FEEDBACKMONK_SESSION_SECRET` with `openssl rand -hex 32` (🔒, never commit).
 
@@ -123,7 +125,7 @@ Content-Type: application/json
 ⚠️ **Use `project_id` (the UUID), not `slug`, everywhere downstream.** See §7 discrepancy note —
 the server-emitted `embed_snippet` is currently stale and should not be copied verbatim.
 
-> **ACTION: once deployed, paste the real `<PROJECT_ID>` here and flip this doc to ACTIVE.**
+> **DONE (2026-06-02): `project_id = a1350be8-3ff5-4744-9e1d-e35c97cc8aad`. Tenant `triage@gitcellar.com`; signing key_id `4704a9b4-4798-4d2c-a2ed-ba49f887fe6e`. Deployed on GitCellar Railway; anonymous submit verified end-to-end (FB-4R3VS8).**
 
 ### 3.3 Register GitCellar's Ed25519 signing key (Contract C4)
 
@@ -173,6 +175,19 @@ For anonymous website feedback on gitcellar.com (no end-user identity), embed **
 - a11y: WCAG 2.1 AA (role=dialog, focus trap, ESC + focus return) — axe-core clean.
 - `data-api-base` is optional but **recommended** here since gitcellar.com is a different origin
   from the API.
+
+> **⚠️ CORS — required for the cross-origin embed (DEC-FBR-IMPL-09).** Because gitcellar.com and the
+> API host are different *origins*, the browser sends a preflight `OPTIONS` for the submit `POST` and
+> requires `Access-Control-*` headers on the response. The API gates this on an env allowlist:
+> set **`FEEDBACKMONK_CORS_ORIGINS=https://gitcellar.com`** on the deployed `feedbackmonk-api`
+> service (comma-separate additional origins, e.g. `…,https://www.gitcellar.com`; no trailing
+> slash). **Unset ⇒ the browser blocks every submission** (CORS error in the console; the API
+> returns the preflight without an `Access-Control-Allow-Origin`). The anonymous path uses
+> `credentials: include` (the dedup cookie), so the response echoes the *specific* origin (never `*`)
+> and sets `Access-Control-Allow-Credentials: true`; the anon cookie is `SameSite=None; Secure`,
+> which requires the API to be served over **HTTPS**. `widget-config` is unaffected (it stays
+> `*`-public). GitCellar Desktop's native (non-browser) client needs no CORS. See
+> `docs/operations/SELFHOST_ENV.md` → `FEEDBACKMONK_CORS_ORIGINS`.
 
 ---
 
@@ -377,3 +392,8 @@ canonical embed.** Tracked as a discovery to fix on the feedbackmonk side (small
   (status + public-replies-only) JWT-`sub`-scoped contract incl. error table; flipped §0 TL;DR + §8
   gap-#4 rows to built. No schema change. Isolation invariants frozen by
   `crates/feedbackmonk-api/tests/me_feedback_isolation.rs`.
+- 2026-06-02 (CORS fix, DEC-FBR-IMPL-09) — Added a credentialed CORS layer to the public widget
+  endpoints (submit + attachments), gated by `FEEDBACKMONK_CORS_ORIGINS`; anon cookie →
+  `SameSite=None; Secure`. Fixes the gitcellar.com embed blocker (preflight `OPTIONS` was `405`).
+  Surfaced from the GitCellar side. Deploy action: set `FEEDBACKMONK_CORS_ORIGINS=https://gitcellar.com`
+  on the `feedbackmonk-api` service (see §1.1 + §4).

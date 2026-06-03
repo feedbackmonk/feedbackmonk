@@ -624,3 +624,41 @@ Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python c
 
 ---
 
+### DEC-FBR-IMPL-09: CORS on the public credentialed widget endpoints + cross-site anon cookie
+
+**Resolved**: 2026-06-02 (GitCellar customer-#1 integration — surfaced from the outside by the GitCellar session: a built `gitcellar.com` page embedding the widget could not submit).
+
+**Context**: GitCellar (customer #1) embedded the widget on `gitcellar.com` against the deployed API (`a1350be8-…`). Anonymous submit failed in the browser. Verified from a `gitcellar.com` origin: `OPTIONS /api/v1/projects/<id>/feedback` (the browser preflight) returned **`405` with no `Access-Control-*` headers**, so the browser blocked the `POST`. `widget-config` already returned `Access-Control-Allow-Origin: *`, but the **submission** and **attachment** endpoints had no CORS layer at all. This is the long-standing un-implemented half of DEC-FBR-04 ("Domain allowlist for widget embed (CORS …)" — explicitly to be enforced at the submission endpoint, not at config). It blocked the widget's entire cross-origin-embed purpose for *every* customer, not just GitCellar.
+
+**Decision**: Add a configurable, **credentialed** CORS layer to the public credentialed widget endpoints — feedback submission (`POST …/feedback`) and attachment upload (`POST …/feedback/{id}/attachments`).
+
+1. **Allowlist from env.** Origins come from `FEEDBACKMONK_CORS_ORIGINS` (comma-separated). Unset/empty ⇒ no cross-origin origin allowed (secure default). This *is* DEC-FBR-04's domain allowlist, realized as a deploy-time env list (per-project allowlisting in the admin UI remains a future enhancement; the env list is the v1 surface and is sufficient for self-host/customer-#1).
+2. **Credentialed, echo-origin (never `*`).** The anonymous path fetches with `credentials: "include"` (the `X-Feedbackmonk-Anon-Cookie` carries dedup/rate-limit state, FR-FBR-06). A credentialed CORS response must echo the *specific* request origin and set `Access-Control-Allow-Credentials: true` — `*` is invalid with credentials. Implemented via `tower_http::cors::CorsLayer` with an explicit origin list + `allow_credentials(true)` (which panics if combined with a wildcard — the spec-correct guard). Methods `POST, OPTIONS`; request headers `content-type, authorization` (covers the auth-mode Bearer path, which uses `credentials: "omit"`).
+3. **`widget-config` deliberately excluded.** It is fetched with `credentials: "omit"` and only exposes project brand metadata, so it stays `*`-public (unchanged). Applying the credentialed layer there would have *tightened* a deliberately-open public read for no benefit.
+4. **Anon cookie → `SameSite=None; Secure`** (was `SameSite=Lax`). A `Lax` cookie is dropped by the browser on a cross-site credentialed request, which would silently disable per-cookie dedup. `None` requires `Secure`; production/self-host run behind TLS and browsers treat `http://localhost` as secure for dev. `HttpOnly` retained.
+
+**The "cookie vs. header token" decision (flagged by the GitCellar session)**: kept the cookie mechanism and made it cross-site-correct (`SameSite=None; Secure`) rather than migrating anon dedup to a header-carried token now. Rationale: the cookie change is ~1 line and unblocks customer #1 immediately; a header token is a larger widget + handler change (token persistence in `localStorage`, new request header, new server read path) and `localStorage` is itself partitioned/cleared by the same privacy engines that erode third-party cookies — so it is not unambiguously more robust. Browsers increasingly partition/expire third-party cookies; **if** that erodes dedup materially in the field, the long-term path is the header-carried anon token. Tracked as the documented alternative, deferred. Dedup degradation is graceful in all cases (falls back to IP-based; submission never fails).
+
+**Scope** (minimal-additive):
+- `Cargo.toml` (workspace) — add `cors` to `tower-http` features.
+- `crates/feedbackmonk-api/src/cors.rs` (new) — `parse_origins` + `public_cors_layer`; unit tests.
+- `crates/feedbackmonk-api/src/lib.rs` — `pub mod cors;` + re-exports.
+- `crates/feedbackmonk-api/src/main.rs` — read `FEEDBACKMONK_CORS_ORIGINS`, build the layer, apply it to the submission + attachments routers (per-router, before `.merge()`, so admin/operator routes are untouched). Startup log notes the allowlist (or warns when empty).
+- `crates/feedbackmonk-api/src/handlers/feedback.rs` — anon cookie `SameSite=Lax` → `None; Secure`; doc + unit test updated.
+- `crates/feedbackmonk-api/tests/cors_preflight.rs` (new) — preflight-not-405 + echo-origin + credentials + disallowed-origin rejection + empty-allowlist-blocks-all (DB-free; exercises the layer directly).
+- Env catalog `docs/operations/SELFHOST_ENV.md` (C21) + `deploy/docker/docker-compose.yml` + `deploy/docker/.env.example` — new `FEEDBACKMONK_CORS_ORIGINS` row/entry (catalog grow-only; compose ⊆ catalog preserved for `selfhost-compose-smoke` Probe B).
+- `docs/integrations/gitcellar-adoption.md` — deploy note: GitCellar must set `FEEDBACKMONK_CORS_ORIGINS=https://gitcellar.com`.
+
+**Backwards compatibility**: new optional env var. Existing dev/CI flows that don't set it get the secure default (no cross-origin allowed) — same-origin and native-client (GitCellar Desktop, non-browser → no CORS) traffic is unaffected. The cookie attribute change affects only the anonymous browser path and is strictly more correct for the intended cross-site embed.
+
+**Witnesses**: `cargo build -p feedbackmonk-api` clean; `cargo clippy -p feedbackmonk-api --all-targets -- -D warnings` clean (rust 1.96); `tests/cors_preflight.rs` 4/4 + `cors::tests` 4/4 + `resolve_anon_cookie_*` 2/2 pass. No DB schema/migration/contract surface touched.
+
+**Rollback**: `git revert` of the change set; no DB/migration implicated.
+
+**Alternatives considered**:
+- *Wildcard `*` with credentials* — invalid per the Fetch spec (and `tower_http` panics); rejected.
+- *Global CORS on the whole app* — would expose admin/operator routes cross-origin; rejected. Scoped per-router to the two public credentialed endpoints.
+- *Header-carried anon token instead of a cookie* — larger change, not unambiguously more robust (see above); deferred as the documented long-term option.
+
+---
+

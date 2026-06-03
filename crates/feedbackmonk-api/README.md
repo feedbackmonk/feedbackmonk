@@ -14,8 +14,9 @@ The HTTP surface of feedbackmonk (FR-FBR-02..18) — axum router + handlers moun
 
 | File | Purpose |
 |---|---|
-| `src/lib.rs` | Crate root. Declares the modules (`auth`, `crash_correlation`, `email`, `error`, `handlers`, `roadmap_voting_cache`, `router`, `state`, `storage`) and exposes the composed router + `AppState` so integration tests wire the same router the binary uses. |
-| `src/main.rs` | Binary entrypoint. Loads env, connects Postgres, builds repo handles + env-selected mailer, constructs `AppState`, composes the full router tree, binds `FEEDBACKMONK_PORT` (default `14304`) and serves. |
+| `src/lib.rs` | Crate root. Declares the modules (`auth`, `cors`, `crash_correlation`, `email`, `error`, `handlers`, `roadmap_voting_cache`, `router`, `state`, `storage`) and exposes the composed router + `AppState` so integration tests wire the same router the binary uses. |
+| `src/main.rs` | Binary entrypoint. Loads env, connects Postgres, builds repo handles + env-selected mailer, constructs `AppState`, composes the full router tree (applying the public-endpoint CORS layer from `FEEDBACKMONK_CORS_ORIGINS`), binds `FEEDBACKMONK_PORT` (default `14304`) and serves. |
+| `src/cors.rs` | Credentialed CORS policy for the public widget endpoints (submission + attachments). `parse_origins` + `public_cors_layer` build a `tower_http` `CorsLayer` from the `FEEDBACKMONK_CORS_ORIGINS` allowlist — echo-origin (never `*`) + `allow_credentials` so the anonymous `credentials: include` path works. Implements DEC-FBR-04's domain allowlist; see DEC-FBR-IMPL-09. |
 | `src/router.rs` | Composes the Worker A subtree (signup, verify-email, projects, signing-keys). Other handler modules expose their own routers that `main.rs` merges into the single binary `Router`. |
 | `src/state.rs` | `AppState` — the shared application context cloned into every handler via axum's `State` extractor. Holds the pool, `Arc<dyn _Repo>` handles (swappable for test fakes), env-selected mailer, session secret, and the voting cache. |
 | `src/error.rs` | `ApiError` — the single HTTP error type handlers return. Maps repository / validation / auth failures to status codes and implements `IntoResponse` so handlers can `?` freely. |

@@ -40,8 +40,9 @@ use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
-    me_feedback_router, promote_router, roadmap_router, spawn_voting_cache_refresh,
-    submission_router, widget_config_router, AttachmentState, VotingCache,
+    me_feedback_router, parse_origins, promote_router, public_cors_layer, roadmap_router,
+    spawn_voting_cache_refresh, submission_router, widget_config_router, AttachmentState,
+    VotingCache,
 };
 
 #[tokio::main]
@@ -89,7 +90,22 @@ async fn main() -> Result<()> {
         Arc::clone(&state.roadmap_items),
     );
 
-    let app = build_app(state, attachment_state);
+    // CORS allowlist for the public, credentialed widget endpoints (submission
+    // + attachments). Customer sites embed the widget cross-origin; their
+    // origins must be listed here or the browser blocks the preflight. Unset =>
+    // no cross-origin origin allowed (secure default). See `cors.rs` /
+    // DEC-FBR-IMPL-09.
+    let cors_origins = parse_origins(&env::var("FEEDBACKMONK_CORS_ORIGINS").unwrap_or_default());
+    if cors_origins.is_empty() {
+        tracing::warn!(
+            "FEEDBACKMONK_CORS_ORIGINS is unset/empty — cross-origin widget embeds will be \
+             blocked by the browser. Set it to the customer origin(s), e.g. https://gitcellar.com"
+        );
+    } else {
+        tracing::info!(origins = ?cors_origins, "CORS allowlist for public widget endpoints");
+    }
+
+    let app = build_app(state, attachment_state, &cors_origins);
 
     let addr: SocketAddr = (bind_addr, port).into();
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -303,7 +319,7 @@ fn load_session_secret() -> Result<[u8; 32]> {
     Ok(out)
 }
 
-fn build_app(state: AppState, attachment_state: AttachmentState) -> Router {
+fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &[String]) -> Router {
     // FR-FBR-18: every request is wrapped in a span carrying a `request_id`
     // (UUIDv4) populated from `x-request-id` if the client supplied one, else
     // freshly generated. The TraceLayer emits structured INFO logs at request
@@ -314,15 +330,22 @@ fn build_app(state: AppState, attachment_state: AttachmentState) -> Router {
         .on_request(DefaultOnRequest::new())
         .on_response(DefaultOnResponse::new());
 
+    // CORS applies ONLY to the public credentialed widget endpoints (submission
+    // + attachments) — applied per-router before `.merge()` so it never leaks
+    // onto admin/operator routes. `widget-config` is intentionally excluded: it
+    // is fetched with `credentials: "omit"` and stays `*`-public (project brand
+    // metadata only). See `cors.rs` + DEC-FBR-04 / DEC-FBR-IMPL-09.
+    let cors = public_cors_layer(cors_origins);
+
     let app = worker_a_router(state.clone())
-        .merge(submission_router(state.clone()))
+        .merge(submission_router(state.clone()).layer(cors.clone()))
         .merge(admin_feedback_routes(state.clone()))
         .merge(widget_config_router(state.clone()))
         .merge(roadmap_router(state.clone()))
         .merge(admin_roadmap_router(state.clone()))
         .merge(admin_tier_router(state.clone()))
         .merge(me_feedback_router(state.clone()))
-        .merge(attachments_router(attachment_state))
+        .merge(attachments_router(attachment_state).layer(cors.clone()))
         .merge(promote_router(state));
     app.layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace_layer)

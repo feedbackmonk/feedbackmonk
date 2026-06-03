@@ -34,6 +34,12 @@
 | `FEEDBACKMONK_BIND_ADDR` | optional | `127.0.0.1` | | IP address the api binary binds to. Default `127.0.0.1` preserves the dev-machine pattern (don't expose api to LAN during `cargo run`). Docker-compose self-host sets this to `0.0.0.0` so the admin-ui edge container can reach api via docker-network DNS. Source: `crates/feedbackmonk-api/src/main.rs:59`. **Note**: appended P4 Stage 2 by Worker B (self-mediated widening per GUIDE §8, ratification pending at convergence — needed to unblock B2 topology where admin-ui nginx must reach api over the docker bridge network). |
 | `FEEDBACKMONK_PUBLIC_URL` | **REQ** | — | | Customer-facing base URL used in verify-email links and any URL the customer follows back to the api. **No trailing slash.** Dev: `http://localhost:14304`. Self-host behind TLS: `https://feedback.example.com`. Source: `crates/feedbackmonk-api/src/main.rs:141`. |
 
+### CORS / Cross-Origin Widget Embed
+
+| Name | Required | Default | 🔒 | Semantics |
+|---|---|---|---|---|
+| `FEEDBACKMONK_CORS_ORIGINS` | optional | _(empty)_ | | Comma-separated allowlist of browser **origins** permitted to call the public, credentialed widget endpoints cross-origin (feedback submission `POST …/feedback` + attachment upload `POST …/feedback/{id}/attachments`). Each entry is a full origin: scheme + host + optional port, **no trailing slash** (e.g. `https://gitcellar.com,https://www.gitcellar.com`). This is DEC-FBR-04's domain allowlist for widget embed (DEC-FBR-IMPL-09). **Unset/empty ⇒ no cross-origin origin is allowed** (secure default) — set it to every customer site that embeds the widget, or the browser blocks submissions with a CORS error. Does not apply to same-origin traffic or non-browser native clients (e.g. GitCellar Desktop), which need no CORS. `widget-config` is intentionally NOT gated by this (it stays `*`-public). Anonymous submit uses `credentials: include`, so the response echoes the specific origin (never `*`) and sets `Access-Control-Allow-Credentials: true`. Source: `crates/feedbackmonk-api/src/main.rs` + `crates/feedbackmonk-api/src/cors.rs`. |
+
 ### Logging / Observability
 
 | Name | Required | Default | 🔒 | Semantics |

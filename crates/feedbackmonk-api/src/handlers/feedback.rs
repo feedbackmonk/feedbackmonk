@@ -60,9 +60,24 @@ use crate::state::AppState;
 /// `feedback.body` (1..=16384). Exceeding -> 413.
 pub const MAX_BODY_CHARS: usize = 16384;
 
-/// Cookie attributes for the minted anon cookie. `SameSite=Lax` + `HttpOnly`
-/// per task brief §Key Implementation Notes. Path scoped so the cookie
-/// only travels on submission requests. `Max-Age=30d`.
+/// Cookie attributes for the minted anon cookie.
+///
+/// `SameSite=None; Secure` — the widget embeds **cross-site** (customer origin →
+/// feedbackmonk API) and the anonymous path fetches with `credentials:
+/// "include"`, so the cookie must be `SameSite=None` (sent in a third-party
+/// context) and therefore `Secure` (the browser requires `Secure` with
+/// `SameSite=None`). A `SameSite=Lax` cookie would be silently dropped
+/// cross-site, disabling per-cookie dedup (FR-FBR-06) and leaving only IP-based
+/// dedup. `HttpOnly` keeps it unreadable to page JS (privacy; the widget never
+/// reads it). Path scoped to `/api/v1`; `Max-Age=30d`. See DEC-FBR-IMPL-09.
+///
+/// `Secure` requires a secure context: production/self-host run behind TLS, and
+/// browsers treat `http://localhost` as secure for dev. A self-host deployment
+/// served over plain HTTP on a non-localhost host would have the cookie dropped
+/// by the browser; anon dedup then degrades to IP-only (submission still
+/// succeeds). Browsers increasingly partition/expire third-party cookies; if
+/// that erodes dedup materially, the long-term path is a header-carried anon
+/// token instead of a cookie (deferred — see DEC-FBR-IMPL-09 alternatives).
 const ANON_COOKIE_MAX_AGE_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -304,7 +319,7 @@ fn resolve_anon_cookie(headers: &HeaderMap) -> (String, Option<HeaderValue>) {
     }
     let minted = AnonGate::mint_cookie();
     let set_cookie = format!(
-        "{ANON_COOKIE_HEADER}={minted}; Path=/api/v1; Max-Age={ANON_COOKIE_MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax"
+        "{ANON_COOKIE_HEADER}={minted}; Path=/api/v1; Max-Age={ANON_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=None"
     );
     let header_value = HeaderValue::from_str(&set_cookie).ok();
     (minted, header_value)
@@ -485,7 +500,11 @@ mod tests {
         assert_eq!(cookie.len(), 22, "22-char base64url-no-pad");
         let set_value = set.expect("Set-Cookie must be emitted").to_str().unwrap().to_string();
         assert!(set_value.contains("HttpOnly"));
-        assert!(set_value.contains("SameSite=Lax"));
+        // Cross-site embed: cookie must be SameSite=None; Secure (not Lax), else
+        // the browser drops it on the credentialed cross-origin submit.
+        assert!(set_value.contains("SameSite=None"));
+        assert!(set_value.contains("Secure"));
+        assert!(!set_value.contains("SameSite=Lax"));
         assert!(set_value.contains(&format!("Max-Age={ANON_COOKIE_MAX_AGE_SECONDS}")));
         assert!(set_value.contains(&cookie));
     }
