@@ -660,5 +660,14 @@ Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python c
 - *Global CORS on the whole app* — would expose admin/operator routes cross-origin; rejected. Scoped per-router to the two public credentialed endpoints.
 - *Header-carried anon token instead of a cookie* — larger change, not unambiguously more robust (see above); deferred as the documented long-term option.
 
+**Follow-up (2026-06-03)**: Built the `cors-allowlist-enforcement` Verification Oracle
+(`.claude/oracles/cors-allowlist-enforcement/`). `tests/cors_preflight.rs` exercises
+`public_cors_layer` in isolation and therefore cannot catch a *wiring-removal* regression
+(deleting `.layer(cors)` from `build_app`) — the exact way this `405` bug would silently
+return. The oracle reads the wiring (`main.rs`: layer built from `FEEDBACKMONK_CORS_ORIGINS`,
+applied to submission + attachments) and policy (`cors.rs`: `allow_credentials` +
+`AllowOrigin::list`, never wildcard) from source. Two static probes (~60ms) + `--full` runs
+the integration test. This is the code-state guard half of DEC-FBR-04's domain allowlist.
+
 ---
 
