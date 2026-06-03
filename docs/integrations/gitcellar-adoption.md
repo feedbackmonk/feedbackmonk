@@ -26,9 +26,9 @@ GitCellar's adoption intake (`../GitCellar/docs/planning/intakes/20260602T104026
 
 | You need | Value | State |
 |---|---|---|
-| API base URL | `https://feedback.gitcellar.com` (GitCellar-self-hosted on its Railway — per deploy decision) | **pending deploy** |
-| `project_id` (the `aud` claim + URL path segment) | UUID, assigned when the GitCellar project is created | **pending deploy** — placeholder `PROJECT_ID` below |
-| Widget JS URL | `https://cdn.feedbackmonk.com/widget.js` (or `<api-base>/widget.js`) | **pending deploy** |
+| API base URL | `https://feedback.gitcellar.com` (GitCellar-self-hosted on its Railway — per deploy decision) | **live ✅** (`/health/ready` → 200, verified 2026-06-03) |
+| `project_id` (the `aud` claim + URL path segment) | `a1350be8-3ff5-4744-9e1d-e35c97cc8aad` | **live ✅** (project provisioned; anon submit verified `FB-4R3VS8`) |
+| Widget JS URL | vendored same-origin into gitcellar.com `public/feedback/` (the API does not serve `widget.js`) | **built ✅** — publish reverted to placeholder; re-publish at launch (see §1) |
 | Anonymous widget embed (gitcellar.com) | see §4 | built ✅ |
 | JWT minting spec (Desktop authenticated mode) | see §5 | verifier built ✅ |
 | Signing-key registration | see §3.3 | built ✅ (`POST …/signing-keys`, Contract C4) |
