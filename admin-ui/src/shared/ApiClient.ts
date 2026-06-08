@@ -162,7 +162,11 @@ export interface LoginRequest {
 }
 
 export async function postLogin(body: LoginRequest): Promise<void> {
-  await api.post("/auth/login", body);
+  // Route is flat under /api/v1 (POST /api/v1/login) — matches the API's
+  // LoginGate (DEC-FBR-IMPL-10) and the signup/verify-email convention. The
+  // earlier "/auth/login" 404'd in-browser (the catch-all "Login failed");
+  // curl-only verification against /login masked it.
+  await api.post("/login", body);
 }
 
 // Admin's `GET /api/v1/projects` — used to resolve sole-project-id for

@@ -7,6 +7,7 @@ export function Login() {
   const { search, navigate } = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,16 +55,31 @@ export function Login() {
         />
 
         <label htmlFor="login-password">Password</label>
-        <input
-          id="login-password"
-          name="password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          disabled={submitting}
-        />
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "stretch" }}>
+          <input
+            id="login-password"
+            name="password"
+            type={showPassword ? "text" : "password"}
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={submitting}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            type="button"
+            className="login-password-toggle"
+            onClick={() => setShowPassword((v) => !v)}
+            disabled={submitting}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            tabIndex={-1}
+            style={{ flexShrink: 0 }}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
 
         {error ? (
           <p className="error" role="alert">
