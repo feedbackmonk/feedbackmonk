@@ -54,7 +54,14 @@ FROM nginx:alpine AS runtime
 COPY --from=builder /build/dist /usr/share/nginx/html
 
 # Copy the nginx config (reverse-proxy /api/* + /health* to the api service).
-COPY deploy/docker/admin-ui-nginx.conf /etc/nginx/conf.d/default.conf
+#
+# Parameterized: default is the generic docker-compose edge config (upstream
+# `api:14304`). Deployments with a different upstream topology pass a different
+# conf via `--build-arg ADMIN_UI_NGINX_CONF=<path>` — e.g. GitCellar's Railway
+# self-host uses `admin-ui-nginx.gitcellar-railway.conf` (public-hairpin upstream
+# to feedback.gitcellar.com; DEC-LR-02). Backward-compatible: unset ⇒ generic.
+ARG ADMIN_UI_NGINX_CONF=deploy/docker/admin-ui-nginx.conf
+COPY ${ADMIN_UI_NGINX_CONF} /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
