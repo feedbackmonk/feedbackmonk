@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>feedbackmonk widget — launcher-less + dark fixture</title>
+    <!--
+      Test fixture for DEC-FBR-IMPL-12 (theme) + DEC-FBR-IMPL-13 (launcher-less
+      trigger). The script opts out of the floating launcher with
+      data-fbm-no-auto-mount and forces the dark theme with data-theme="dark".
+      The host provides its own trigger via [data-feedback-open] — no JS glue.
+      Loaded by widget/e2e/widget-a11y.spec.ts.
+    -->
+    <link rel="stylesheet" href="../dist/widget.css" />
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; color: #111; }
+      main { max-width: 720px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Launcher-less embedder-trigger fixture</h1>
+      <!-- The host's own button; the widget auto-wires it natively. -->
+      <button type="button" id="host-trigger" data-feedback-open>
+        Send feedback
+      </button>
+    </main>
+    <script
+      type="module"
+      src="../dist/widget.js"
+      data-project-id="00000000-0000-0000-0000-000000000001"
+      data-api-base="http://localhost:14206/e2e/mock"
+      data-fbm-no-auto-mount
+      data-theme="dark"
+    ></script>
+  </body>
+</html>

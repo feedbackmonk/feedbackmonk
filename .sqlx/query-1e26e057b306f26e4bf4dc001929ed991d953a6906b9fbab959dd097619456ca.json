@@ -1,0 +1,52 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT tier, footer_text_override, footer_url,\n                   widget_theme, widget_primary_color, widget_logo_url\n            FROM tenants WHERE id = $1\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tier",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "footer_text_override",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "footer_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "widget_theme",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "widget_primary_color",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "widget_logo_url",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1e26e057b306f26e4bf4dc001929ed991d953a6906b9fbab959dd097619456ca"
+}

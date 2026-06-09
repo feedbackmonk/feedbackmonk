@@ -134,14 +134,36 @@ pub struct RateLimitCounter {
 /// returns. Lives in `feedbackmonk-core` so both the repository and the API
 /// crates can read/write the type without a circular dep.
 ///
-/// **`footer_text` semantics**: `Some("powered by feedbackmonk")` on free-tier;
-/// `None` on paid tiers (P3 wires the tier-flag flip). V1 returns the hardcoded
-/// free-tier value for every tenant; the column is reserved for P3 to override.
+/// Field semantics (resolved by `TenantRepo::get_widget_brand`, which layers the
+/// per-tenant override columns from migration 00012 on top of the tier default —
+/// DEC-FBR-IMPL-11 / DEC-FBR-IMPL-12):
+///
+/// - **`primary_color`**: `Some("#rrggbb")` when the tenant set a per-tenant
+///   accent; `None` (the default) means the widget applies nothing and its own
+///   WCAG-AA-safe `#2563eb` CSS default wins. Changed from `String` to
+///   `Option<String>` post-v1 — the prior value was a hardcoded `#3b82f6`
+///   constant identical for every tenant, which also overrode the safe CSS
+///   default (DEC-FBR-IMPL-12).
+/// - **`logo_url`**: per-tenant logo image rendered in the modal header; `None`
+///   ⇒ no logo.
+/// - **`footer_text`**: resolved — `Some("powered by feedbackmonk")` for a Free
+///   tenant with no override (FR-FBR-14 default); `None` when the tier has no
+///   footer OR the admin explicitly suppressed it (`footer_text_override = ""`);
+///   `Some(custom)` when an admin set custom text. The widget renders the footer
+///   iff this is `Some`.
+/// - **`footer_url`**: the badge href; `None` ⇒ widget defaults to
+///   `https://feedbackmonk.com`. Configurable so the badge can point at the real
+///   marketing URL / a white-label target without a widget rebuild.
+/// - **`theme`**: per-tenant default theme `auto|light|dark`; `None` ⇒ the widget
+///   resolves `auto`. The embed's `data-theme` attribute (if present) takes
+///   precedence over this.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WidgetBrand {
-    pub primary_color: String,
+    pub primary_color: Option<String>,
     pub logo_url: Option<String>,
     pub footer_text: Option<String>,
+    pub footer_url: Option<String>,
+    pub theme: Option<String>,
 }
 
 #[cfg(test)]

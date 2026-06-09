@@ -20,6 +20,8 @@ const MOCK_CONFIG = {
     primary_color: "#2563eb",
     logo_url: null,
     footer_text: "powered by feedbackmonk",
+    footer_url: null,
+    theme: null,
   },
   auth_modes: ["auth", "anonymous"],
   submission_kinds: ["bug", "feature", "question", "other"],
@@ -132,6 +134,71 @@ test.describe("feedbackmonk widget a11y", () => {
 
     await expect(dialog).toBeHidden();
     await expect(page.getByRole("status")).toContainText(/Thanks/i);
+  });
+});
+
+test.describe("feedbackmonk widget launcher-less + theme (DEC-FBR-IMPL-12/13)", () => {
+  test.beforeEach(async ({ page }) => {
+    await installMocks(page);
+  });
+
+  test("no floating launcher; [data-feedback-open] opens modal; dark theme applied", async ({
+    page,
+  }) => {
+    await page.goto("/e2e/fixture-no-launcher.html");
+    // Mount completes once the programmatic handle is published.
+    await page.waitForFunction(
+      () => !!(window as unknown as { feedbackmonk?: unknown }).feedbackmonk,
+    );
+
+    // data-fbm-no-auto-mount ⇒ NO floating launcher in the DOM.
+    await expect(page.locator(".fbm-launcher")).toHaveCount(0);
+
+    // data-theme="dark" ⇒ root carries the dark theme attribute.
+    await expect(page.locator(".fbm-root")).toHaveAttribute(
+      "data-fbm-theme",
+      "dark",
+    );
+
+    // The host's own [data-feedback-open] button opens the modal — no JS glue.
+    await page.locator("#host-trigger").click();
+    const dialog = page.getByRole("dialog", { name: /Send feedback/i });
+    await expect(dialog).toBeVisible();
+
+    // Dark surface token applied (#1f2937).
+    const bg = await dialog.evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(bg).toBe("rgb(31, 41, 55)");
+
+    // Dark modal is still WCAG 2.1 AA clean.
+    await expectNoAxeViolations(page, "launcher-less dark modal-open");
+  });
+
+  test("window.feedbackmonk.open() opens the modal; destroy() removes the widget", async ({
+    page,
+  }) => {
+    await page.goto("/e2e/fixture-no-launcher.html");
+    await page.waitForFunction(
+      () => !!(window as unknown as { feedbackmonk?: unknown }).feedbackmonk,
+    );
+
+    await page.evaluate(() =>
+      (
+        window as unknown as { feedbackmonk: { open: () => void } }
+      ).feedbackmonk.open(),
+    );
+    const dialog = page.getByRole("dialog", { name: /Send feedback/i });
+    await expect(dialog).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+
+    // destroy() detaches the whole widget root.
+    await page.evaluate(() =>
+      (
+        window as unknown as { feedbackmonk: { destroy: () => void } }
+      ).feedbackmonk.destroy(),
+    );
+    await expect(page.locator(".fbm-root")).toHaveCount(0);
   });
 });
 

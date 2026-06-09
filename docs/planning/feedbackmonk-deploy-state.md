@@ -21,6 +21,17 @@ Nothing on the feedbackmonk backend is "reverted." No feedbackmonk feature or de
 Remaining items are GitCellar-side (their public-site embed) and SaaS (deferred), both out of scope
 for the feedbackmonk backend.
 
+> **2026-06-09 update — widget theming + footer/tier decoupling (NOT yet deployed).** A dogfood
+> intake from GitCellar produced three changes now BUILT + tested + committed in this repo but
+> **not yet redeployed to prod**: per-tenant admin-ops-only footer override decoupled from tier
+> (DEC-FBR-IMPL-11, migration 00012 + ops endpoint `PATCH /api/v1/ops/tenants/{id}` guarded by
+> `FEEDBACKMONK_OPS_TOKEN`), widget dark/light/auto theme + per-tenant color/logo
+> (DEC-FBR-IMPL-12), and launcher-less `[data-feedback-open]` / `window.feedbackmonk.open()`
+> trigger mode (DEC-FBR-IMPL-13). Migration 00012 is additive/all-NULL and the ops endpoint is OFF
+> until the token is set, so the redeploy is low-risk. **Actionable checklist (redeploy → ops-flip
+> → GitCellar re-sync + embed flip):**
+> `docs/planning/followups/20260609-gitcellar-widget-theming-and-footer-decoupling-resync.md`.
+
 ---
 
 ## VERIFIED live state (curl-confirmed 2026-06-03)

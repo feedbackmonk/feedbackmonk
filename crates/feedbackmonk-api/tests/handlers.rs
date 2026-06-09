@@ -92,6 +92,7 @@ fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, A
         verify_token_ttl: Duration::hours(24),
         anon_gate: AnonGate::new(std::num::NonZeroU32::new(10).unwrap()),
         login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
+        ops_token: None,
         jwt_iat_leeway_seconds: 5,
         // P2 fields — mechanical AppState extension per
         // docs/test-modifications/20260514-p2-appstate-roadmap-fields.md.

@@ -32,6 +32,7 @@ pub use crash_correlation::{
 pub use error::ApiError;
 pub use handlers::attachments::{attachments_router, scrub_log_for_storage, AttachmentState};
 pub use handlers::admin_feedback::routes as admin_feedback_routes;
+pub use handlers::admin_ops::ops_router;
 pub use handlers::admin_tier::admin_tier_router;
 pub use handlers::feedback::submission_router;
 pub use handlers::me_feedback::me_feedback_router;

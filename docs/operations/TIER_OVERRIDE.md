@@ -2,8 +2,24 @@
 
 P3 Stage 1 ships the tier model + cap enforcement but **does NOT ship a
 self-service upgrade flow** (Polar billing deferred per DEC-FBR-DEFER-01).
-Until Polar lands, the operator changes a tenant's tier with a direct
-SQL UPDATE.
+Until Polar lands, the operator changes a tenant's tier out-of-band.
+
+> **Preferred path (post-v1, DEC-FBR-IMPL-11): the ops endpoint, not raw SQL.**
+> `PATCH /api/v1/ops/tenants/{tenant_id}` (guarded by `FEEDBACKMONK_OPS_TOKEN`)
+> sets the tier **and** the per-tenant widget brand override (footer/theme/color/
+> logo) through the application layer — no DB shell access required, and it goes
+> through the same validated repository path as everything else. Example:
+> ```
+> curl -X PATCH https://<host>/api/v1/ops/tenants/<tenant_id> \
+>   -H "Authorization: Bearer $FEEDBACKMONK_OPS_TOKEN" \
+>   -H "content-type: application/json" \
+>   -d '{"tier":"self_host"}'
+> ```
+> The endpoint is disabled (404) unless `FEEDBACKMONK_OPS_TOKEN` is set
+> (`docs/operations/SELFHOST_ENV.md`). Branding/footer overrides MUST go through
+> this endpoint (admin-ops-only, never tenant-self-serve — preserves FR-FBR-14).
+> The raw-SQL recipes below remain valid as a **break-glass fallback** when the
+> API is down or the ops token isn't provisioned.
 
 This document is the load-bearing operations runbook for two scenarios:
 

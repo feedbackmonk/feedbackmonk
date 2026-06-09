@@ -96,6 +96,26 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
     // chokepoint; tier-cap reads are out of scope. Stubs are
     // unimplemented! — calling any of these from this test path would
     // be a bug, and the panic is the early-warning surface.
+    async fn get_widget_brand_override(
+        &self,
+        _scope: &TenantScope,
+    ) -> Result<feedbackmonk_repository::WidgetBrandOverride, RepoError> {
+        unimplemented!()
+    }
+    async fn set_widget_brand_override(
+        &self,
+        _scope: &TenantScope,
+        _over: &feedbackmonk_repository::WidgetBrandOverride,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
+    async fn set_tier(
+        &self,
+        _scope: &TenantScope,
+        _tier: feedbackmonk_core::Tier,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
     async fn get_tier(&self, _scope: &TenantScope) -> Result<feedbackmonk_core::Tier, RepoError> {
         unimplemented!()
     }

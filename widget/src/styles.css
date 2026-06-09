@@ -35,6 +35,28 @@
   color: var(--fbm-text);
 }
 
+/* Dark theme tokens (DEC-FBR-IMPL-12). --fbm-primary is intentionally NOT
+   overridden — the customer accent (or the WCAG-safe #2563eb default) reads
+   fine on both surfaces. Applied two ways:
+     - data-fbm-theme="dark": explicit dark, set by the widget at runtime.
+     - data-fbm-theme="auto" under prefers-color-scheme: dark: follow the OS. */
+.fbm-root[data-fbm-theme="dark"] {
+  --fbm-text: #e5e7eb;
+  --fbm-muted: #9ca3af;
+  --fbm-border: #374151;
+  --fbm-surface: #1f2937;
+  --fbm-scrim: rgba(0, 0, 0, 0.6);
+}
+@media (prefers-color-scheme: dark) {
+  .fbm-root[data-fbm-theme="auto"] {
+    --fbm-text: #e5e7eb;
+    --fbm-muted: #9ca3af;
+    --fbm-border: #374151;
+    --fbm-surface: #1f2937;
+    --fbm-scrim: rgba(0, 0, 0, 0.6);
+  }
+}
+
 .fbm-launcher {
   position: fixed;
   right: 24px;
@@ -89,6 +111,15 @@
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+/* Optional per-tenant logo in the modal header (DEC-FBR-IMPL-12). */
+.fbm-logo {
+  max-height: 28px;
+  max-width: 160px;
+  width: auto;
+  object-fit: contain;
+  align-self: flex-start;
 }
 
 .fbm-close {

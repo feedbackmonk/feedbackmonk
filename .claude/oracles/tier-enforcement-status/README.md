@@ -48,6 +48,15 @@ Defends against accidental edits like setting Free to unlimited or
 flipping the free-tier footer off. Token check is whitespace-insensitive
 so rustfmt cosmetic changes don't churn.
 
+> **`tier_quotas().footer_text` is the tier DEFAULT, not the final value**
+> (DEC-FBR-IMPL-11). The per-tenant `footer_text_override` column (migration
+> 00012) is resolved as a layer ABOVE this default in
+> `SqlxTenantRepo::get_widget_brand` — `tier_quotas()` itself is deliberately
+> unchanged, so this Probe B assertion (and the FR-FBR-14 default it pins) holds
+> exactly as before. The override is admin-ops-only (it cannot be set by a
+> tenant's own session), so external Free tenants still cannot strip the badge.
+> The override behavior is verified by Probe C scenario 4 (below), not here.
+
 ### Probe C — Integration smoke (gated behind `--full`)
 
 Invokes `cargo test --test tier_enforcement_smoke -p feedbackmonk-api`.
@@ -60,6 +69,11 @@ The smoke crate (Phase 4 deliverable) drives the actual HTTP path:
 3. `GET /api/v1/projects/{id}/widget-config` for Free tenant returns
    `footer_text: Some("powered by feedbackmonk")`; for Pro/SelfHost
    returns `None`.
+4. **(DEC-FBR-IMPL-11)** Footer/tier decoupling: a Free tenant with NO
+   override still returns the badge (FR-FBR-14 default), and a Free tenant
+   whose `footer_text_override = ""` returns `footer_text: null` (suppressed)
+   while its tier — and therefore quotas — stay Free. Proves badge visibility
+   is decoupled from tier and that the override supersedes the default.
 
 Probe C is **off by default** so the inner-loop cost stays under 250ms.
 CI (and `/0-uldf-finalize` Phase 11) re-run with `--full`.

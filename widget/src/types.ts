@@ -8,11 +8,21 @@
 
 export type WidgetAuthMode = "auth" | "anonymous";
 export type WidgetSubmissionKind = "bug" | "feature" | "question" | "other";
+export type WidgetTheme = "auto" | "light" | "dark";
 
 export interface WidgetBrand {
-  primary_color: string;
+  // null ⇒ widget uses its WCAG-AA-safe CSS default (#2563eb). A value is a
+  // genuine per-tenant accent (DEC-FBR-IMPL-12).
+  primary_color: string | null;
   logo_url: string | null;
+  // null ⇒ render no footer. Non-null ⇒ render the badge text (FR-FBR-14
+  // default "powered by feedbackmonk" for free tenants, or custom override).
   footer_text: string | null;
+  // Badge href; null ⇒ widget defaults to https://feedbackmonk.com.
+  footer_url: string | null;
+  // Per-tenant default theme; null ⇒ widget resolves 'auto'. The embed's
+  // data-theme attribute (if set) takes precedence over this.
+  theme: WidgetTheme | null;
 }
 
 export interface WidgetConfig {
@@ -42,10 +52,30 @@ export interface ApiError {
   message: string;
 }
 
+/// Handle returned by `mountFeedbackMonk()` and assigned to
+/// `window.feedbackmonk`. Lets an embedder open the modal programmatically
+/// (e.g. from its own trigger button) and tear the widget down. Companion to
+/// the declarative `[data-feedback-open]` auto-wiring (DEC-FBR-IMPL-13).
+export interface FeedbackMonkHandle {
+  /// Open the feedback modal. No-op if config failed to load or already open.
+  open: () => void;
+  /// Remove the widget (modal + launcher + listeners + root) from the page.
+  destroy: () => void;
+}
+
 export interface MountOptions {
   jwt?: string;
   projectId?: string;
   apiBase?: string;
+  // Theme override (highest precedence): "auto" | "light" | "dark". Falls back
+  // to the per-tenant brand default, then "auto". Set via the script-tag
+  // `data-theme` attribute or programmatically (DEC-FBR-IMPL-12).
+  theme?: WidgetTheme;
+  // Suppress the floating launcher and initialize launcher-less — the embedder
+  // provides its own trigger via `[data-feedback-open]` or
+  // `window.feedbackmonk.open()`. Set via `data-fbm-no-auto-mount`
+  // (DEC-FBR-IMPL-13).
+  noLauncher?: boolean;
   // Embedder opt-in to console-log capture (default OFF — privacy-by-default
   // per DEC-FBR-02). When true, the widget patches `console.*` from mount into
   // a bounded ring buffer; the captured text is only ever SENT if the end-user

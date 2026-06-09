@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-Ordered, append-only SQL migrations (`00001`–`00011`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
+Ordered, append-only SQL migrations (`00001`–`00012`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
 
 ## Purpose & Responsibilities
 
@@ -25,6 +25,7 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 | `00009_attachments.sql` | `attachments` table (screenshot + captured-log parts). GitCellar customer-#1 parity gap #1. Tenant/project-scoped; `feedback_id` FK; storage-backend-agnostic (URI + content metadata). |
 | `00010_feedback_crash_event.sql` | Adds nullable first-class `crash_event_id` column to `feedback`. GitCellar parity gap #2. NOT stored via `external_metadata` — a real column so the pull-mode correlation worker can index/join on it. |
 | `00011_feedback_fts.sql` | Full-text search: `tsvector` generated column + GIN index on `feedback`. GitCellar parity gap #3. Backs `GET /api/v1/admin/feedback/search` via `websearch_to_tsquery`. |
+| `00012_tenant_widget_brand_overrides.sql` | Post-v1 (DEC-FBR-IMPL-11/12). Five nullable per-tenant widget brand-override columns on `tenants` (`footer_text_override`, `footer_url`, `widget_theme` (CHECK auto\|light\|dark), `widget_primary_color`, `widget_logo_url`); all NULL = fall through to tier/CSS default. Decouples badge visibility from tier and adds widget theming/branding. Written only via the ops endpoint. |
 
 ## Constraints & Business Rules
 

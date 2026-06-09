@@ -41,6 +41,7 @@ use feedbackmonk_repository::{
     SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRoadmapItemRepo,
     SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo,
+    WidgetBrandOverride,
 };
 
 // ----- Fakes ------------------------------------------------------------------
@@ -87,6 +88,7 @@ fn build_test_state(pool: &PgPool, anon_quota: u32) -> AppState {
         // tier-cap predicate does (scenario 2 needs ~51 submissions).
         anon_gate: AnonGate::new(NonZeroU32::new(anon_quota).unwrap()),
         login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
+        ops_token: None,
         jwt_iat_leeway_seconds: 5,
         roadmap_items: Arc::new(SqlxRoadmapItemRepo::new(pool.clone())),
         roadmap_votes: Arc::new(SqlxRoadmapVoteRepo::new(pool.clone())),
@@ -313,4 +315,74 @@ async fn smoke_widget_config_footer_flips_per_tier(pool: PgPool) {
         "Pro tier widget-config MUST have footer_text = null; got {}",
         body["brand"]["footer_text"]
     );
+}
+
+// ----- Scenario 4: per-tenant footer override supersedes tier default ---------
+// DEC-FBR-IMPL-11: badge visibility decoupled from tier. This proves BOTH legs:
+//   (a) a Free tenant with NO override still shows the footer (FR-FBR-14 default
+//       holds — already asserted in Scenario 3), and
+//   (b) a Free tenant whose admin set footer_text_override = "" suppresses the
+//       footer while staying on Free (quotas unchanged).
+// The override write goes through the repository (the ops endpoint's writer),
+// then the public widget-config read is verified to reflect it.
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn smoke_footer_override_supersedes_tier_on_free(pool: PgPool) {
+    let state = build_test_state(&pool, 100);
+    let app = build_router(state.clone());
+
+    let (tenant_id, cookie) =
+        seed_verified_session(&state, "smoke-p4-override@example.com", "free").await;
+    let r = app
+        .clone()
+        .oneshot(create_project_request(&cookie, "ovr-proj"))
+        .await
+        .unwrap();
+    assert_eq!(r.status(), StatusCode::OK);
+    let body = body_to_json(r.into_body()).await;
+    let proj_id = body["project_id"].as_str().unwrap().to_string();
+
+    // Baseline (no override): Free tenant shows the badge — FR-FBR-14 default.
+    let req = Request::get(format!("/api/v1/projects/{proj_id}/widget-config"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let body = body_to_json(resp.into_body()).await;
+    assert_eq!(
+        body["brand"]["footer_text"], "powered by feedbackmonk",
+        "Free tenant with no override MUST show the badge (FR-FBR-14)"
+    );
+
+    // Admin (ops) suppresses the footer via the override — tier stays Free.
+    let scope = state.tenants.scope_for(tenant_id).await.unwrap();
+    state
+        .tenants
+        .set_widget_brand_override(
+            &scope,
+            &WidgetBrandOverride {
+                footer_text_override: Some(String::new()),
+                theme: Some("dark".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+    let req = Request::get(format!("/api/v1/projects/{proj_id}/widget-config"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_to_json(resp.into_body()).await;
+    assert!(
+        body["brand"]["footer_text"].is_null(),
+        "footer_text_override = \"\" MUST suppress the badge; got {}",
+        body["brand"]["footer_text"]
+    );
+    assert_eq!(
+        body["brand"]["theme"], "dark",
+        "theme override must surface in widget-config"
+    );
+    // Tier untouched — still Free (caps unchanged).
+    assert_eq!(state.tenants.get_tier(&scope).await.unwrap(), feedbackmonk_core::Tier::Free);
 }

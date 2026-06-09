@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tenants\n            SET footer_text_override = $2,\n                footer_url           = $3,\n                widget_theme         = $4,\n                widget_primary_color = $5,\n                widget_logo_url      = $6,\n                updated_at           = now()\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "931d13932f4b82f184635d3bdd2bf2e14676d55fde179695bae61f2cdc78466e"
+}

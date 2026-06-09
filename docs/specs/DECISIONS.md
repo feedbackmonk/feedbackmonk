@@ -705,3 +705,77 @@ the integration test. This is the code-state guard half of DEC-FBR-04's domain a
 
 ---
 
+### DEC-FBR-IMPL-11: Per-tenant admin-only footer override (decoupled from tier) + ops mutation endpoint
+
+**Resolved**: 2026-06-09 (GitCellar dogfood — the live widget on GitCellar's dark Cloud Forge showed the Free-tier "powered by feedbackmonk" footer pointing at the not-yet-live `feedbackmonk.com`. GitCellar wants the badge *temporarily* suppressed, then restored when the marketing site launches — without forcing its dogfood tenant onto a paid tier and its quotas).
+
+**Context**: Footer visibility was welded to pricing tier. `tier_quotas(Tier::Free).footer_text = Some("powered by feedbackmonk")`; every paid tier `None`. `crates/feedbackmonk-repository/src/tenants.rs::get_widget_brand` set `footer_text` purely from `tier_quotas(tier).footer_text` — no per-tenant column. The only way to hide the footer was to move the tenant off Free, which simultaneously changes its quota caps. The owner's dogfood tenant should have generous quotas (SelfHost) **and** independently-controllable branding. Conversely, FR-FBR-14's brand promise — *external* Free tenants advertise feedbackmonk and cannot self-remove the badge — must stay intact.
+
+**Decision**: Decouple badge visibility from tier with a **nullable, admin-only, per-tenant override** that supersedes the tier default — implemented as a layer *above* `tier_quotas()`, not a change to it.
+
+1. **Migration 00012** adds five nullable columns to `tenants` (shared with DEC-FBR-IMPL-12): `footer_text_override TEXT`, `footer_url TEXT`, `widget_theme TEXT` (CHECK `auto|light|dark`), `widget_primary_color TEXT`, `widget_logo_url TEXT`. All NULL by default → no behavior change for existing tenants.
+2. **Footer resolution** in `get_widget_brand` (the brand-assembly seam): `footer_text_override IS NULL` → `tier_quotas(tier).footer_text` (tier default, FR-FBR-14 path for external free tenants); `Some("")` → suppressed (`None`, widget renders no footer); `Some(text)` → custom text. `footer_url` resolves the override or defaults to `https://feedbackmonk.com` — making the badge href configurable (previously hardcoded in `widget/src/ui.ts`) so it can later point at the real marketing URL or a white-label target without a widget rebuild.
+3. **`tier_quotas()` is unchanged.** The override is the *only* new behavior; the tier table's `footer_text` remains the default. **Therefore Contract C19 and the `tier-enforcement-status` oracle Probe B (which assert the `tier_quotas()` literal shape) require NO change** — this preserves the FR-FBR-14 default as a code-level invariant. The deliberate oracle update is *additive*: a new Probe C / `tier_enforcement_smoke.rs` scenario proves (a) a fresh Free tenant with NULL override still shows the footer (FR-FBR-14 holds by default) and (b) a Free tenant with `footer_text_override = ""` suppresses it (override supersedes). This is the faithful reading of the brief's "update Probe B / C19 deliberately" — the brief anticipated drift only if we mutated `tier_quotas()`; the layered design avoids that and is documented here so a future reader does not think the oracle update was forgotten.
+4. **Mutation surface is ops-only, not tenant-self-serve.** A new `PATCH /api/v1/ops/tenants/{tenant_id}` endpoint (`crates/feedbackmonk-api/src/handlers/admin_ops.rs`) sets tier and/or the brand override, guarded by an `OpsAuth` extractor that constant-time-compares an `Authorization: Bearer <token>` against `FEEDBACKMONK_OPS_TOKEN` (env). **Why a separate ops token rather than the existing `AdminSession`:** every tenant holds its own `AdminSession` (it is the customer's own triage-dashboard cookie). Gating tier/footer mutation behind `AdminSession` would let any Free tenant upgrade itself for free and strip the badge — breaking both the commercial model and FR-FBR-14. There is no superadmin system in v1; the Bearer ops-token is the minimal honest operator surface (mirrors the deploy-time-env precedent of `FEEDBACKMONK_CORS_ORIGINS` / `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN`), is unreachable by tenant self-serve (tenants never hold the token), and is **disabled when the env var is unset** (returns 404, feature-off). New production repo writers `TenantRepo::set_tier` and `set_widget_brand_override` (scope-bound; multi-tenant-isolation compliant) replace the SQL-only tier path of `docs/operations/TIER_OVERRIDE.md`; `set_tier_for_test` is retained as the test seam. This complements (does not contradict) DEC-FBR-DEFER-01: Polar remains the *self-service* tier writer when billing lands; the ops endpoint is the *operator* path.
+5. **GitCellar flip** (driven through the new endpoint, not raw SQL): set the GitCellar tenant to **SelfHost** (honest owner-operated label: unlimited volume + custom_branding) **and** `footer_text_override = ""` (suppress) now; clear the override (set NULL) when `feedbackmonk.com` is live → badge returns. Per the settled product decision, suppression is **temporary** (restore at launch), not permanent.
+
+**Override granularity** (settled with the user): nullable `footer_text` override **plus** `footer_url` (chosen over a boolean suppress flag), so white-label custom text and a configurable badge href are both available without a second migration later.
+
+**Scope**: `migrations/00012_*.sql`; `feedbackmonk-core::WidgetBrand` (+`footer_url`); `feedbackmonk-repository::tenants` (`WidgetBrandOverride` type, `set_tier`/`get_widget_brand_override`/`set_widget_brand_override`, rewritten `get_widget_brand`); `feedbackmonk-api::handlers::admin_ops` (new) + `auth::ops` (`OpsAuth` extractor) + `AppState.ops_token` (touches the AppState constructors, mechanical, mirrors `login_gate` in DEC-FBR-IMPL-10) + router wiring; `docs/operations/SELFHOST_ENV.md` C21 catalog (`FEEDBACKMONK_OPS_TOKEN` row, grow-only); `.sqlx` cache regenerated.
+
+**Backwards compatibility**: new optional env var + all-NULL columns. Unset ops token → endpoint off. Existing widget-config behavior for every current tenant is byte-identical until an override is set.
+
+**Rollback**: `git revert` + a follow-up migration dropping the columns (append-only rule); no existing data depends on them.
+
+**Alternatives considered**: *Just upgrade GitCellar's tier* — conflates branding with quota (rejected, the originating problem). *Boolean suppress flag* — can't do custom text or configurable href; second migration later (rejected). *Full JSONB brand-override blob* — couples Issue A to Issue B theming and is harder to constrain per-field (rejected; discrete typed columns chosen). *Gate via `AdminSession`* — self-serve, breaks FR-FBR-14 (rejected).
+
+---
+
+### DEC-FBR-IMPL-12: Widget theme knob (`auto|light|dark`) + genuinely per-tenant `primary_color`/`logo`
+
+**Resolved**: 2026-06-09 (GitCellar dogfood — the modal renders as a fixed light card on GitCellar's dark Cloud Forge, looking bolted-on).
+
+**Context**: `widget/src/styles.css` hardcoded a light-only palette; the sole runtime-themable token was `--fbm-primary`, and even that was effectively hardcoded — `get_widget_brand` always returned `primary_color: "#3b82f6"` for every tenant (and that blue-500 value actually *overrode* the widget's deliberately-chosen WCAG-AA-safe `#2563eb` blue-600 CSS default). No dark variant, no `prefers-color-scheme` handling.
+
+**Decision**: A cross-origin embed cannot read the host page's CSS variables, so "inherit the host theme" is not how embed widgets work (Sentry/Canny/Featurebase/Marker.io all ship self-contained styling). The industry-standard fix is an explicit **theme knob**, resolved by precedence:
+
+1. **`theme` ∈ `{auto, light, dark}`**, resolved: embed attribute `data-theme` on the script tag → per-tenant brand default (`widget_theme` column) → **`auto`** (settled default with the user). `auto` follows the OS/host `prefers-color-scheme`. `styles.css` gains a dark token set under `.fbm-root[data-fbm-theme="dark"]` and `@media (prefers-color-scheme: dark) .fbm-root[data-fbm-theme="auto"]`. `widget.ts` resolves the value and sets `data-fbm-theme` on the root; `ui.ts` is unchanged for theme (pure CSS-variable swap — CSP-safe, no stylesheet re-injection).
+2. **`primary_color` becomes genuinely per-tenant**, sourced from the `widget_primary_color` override column. `WidgetBrand.primary_color` changes from `String` to **`Option<String>`** — `null` when the tenant has set no accent, in which case the widget applies nothing and its WCAG-safe `#2563eb` CSS default wins (this both makes the color real-per-tenant AND fixes the hardcoded-`#3b82f6`-overriding-the-safe-default bug). This is a deliberate, documented widening of the Contract C12 `brand` shape (the prior value was a hardcoded constant identical for every tenant, so no real consumer relied on it being present-and-`#3b82f6`).
+3. **`logo_url`** sourced from the `widget_logo_url` override column (already `Option<String>` in `WidgetBrand`; previously always `None`). The widget renders a small logo image in the modal header when present.
+
+These share migration 00012 and the ops mutation endpoint with DEC-FBR-IMPL-11 — one "branding" surface, as the brief recommended. GitCellar then embeds with `data-theme="auto"` (or `dark`) and an accent set via the ops endpoint → the modal matches its dark Forge.
+
+**Scope**: `widget/src/styles.css` (dark token sets), `widget/src/widget.ts` (theme resolution + `data-theme` script attr + apply), `widget/src/ui.ts` (logo render + footer_url use), `widget/src/types.ts` (`WidgetBrand` +`footer_url`/`theme`, `primary_color` nullable; `MountOptions` +`theme`); `feedbackmonk-core::WidgetBrand` + `feedbackmonk-api::handlers::widget_config` shape/tests. `widget/dist` rebuilt; `widget-bundle-size` oracle re-verified under the 30,720 B cap.
+
+**Backwards compatibility**: theme defaults to `auto`, which on a light host renders identically to today's fixed-light card; existing light-host embeds are visually unchanged. `primary_color: null` for tenants without an accent → widget default `#2563eb` (an improvement over the prior forced `#3b82f6`).
+
+**Rollback**: `git revert`; theme/color/logo columns dropped with the 00012 revert migration.
+
+**Alternatives considered**: *Read host CSS variables* — impossible cross-origin (rejected). *Light-only default with explicit opt-in* — would leave GitCellar's dark Forge mismatched unless it sets `data-theme` (rejected in favor of `auto`, the settled default). *Keep `primary_color: String` resolved server-side to a default* — preserves the contract shape but reintroduces a server-forced default overriding the WCAG-safe CSS default (rejected; nullable is more correct).
+
+---
+
+### DEC-FBR-IMPL-13: Launcher-less embedder-trigger mode — `[data-feedback-open]` auto-wiring + `window.feedbackmonk.open()`
+
+**Resolved**: 2026-06-09 (GitCellar dogfood — `widget.js` auto-mounts a floating `.fbm-launcher` that overlaps GitCellar's footer Terms/Privacy links and is redundant with GitCellar's own navbar "Send feedback" button).
+
+**Context**: The widget auto-mounts a `position:fixed` launcher. `data-fbm-no-auto-mount` existed but **the only way to open the modal was clicking `.fbm-launcher`** — there was no public open API. An embedder bringing its own trigger was stuck: keep the floating launcher (overlap/redundancy) or suppress it and lose the ability to open the modal. GitCellar shipped an interim hack — `.fbm-launcher{display:none}` plus a `feedback-trigger.js` shim that calls `document.querySelector('.fbm-launcher').click()` — which only works because click fires on a `display:none` element, so the launcher must persist as a hidden dummy click-target.
+
+**Decision**: Give launcher-less embeds a real open mechanism (settled with the user: **both** APIs).
+
+1. **`data-fbm-no-auto-mount` is redefined** from "do not mount at all" to "**initialize the widget launcher-less**" (fetch config, set up modal capability, wire triggers — but create no floating launcher). This is safe because the old meaning produced a *dead, un-openable* widget (no open API existed), so no embedder usefully depends on it. Manual ESM importers (`import { mountFeedbackMonk }`) are unaffected — they have no `script[data-project-id]` tag, so auto-mount already no-ops for them.
+2. **`[data-feedback-open]` auto-wiring** via a single document-level click delegation listener: any element matching `[data-feedback-open]` (including dynamically-added ones) opens the modal. The host marks its own button — no JS glue, no dummy launcher. This is already GitCellar's existing convention (its shim wires the same attribute), so honoring it natively lets GitCellar **delete the shim entirely**.
+3. **`window.feedbackmonk.open()` / `destroy()`** — `mountFeedbackMonk()` now returns a `{ open, destroy }` handle and also assigns it to `window.feedbackmonk`, for programmatic/JS-driven triggers. `[data-feedback-open]` wiring + the global are installed whether or not the launcher is present (harmless additive surface).
+
+GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navbar button `[data-feedback-open]`, and deletes both the interim `.fbm-launcher{display:none}` `<style>` and the `feedback-trigger.js` shim.
+
+**Scope**: `widget/src/widget.ts` (auto-mount gate → `noLauncher` flag, return handle, install `window.feedbackmonk` + `[data-feedback-open]` delegation), `widget/src/types.ts` (`FeedbackMonkHandle`, `noLauncher` mount option). `widget/dist` rebuilt; bundle re-checked under cap.
+
+**Backwards compatibility**: default (no attribute) is unchanged — floating launcher auto-mounts exactly as before, plus the new `[data-feedback-open]`/`window.feedbackmonk` surface is additively available. Only embeds that *opt in* via `data-fbm-no-auto-mount` get launcher-less behavior.
+
+**Rollback**: `git revert`; pure widget-source change, no API/DB surface.
+
+**Alternatives considered**: *`[data-feedback-open]` only* — covers GitCellar but no programmatic open (rejected). *`window.feedbackmonk.open()` only* — forces a click handler instead of a pure attribute (rejected). *New `data-fbm-no-launcher` attribute distinct from `data-fbm-no-auto-mount`* — avoids the semantic shift but adds a second attribute for no real benefit, since the old `data-fbm-no-auto-mount` behavior was non-functional (rejected).
+
+---
+

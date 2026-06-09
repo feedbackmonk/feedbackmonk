@@ -48,7 +48,7 @@ pub use roadmap_votes::{
 };
 pub use scope::{ProjectScope, TenantScope};
 pub use signing_keys::{SigningKeyRepo, SqlxSigningKeyRepo};
-pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo};
+pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo, WidgetBrandOverride};
 pub use tier_quota::{
     QuotaStatus, SqlxTierQuotaRepo, TierQuotaRepo, TierStatus, TierUsage,
     ROLLING_FEEDBACK_WINDOW_DAYS,

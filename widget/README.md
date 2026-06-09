@@ -34,14 +34,15 @@ the P0 submission shape.
 | `src/redact.ts` | **Code-split chunk** (`dist/redact.js`): canvas redaction editor — draw opaque rectangles, export flattened PNG. Self-contained (imports nothing from base) so the entry stays a single `widget.js`. Fetched lazily only when the user redacts. |
 | `playwright.config.ts` | Vite preview on port `14205` (`strictPort: true`, deconflicted from admin-ui's 14204 and api's 14304). |
 | `.gitignore` | Standard, but `dist/` is INTENTIONALLY tracked — see Decision Log below. |
-| `src/widget.ts` | Entry: `mountFeedbackMonk(opts?)` + auto-mount-on-script-load. Owns lifecycle, focus-trap installation/teardown. |
-| `src/types.ts` | Mirror of Contract C12 + `SubmitFeedbackRequest`/`Response`. Authored by Worker A on both sides. |
-| `src/ui.ts` | DOM construction. CSP-safe (no `innerHTML` with user data; single static literal for the launcher SVG). |
+| `src/widget.ts` | Entry: `mountFeedbackMonk(opts?)` + auto-mount-on-script-load. Owns lifecycle, focus-trap install/teardown, theme resolution (`data-theme` → brand default → `auto`), launcher-less mode (`data-fbm-no-auto-mount`), `[data-feedback-open]` delegated-click wiring, and the `window.feedbackmonk.open()` / handle `.open()`/`.destroy()` API (DEC-FBR-IMPL-12/13). |
+| `src/types.ts` | Mirror of Contract C12 + `SubmitFeedbackRequest`/`Response`. Adds `WidgetTheme` (`auto`\|`light`\|`dark`), nullable `primary_color`/`footer_url`/`theme` brand fields, and the `theme`/`noLauncher` mount options + handle `.open()`/`.destroy()` (DEC-FBR-IMPL-12/13). Authored by Worker A on both sides. |
+| `src/ui.ts` | DOM construction. CSP-safe (no `innerHTML` with user data; single static literal for the launcher SVG). Applies resolved theme + per-tenant accent; supports launcher-less render. |
 | `src/api.ts` | `fetchWidgetConfig` + `submitFeedback`. JWT bearer if supplied; otherwise anonymous (credentials: include for anon cookie). |
-| `src/styles.css` | Custom-prop-driven theme (`--fbm-primary`). Inline-style-free; cached separately by embedders. |
+| `src/styles.css` | Custom-prop-driven theme (`--fbm-primary`). Light/dark/auto theme variables (DEC-FBR-IMPL-12). Inline-style-free; cached separately by embedders. |
 | `e2e/fixture.html` | Host page used by the Playwright harness — loads built bundle, has a host-page launcher to verify focus return. |
-| `e2e/widget-a11y.spec.ts` | Playwright + axe-core: modal-closed clean, modal-open clean, Tab cycles inside dialog, ESC closes + focus return. |
+| `e2e/widget-a11y.spec.ts` | Playwright + axe-core: modal-closed clean, modal-open clean, Tab cycles inside dialog, ESC closes + focus return; plus launcher-less + dark-theme and `window.feedbackmonk.open()`/`destroy()` coverage (DEC-FBR-IMPL-12/13). |
 | `e2e/fixture-capture.html` | Fixture variant with `data-capture-console` — exercises console-log capture + the consent checkbox + the `console_log` multipart part. |
+| `e2e/fixture-no-launcher.html` | Fixture variant with `data-fbm-no-auto-mount` + a `[data-feedback-open]` host trigger — exercises launcher-less / embedder-trigger mode (DEC-FBR-IMPL-13). |
 | `dist/widget.js` | Built ES2020 minified entry bundle (vite + terser). Committed for oracle inspection. |
 | `dist/redact.js` | Built minified lazy redaction chunk. Committed for oracle inspection (Probe A counts it toward the cap). |
 | `dist/widget.css` | Built minified styles. Committed for oracle inspection. |
@@ -61,7 +62,27 @@ the P0 submission shape.
 ```
 
 The widget auto-mounts on `DOMContentLoaded` (or immediately if already
-loaded). Use `data-fbm-no-auto-mount` to disable auto-mount.
+loaded).
+
+### Theme (DEC-FBR-IMPL-12)
+
+Add `data-theme="auto" | "light" | "dark"` to the script tag to force a theme.
+Precedence: `data-theme` (or the `theme` mount option) → the per-tenant
+`brand.theme` default from widget-config → `"auto"` (follows
+`prefers-color-scheme`). The accent is driven by the per-tenant
+`primary_color`; when the tenant sets none, the widget's WCAG-AA-safe
+`#2563eb` CSS default wins (`primary_color` is nullable end-to-end).
+
+### Launcher-less / embedder-trigger mode (DEC-FBR-IMPL-13)
+
+Add `data-fbm-no-auto-mount` to the script tag to initialize **launcher-less**:
+the widget mounts but renders no floating launcher. The embedder opens the
+modal with either an `[data-feedback-open]` element (auto-wired via a single
+document-level delegated click listener) or `window.feedbackmonk.open()`. The
+mount handle also exposes `.open()` and `.destroy()` (removes modal + launcher
++ listeners + root). Note: `data-fbm-no-auto-mount` no longer means "do not
+mount" — the old meaning produced a dead, un-openable widget, so this redefinition
+is safe.
 
 ### Programmatic mount
 
@@ -231,8 +252,10 @@ scripts loaded at runtime.
 - **No `data-jwt` storage**: the widget reads JWT from script-tag
   attribute or `mountFeedbackMonk({ jwt })` only. We never persist it.
 - **Auto-mount via `DOMContentLoaded`**: matches the gitcellar
-  customer-help widget pattern. Customers who want manual control opt
-  out with `data-fbm-no-auto-mount`.
+  customer-help widget pattern. Customers who want a launcher-less,
+  embedder-driven trigger use `data-fbm-no-auto-mount` (mounts without a
+  floating launcher; open via `[data-feedback-open]` or
+  `window.feedbackmonk.open()` — DEC-FBR-IMPL-13).
 - **Port 14206 for vite preview**: registered with the project's Dev
   Port Registry. Deconflicted from admin-ui dev (14204), admin-ui e2e
   (14205, claimed by CLAUDE-C in this same PODS session at 04:32Z), and

@@ -462,3 +462,23 @@ The third path — a `marketing-selfhost-page-parity` Verification Oracle that d
 **Follow-up tracked**: (1) **DONE** — backfilled `crates/feedbackmonk-api/README.md` File Index (top-level `src/` files + `auth/`/`email/` submodule rows + full `src/handlers/` sub-table, all current files including `00009`–`00011`-era modules) and `migrations/README.md` (`00002`–`00011`, every migration now has a one-line entry); both stale "file-index drift" notes removed. (2) pending — consider a `readme-file-index-parity` Verification Oracle candidate (dir-listing ⊆ index rows ∧ index rows ⊆ dir-listing) at a future Phase 11 sweep.
 
 ---
+
+## Post-v1: GitCellar dogfood (2026-06-09)
+
+### D-FBR-29: Decouple a policy knob by adding a resolution LAYER above the invariant, not by mutating the invariant
+
+**Context**: GitCellar dogfooding wanted its self-host instance to drop the "powered by feedbackmonk" footer. The naive move is to make `tier_quotas()` / the tier-aware `get_widget_brand` mutable per-tenant — but that invariant *is* the FR-FBR-14 commercial-model enforcement surface (external Free tenants must show the badge). Mutating it would have silently weakened the brand-promise-as-code, and `tier-enforcement-status` Probe B (which asserts `tier_quotas()` shape vs Contract C19) would have had to be relaxed to stay green — a reward-hacking-shaped move.
+
+**Insight**: When a stakeholder wants to override a code-level invariant for one party, add a **new resolution layer above** the invariant rather than making the invariant itself configurable. Here: a per-tenant `footer_text_override` resolved *above* the tier default in `get_widget_brand`, gated behind an operator-only surface. Net effect — `tier_quotas()` stays byte-identical, Probe B stays unchanged, the FR-FBR-14 default is preserved for everyone who can't reach the override, and the oracle change is purely *additive* (new Probe C scenario proving the override supersedes AND is admin-only). The invariant test is what tells you whether you're layering (additive) or eroding (subtractive).
+
+**Where this pays off again**: any "let this one customer turn off the rule" request against a rule that's encoded as a tested invariant. Ask: can I satisfy this with a layer above, leaving the invariant + its test untouched? If yes, do that. If the only path is relaxing the invariant's test, stop — that's the reward-hacking smell.
+
+### D-FBR-30: Privilege-separate a mutation when *every* principal already holds the "admin" credential
+
+**Context**: The tier/footer-override mutation needed an auth gate. The obvious choice — the per-tenant `AdminSession` (the triage-dashboard cookie) — is wrong: in a multi-tenant SaaS *every* tenant holds an AdminSession for their own tenant, so gating tier mutation behind it lets a Free tenant flip its own tier to `self_host` and strip the badge. The "admin" credential isn't actually a privilege boundary for *this* operation.
+
+**Insight**: Before gating a mutation behind an existing auth principal, check whether that principal is held by the very actors the mutation must exclude. "Admin" is relative to a scope; a tenant-admin is not an operator. The fix was a distinct `OpsAuth` operator-bearer-token extractor (`FEEDBACKMONK_OPS_TOKEN`, constant-time compare, **404 when unset** so the surface is invisible on non-opted-in deploys). No superadmin system needed in v1 — a deploy-time shared secret is the minimal honest operator surface, mirroring the existing `FEEDBACKMONK_CORS_ORIGINS` env posture.
+
+**Where this pays off again**: any privileged mutation in a multi-tenant system. The question isn't "is the caller an admin?" but "is the caller's admin-ness scoped *below* the blast radius of this mutation?" If a tenant-scoped admin can reach a cross-tenant or commercial-policy lever, you need an operator tier above it.
+
+---

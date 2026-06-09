@@ -97,4 +97,15 @@ pub struct AppState {
     /// `tenants_tier_check` CHECK constraint enforces canonical values
     /// at the DB layer.
     pub tier_quotas: Arc<dyn TierQuotaRepo>,
+
+    // -- Post-v1: operator surface (DEC-FBR-IMPL-11) -----------------------
+    /// Shared-secret bearer token guarding the ops mutation endpoint
+    /// (`PATCH /api/v1/ops/tenants/{id}` — tier + widget brand override).
+    /// Loaded from `FEEDBACKMONK_OPS_TOKEN`. `None` ⇒ the ops endpoint is
+    /// DISABLED (returns 404), so a deployment that does not set the token
+    /// exposes no operator surface. Compared constant-time by the `OpsAuth`
+    /// extractor. NOT reachable by tenant self-serve — this is the privilege
+    /// separation that keeps FR-FBR-14 intact (a Free tenant's own
+    /// `AdminSession` cannot flip its tier or strip its footer badge).
+    pub ops_token: Option<Arc<str>>,
 }

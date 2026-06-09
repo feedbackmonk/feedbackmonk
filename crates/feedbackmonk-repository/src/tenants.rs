@@ -46,14 +46,47 @@ pub trait TenantRepo: Send + Sync {
     /// PATCH endpoint on top of this; Stage 1 ships only the repo surface.
     async fn update_brand(&self, scope: &TenantScope, brand: &EmailTenantBrand) -> Result<()>;
 
-    /// Read the widget runtime brand surface for `scope` (Contract C12, P2).
+    /// Read the widget runtime brand surface for `scope` (Contract C12).
     ///
-    /// Sibling of `get_brand`, smaller payload: only fields the embeddable
-    /// widget needs (`primary_color`, optional `logo_url`, optional
-    /// `footer_text`). P3 wires per-tier overrides — `footer_text` is now
-    /// `Some("powered by feedbackmonk")` for Free tier and `None` for every
-    /// paid tier (FR-FBR-14, Contract C19's `tier_quotas(tier).footer_text`).
+    /// Sibling of `get_brand`, smaller payload: the fields the embeddable
+    /// widget needs. Resolution layers the per-tenant override columns
+    /// (migration 00012) on top of the tier default (DEC-FBR-IMPL-11/12):
+    /// - `footer_text`: `footer_text_override` NULL ⇒ `tier_quotas(tier).footer_text`
+    ///   (FR-FBR-14 default for external Free tenants); `Some("")` ⇒ suppressed
+    ///   (`None`); `Some(text)` ⇒ custom. `tier_quotas()` itself is unchanged.
+    /// - `primary_color` / `logo_url` / `theme` / `footer_url`: passed through
+    ///   from the override columns (NULL ⇒ widget falls back to its CSS / hard
+    ///   default).
     async fn get_widget_brand(&self, scope: &TenantScope) -> Result<WidgetBrand>;
+
+    /// Read the raw per-tenant widget brand override columns for `scope`
+    /// (migration 00012). Unlike `get_widget_brand`, this does NOT resolve
+    /// against the tier default — it returns the stored override values
+    /// verbatim, for the ops endpoint to display/confirm current overrides.
+    async fn get_widget_brand_override(
+        &self,
+        scope: &TenantScope,
+    ) -> Result<WidgetBrandOverride>;
+
+    /// Replace the per-tenant widget brand override columns for `scope`
+    /// (migration 00012). Full-replace (PUT) semantics: every override column
+    /// is set to the supplied value, `None` clearing it. Written ONLY via the
+    /// ops mutation endpoint (DEC-FBR-IMPL-11) — never tenant-self-serve, so
+    /// external Free tenants cannot strip the FR-FBR-14 badge.
+    async fn set_widget_brand_override(
+        &self,
+        scope: &TenantScope,
+        over: &WidgetBrandOverride,
+    ) -> Result<()>;
+
+    /// Production tier writer (DEC-FBR-IMPL-11). Sets `tenants.tier` for
+    /// `scope`. Scope-bound (multi-tenant-isolation compliant) — the ops
+    /// handler mints the scope via `scope_for` after validating the ops token.
+    /// Complements DEC-FBR-DEFER-01: Polar will be the *self-service* tier
+    /// writer when billing lands; this is the *operator* path that supersedes
+    /// the SQL-only workflow of `docs/operations/TIER_OVERRIDE.md`. Distinct
+    /// from the test-only `set_tier_for_test`.
+    async fn set_tier(&self, scope: &TenantScope, tier: Tier) -> Result<()>;
 
     /// Read the pricing tier for `scope` (P3 Stage 1, Contract C17).
     ///
@@ -114,6 +147,22 @@ impl EmailTenantBrand {
             sender_display_name,
         }
     }
+}
+
+/// Per-tenant widget brand override (migration 00012; DEC-FBR-IMPL-11/12).
+///
+/// Each field maps 1:1 to a nullable `tenants` column. `None` = no override
+/// for that field (fall through to the tier default for `footer_text_override`,
+/// or the widget's own CSS/hardcoded default for the rest). `footer_text_override
+/// = Some("")` is the explicit-suppress sentinel (widget renders no footer);
+/// `Some(text)` is custom footer copy. Written only via the ops endpoint.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WidgetBrandOverride {
+    pub footer_text_override: Option<String>,
+    pub footer_url: Option<String>,
+    pub theme: Option<String>,
+    pub primary_color: Option<String>,
+    pub logo_url: Option<String>,
 }
 
 #[derive(Clone)]
@@ -313,14 +362,16 @@ impl TenantRepo for SqlxTenantRepo {
     }
 
     async fn get_widget_brand(&self, scope: &TenantScope) -> Result<WidgetBrand> {
-        // P3 Stage 1: tier-aware footer flip per FR-FBR-14 + Contract C19.
-        // Read tier alongside the existence check; map via the canonical
-        // `tier_quotas(tier).footer_text` source of truth (oracle Probe B
-        // pins this shape). primary_color + logo_url remain hardcoded
-        // free-tier defaults until P4's per-tenant widget-brand columns
-        // land — those are independent of the commercial-gate work.
+        // DEC-FBR-IMPL-11/12: resolve the per-tenant override columns
+        // (migration 00012) over the tier default. `tier_quotas()` is the
+        // unchanged footer SSOT (oracle Probe B still pins its shape); the
+        // override is a layer above it.
         let row = sqlx::query!(
-            r#"SELECT tier FROM tenants WHERE id = $1"#,
+            r#"
+            SELECT tier, footer_text_override, footer_url,
+                   widget_theme, widget_primary_color, widget_logo_url
+            FROM tenants WHERE id = $1
+            "#,
             scope.tenant_id(),
         )
         .fetch_optional(&self.pool)
@@ -339,11 +390,90 @@ impl TenantRepo for SqlxTenantRepo {
             RepoError::NotFound
         })?;
 
+        // Footer resolution (FR-FBR-14 default preserved when override is NULL):
+        //   NULL       → tier default (Some("powered by feedbackmonk") on Free)
+        //   Some("")   → explicit suppress → None (widget renders no footer)
+        //   Some(text) → custom footer text
+        let footer_text = match row.footer_text_override {
+            None => tier_quotas(tier).footer_text.map(str::to_string),
+            Some(s) if s.is_empty() => None,
+            Some(s) => Some(s),
+        };
+
         Ok(WidgetBrand {
-            primary_color: "#3b82f6".to_string(),
-            logo_url: None,
-            footer_text: tier_quotas(tier).footer_text.map(str::to_string),
+            // NULL ⇒ widget uses its WCAG-AA-safe #2563eb CSS default.
+            primary_color: row.widget_primary_color,
+            logo_url: row.widget_logo_url,
+            footer_text,
+            // NULL ⇒ widget defaults the badge href to https://feedbackmonk.com.
+            footer_url: row.footer_url,
+            // NULL ⇒ widget resolves 'auto'.
+            theme: row.widget_theme,
         })
+    }
+
+    async fn get_widget_brand_override(
+        &self,
+        scope: &TenantScope,
+    ) -> Result<WidgetBrandOverride> {
+        let row = sqlx::query!(
+            r#"
+            SELECT footer_text_override, footer_url,
+                   widget_theme, widget_primary_color, widget_logo_url
+            FROM tenants WHERE id = $1
+            "#,
+            scope.tenant_id(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        Ok(WidgetBrandOverride {
+            footer_text_override: row.footer_text_override,
+            footer_url: row.footer_url,
+            theme: row.widget_theme,
+            primary_color: row.widget_primary_color,
+            logo_url: row.widget_logo_url,
+        })
+    }
+
+    async fn set_widget_brand_override(
+        &self,
+        scope: &TenantScope,
+        over: &WidgetBrandOverride,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE tenants
+            SET footer_text_override = $2,
+                footer_url           = $3,
+                widget_theme         = $4,
+                widget_primary_color = $5,
+                widget_logo_url      = $6,
+                updated_at           = now()
+            WHERE id = $1
+            "#,
+            scope.tenant_id(),
+            over.footer_text_override,
+            over.footer_url,
+            over.theme,
+            over.primary_color,
+            over.logo_url,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn set_tier(&self, scope: &TenantScope, tier: Tier) -> Result<()> {
+        sqlx::query!(
+            "UPDATE tenants SET tier = $2, updated_at = now() WHERE id = $1",
+            scope.tenant_id(),
+            tier.as_db_str(),
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     async fn get_tier(&self, scope: &TenantScope) -> Result<Tier> {
@@ -504,10 +634,130 @@ mod tests {
         let t = repo.create("widget@example.com", "h").await.unwrap();
         let scope = repo.scope_for(t.id).await.unwrap();
         let brand = repo.get_widget_brand(&scope).await.unwrap();
-        // P3 Stage 1: tier-aware footer. Default tier is Free → footer set.
-        assert_eq!(brand.primary_color, "#3b82f6");
+        // Fresh tenant: no overrides set → brand fields fall through to
+        // widget CSS/hard defaults (None), footer to the Free tier default.
+        assert_eq!(brand.primary_color, None);
         assert_eq!(brand.logo_url, None);
+        assert_eq!(brand.footer_url, None);
+        assert_eq!(brand.theme, None);
         assert_eq!(brand.footer_text.as_deref(), Some("powered by feedbackmonk"));
+    }
+
+    // ----- DEC-FBR-IMPL-11/12: per-tenant brand override resolution -----
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn footer_override_empty_string_suppresses_on_free_tier(pool: PgPool) {
+        // FR-FBR-14 decoupling: a Free tenant whose admin set
+        // footer_text_override = "" renders NO footer, while quotas stay Free.
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("suppress@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        repo.set_widget_brand_override(
+            &scope,
+            &WidgetBrandOverride {
+                footer_text_override: Some(String::new()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let brand = repo.get_widget_brand(&scope).await.unwrap();
+        assert_eq!(brand.footer_text, None, "empty override must suppress footer");
+        // Tier is untouched — still Free.
+        assert_eq!(repo.get_tier(&scope).await.unwrap(), Tier::Free);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn footer_override_custom_text_supersedes_tier_default(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("custom@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        repo.set_widget_brand_override(
+            &scope,
+            &WidgetBrandOverride {
+                footer_text_override: Some("feedback by Acme".into()),
+                footer_url: Some("https://acme.example/feedback".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let brand = repo.get_widget_brand(&scope).await.unwrap();
+        assert_eq!(brand.footer_text.as_deref(), Some("feedback by Acme"));
+        assert_eq!(brand.footer_url.as_deref(), Some("https://acme.example/feedback"));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn theme_color_logo_overrides_pass_through(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("theme@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        repo.set_widget_brand_override(
+            &scope,
+            &WidgetBrandOverride {
+                theme: Some("dark".into()),
+                primary_color: Some("#7c3aed".into()),
+                logo_url: Some("https://acme.example/logo.svg".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let brand = repo.get_widget_brand(&scope).await.unwrap();
+        assert_eq!(brand.theme.as_deref(), Some("dark"));
+        assert_eq!(brand.primary_color.as_deref(), Some("#7c3aed"));
+        assert_eq!(brand.logo_url.as_deref(), Some("https://acme.example/logo.svg"));
+        // Footer untouched → Free tier default still present.
+        assert_eq!(brand.footer_text.as_deref(), Some("powered by feedbackmonk"));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn brand_override_round_trips_and_full_replace_clears(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("rt@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        let set = WidgetBrandOverride {
+            footer_text_override: Some(String::new()),
+            footer_url: Some("https://x.example".into()),
+            theme: Some("light".into()),
+            primary_color: Some("#123456".into()),
+            logo_url: Some("https://x.example/l.png".into()),
+        };
+        repo.set_widget_brand_override(&scope, &set).await.unwrap();
+        assert_eq!(repo.get_widget_brand_override(&scope).await.unwrap(), set);
+
+        // Full-replace (PUT) with all-None clears every override column.
+        repo.set_widget_brand_override(&scope, &WidgetBrandOverride::default())
+            .await
+            .unwrap();
+        assert_eq!(
+            repo.get_widget_brand_override(&scope).await.unwrap(),
+            WidgetBrandOverride::default()
+        );
+        // Footer falls back to Free tier default after clearing.
+        assert_eq!(
+            repo.get_widget_brand(&scope).await.unwrap().footer_text.as_deref(),
+            Some("powered by feedbackmonk")
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn set_tier_writes_each_canonical_value(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("settier@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        for tier in [Tier::Starter, Tier::Pro, Tier::SelfHost, Tier::Free] {
+            repo.set_tier(&scope, tier).await.unwrap();
+            assert_eq!(repo.get_tier(&scope).await.unwrap(), tier);
+        }
     }
 
     // ----- P3 Stage 1: tier-aware repo methods (4 sqlx::test) -----

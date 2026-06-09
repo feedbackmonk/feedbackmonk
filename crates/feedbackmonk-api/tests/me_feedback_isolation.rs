@@ -99,6 +99,7 @@ fn build_test_state(pool: &PgPool) -> AppState {
         verify_token_ttl: Duration::hours(24),
         anon_gate: AnonGate::new(NonZeroU32::new(10).unwrap()),
         login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
+        ops_token: None,
         jwt_iat_leeway_seconds: 5,
         roadmap_items: Arc::new(feedbackmonk_repository::SqlxRoadmapItemRepo::new(pool.clone())),
         roadmap_votes: Arc::new(feedbackmonk_repository::SqlxRoadmapVoteRepo::new(pool.clone())),

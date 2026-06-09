@@ -149,9 +149,11 @@ mod tests {
             tenant_id: Uuid::nil(),
             display_name: "Fixture".into(),
             brand: WidgetBrand {
-                primary_color: "#abcdef".into(),
+                primary_color: Some("#abcdef".into()),
                 logo_url: None,
                 footer_text: Some("powered by feedbackmonk".into()),
+                footer_url: None,
+                theme: Some("dark".into()),
             },
             auth_modes: V1_AUTH_MODES.to_vec(),
             submission_kinds: V1_SUBMISSION_KINDS.to_vec(),
@@ -161,7 +163,9 @@ mod tests {
         assert_eq!(json["display_name"], "Fixture");
         assert_eq!(json["brand"]["primary_color"], "#abcdef");
         assert_eq!(json["brand"]["footer_text"], "powered by feedbackmonk");
+        assert_eq!(json["brand"]["theme"], "dark");
         assert!(json["brand"]["logo_url"].is_null());
+        assert!(json["brand"]["footer_url"].is_null());
         assert_eq!(json["auth_modes"][0], "auth");
         assert_eq!(json["auth_modes"][1], "anonymous");
         assert_eq!(json["max_body_chars"], MAX_BODY_CHARS);

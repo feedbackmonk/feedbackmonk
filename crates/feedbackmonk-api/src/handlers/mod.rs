@@ -31,6 +31,10 @@ pub mod roadmap;
 // P3 Stage 1: admin tier-status endpoint (FR-FBR-14, Contract C17).
 pub mod admin_tier;
 
+// Post-v1: operator tier + widget brand-override mutation (DEC-FBR-IMPL-11).
+// Bearer-token-guarded (OpsAuth) operator surface — NOT tenant-self-serve.
+pub mod admin_ops;
+
 // Gap #1 (GitCellar parity): feedback attachment multipart upload.
 pub mod attachments;
 

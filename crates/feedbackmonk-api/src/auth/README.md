@@ -37,9 +37,10 @@ endpoint behind the `feedbackmonk_session` cookie (Contract C11):
 
 | File | One-line summary |
 |---|---|
-| `mod.rs` | Module surface — re-exports `password::*`, `session::{issue_session_cookie, AdminSession, SESSION_COOKIE_NAME}`. |
+| `mod.rs` | Module surface — re-exports `ops::OpsAuth`, `password::*`, `session::{issue_session_cookie, AdminSession, SESSION_COOKIE_NAME}`. |
 | `password.rs` | argon2id `hash_password` + `verify_password` (constant-time-safe wrapper around `argon2::PasswordHasher`). |
 | `session.rs` | Cookie format, HMAC verification, `issue_session_cookie`, `AdminSession` `FromRequestParts` impl. Cookie value: `<b64(tenant_uuid_16)>.<b64(issued_unix_be_8)>.<b64(hmac_sha256_32)>`. |
+| `ops.rs` | `OpsAuth` operator bearer-token guard for the ops mutation surface (DEC-FBR-IMPL-11). Deliberately separate from `AdminSession`: constant-time compares `Authorization: Bearer` against `FEEDBACKMONK_OPS_TOKEN`. Token unset ⇒ 404 (endpoint invisible); missing/wrong token ⇒ 401. Keeps a Free tenant's own admin session from flipping its tier or stripping the FR-FBR-14 badge. |
 | `README.md` | This file. |
 
 ## 3. Public API & Usage

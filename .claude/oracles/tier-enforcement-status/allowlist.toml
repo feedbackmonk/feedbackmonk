@@ -74,3 +74,8 @@ rationale = "Admin-created roadmap items are not in Contract C19's cap matrix; t
 module = "roadmap"
 function = "admin_update_item"
 rationale = "Admin roadmap-item edits update an existing row; no new chargeable resource produced."
+
+[[handlers]]
+module = "admin_ops"
+function = "patch_tenant"
+rationale = "Operator (ops-token-guarded) tier + widget-brand-override mutation (DEC-FBR-IMPL-11). It is the INVERSE of a cap-checked write: it SETS the tenant's tier (the very value check_tier_quota reads) and writes brand-override columns. Neither produces a chargeable resource per Contract C19 (only project count + monthly feedback volume are capped). Gating it on check_tier_quota would be nonsensical — an operator raising a tenant's tier must not be blocked by that tenant's current cap. Reachable only with FEEDBACKMONK_OPS_TOKEN, never tenant-self-serve."

@@ -756,6 +756,7 @@ mod tests {
             verify_token_ttl: Duration::hours(24),
             anon_gate: AnonGate::new(NonZeroU32::new(DEFAULT_RATE_LIMIT_PER_HOUR).unwrap()),
             login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
+            ops_token: None,
             jwt_iat_leeway_seconds: 5,
             // P2 fields — required by AppState; the admin-feedback tests don't
             // exercise these surfaces (see docs/test-modifications/

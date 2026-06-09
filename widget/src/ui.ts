@@ -2,6 +2,7 @@ import type {
   ApiError,
   WidgetConfig,
   WidgetSubmissionKind,
+  WidgetTheme,
 } from "./types.js";
 
 // DOM construction helpers for the feedbackmonk widget. CSP-safe:
@@ -115,6 +116,16 @@ export function createModal(
   closeBtn.textContent = "×";
   closeBtn.addEventListener("click", onClose);
 
+  // Optional per-tenant logo (DEC-FBR-IMPL-12) — rendered in the modal header.
+  let logoEl: HTMLImageElement | null = null;
+  if (config.brand.logo_url) {
+    logoEl = createElement("img", "fbm-logo");
+    logoEl.src = config.brand.logo_url;
+    logoEl.alt = config.display_name + " logo";
+    logoEl.decoding = "async";
+    logoEl.loading = "lazy";
+  }
+
   const titleEl = createElement("h2", "fbm-title", "Send feedback");
   titleEl.id = titleId;
 
@@ -227,7 +238,9 @@ export function createModal(
   });
   actions.append(cancelBtn, submitBtn);
 
-  modal.append(closeBtn, titleEl, descEl, subjectField, kindField, bodyField);
+  modal.appendChild(closeBtn);
+  if (logoEl) modal.appendChild(logoEl);
+  modal.append(titleEl, descEl, subjectField, kindField, bodyField);
   modal.appendChild(attachContainer);
   if (emailField) modal.appendChild(emailField);
   if (logConsentField) modal.appendChild(logConsentField);
@@ -236,7 +249,9 @@ export function createModal(
   if (config.brand.footer_text) {
     const footer = createElement("div", "fbm-footer");
     const link = createElement("a", undefined, config.brand.footer_text);
-    link.href = "https://feedbackmonk.com";
+    // Configurable badge href (DEC-FBR-IMPL-11); defaults to the marketing
+    // site when the tenant has no override.
+    link.href = config.brand.footer_url || "https://feedbackmonk.com";
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     footer.appendChild(link);
@@ -274,8 +289,21 @@ export function createModal(
   };
 }
 
-export function applyTheme(root: HTMLElement, config: WidgetConfig): void {
-  root.style.setProperty("--fbm-primary", config.brand.primary_color);
+/// Apply runtime theming to the widget root (DEC-FBR-IMPL-12).
+///   - `theme` ("auto"|"light"|"dark") drives `data-fbm-theme`, which the
+///     stylesheet keys the dark token set off (dark explicit, or `auto` under
+///     a `prefers-color-scheme: dark` media query).
+///   - `primary_color` is applied ONLY when the tenant set one; otherwise the
+///     widget keeps its WCAG-AA-safe `#2563eb` CSS default.
+export function applyTheme(
+  root: HTMLElement,
+  config: WidgetConfig,
+  theme: WidgetTheme,
+): void {
+  root.setAttribute("data-fbm-theme", theme);
+  if (config.brand.primary_color) {
+    root.style.setProperty("--fbm-primary", config.brand.primary_color);
+  }
 }
 
 export function showError(els: ModalElements, err: ApiError): void {

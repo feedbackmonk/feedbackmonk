@@ -54,6 +54,7 @@
 | `FEEDBACKMONK_SESSION_SECRET` | **REQ** | — | 🔒 | HMAC key for signed admin-session cookies. **64 hex chars = 32 bytes**. Generate: `openssl rand -hex 32`. Rotation rotates all admin sessions (admins must re-login). Source: `crates/feedbackmonk-api/src/main.rs:268`, `crates/feedbackmonk-api/src/auth/session.rs:11`. |
 | `FEEDBACKMONK_VERIFY_TOKEN_TTL_HOURS` | optional | `24` | | TTL in hours for the verify-email tokens minted at signup. Integer ≥ 1. Source: `crates/feedbackmonk-api/src/main.rs:144`. |
 | `FEEDBACKMONK_JWT_LEEWAY_SECONDS` | optional | `5` | | Clock-skew tolerance for the JWT `iat` claim **ONLY**. `exp` remains strict per Contract C2 invariant 5. Integer ≥ 0. Source: `crates/feedbackmonk-api/src/main.rs:157`. |
+| `FEEDBACKMONK_OPS_TOKEN` | optional | — | 🔒 | Shared-secret bearer token gating the operator mutation endpoint `PATCH /api/v1/ops/tenants/{id}` (set tier + per-tenant widget brand override; DEC-FBR-IMPL-11). **Unset ⇒ the ops endpoint is DISABLED (404)** — operator-only, never reachable by tenant self-serve, so leaving it unset is the safe default. Set it (e.g. `openssl rand -hex 32`) only when an operator needs to flip a tenant's tier/branding (e.g. the GitCellar self-host flip). Compared constant-time. Source: `crates/feedbackmonk-api/src/main.rs`, `crates/feedbackmonk-api/src/auth/ops.rs`. |
 
 ### Anonymous Mode Rate Limiting
 

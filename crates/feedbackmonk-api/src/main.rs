@@ -42,9 +42,9 @@ use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
-    me_feedback_router, parse_origins, promote_router, public_cors_layer, roadmap_router,
-    spawn_voting_cache_refresh, submission_router, widget_config_router, AttachmentState,
-    VotingCache,
+    me_feedback_router, ops_router, parse_origins, promote_router, public_cors_layer,
+    roadmap_router, spawn_voting_cache_refresh, submission_router, widget_config_router,
+    AttachmentState, VotingCache,
 };
 
 #[tokio::main]
@@ -208,6 +208,17 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(DEFAULT_IAT_LEEWAY_SECONDS);
 
+    // DEC-FBR-IMPL-11: ops mutation surface. Unset/empty ⇒ disabled (the
+    // endpoint returns 404), so deployments that don't opt in expose nothing.
+    let ops_token: Option<Arc<str>> = env::var("FEEDBACKMONK_OPS_TOKEN")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .map(Arc::from);
+    if ops_token.is_some() {
+        tracing::info!("ops mutation endpoint ENABLED (FEEDBACKMONK_OPS_TOKEN set)");
+    }
+
     Ok(AppState {
         pool,
         tenants,
@@ -231,6 +242,7 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         started_at: Utc::now(),
         health,
         tier_quotas,
+        ops_token,
     })
 }
 
@@ -355,6 +367,10 @@ fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &
         .merge(roadmap_router(state.clone()))
         .merge(admin_roadmap_router(state.clone()))
         .merge(admin_tier_router(state.clone()))
+        // Operator-only tier + brand-override mutation (DEC-FBR-IMPL-11). No
+        // CORS layer (called server-side / via curl, never a browser embed);
+        // guarded by the OpsAuth bearer token (404 when token unset).
+        .merge(ops_router(state.clone()))
         .merge(me_feedback_router(state.clone()))
         .merge(attachments_router(attachment_state).layer(cors.clone()))
         .merge(promote_router(state));

@@ -1,10 +1,12 @@
 import "./styles.css";
 import type {
   ApiError,
+  FeedbackMonkHandle,
   MountOptions,
   SubmitFeedbackRequest,
   WidgetConfig,
   WidgetSubmissionKind,
+  WidgetTheme,
 } from "./types.js";
 import { fetchWidgetConfig, submitFeedback } from "./api.js";
 import {
@@ -55,6 +57,14 @@ interface WidgetState {
   consoleLog: (() => string) | null;
   // Per-modal attachments controller; null while the modal is closed.
   attachments: AttachmentsController | null;
+  // Document-level click delegation that opens the modal from any
+  // `[data-feedback-open]` element (DEC-FBR-IMPL-13). Removed on destroy.
+  openDelegationListener: ((e: MouseEvent) => void) | null;
+  // Set by `destroy()`; guards `open()` against re-opening a torn-down widget.
+  destroyed: boolean;
+  // Stable open() reference exposed via the handle / window.feedbackmonk;
+  // captured so destroy() can clear the global only if it still points here.
+  handleOpen: () => void;
 }
 
 function resolveProjectId(opts: MountOptions): string | null {
@@ -101,6 +111,39 @@ function resolveCaptureConsole(opts: MountOptions): MountOptions {
   for (const s of Array.from(scripts)) {
     if (s.hasAttribute("data-capture-console")) {
       return { ...opts, captureConsole: true };
+    }
+  }
+  return opts;
+}
+
+// Theme override from the script tag's `data-theme` attribute (DEC-FBR-IMPL-12).
+// Highest precedence; falls back to the per-tenant brand default then "auto".
+function resolveTheme(opts: MountOptions): MountOptions {
+  if (opts.theme) return opts;
+  const scripts = document.querySelectorAll<HTMLScriptElement>(
+    "script[data-theme]",
+  );
+  for (const s of Array.from(scripts)) {
+    const t = s.getAttribute("data-theme");
+    if (t === "auto" || t === "light" || t === "dark") {
+      return { ...opts, theme: t };
+    }
+  }
+  return opts;
+}
+
+// Launcher-less mode from the script tag's `data-fbm-no-auto-mount` attribute
+// (DEC-FBR-IMPL-13). When set, the widget initializes WITHOUT the floating
+// launcher; the embedder opens the modal via `[data-feedback-open]` or
+// `window.feedbackmonk.open()`.
+function resolveNoLauncher(opts: MountOptions): MountOptions {
+  if (opts.noLauncher !== undefined) return opts;
+  const scripts = document.querySelectorAll<HTMLScriptElement>(
+    "script[data-project-id]",
+  );
+  for (const s of Array.from(scripts)) {
+    if (s.hasAttribute("data-fbm-no-auto-mount")) {
+      return { ...opts, noLauncher: true };
     }
   }
   return opts;
@@ -227,7 +270,7 @@ async function performSubmit(state: WidgetState): Promise<void> {
 }
 
 function openModal(state: WidgetState): void {
-  if (!state.config || state.modalEls) return;
+  if (!state.config || state.modalEls || state.destroyed) return;
   const mode: "auth" | "anonymous" = state.opts.jwt ? "auth" : "anonymous";
   state.previousFocus = document.activeElement as HTMLElement | null;
   const logCaptureAvailable =
@@ -263,13 +306,31 @@ function openModal(state: WidgetState): void {
   state.trapListener = trapListener;
 }
 
+/// Tear the widget down: close the modal, remove the document-level trigger
+/// delegation, and detach the root. After this, `open()` is a no-op.
+function destroyWidget(state: WidgetState): void {
+  closeModal(state);
+  if (state.openDelegationListener) {
+    document.removeEventListener("click", state.openDelegationListener);
+    state.openDelegationListener = null;
+  }
+  state.destroyed = true;
+  state.root.remove();
+  const w = window as unknown as { feedbackmonk?: FeedbackMonkHandle };
+  if (w.feedbackmonk && w.feedbackmonk.open === state.handleOpen) {
+    delete w.feedbackmonk;
+  }
+}
+
 export async function mountFeedbackMonk(
   options: MountOptions = {},
-): Promise<void> {
-  const opts = resolveCaptureConsole(resolveApiBase(resolveJwt(options)));
+): Promise<FeedbackMonkHandle | undefined> {
+  const opts = resolveNoLauncher(
+    resolveTheme(resolveCaptureConsole(resolveApiBase(resolveJwt(options)))),
+  );
   const projectId = resolveProjectId(opts);
   if (!projectId) {
-    return;
+    return undefined;
   }
   // Install console capture eagerly (if opted in) so logs that precede the
   // user opening the modal are still captured. No-op + zero overhead otherwise.
@@ -289,6 +350,9 @@ export async function mountFeedbackMonk(
     submitting: false,
     consoleLog,
     attachments: null,
+    openDelegationListener: null,
+    destroyed: false,
+    handleOpen: () => openModal(state),
   };
   let config: WidgetConfig;
   try {
@@ -296,24 +360,56 @@ export async function mountFeedbackMonk(
   } catch {
     // Silently no-op if the project is unknown or backend unreachable.
     // The customer's page should not be impacted by widget errors.
-    return;
+    root.remove();
+    return undefined;
   }
   state.config = config;
-  applyTheme(root, config);
-  const launcher = createLauncher(config.display_name, () => openModal(state));
-  state.launcher = launcher;
-  root.appendChild(launcher);
+  // Theme precedence: explicit option / data-theme → per-tenant brand default
+  // → "auto" (DEC-FBR-IMPL-12).
+  const theme: WidgetTheme = opts.theme ?? config.brand.theme ?? "auto";
+  applyTheme(root, config, theme);
+
+  // Floating launcher — unless the embedder opted out (DEC-FBR-IMPL-13).
+  if (!opts.noLauncher) {
+    const launcher = createLauncher(config.display_name, () => openModal(state));
+    state.launcher = launcher;
+    root.appendChild(launcher);
+  }
+
+  // Auto-wire any `[data-feedback-open]` element via a single document-level
+  // click-delegation listener — robust to dynamically-added triggers, and the
+  // host needs no JS glue (DEC-FBR-IMPL-13).
+  const delegation = (e: MouseEvent): void => {
+    const target = e.target as Element | null;
+    if (target && target.closest("[data-feedback-open]")) {
+      e.preventDefault();
+      openModal(state);
+    }
+  };
+  document.addEventListener("click", delegation);
+  state.openDelegationListener = delegation;
+
+  // Expose the programmatic handle. Single widget per page is the norm; if a
+  // page mounts more than once, the last mount wins the global.
+  const handle: FeedbackMonkHandle = {
+    open: state.handleOpen,
+    destroy: () => destroyWidget(state),
+  };
+  (window as unknown as { feedbackmonk?: FeedbackMonkHandle }).feedbackmonk =
+    handle;
+  return handle;
 }
 
-// Auto-mount on script-tag load. Customers who want manual control can pass
-// `data-fbm-no-auto-mount` to suppress this.
+// Auto-mount on script-tag load. `data-fbm-no-auto-mount` no longer suppresses
+// mounting — it now initializes launcher-less (resolveNoLauncher reads it), so
+// the embedder's own `[data-feedback-open]` / `window.feedbackmonk.open()` can
+// drive the modal (DEC-FBR-IMPL-13). Manual ESM importers have no
+// `script[data-project-id]` tag, so this still no-ops for them.
 function autoMount(): void {
   const scripts = document.querySelectorAll<HTMLScriptElement>(
     "script[data-project-id]",
   );
-  for (const s of Array.from(scripts)) {
-    if (s.hasAttribute("data-fbm-no-auto-mount")) return;
-  }
+  if (scripts.length === 0) return;
   void mountFeedbackMonk();
 }
 
