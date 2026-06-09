@@ -21,15 +21,25 @@ Nothing on the feedbackmonk backend is "reverted." No feedbackmonk feature or de
 Remaining items are GitCellar-side (their public-site embed) and SaaS (deferred), both out of scope
 for the feedbackmonk backend.
 
-> **2026-06-09 update — widget theming + footer/tier decoupling (NOT yet deployed).** A dogfood
-> intake from GitCellar produced three changes now BUILT + tested + committed in this repo but
-> **not yet redeployed to prod**: per-tenant admin-ops-only footer override decoupled from tier
-> (DEC-FBR-IMPL-11, migration 00012 + ops endpoint `PATCH /api/v1/ops/tenants/{id}` guarded by
-> `FEEDBACKMONK_OPS_TOKEN`), widget dark/light/auto theme + per-tenant color/logo
-> (DEC-FBR-IMPL-12), and launcher-less `[data-feedback-open]` / `window.feedbackmonk.open()`
-> trigger mode (DEC-FBR-IMPL-13). Migration 00012 is additive/all-NULL and the ops endpoint is OFF
-> until the token is set, so the redeploy is low-risk. **Actionable checklist (redeploy → ops-flip
-> → GitCellar re-sync + embed flip):**
+> **2026-06-09 update — widget theming + footer/tier decoupling DEPLOYED ✅.** The three changes
+> from the GitCellar dogfood intake (DEC-FBR-IMPL-11/12/13: per-tenant admin-ops-only footer override
+> decoupled from tier + ops endpoint `PATCH /api/v1/ops/tenants/{id}` guarded by
+> `FEEDBACKMONK_OPS_TOKEN`; widget dark/light/auto theme + per-tenant color/logo; launcher-less
+> `[data-feedback-open]` / `window.feedbackmonk.open()` trigger) are now **LIVE on prod**:
+> - **`feedbackmonk-api:0.1.3`** built from `697a7db` (offline sqlx, digest
+>   `sha256:98b3336f86147421e6f5d9d87ca68f6e7e61089c5e89cf333a1f6cdbd751d7c6`) →
+>   `registry.gitcellar.com` → Railway `serviceInstanceUpdate(source.image)` + `serviceInstanceDeployV2`
+>   (deployment `a174369f-…` SUCCESS). **Migration 00012 applied** to the prod `feedbackmonk` DB
+>   beforehand (additive/all-NULL; the api image does not auto-migrate).
+> - **GitCellar tenant ops-flipped**: `tier=self_host`, `footer_text_override=""` (badge suppressed,
+>   restore at launch), `theme=dark`, `primary_color=#8b5cf6`. ⚠️ The ops path param is the
+>   **tenant_id** (`020c637c-…`), not the project_id. Ops token in **WCM
+>   `gitcellar-feedbackmonk-ops-token`**.
+> - **GitCellar-side**: widget re-synced + Forge embed flipped to launcher-less + dark (GitCellar
+>   commit `bfa5562e23`); verified live on Cloud Forge :3222 — no launcher, navbar button opens dark modal.
+>
+> Authoritative operator log of this deploy: GitCellar repo
+> `docs/planning/feedbackmonk-deploy-state.md` § Stage C. Original checklist:
 > `docs/planning/followups/20260609-gitcellar-widget-theming-and-footer-decoupling-resync.md`.
 
 ---
