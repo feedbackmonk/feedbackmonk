@@ -39,6 +39,18 @@ pub use handlers::me_feedback::me_feedback_router;
 pub use handlers::promote::routes as promote_router;
 pub use handlers::roadmap::{admin_roadmap_router, roadmap_router};
 pub use handlers::widget_config::widget_config_router;
+pub use handlers::work_orders::{work_order_admin_router, work_order_runner_router};
+// P5a (Worker B, Contract C23/C24): cluster/recommendation/sweep admin routers +
+// the testable pure surface (clustering heuristic + source_refs exfil validator)
+// re-exported for the C24 corpus integration test.
+pub use handlers::clusters::{
+    assign_cluster_on_submit, derive_label, jaccard, normalize_tokens, router as cluster_admin_router,
+    CLUSTER_JACCARD_THRESHOLD,
+};
+pub use handlers::recommendations::{
+    router as recommendation_admin_router, validate_source_refs,
+};
+pub use handlers::sweeps::router as sweep_admin_router;
 pub use roadmap_voting_cache::{
     spawn_refresh_tick as spawn_voting_cache_refresh, VotingCache, VOTING_CACHE_TTL_SECS,
 };

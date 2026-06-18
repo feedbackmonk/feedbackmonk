@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE feedback\n            SET cluster_id = $4\n            WHERE tenant_id = $1 AND project_id = $2\n              AND cluster_id = $3\n              AND ($5::text[] IS NULL OR short_code = ANY($5::text[]))\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "TextArray"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "3e9b988f91a1148b6fa53c05b74a6f08f915cbcd8f36a7f269e87bb5e0223370"
+}

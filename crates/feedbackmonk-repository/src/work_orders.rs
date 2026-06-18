@@ -75,6 +75,13 @@ pub struct WorkOrderStatePatch<'a> {
     pub claimed_by_runner: Option<&'a str>,
     pub result_ref: Option<&'a JsonValue>,
     pub failure_reason: Option<&'a str>,
+    /// Q17 authoritative "tweak before approve" edits, written when the owner
+    /// authors the `approve` event (or carries an updated delta). `None`
+    /// COALESCEs to the existing value (set-forward, like the other patch
+    /// columns) — an owner who does not re-tweak at approve keeps the
+    /// create-time overrides. Added additively in Stage 1 (Worker A) over the
+    /// Stage 0 patch; existing call sites use `..Default::default()` unchanged.
+    pub owner_overrides: Option<&'a JsonValue>,
 }
 
 #[async_trait]
@@ -304,6 +311,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
                 claimed_by_runner = COALESCE($8, claimed_by_runner),
                 result_ref = COALESCE($9, result_ref),
                 failure_reason = COALESCE($10, failure_reason),
+                owner_overrides = COALESCE($11, owner_overrides),
                 updated_at = now()
             WHERE tenant_id = $1 AND project_id = $2 AND id = $3
             "#,
@@ -317,6 +325,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
             patch.claimed_by_runner,
             patch.result_ref,
             patch.failure_reason,
+            patch.owner_overrides,
         )
         .execute(&mut *conn)
         .await?;

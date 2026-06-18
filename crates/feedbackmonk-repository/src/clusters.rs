@@ -76,6 +76,51 @@ pub trait ClusterRepo: Send + Sync {
         cluster_id: Uuid,
         delta: i32,
     ) -> Result<i32>;
+
+    // ==== Stage 1 (CLAUDE-B) — additive executor variants ====================
+    // New methods only — the four Stage-0 signatures above are FROZEN. These
+    // let Worker B's clustering-on-submit + merge/split do their multi-step
+    // work atomically inside one caller-supplied transaction (announced in
+    // collab messages.md MSG-003 Q2). No new constructor → no
+    // `multi-tenant-isolation-check` allowlist entry needed.
+
+    /// Same-transaction variant of [`create`]. Opens a new cluster on a
+    /// caller-supplied connection so clustering-on-submit can create the
+    /// cluster, set `feedback.cluster_id`, and bump `member_count` atomically.
+    async fn create_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        label: &str,
+        summary: Option<&str>,
+        kind: FeedbackKind,
+        created_by: &str,
+    ) -> Result<FeedbackCluster>;
+
+    /// Same-transaction variant of [`adjust_member_count`].
+    async fn adjust_member_count_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        cluster_id: Uuid,
+        delta: i32,
+    ) -> Result<i32>;
+
+    /// Mark `cluster_id` merged into `survivor_id` within the caller's txn:
+    /// `status='merged'`, `merged_into_id=survivor_id`, `member_count=0`. The
+    /// survivor MUST belong to `scope` (resolved within scope first; `NotFound`
+    /// otherwise) and differ from the merged cluster (the DB
+    /// `feedback_clusters_no_self_merge` CHECK is the backstop). Returns the
+    /// updated (merged) row. The caller is responsible for re-pointing members
+    /// (`FeedbackRepo::repoint_cluster_members_in_executor`) and bumping the
+    /// survivor's count in the same txn.
+    async fn mark_merged_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        cluster_id: Uuid,
+        survivor_id: Uuid,
+    ) -> Result<FeedbackCluster>;
 }
 
 #[derive(Clone)]
@@ -237,6 +282,145 @@ impl ClusterRepo for SqlxClusterRepo {
 
         Ok(row.member_count)
     }
+
+    // ==== Stage 1 (CLAUDE-B) — additive executor variants ====================
+
+    async fn create_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        label: &str,
+        summary: Option<&str>,
+        kind: FeedbackKind,
+        created_by: &str,
+    ) -> Result<FeedbackCluster> {
+        let row = sqlx::query!(
+            r#"
+            INSERT INTO feedback_clusters
+                (tenant_id, project_id, label, summary, kind, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, tenant_id, project_id, label, summary, kind,
+                      priority, priority_rationale, status, merged_into_id,
+                      member_count, last_swept_at, created_by, created_at, updated_at
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            label,
+            summary,
+            kind.as_str(),
+            created_by,
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+
+        Ok(FeedbackCluster {
+            id: row.id,
+            tenant_id: row.tenant_id,
+            project_id: row.project_id,
+            label: row.label,
+            summary: row.summary,
+            kind: FeedbackKind::from_db_str(&row.kind),
+            priority: row.priority,
+            priority_rationale: row.priority_rationale,
+            status: row.status,
+            merged_into_id: row.merged_into_id,
+            member_count: row.member_count,
+            last_swept_at: row.last_swept_at,
+            created_by: row.created_by,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
+
+    async fn adjust_member_count_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        cluster_id: Uuid,
+        delta: i32,
+    ) -> Result<i32> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE feedback_clusters
+            SET member_count = GREATEST(member_count + $4, 0),
+                updated_at = now()
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            RETURNING member_count
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            cluster_id,
+            delta,
+        )
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        Ok(row.member_count)
+    }
+
+    async fn mark_merged_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        cluster_id: Uuid,
+        survivor_id: Uuid,
+    ) -> Result<FeedbackCluster> {
+        // Resolve the survivor WITHIN scope first so a cross-tenant survivor_id
+        // cannot be stamped onto this tenant's merged cluster (the FK alone
+        // would permit any existing cluster id).
+        sqlx::query!(
+            r#"
+            SELECT id FROM feedback_clusters
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            survivor_id,
+        )
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        let row = sqlx::query!(
+            r#"
+            UPDATE feedback_clusters
+            SET status = 'merged',
+                merged_into_id = $4,
+                member_count = 0,
+                updated_at = now()
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            RETURNING id, tenant_id, project_id, label, summary, kind,
+                      priority, priority_rationale, status, merged_into_id,
+                      member_count, last_swept_at, created_by, created_at, updated_at
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            cluster_id,
+            survivor_id,
+        )
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        Ok(FeedbackCluster {
+            id: row.id,
+            tenant_id: row.tenant_id,
+            project_id: row.project_id,
+            label: row.label,
+            summary: row.summary,
+            kind: FeedbackKind::from_db_str(&row.kind),
+            priority: row.priority,
+            priority_rationale: row.priority_rationale,
+            status: row.status,
+            merged_into_id: row.merged_into_id,
+            member_count: row.member_count,
+            last_swept_at: row.last_swept_at,
+            created_by: row.created_by,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -308,5 +492,96 @@ mod tests {
         // s2's list is empty; s1's is not.
         assert!(repo.list(&s2).await.unwrap().is_empty());
         assert_eq!(repo.list(&s1).await.unwrap().len(), 1);
+    }
+
+    // ==== Stage 1 (CLAUDE-B) — additive executor variant tests ===============
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn create_and_adjust_in_executor_round_trip(pool: PgPool) {
+        let repo = SqlxClusterRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "cluster-exec@example.com").await;
+
+        let mut tx = pool.begin().await.unwrap();
+        let c = repo
+            .create_in_executor(&scope, &mut tx, "Login broken", None, FeedbackKind::Bug, "agent")
+            .await
+            .unwrap();
+        assert_eq!(c.member_count, 0);
+        let n = repo
+            .adjust_member_count_in_executor(&scope, &mut tx, c.id, 3)
+            .await
+            .unwrap();
+        assert_eq!(n, 3);
+        tx.commit().await.unwrap();
+
+        // Committed: visible through the pool-based reads.
+        let got = repo.get(&scope, c.id).await.unwrap();
+        assert_eq!(got.member_count, 3);
+        assert_eq!(got.created_by, "agent");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn create_in_executor_rolls_back_with_the_txn(pool: PgPool) {
+        let repo = SqlxClusterRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "cluster-rollback@example.com").await;
+
+        let mut tx = pool.begin().await.unwrap();
+        repo.create_in_executor(&scope, &mut tx, "Ephemeral", None, FeedbackKind::Other, "agent")
+            .await
+            .unwrap();
+        tx.rollback().await.unwrap();
+
+        // Nothing persisted — the executor variant honors the caller's txn.
+        assert!(repo.list(&scope).await.unwrap().is_empty());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn mark_merged_sets_survivor_and_zeroes_count(pool: PgPool) {
+        let repo = SqlxClusterRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "cluster-merge@example.com").await;
+        let survivor = repo
+            .create(&scope, "Survivor", None, FeedbackKind::Bug, "agent")
+            .await
+            .unwrap();
+        let merged = repo
+            .create(&scope, "Merged", None, FeedbackKind::Bug, "agent")
+            .await
+            .unwrap();
+        repo.adjust_member_count(&scope, merged.id, 5).await.unwrap();
+
+        let mut tx = pool.begin().await.unwrap();
+        let after = repo
+            .mark_merged_in_executor(&scope, &mut tx, merged.id, survivor.id)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        assert_eq!(after.status, "merged");
+        assert_eq!(after.merged_into_id, Some(survivor.id));
+        assert_eq!(after.member_count, 0);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn mark_merged_rejects_cross_tenant_survivor(pool: PgPool) {
+        let repo = SqlxClusterRepo::new(pool.clone());
+        let s1 = seed_project_scope(&pool, "merge-owner1@example.com").await;
+        let s2 = seed_project_scope(&pool, "merge-owner2@example.com").await;
+        let merged = repo
+            .create(&s1, "S1 merged", None, FeedbackKind::Bug, "agent")
+            .await
+            .unwrap();
+        let foreign_survivor = repo
+            .create(&s2, "S2 survivor", None, FeedbackKind::Bug, "agent")
+            .await
+            .unwrap();
+
+        // s1 cannot point its cluster at s2's survivor.
+        let mut tx = pool.begin().await.unwrap();
+        let err = repo
+            .mark_merged_in_executor(&s1, &mut tx, merged.id, foreign_survivor.id)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RepoError::NotFound));
+        tx.rollback().await.ok();
     }
 }

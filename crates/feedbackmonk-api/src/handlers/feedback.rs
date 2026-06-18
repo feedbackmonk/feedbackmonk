@@ -226,6 +226,8 @@ async fn submit_authenticated_path(
         )
         .await?;
 
+    cluster_on_submit_best_effort(state, project_scope, &feedback_id, body, kind).await;
+
     Ok(success_response(feedback_id.as_str(), body, kind, None))
 }
 
@@ -259,12 +261,45 @@ async fn submit_anonymous_path(
         .submit_anonymous(project_scope, &token_hash, optional_email, body, kind)
         .await?;
 
+    cluster_on_submit_best_effort(state, project_scope, &feedback_id, body, kind).await;
+
     Ok(success_response(
         feedback_id.as_str(),
         body,
         kind,
         set_cookie_header,
     ))
+}
+
+// ---------------------------------------------------------------------------
+// FR-FBR-19 clustering-on-submit hook (best-effort, post-insert)
+// ---------------------------------------------------------------------------
+
+/// Assign the just-accepted feedback to a cluster (FR-FBR-19). **Best-effort**:
+/// a clustering failure is logged and NEVER fails an already-accepted submit
+/// (`feedback.cluster_id` is nullable and a later sweep re-clusters — MSG-003
+/// Q1). Adds no response-shape change and only the deterministic heuristic's
+/// cost (the public submit path stays CORS-exposed; clustering adds NO new
+/// external surface). The assignment itself is atomic (see
+/// `clusters::assign_cluster_on_submit`).
+async fn cluster_on_submit_best_effort(
+    state: &AppState,
+    project_scope: &feedbackmonk_repository::ProjectScope,
+    feedback_id: &feedbackmonk_core::FeedbackId,
+    body: &str,
+    kind: FeedbackKind,
+) {
+    if let Err(e) =
+        crate::handlers::clusters::assign_cluster_on_submit(state, project_scope, feedback_id, body, kind)
+            .await
+    {
+        tracing::warn!(
+            target: "clustering",
+            feedback_id = %feedback_id,
+            error = %e,
+            "clustering-on-submit failed (submit still accepted; cluster_id left NULL for a sweep to assign)"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

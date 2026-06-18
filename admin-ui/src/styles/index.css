@@ -684,3 +684,327 @@ a {
 .upgrade-prompt-button:hover {
   background: var(--accent-hover);
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * P5a — Autopilot review & approval surface (FR-FBR-21). All-additive `.ap-*`
+ * rules. Colors reuse the existing tokens so they clear WCAG AA contrast; every
+ * status/priority is paired with a text label (meaning never color-only, WCAG
+ * 1.4.1).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.ap-page {
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.ap-back-link,
+.ap-nav-link {
+  display: inline-block;
+  color: var(--accent);
+  text-decoration: none;
+  margin-bottom: 0.75rem;
+}
+.ap-back-link:hover,
+.ap-nav-link:hover {
+  text-decoration: underline;
+}
+
+/* Digest summary */
+.ap-digest-summary {
+  margin: 1rem 0 1.5rem;
+}
+.ap-sweep-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+.ap-sweep-meta {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+}
+.ap-sweep-summary {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+/* Cluster list */
+.ap-priority-section {
+  margin-bottom: 1.5rem;
+}
+.ap-cluster-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.ap-cluster-row {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+}
+.ap-cluster-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  justify-content: space-between;
+}
+.ap-cluster-link {
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.ap-cluster-link:hover {
+  text-decoration: underline;
+}
+.ap-cluster-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.ap-cluster-rationale {
+  margin: 0.5rem 0 0;
+  font-size: 0.92rem;
+}
+.ap-cluster-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.ap-cluster-summary {
+  white-space: pre-wrap;
+}
+
+/* Priority badges — color + label (never color alone) */
+.ap-priority {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.ap-priority-high {
+  color: var(--danger);
+}
+.ap-priority-medium {
+  color: var(--meter-warn);
+}
+.ap-priority-low {
+  color: var(--text-muted);
+}
+.ap-priority-none {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* Action-type + work-order-state badges */
+.ap-action,
+.ap-wo-state,
+.ap-rec-status {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.ap-wo-state-dispatched,
+.ap-wo-state-claimed,
+.ap-wo-state-building,
+.ap-wo-state-verifying {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.ap-wo-state-completed {
+  color: var(--success);
+  border-color: var(--success);
+}
+.ap-wo-state-failed,
+.ap-wo-state-cancelled {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.ap-rec-status-approved,
+.ap-rec-status-tweaked_approved {
+  color: var(--success);
+  border-color: var(--success);
+}
+.ap-rec-status-rejected {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Confidence meter — text + bar (not color-only) */
+.ap-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  margin: 0.25rem 0;
+}
+.ap-confidence-label {
+  color: var(--text-muted);
+}
+.ap-confidence-bar {
+  display: inline-block;
+  width: 6rem;
+  height: 0.5rem;
+  background: var(--meter-track);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.ap-confidence-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+/* Recommendation cards */
+.ap-rec-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.ap-rec-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 1rem 1.25rem;
+}
+.ap-rec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.ap-rec-title {
+  margin: 0;
+}
+.ap-rec-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.ap-rec-subhead {
+  margin: 0.75rem 0 0.25rem;
+  font-size: 0.9rem;
+}
+.ap-rec-text {
+  white-space: pre-wrap;
+  margin: 0.25rem 0;
+}
+.ap-rec-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.ap-rec-decided {
+  margin-top: 1rem;
+}
+.ap-source-refs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+/* Autonomy-rung dial */
+.ap-rung-dial {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+}
+.ap-rung-dial > legend {
+  font-weight: 600;
+  padding: 0 0.4rem;
+}
+.ap-rung-hint {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+}
+.ap-rung-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ap-rung-option {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.6rem;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+}
+.ap-rung-option-selected {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.ap-rung-option > input {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+.ap-rung-option-label {
+  font-weight: 600;
+}
+.ap-rung-option-desc {
+  grid-column: 2;
+  font-size: 0.86rem;
+}
+
+/* Members + ledger */
+.ap-member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.ap-member-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+.ap-member-excerpt {
+  flex: 1 1 16rem;
+  color: var(--text);
+}
+.ap-wo-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.ap-wo-actions {
+  margin-top: 1.5rem;
+}
+.ap-wo-event-detail {
+  white-space: pre-wrap;
+}
+.ap-wo-failure {
+  color: var(--danger);
+}
+
+/* Danger-tone buttons (reject / cancel) — color + the word itself carries it */
+.ap-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}

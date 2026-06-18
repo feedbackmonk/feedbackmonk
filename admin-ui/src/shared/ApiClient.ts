@@ -2,11 +2,20 @@ import axios, { AxiosError, type AxiosInstance } from "axios";
 import type {
   AdminRoadmapCreateRequest,
   AdminRoadmapPatchRequest,
+  AnalysisSweep,
+  ApproveWorkOrderRequest,
+  ClusterDetail,
+  ClusterListResponse,
+  ClusterPriority,
+  ClusterStatus,
+  CreateWorkOrderRequest,
   FeedbackDetail,
   FeedbackListResponse,
   FeedbackStatus,
   PromoteRequest,
   PromoteResponse,
+  Recommendation,
+  RecommendationListResponse,
   RetractResponse,
   ReplyRequest,
   ReplyResponse,
@@ -18,6 +27,12 @@ import type {
   TransitionRequest,
   TransitionResponse,
   VoteResponse,
+  WorkOrder,
+  WorkOrderDetail,
+  WorkOrderListResponse,
+  WorkOrderState,
+  WorkOrderTransitionRequest,
+  WorkOrderTransitionResponse,
 } from "./types.gen";
 import { isTierCapExceeded } from "./types.gen";
 
@@ -304,6 +319,197 @@ export async function postPromoteFeedback(
 
 export async function fetchTierStatus(): Promise<TierStatus> {
   const r = await api.get<TierStatus>("/admin/tier");
+  return r.data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// P5a — Agentic loop: autopilot review & approval surface (FR-FBR-21).
+//
+// Two seams converge here:
+//   • Work-order endpoints (create / approve / transition / list / detail) are
+//     Worker A's and are FROZEN by Contract C22 — paths + request bodies are
+//     pinned by the C22 HTTP-surface table; only the RESPONSE struct fields
+//     reconcile to A's compiled structs (Interface Contract 1).
+//   • Cluster / recommendation / sweep READS are Worker B's admin routers.
+//     Their paths are NOT enumerated in any frozen contract (MSG-001 to LEAD).
+//     PROCEED-ON-ASSUMPTION, flagged UNACKED: mirror the C22 project-scoped,
+//     AdminSession-guarded, no-CORS convention. ALL path strings live in the
+//     `P5A_PATHS` map below so reconciling to B's actual paths is a one-line
+//     change per endpoint, never a hunt through call sites.
+// ─────────────────────────────────────────────────────────────────────────
+
+const P5A_PATHS = {
+  // Worker B — read seam (assumed; reconcile on B's announce, MSG-001).
+  clusters: (pid: string) => `/projects/${encodeURIComponent(pid)}/clusters`,
+  cluster: (pid: string, cid: string) =>
+    `/projects/${encodeURIComponent(pid)}/clusters/${encodeURIComponent(cid)}`,
+  clusterRecommendations: (pid: string, cid: string) =>
+    `/projects/${encodeURIComponent(pid)}/clusters/${encodeURIComponent(cid)}/recommendations`,
+  sweeps: (pid: string) => `/projects/${encodeURIComponent(pid)}/sweeps`,
+  sweepLatest: (pid: string) =>
+    `/projects/${encodeURIComponent(pid)}/sweeps/latest`,
+  // Worker B confirmed (2026-06-18 19:45): project-scoped, rec_id is unique so
+  // no cluster_id segment. Sets proposed → rejected, no work order.
+  recommendationReject: (pid: string, rid: string) =>
+    `/projects/${encodeURIComponent(pid)}/recommendations/${encodeURIComponent(rid)}/reject`,
+  // Worker A — Contract C22 (paths FROZEN).
+  workOrders: (pid: string) =>
+    `/projects/${encodeURIComponent(pid)}/work-orders`,
+  workOrder: (pid: string, wid: string) =>
+    `/projects/${encodeURIComponent(pid)}/work-orders/${encodeURIComponent(wid)}`,
+  workOrderApprove: (pid: string, wid: string) =>
+    `/projects/${encodeURIComponent(pid)}/work-orders/${encodeURIComponent(wid)}/approve`,
+  workOrderTransition: (pid: string, wid: string) =>
+    `/projects/${encodeURIComponent(pid)}/work-orders/${encodeURIComponent(wid)}/transition`,
+} as const;
+
+// --- Cluster / sweep reads (Worker B seam) ---------------------------------
+
+export interface ClusterListParams {
+  status?: ClusterStatus;
+  priority?: ClusterPriority;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchClusters(
+  projectId: string,
+  params: ClusterListParams = {},
+): Promise<ClusterListResponse> {
+  const r = await api.get<ClusterListResponse>(P5A_PATHS.clusters(projectId), {
+    params: {
+      status: params.status,
+      priority: params.priority,
+      limit: params.limit ?? 100,
+      offset: params.offset ?? 0,
+    },
+  });
+  return r.data;
+}
+
+export async function fetchClusterDetail(
+  projectId: string,
+  clusterId: string,
+): Promise<ClusterDetail> {
+  const r = await api.get<ClusterDetail>(
+    P5A_PATHS.cluster(projectId, clusterId),
+  );
+  return r.data;
+}
+
+export async function fetchClusterRecommendations(
+  projectId: string,
+  clusterId: string,
+): Promise<RecommendationListResponse> {
+  const r = await api.get<RecommendationListResponse>(
+    P5A_PATHS.clusterRecommendations(projectId, clusterId),
+  );
+  return r.data;
+}
+
+// Reject a recommendation outright (no work order created) — sets the
+// recommendation's status to `rejected`. This is a RECOMMENDATION-status write,
+// which is Worker B's `recommendations.rs` surface (not a C22 work-order
+// transition; the C22 `reject` transition is `reported → failed` on an existing
+// work order, a different thing). Path confirmed by Worker B (MSG 19:45);
+// `reason` is accepted-but-ignored in P5a (no rejection-reason column yet).
+export async function rejectRecommendation(
+  projectId: string,
+  recommendationId: string,
+  reason?: string,
+): Promise<Recommendation> {
+  const r = await api.post<Recommendation>(
+    P5A_PATHS.recommendationReject(projectId, recommendationId),
+    reason ? { reason } : {},
+  );
+  return r.data;
+}
+
+export async function fetchLatestSweep(
+  projectId: string,
+): Promise<AnalysisSweep | null> {
+  // `/sweeps/latest` may legitimately 404 before the first sweep runs — treat
+  // that as "no digest yet" rather than an error surface.
+  try {
+    const r = await api.get<AnalysisSweep>(P5A_PATHS.sweepLatest(projectId));
+    return r.data;
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+// --- Work-order endpoints (Worker A seam — Contract C22) --------------------
+
+export interface WorkOrderListParams {
+  state?: WorkOrderState;
+  cluster_id?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function fetchWorkOrders(
+  projectId: string,
+  params: WorkOrderListParams = {},
+): Promise<WorkOrderListResponse> {
+  const r = await api.get<WorkOrderListResponse>(
+    P5A_PATHS.workOrders(projectId),
+    {
+      params: {
+        state: params.state,
+        cluster_id: params.cluster_id,
+        limit: params.limit ?? 50,
+        offset: params.offset ?? 0,
+      },
+    },
+  );
+  return r.data;
+}
+
+export async function fetchWorkOrderDetail(
+  projectId: string,
+  workOrderId: string,
+): Promise<WorkOrderDetail> {
+  const r = await api.get<WorkOrderDetail>(
+    P5A_PATHS.workOrder(projectId, workOrderId),
+  );
+  return r.data;
+}
+
+// Create returns A's `WorkOrderView` (the created draft) — we use its `id` to
+// chain the approval gate.
+export async function createWorkOrder(
+  projectId: string,
+  body: CreateWorkOrderRequest,
+): Promise<WorkOrder> {
+  const r = await api.post<WorkOrder>(P5A_PATHS.workOrders(projectId), body);
+  return r.data;
+}
+
+// The owner-approval gate — the security boundary (FR-FBR-25a). Distinct
+// endpoint from the generic transition so the deliberate "I approve this"
+// action is never folded into a convenience path. Returns A's TransitionResponse.
+export async function approveWorkOrder(
+  projectId: string,
+  workOrderId: string,
+  body: ApproveWorkOrderRequest = {},
+): Promise<WorkOrderTransitionResponse> {
+  const r = await api.post<WorkOrderTransitionResponse>(
+    P5A_PATHS.workOrderApprove(projectId, workOrderId),
+    body,
+  );
+  return r.data;
+}
+
+export async function transitionWorkOrder(
+  projectId: string,
+  workOrderId: string,
+  body: WorkOrderTransitionRequest,
+): Promise<WorkOrderTransitionResponse> {
+  const r = await api.post<WorkOrderTransitionResponse>(
+    P5A_PATHS.workOrderTransition(projectId, workOrderId),
+    body,
+  );
   return r.data;
 }
 

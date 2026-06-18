@@ -12,7 +12,7 @@ Standalone open-source SaaS user-feedback platform: submission widget + status-w
 
 - **Elevator pitch**: *Plausible Analytics for product feedback.*
 - **License**: AGPL-3.0-or-later (see `LICENSE` — full canonical AGPL-3.0 text, replaced 2026-05-13).
-- **Stage**: P1 Stage 2 complete; P1 finalize / P2 plan upcoming.
+- **Stage**: v1 (P0–P4) shipped + deployed (self-host LIVE at `feedback.gitcellar.com`). P5a Stage 1 (Agentic Feedback Resolution Loop, recommend-only — FR-FBR-19/20/21/22 + FR-FBR-25 approval-gate leg) complete 2026-06-18; P5b (FR-FBR-23 implementer + FR-FBR-24 runner) upcoming.
 
 ## Read first (always, for any session in this repo)
 
@@ -64,6 +64,7 @@ Verification Oracles built so far + scheduled:
 | `tier-enforcement-status` | P3 (start) | ✅ LIVE (built P3 Stage 1 Task Zero) — defends cap-firing + free-tier footer (FR-FBR-14) + Contract C19 `tier_quotas()` shape as code-level invariants; three-probe (AST handler coverage + config-shape + integration smoke gated behind `--full`); active-PASS with Probe C smoke trio (Free 2nd project → 409, Free 51st feedback → 402, widget-config footer flip Free/Pro) |
 | `selfhost-compose-smoke` | P4 (start) | ✅ LIVE (built P4 Stage 2 Task Zero) — defends FR-FBR-17 `docker compose up` distribution + Contract C21 env-catalog SSOT (`docs/operations/SELFHOST_ENV.md`) as code-level invariants; three-probe (yaml-lint + env-doc cross-reference against C21 + `--full` clean-state smoke against `/health/ready`); cold-start vacuous-PASS; active-PASS post-Phase-1 with compose env-refs ⊆ C21 catalog + Probe C `/health/ready` 200 in <90s |
 | `cors-allowlist-enforcement` | post-v1 (DEC-FBR-IMPL-09) | ✅ LIVE (built 2026-06-03) — defends the credentialed CORS posture on the public widget endpoints (DEC-FBR-IMPL-09 / DEC-FBR-04) as code-level invariants; closes the gap that `tests/cors_preflight.rs` tests the layer in isolation and can't catch `.layer(cors)` wiring removal from `build_app`; two static probes (A: `main.rs` wires the layer from `FEEDBACKMONK_CORS_ORIGINS` to submit + attachments; B: `cors.rs` keeps `allow_credentials` + `AllowOrigin::list`, never wildcard) + `--full` runs the `cors_preflight` integration test; active-PASS |
+| `approval-gate-enforcement` | P5a Stage 1 | ✅ LIVE (built P5a Stage 1, 2026-06-18) — defends the work-order approval trust boundary (FR-FBR-25a / FR-FBR-22): no work order reaches a state ≥ `dispatched` without a prior owner-authored `approved` event. Detection-from-ledger (parses state-machine source + queries the append-only `work_order_events` table), NOT a self-reported flag — the anti-reward-hacking leg. Probe A (state-machine source) + B (handler authz) + C (`--full`: `tests/work_order_state_machine.rs`); active-PASS A/B/C at convergence |
 
 ## Constraints not in spec artifacts
 

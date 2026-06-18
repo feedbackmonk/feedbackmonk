@@ -13,7 +13,7 @@ Agent Context Header (ULADP):
 
 ## Synopsis
 
-The thin axum-handler layer between HTTP requests and the repository / auth / email crates. One file per logical endpoint family — onboarding (signup, verify-email, projects, signing-keys), public submission (feedback, attachments, widget-config), end-user reads (me_feedback), admin (admin_feedback, admin_tier, roadmap, promote), and health. All DB-touching handlers resolve a `TenantScope`/`ProjectScope` that flows into every repository call (DEC-FBR-03). Open the File Index below to find the handler for an endpoint.
+The thin axum-handler layer between HTTP requests and the repository / auth / email crates. One file per logical endpoint family — onboarding (signup, verify-email, projects, signing-keys), public submission (feedback, attachments, widget-config), end-user reads (me_feedback), admin (admin_feedback, admin_tier, roadmap, promote), the agentic-resolution loop / "Autopilot" (clusters, recommendations, sweeps, work_orders — P5a), and health. All DB-touching handlers resolve a `TenantScope`/`ProjectScope` that flows into every repository call (DEC-FBR-03). Open the File Index below to find the handler for an endpoint.
 
 ## 1. Purpose & Responsibilities
 
@@ -50,6 +50,10 @@ and respects three load-bearing patterns:
 | `me_feedback.rs` | `GET /api/v1/projects/:id/me/feedback` + `GET /api/v1/projects/:id/me/feedback/:fb/thread` | End-user JWT-`sub`-scoped read API (GitCellar parity gap #4). Own-`sub`-only + public-replies-only, enforced at the SQL predicate layer. No schema change. |
 | `admin_ops.rs` | `PATCH /api/v1/ops/tenants/:tenant_id` | Operator tier + widget brand-override mutation (DEC-FBR-IMPL-11). Guarded by the `OpsAuth` bearer-token extractor (`FEEDBACKMONK_OPS_TOKEN`), NOT the per-tenant `AdminSession` — this privilege separation keeps FR-FBR-14 intact (a Free tenant cannot self-upgrade or strip its "powered by feedbackmonk" badge). 404 when the token is unset (feature-off default). Drives the GitCellar self-host flip instead of raw SQL. |
 | `attachments.rs` | `POST` multipart upload (≤4 images, ≤5MB each, MIME allowlist) | Screenshot attachments + opted-in captured-log part (GitCellar parity gap #1). Uses a dedicated `AttachmentState` axum sub-state; captured logs route through the canonical `feedbackmonk_tracing::scrub` chokepoint. Backed by `storage.rs` (LocalFs + S3/SigV4) and migration `00009`. |
+| `clusters.rs` | `GET /api/v1/admin/clusters` + `GET /api/v1/admin/clusters/:id` (+ merge/split/dismiss) | Admin cluster digest + detail (FR-FBR-19, Contract C23). Owner-visible canonical groupings of near-duplicate feedback; clustering itself runs server-side on submit (best-effort, own txn). Scope-bound. |
+| `recommendations.rs` | `GET /api/v1/admin/recommendations` + approve/tweak/reject | The analyst's recommended action per actionable cluster (FR-FBR-20, recommend-only). `owner_overrides` "tweak before approve" (Q17); approval stamps `approved`/`tweaked_approved`. Scope-bound. |
+| `sweeps.rs` | `GET /api/v1/admin/sweeps` + on-demand "review now" | Analysis-sweep provenance + digest (FR-FBR-20). `digest_summary` powers "what changed since last time". P5a ingestion seam; the deep source-read agent is P5b. Scope-bound. |
+| `work_orders.rs` | work-order CRUD + state transitions | Work-order API + approval state machine (FR-FBR-22, Contract C22). The SOLE coupling between feedbackmonk (open) and the agents. Legal-transition table enforced pre-DB-check; every transition writes a same-txn `work_order_events` row. **Security boundary**: no state ≥ `dispatched` without a prior owner-authored `approved` event (FR-FBR-25a) — verified by the `approval-gate-enforcement` oracle. Owner authz via `AdminSession`; runner transitions via the project-scoped `scope:"runner:write"` token (issuance = P5b). |
 | `health.rs` | `GET /health` + `GET /health/ready` | 12-factor liveness/readiness (FR-FBR-18, Contract C5). |
 | `README.md` | — | This file. |
 

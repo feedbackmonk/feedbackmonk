@@ -130,6 +130,25 @@ pub trait FeedbackRepo: Send + Sync {
         cluster_id: Option<Uuid>,
     ) -> Result<()>;
 
+    /// Bulk re-point cluster membership within the caller's txn (FR-FBR-19
+    /// owner merge/split, Worker B). Moves feedback rows out of `from_cluster`
+    /// into `to_cluster` (both MUST belong to `scope` — resolved within scope
+    /// first; `NotFound` otherwise). `only = None` moves EVERY row currently in
+    /// `from_cluster` (merge); `only = Some(short_codes)` moves only those of
+    /// the listed rows that are CURRENTLY in `from_cluster` (split). The
+    /// `cluster_id = from_cluster` predicate makes the returned count
+    /// authoritative for the caller's `member_count` adjustment — a `short_code`
+    /// in `only` that is not in `from_cluster` (or out of scope) is silently
+    /// not moved and not counted. Returns the number of rows actually moved.
+    async fn repoint_cluster_members_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        from_cluster: Uuid,
+        to_cluster: Uuid,
+        only: Option<&[String]>,
+    ) -> Result<i64>;
+
     // ==== Gap #4 (DELTA) — end-user (JWT-sub-scoped) read surface ===========
     // GitCellar customer-#1 parity gap #4. No schema change. These methods
     // back the public `/me/feedback` + `/me/feedback/:fb/thread` routes. They
@@ -675,6 +694,55 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         Ok(())
     }
 
+    async fn repoint_cluster_members_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        from_cluster: Uuid,
+        to_cluster: Uuid,
+        only: Option<&[String]>,
+    ) -> Result<i64> {
+        // Both clusters MUST be ours — resolve each within scope first so a
+        // cross-tenant cluster id can neither source nor sink members.
+        for cid in [from_cluster, to_cluster] {
+            sqlx::query!(
+                r#"
+                SELECT id FROM feedback_clusters
+                WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                cid,
+            )
+            .fetch_optional(&mut *conn)
+            .await?
+            .ok_or(crate::error::RepoError::NotFound)?;
+        }
+
+        // `only IS NULL` → move every member of from_cluster (merge);
+        // otherwise restrict to the listed short_codes (split). The
+        // `cluster_id = from_cluster` predicate keeps the count authoritative.
+        let only_owned: Option<Vec<String>> = only.map(<[String]>::to_vec);
+        let result = sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET cluster_id = $4
+            WHERE tenant_id = $1 AND project_id = $2
+              AND cluster_id = $3
+              AND ($5::text[] IS NULL OR short_code = ANY($5::text[]))
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            from_cluster,
+            to_cluster,
+            only_owned.as_deref(),
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        Ok(i64::try_from(result.rows_affected()).unwrap_or(i64::MAX))
+    }
+
     // ==== Gap #4 (DELTA) — end-user read surface impl =======================
 
     async fn list_for_end_user(
@@ -1076,5 +1144,92 @@ mod tests {
         let (page, total) = repo.search_for_admin(&scope, "   ", 20, 0).await.unwrap();
         assert!(page.is_empty());
         assert_eq!(total, 0);
+    }
+
+    // ---- P5a (CLAUDE-B) cluster re-pointing (merge/split primitive) ----
+
+    async fn cluster_id_of(pool: &PgPool, short_code: &str) -> Option<uuid::Uuid> {
+        sqlx::query!(
+            "SELECT cluster_id FROM feedback WHERE short_code = $1",
+            short_code
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap()
+        .cluster_id
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn repoint_cluster_members_moves_all_then_subset(pool: PgPool) {
+        use crate::clusters::{ClusterRepo, SqlxClusterRepo};
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let crepo = SqlxClusterRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "repoint@example.com").await;
+
+        let a = crepo.create(&scope, "A", None, FeedbackKind::Bug, "agent").await.unwrap();
+        let b = crepo.create(&scope, "B", None, FeedbackKind::Bug, "agent").await.unwrap();
+
+        // Three feedback, all initially in cluster A.
+        let mut ids = Vec::new();
+        for i in 0..3 {
+            let id = repo
+                .submit_anonymous(&scope, &[u8::try_from(i).unwrap(); 32], None, "x", FeedbackKind::Bug)
+                .await
+                .unwrap();
+            repo.set_cluster_id(&scope, &id, Some(a.id)).await.unwrap();
+            ids.push(id);
+        }
+
+        // Merge: move EVERY member of A into B (only = None).
+        let mut tx = pool.begin().await.unwrap();
+        let moved = repo
+            .repoint_cluster_members_in_executor(&scope, &mut tx, a.id, b.id, None)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(moved, 3);
+        for id in &ids {
+            assert_eq!(cluster_id_of(&pool, id.as_str()).await, Some(b.id));
+        }
+        // A is now empty — a second merge moves nothing.
+        let mut tx = pool.begin().await.unwrap();
+        let again = repo
+            .repoint_cluster_members_in_executor(&scope, &mut tx, a.id, b.id, None)
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(again, 0);
+
+        // Split: peel ONLY ids[0] back into A (only = Some).
+        let only = vec![ids[0].as_str().to_string()];
+        let mut tx = pool.begin().await.unwrap();
+        let split = repo
+            .repoint_cluster_members_in_executor(&scope, &mut tx, b.id, a.id, Some(&only))
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(split, 1);
+        assert_eq!(cluster_id_of(&pool, ids[0].as_str()).await, Some(a.id));
+        assert_eq!(cluster_id_of(&pool, ids[1].as_str()).await, Some(b.id));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn repoint_rejects_cross_tenant_cluster(pool: PgPool) {
+        use crate::clusters::{ClusterRepo, SqlxClusterRepo};
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let crepo = SqlxClusterRepo::new(pool.clone());
+        let s1 = seed_project_scope(&pool, "repoint-ct1@example.com").await;
+        let s2 = seed_project_scope(&pool, "repoint-ct2@example.com").await;
+        let a1 = crepo.create(&s1, "A1", None, FeedbackKind::Bug, "agent").await.unwrap();
+        let b2 = crepo.create(&s2, "B2", None, FeedbackKind::Bug, "agent").await.unwrap();
+
+        // s1 cannot sink members into s2's cluster.
+        let mut tx = pool.begin().await.unwrap();
+        let err = repo
+            .repoint_cluster_members_in_executor(&s1, &mut tx, a1.id, b2.id, None)
+            .await
+            .unwrap_err();
+        assert!(matches!(err, crate::error::RepoError::NotFound));
+        tx.rollback().await.ok();
     }
 }

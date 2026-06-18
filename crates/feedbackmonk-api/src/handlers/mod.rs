@@ -40,3 +40,16 @@ pub mod attachments;
 
 // Gap #4 (GitCellar parity): end-user (JWT-sub-scoped) my-feedback read API.
 pub mod me_feedback;
+
+// P5a (Contract C22, FR-FBR-22 / FR-FBR-25a): work-order API + approval state
+// machine — THE security boundary between public feedback and code execution
+// (Worker A). Admin routes behind AdminSession; runner routes behind the runner
+// write-token seam (Q14). Both merge WITHOUT CORS.
+pub mod work_orders;
+
+// P5a (Contract C23/C24, FR-FBR-19 / FR-FBR-20): clustering-on-submit +
+// merge/split + analyst sweep/digest + recommendation ingestion (Worker B).
+// Admin routes behind AdminSession, merged WITHOUT CORS.
+pub mod clusters;
+pub mod recommendations;
+pub mod sweeps;
