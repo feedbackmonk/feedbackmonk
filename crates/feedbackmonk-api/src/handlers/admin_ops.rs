@@ -263,6 +263,11 @@ mod tests {
             health: SqlxHealthCheck::new(pool.clone()),
             tier_quotas: Arc::new(SqlxTierQuotaRepo::new(pool.clone())),
             ops_token: ops_token.map(Arc::from),
+            clusters: Arc::new(feedbackmonk_repository::SqlxClusterRepo::new(pool.clone())),
+            recommendations: Arc::new(feedbackmonk_repository::SqlxRecommendationRepo::new(pool.clone())),
+            analysis_sweeps: Arc::new(feedbackmonk_repository::SqlxAnalysisSweepRepo::new(pool.clone())),
+            work_orders: Arc::new(feedbackmonk_repository::SqlxWorkOrderRepo::new(pool.clone())),
+            work_order_events: Arc::new(feedbackmonk_repository::SqlxWorkOrderEventRepo::new(pool.clone())),
         }
     }
 

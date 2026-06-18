@@ -1,0 +1,103 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE recommendations\n            SET status = $4\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            RETURNING id, tenant_id, project_id, cluster_id, sweep_id,\n                      action_type, title, body, rationale, source_refs,\n                      confidence, status, generated_at, created_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "cluster_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "sweep_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "action_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "rationale",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "source_refs",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "confidence",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 11,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "generated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dfec62d0c7a3024ae6e330f551a57c8e0a23741a8697af947f10dba025119c24"
+}

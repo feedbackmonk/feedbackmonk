@@ -14,9 +14,9 @@ use sqlx::PgPool;
 
 use feedbackmonk_anon::{AnonGate, LoginGate};
 use feedbackmonk_repository::{
-    EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo, FeedbackStatusHistoryRepo,
-    ProjectRepo, RoadmapItemRepo, RoadmapVoteRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
-    TierQuotaRepo,
+    AnalysisSweepRepo, ClusterRepo, EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo,
+    FeedbackStatusHistoryRepo, ProjectRepo, RecommendationRepo, RoadmapItemRepo, RoadmapVoteRepo,
+    SigningKeyRepo, SqlxHealthCheck, TenantRepo, TierQuotaRepo, WorkOrderEventRepo, WorkOrderRepo,
 };
 
 use crate::email::{EmailNotifier, Mailer};
@@ -108,4 +108,23 @@ pub struct AppState {
     /// separation that keeps FR-FBR-14 intact (a Free tenant's own
     /// `AdminSession` cannot flip its tier or strip its footer badge).
     pub ops_token: Option<Arc<str>>,
+
+    // -- P5a: agentic feedback resolution loop (FR-FBR-19..22, Contracts
+    //    C22/C23) -----------------------------------------------------------
+    /// Feedback-cluster repository (FR-FBR-19). Worker B drives
+    /// clustering-on-submit + merge/split on top.
+    pub clusters: Arc<dyn ClusterRepo>,
+    /// Recommendation repository (FR-FBR-20). The analyst's proposed action
+    /// per cluster; Worker A reads it when creating a work order.
+    pub recommendations: Arc<dyn RecommendationRepo>,
+    /// Analysis-sweep provenance repository (FR-FBR-20).
+    pub analysis_sweeps: Arc<dyn AnalysisSweepRepo>,
+    /// Work-order repository (FR-FBR-22, Contract C22). The approval state
+    /// machine's backing store; Worker A composes transitions with the event
+    /// ledger in the same transaction (C22 inv. 3).
+    pub work_orders: Arc<dyn WorkOrderRepo>,
+    /// APPEND-ONLY work-order event ledger (Contract C22). The substrate the
+    /// `approval-gate-enforcement` oracle reads; `has_approved_event` is the
+    /// security predicate for C22 inv. 1.
+    pub work_order_events: Arc<dyn WorkOrderEventRepo>,
 }

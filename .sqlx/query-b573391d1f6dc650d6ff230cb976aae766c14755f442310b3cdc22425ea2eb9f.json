@@ -1,0 +1,132 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,\n                   action_type, title, instructions, owner_overrides,\n                   autonomy_rung, state, approved_by, approved_at,\n                   dispatched_at, claimed_by_runner, result_ref,\n                   failure_reason, created_at, updated_at\n            FROM work_orders\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "recommendation_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "cluster_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "action_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "instructions",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "owner_overrides",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 9,
+        "name": "autonomy_rung",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 10,
+        "name": "state",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "approved_by",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 12,
+        "name": "approved_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "dispatched_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 14,
+        "name": "claimed_by_runner",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 15,
+        "name": "result_ref",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 16,
+        "name": "failure_reason",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 17,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 18,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "b573391d1f6dc650d6ff230cb976aae766c14755f442310b3cdc22425ea2eb9f"
+}

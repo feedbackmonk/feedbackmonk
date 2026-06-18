@@ -8,12 +8,15 @@
 
 #![deny(unsafe_code)]
 
+pub mod action_type;
 pub mod ids;
 pub mod models;
 pub mod roadmap;
 pub mod status;
 pub mod tier;
+pub mod work_order;
 
+pub use action_type::ActionType;
 pub use ids::{FeedbackId, SigningKeyId};
 pub use models::{
     AnonSubmission, Feedback, FeedbackKind, Project, RateLimitCounter, SigningKey, Tenant,
@@ -22,3 +25,7 @@ pub use models::{
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use status::{legal_transitions_from, FeedbackStatus, TransitionError};
 pub use tier::{tier_quotas, ResourceKind, Tier, TierParseError, TierQuotas};
+pub use work_order::{
+    is_legal_transition, legal_transitions_from as work_order_legal_transitions_from,
+    WorkOrderState, WorkOrderTransitionError,
+};

@@ -1,0 +1,90 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO analysis_sweeps (tenant_id, project_id, triggered_by)\n            VALUES ($1, $2, $3)\n            RETURNING id, tenant_id, project_id, triggered_by, started_at,\n                      completed_at, status, clusters_touched,\n                      recommendations_emitted, runner_id, agent_version,\n                      digest_summary\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "triggered_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "completed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "clusters_touched",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "recommendations_emitted",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "runner_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "agent_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "digest_summary",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "1a2f0327a24f1203ce749fd3713404191113e63ada91e0a7916ef4c52255d92d"
+}

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT EXISTS(\n                SELECT 1 FROM work_order_events\n                WHERE tenant_id = $1 AND project_id = $2 AND work_order_id = $3\n                  AND event_type = 'approve' AND actor = 'admin'\n            ) AS \"exists!\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "exists!",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "83899f16a6bd27c290cb2953ae8c0b93842685be630a084215e36a818994c24a"
+}

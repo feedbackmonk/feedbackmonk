@@ -30,9 +30,11 @@ use feedbackmonk_anon::{
 };
 use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
-    SqlxAttachmentRepo, SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
-    SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRoadmapItemRepo,
-    SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo,
+    SqlxAnalysisSweepRepo, SqlxAttachmentRepo, SqlxClusterRepo, SqlxEmailVerificationRepo,
+    SqlxFeedbackReplyRepo, SqlxFeedbackRepo, SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck,
+    SqlxProjectRepo, SqlxRecommendationRepo, SqlxRoadmapItemRepo, SqlxRoadmapVoteRepo,
+    SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo, SqlxWorkOrderEventRepo,
+    SqlxWorkOrderRepo,
 };
 
 use feedbackmonk_api::email::{
@@ -173,6 +175,12 @@ fn build_state(pool: PgPool) -> Result<AppState> {
     let roadmap_items = Arc::new(SqlxRoadmapItemRepo::new(pool.clone()));
     let roadmap_votes = Arc::new(SqlxRoadmapVoteRepo::new(pool.clone()));
     let tier_quotas = Arc::new(SqlxTierQuotaRepo::new(pool.clone()));
+    // P5a: agentic feedback resolution loop repositories (Contracts C22/C23).
+    let clusters = Arc::new(SqlxClusterRepo::new(pool.clone()));
+    let recommendations = Arc::new(SqlxRecommendationRepo::new(pool.clone()));
+    let analysis_sweeps = Arc::new(SqlxAnalysisSweepRepo::new(pool.clone()));
+    let work_orders = Arc::new(SqlxWorkOrderRepo::new(pool.clone()));
+    let work_order_events = Arc::new(SqlxWorkOrderEventRepo::new(pool.clone()));
     let voting_cache = VotingCache::new();
     let health = SqlxHealthCheck::new(pool.clone());
 
@@ -243,6 +251,11 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         health,
         tier_quotas,
         ops_token,
+        clusters,
+        recommendations,
+        analysis_sweeps,
+        work_orders,
+        work_order_events,
     })
 }
 

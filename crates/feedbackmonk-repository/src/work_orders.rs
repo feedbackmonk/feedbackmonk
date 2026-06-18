@@ -1,0 +1,494 @@
+//! Work-order repository (Contract C22/C23 backing methods).
+//!
+//! Owns CRUD on `work_orders` (migration 00014). Every method takes
+//! `&ProjectScope` first (DEC-FBR-03). A work order is created in `draft`; its
+//! `state` only ever changes through [`WorkOrderRepo::update_state_in_executor`],
+//! which Worker A (Stage 1) composes IN THE SAME TRANSACTION as a
+//! `work_order_events` append (C22 inv. 3 — audit can never drift from state).
+//!
+//! Stage 0 ships the foundation (create + get + list + the executor-aware
+//! state setter). Worker A builds the legal-transition validation + the C22
+//! authz matrix + the approval-gate enforcement (C22 inv. 1) on top — using
+//! `feedbackmonk_core::work_order::{legal_transitions_from, WorkOrderState}`
+//! and `WorkOrderEventRepo::has_approved_event` as the security predicate.
+
+use async_trait::async_trait;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
+use sqlx::PgPool;
+use uuid::Uuid;
+
+use feedbackmonk_core::{ActionType, WorkOrderState};
+
+use crate::error::{RepoError, Result};
+use crate::scope::ProjectScope;
+
+/// A work order — the contract between an APPROVED decision and a DISPATCHED
+/// job (FR-FBR-22). `owner_overrides` carries the Q17 "tweak before approve"
+/// edits (authoritative; overrides win at dispatch).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WorkOrder {
+    pub id: Uuid,
+    pub tenant_id: Uuid,
+    pub project_id: Uuid,
+    pub recommendation_id: Uuid,
+    pub cluster_id: Uuid,
+    pub action_type: ActionType,
+    pub title: String,
+    pub instructions: String,
+    pub owner_overrides: Option<JsonValue>,
+    pub autonomy_rung: i32,
+    pub state: WorkOrderState,
+    pub approved_by: Option<Uuid>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub dispatched_at: Option<DateTime<Utc>>,
+    pub claimed_by_runner: Option<String>,
+    pub result_ref: Option<JsonValue>,
+    pub failure_reason: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Fields for [`WorkOrderRepo::create`].
+#[derive(Debug, Clone)]
+pub struct NewWorkOrder<'a> {
+    pub recommendation_id: Uuid,
+    pub cluster_id: Uuid,
+    pub action_type: ActionType,
+    pub title: &'a str,
+    pub instructions: &'a str,
+    pub owner_overrides: Option<&'a JsonValue>,
+    pub autonomy_rung: i32,
+}
+
+/// Optional column updates applied alongside a state change. Each `Some` field
+/// is written; each `None` LEAVES THE EXISTING VALUE (via `COALESCE`) — these
+/// columns are only ever set forward (approval stamp, dispatch stamp, claim,
+/// result, failure), never cleared, so coalesce-on-none is the correct
+/// monotonic semantics.
+#[derive(Debug, Clone, Default)]
+pub struct WorkOrderStatePatch<'a> {
+    pub approved_by: Option<Uuid>,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub dispatched_at: Option<DateTime<Utc>>,
+    pub claimed_by_runner: Option<&'a str>,
+    pub result_ref: Option<&'a JsonValue>,
+    pub failure_reason: Option<&'a str>,
+}
+
+#[async_trait]
+pub trait WorkOrderRepo: Send + Sync {
+    /// Create a work order in `draft`. The `recommendation_id` and `cluster_id`
+    /// MUST belong to `scope` (resolved within scope first; `NotFound`
+    /// otherwise). No `work_order_events` row is written here — the ledger
+    /// starts at the first transition (mirrors `feedback.status` starting at
+    /// `submitted` with no genesis history row). Worker A's handler appends the
+    /// `approve`/`cancel` events.
+    async fn create(&self, scope: &ProjectScope, wo: NewWorkOrder<'_>) -> Result<WorkOrder>;
+
+    /// Fetch one work order by id within scope.
+    async fn get(&self, scope: &ProjectScope, work_order_id: Uuid) -> Result<WorkOrder>;
+
+    /// List work orders for the project, newest-first. Optional `state` and
+    /// `cluster_id` filters. Cross-tenant scopes see an empty Vec.
+    async fn list(
+        &self,
+        scope: &ProjectScope,
+        state: Option<&str>,
+        cluster_id: Option<Uuid>,
+    ) -> Result<Vec<WorkOrder>>;
+
+    /// Set `state = to_state` (+ optional column patch) on a caller-supplied
+    /// connection/transaction. Worker A calls this AND
+    /// `WorkOrderEventRepo::append_in_executor` inside one `pool.begin()` txn so
+    /// the `work_orders.state` update and the `work_order_events` row land
+    /// atomically (C22 inv. 3).
+    ///
+    /// This primitive does NOT validate the transition legality or actor authz
+    /// — that is Worker A's handler responsibility (it checks
+    /// `legal_transitions_from` + the C22 authz matrix + `has_approved_event`
+    /// BEFORE calling this). The repository only enforces tenant/project scope.
+    ///
+    /// `NotFound` if the work order is absent or out of scope.
+    async fn update_state_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        work_order_id: Uuid,
+        to_state: WorkOrderState,
+        patch: WorkOrderStatePatch<'_>,
+    ) -> Result<()>;
+}
+
+#[derive(Clone)]
+pub struct SqlxWorkOrderRepo {
+    pool: PgPool,
+}
+
+impl SqlxWorkOrderRepo {
+    #[must_use]
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+/// Internal row shape (`action_type` / `state` held as the DB string form, decoded
+/// to the typed enums by [`map_work_order`]).
+struct WorkOrderRow {
+    id: Uuid,
+    tenant_id: Uuid,
+    project_id: Uuid,
+    recommendation_id: Uuid,
+    cluster_id: Uuid,
+    action_type: String,
+    title: String,
+    instructions: String,
+    owner_overrides: Option<JsonValue>,
+    autonomy_rung: i32,
+    state: String,
+    approved_by: Option<Uuid>,
+    approved_at: Option<DateTime<Utc>>,
+    dispatched_at: Option<DateTime<Utc>>,
+    claimed_by_runner: Option<String>,
+    result_ref: Option<JsonValue>,
+    failure_reason: Option<String>,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+fn map_work_order(row: WorkOrderRow) -> WorkOrder {
+    WorkOrder {
+        id: row.id,
+        tenant_id: row.tenant_id,
+        project_id: row.project_id,
+        recommendation_id: row.recommendation_id,
+        cluster_id: row.cluster_id,
+        action_type: ActionType::from_db_str(&row.action_type),
+        title: row.title,
+        instructions: row.instructions,
+        owner_overrides: row.owner_overrides,
+        autonomy_rung: row.autonomy_rung,
+        state: WorkOrderState::from_db_str(&row.state),
+        approved_by: row.approved_by,
+        approved_at: row.approved_at,
+        dispatched_at: row.dispatched_at,
+        claimed_by_runner: row.claimed_by_runner,
+        result_ref: row.result_ref,
+        failure_reason: row.failure_reason,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }
+}
+
+#[async_trait]
+impl WorkOrderRepo for SqlxWorkOrderRepo {
+    async fn create(&self, scope: &ProjectScope, wo: NewWorkOrder<'_>) -> Result<WorkOrder> {
+        // Resolve the recommendation WITHIN scope (it carries the cluster_id
+        // linkage; a cross-tenant recommendation_id cannot anchor a work order
+        // under a sibling tenant).
+        let rec = sqlx::query!(
+            r#"
+            SELECT cluster_id FROM recommendations
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            wo.recommendation_id,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        // The supplied cluster_id must match the recommendation's cluster
+        // (defense against a mismatched cross-cluster work order).
+        if rec.cluster_id != wo.cluster_id {
+            return Err(RepoError::Conflict);
+        }
+
+        let row = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            INSERT INTO work_orders
+                (tenant_id, project_id, recommendation_id, cluster_id,
+                 action_type, title, instructions, owner_overrides, autonomy_rung)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id, tenant_id, project_id, recommendation_id, cluster_id,
+                      action_type, title, instructions, owner_overrides,
+                      autonomy_rung, state, approved_by, approved_at,
+                      dispatched_at, claimed_by_runner, result_ref,
+                      failure_reason, created_at, updated_at
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            wo.recommendation_id,
+            wo.cluster_id,
+            wo.action_type.as_db_str(),
+            wo.title,
+            wo.instructions,
+            wo.owner_overrides,
+            wo.autonomy_rung,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(map_work_order(row))
+    }
+
+    async fn get(&self, scope: &ProjectScope, work_order_id: Uuid) -> Result<WorkOrder> {
+        let row = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,
+                   action_type, title, instructions, owner_overrides,
+                   autonomy_rung, state, approved_by, approved_at,
+                   dispatched_at, claimed_by_runner, result_ref,
+                   failure_reason, created_at, updated_at
+            FROM work_orders
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            work_order_id,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+        Ok(map_work_order(row))
+    }
+
+    async fn list(
+        &self,
+        scope: &ProjectScope,
+        state: Option<&str>,
+        cluster_id: Option<Uuid>,
+    ) -> Result<Vec<WorkOrder>> {
+        let rows = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,
+                   action_type, title, instructions, owner_overrides,
+                   autonomy_rung, state, approved_by, approved_at,
+                   dispatched_at, claimed_by_runner, result_ref,
+                   failure_reason, created_at, updated_at
+            FROM work_orders
+            WHERE tenant_id = $1 AND project_id = $2
+              AND ($3::text IS NULL OR state = $3)
+              AND ($4::uuid IS NULL OR cluster_id = $4)
+            ORDER BY created_at DESC
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            state,
+            cluster_id,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(map_work_order).collect())
+    }
+
+    async fn update_state_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        work_order_id: Uuid,
+        to_state: WorkOrderState,
+        patch: WorkOrderStatePatch<'_>,
+    ) -> Result<()> {
+        let result = sqlx::query!(
+            r#"
+            UPDATE work_orders
+            SET state = $4,
+                approved_by = COALESCE($5, approved_by),
+                approved_at = COALESCE($6, approved_at),
+                dispatched_at = COALESCE($7, dispatched_at),
+                claimed_by_runner = COALESCE($8, claimed_by_runner),
+                result_ref = COALESCE($9, result_ref),
+                failure_reason = COALESCE($10, failure_reason),
+                updated_at = now()
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            work_order_id,
+            to_state.as_db_str(),
+            patch.approved_by,
+            patch.approved_at,
+            patch.dispatched_at,
+            patch.claimed_by_runner,
+            patch.result_ref,
+            patch.failure_reason,
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepoError::NotFound);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::clusters::{ClusterRepo, SqlxClusterRepo};
+    use crate::projects::{ProjectRepo, SqlxProjectRepo};
+    use crate::recommendations::{NewRecommendation, RecommendationRepo, SqlxRecommendationRepo};
+    use crate::tenants::{SqlxTenantRepo, TenantRepo};
+    use feedbackmonk_core::FeedbackKind;
+    use serde_json::json;
+
+    struct Seeded {
+        scope: ProjectScope,
+        recommendation_id: Uuid,
+        cluster_id: Uuid,
+    }
+
+    async fn seed(pool: &PgPool, email: &str) -> Seeded {
+        let trepo = SqlxTenantRepo::new(pool.clone());
+        let prepo = SqlxProjectRepo::new(pool.clone());
+        let crepo = SqlxClusterRepo::new(pool.clone());
+        let rrepo = SqlxRecommendationRepo::new(pool.clone());
+        let t = trepo.create(email, "h").await.unwrap();
+        let tscope = trepo.scope_for(t.id).await.unwrap();
+        let p = prepo.create(&tscope, "Proj", "proj").await.unwrap();
+        let scope = prepo.open(&tscope, p.id).await.unwrap();
+        let cluster = crepo
+            .create(&scope, "Cluster", None, FeedbackKind::Bug, "agent")
+            .await
+            .unwrap();
+        let refs = json!([]);
+        let rec = rrepo
+            .create(
+                &scope,
+                NewRecommendation {
+                    cluster_id: cluster.id,
+                    sweep_id: None,
+                    action_type: ActionType::BugFix,
+                    title: "Fix",
+                    body: "Body",
+                    rationale: None,
+                    source_refs: &refs,
+                    confidence: 0.5,
+                },
+            )
+            .await
+            .unwrap();
+        Seeded { scope, recommendation_id: rec.id, cluster_id: cluster.id }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn create_starts_in_draft(pool: PgPool) {
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s = seed(&pool, "wo-draft@example.com").await;
+
+        let wo = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: s.recommendation_id,
+                    cluster_id: s.cluster_id,
+                    action_type: ActionType::BugFix,
+                    title: "Fix the bug",
+                    instructions: "Do the thing",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(wo.state, WorkOrderState::Draft);
+        assert_eq!(wo.autonomy_rung, 1);
+        assert!(wo.approved_by.is_none());
+
+        let got = repo.get(&s.scope, wo.id).await.unwrap();
+        assert_eq!(got, wo);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn update_state_in_executor_advances_state_and_patches(pool: PgPool) {
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s = seed(&pool, "wo-advance@example.com").await;
+        let wo = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: s.recommendation_id,
+                    cluster_id: s.cluster_id,
+                    action_type: ActionType::BugFix,
+                    title: "Fix",
+                    instructions: "Do",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                },
+            )
+            .await
+            .unwrap();
+
+        let approver = Uuid::new_v4();
+        let mut tx = pool.begin().await.unwrap();
+        repo.update_state_in_executor(
+            &s.scope,
+            &mut tx,
+            wo.id,
+            WorkOrderState::Approved,
+            WorkOrderStatePatch {
+                approved_by: Some(approver),
+                approved_at: Some(Utc::now()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+
+        let got = repo.get(&s.scope, wo.id).await.unwrap();
+        assert_eq!(got.state, WorkOrderState::Approved);
+        assert_eq!(got.approved_by, Some(approver));
+        assert!(got.approved_at.is_some());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn cross_tenant_get_and_create_rejected(pool: PgPool) {
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s1 = seed(&pool, "wo-owner1@example.com").await;
+        let s2 = seed(&pool, "wo-owner2@example.com").await;
+
+        let wo = repo
+            .create(
+                &s1.scope,
+                NewWorkOrder {
+                    recommendation_id: s1.recommendation_id,
+                    cluster_id: s1.cluster_id,
+                    action_type: ActionType::BugFix,
+                    title: "Fix",
+                    instructions: "Do",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                },
+            )
+            .await
+            .unwrap();
+
+        // s2 cannot read s1's work order.
+        assert!(matches!(repo.get(&s2.scope, wo.id).await.unwrap_err(), RepoError::NotFound));
+
+        // s2 cannot create a work order anchored on s1's recommendation.
+        let err = repo
+            .create(
+                &s2.scope,
+                NewWorkOrder {
+                    recommendation_id: s1.recommendation_id,
+                    cluster_id: s1.cluster_id,
+                    action_type: ActionType::BugFix,
+                    title: "x",
+                    instructions: "y",
+                    owner_overrides: None,
+                    autonomy_rung: 0,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RepoError::NotFound));
+    }
+}

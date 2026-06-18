@@ -22,3 +22,5 @@ KEEP-pin: no .claude/handoff/handoff-20260514-022752.md
 | 2026-05-14T12:30:01Z | POST-FINALIZE (P3 closed df07241) | /0-uldf-ldis-plan "P4 Go-Public" | HANDOFF | 70% HERE vs 34% cold-start (clean 36pp win); single-stream planning; conv-NO; B1.5 picks HANDOFF |
 KEEP-pin: no .claude/handoff/handoff-20260514-123001-p4-plan.md (tactical phase-boundary handoff)
 KEEP-pin: no .claude/handoff/handoff-20260618-113930.md [routine routing brief; durable record is spec + ideation note]
+| 2026-06-18T11:46Z | POST-PLAN (P5a plan 5df4e33) | /0-uldf-ltads-start | HANDOFF | current ~37%, full P5a impl arc ahead -> B3 fires; conv-NO (plan+contracts committed); Opus 1M so B1 dormant |
+KEEP-pin: no .claude/handoff/handoff-20260618-114600.md (tactical phase-boundary routing brief; durable record is plan 5df4e33 + spec)

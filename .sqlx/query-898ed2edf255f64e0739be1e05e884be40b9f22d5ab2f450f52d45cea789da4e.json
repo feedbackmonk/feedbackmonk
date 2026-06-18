@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE feedback_clusters\n            SET member_count = GREATEST(member_count + $4, 0),\n                updated_at = now()\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            RETURNING member_count\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "member_count",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int4"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "898ed2edf255f64e0739be1e05e884be40b9f22d5ab2f450f52d45cea789da4e"
+}

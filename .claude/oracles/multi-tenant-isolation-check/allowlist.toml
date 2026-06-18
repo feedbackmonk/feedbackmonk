@@ -125,3 +125,38 @@ rationale = "Constructor: stores a SqlxTenantRepo handle (no raw pool); performs
 type_name = "SqlxTenantRepo"
 method = "set_tier_for_test"
 rationale = "P3 Stage 1 test-support helper. Production tier writes will land via the Polar webhook receiver (DEC-FBR-DEFER-01 deferred) or operator-runbook SQL (`docs/operations/TIER_OVERRIDE.md`). This helper exists ONLY so integration tests in feedbackmonk-api/handlers/admin_tier.rs and tier_quota.rs::tests can seed a tenant at a specific tier without going through a TenantScope. Naming-suffixed `_for_test` makes the boundary explicit at every call-site; no production code path reaches it. Lives in the repository crate (where raw SQL is permitted by DEC-FBR-03) so Probe A's outside-crate scan stays clean."
+
+# --- P5a additions (Contracts C22/C23 / migrations 00013 + 00014) ---
+# The five agentic-loop repository constructors. Each is a structural mirror of
+# SqlxFeedbackRepo::new (P0 pre-authorized): stores a PgPool handle, performs no
+# queries. Every PUBLIC trait method on these repos takes &ProjectScope as its
+# first non-&self argument (Probe B compliance verified directly) — clusters,
+# recommendations, analysis_sweeps, work_orders, work_order_events all filter by
+# tenant_id + project_id on every read/write (DEC-FBR-03). The append_in_executor
+# / update_state_in_executor variants take &ProjectScope first, then the caller's
+# &mut PgConnection (same shape as SqlxFeedbackStatusHistoryRepo::append_in_executor).
+
+[[inherent_methods]]
+type_name = "SqlxClusterRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00013's feedback_clusters table (FR-FBR-19). All ClusterRepo trait methods take &ProjectScope first."
+
+[[inherent_methods]]
+type_name = "SqlxRecommendationRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00013's recommendations table (FR-FBR-20). All RecommendationRepo trait methods take &ProjectScope first; create resolves cluster_id/sweep_id within scope before insert."
+
+[[inherent_methods]]
+type_name = "SqlxAnalysisSweepRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00013's analysis_sweeps table (FR-FBR-20). All AnalysisSweepRepo trait methods take &ProjectScope first."
+
+[[inherent_methods]]
+type_name = "SqlxWorkOrderRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00014's work_orders table (FR-FBR-22, Contract C22). All WorkOrderRepo trait methods take &ProjectScope first; update_state_in_executor takes &ProjectScope then the caller's &mut PgConnection (same shape as SqlxFeedbackStatusHistoryRepo::append_in_executor)."
+
+[[inherent_methods]]
+type_name = "SqlxWorkOrderEventRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00014's append-only work_order_events ledger (Contract C22). All WorkOrderEventRepo trait methods take &ProjectScope first; append_in_executor takes &ProjectScope then the caller's &mut PgConnection. has_approved_event is the security predicate for the approval-gate-enforcement oracle (C22 inv. 1)."

@@ -93,6 +93,11 @@ fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, A
         anon_gate: AnonGate::new(std::num::NonZeroU32::new(10).unwrap()),
         login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
         ops_token: None,
+        clusters: Arc::new(feedbackmonk_repository::SqlxClusterRepo::new(pool.clone())),
+        recommendations: Arc::new(feedbackmonk_repository::SqlxRecommendationRepo::new(pool.clone())),
+        analysis_sweeps: Arc::new(feedbackmonk_repository::SqlxAnalysisSweepRepo::new(pool.clone())),
+        work_orders: Arc::new(feedbackmonk_repository::SqlxWorkOrderRepo::new(pool.clone())),
+        work_order_events: Arc::new(feedbackmonk_repository::SqlxWorkOrderEventRepo::new(pool.clone())),
         jwt_iat_leeway_seconds: 5,
         // P2 fields — mechanical AppState extension per
         // docs/test-modifications/20260514-p2-appstate-roadmap-fields.md.

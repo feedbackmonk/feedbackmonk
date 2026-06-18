@@ -1,0 +1,96 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE analysis_sweeps\n            SET status = $4,\n                completed_at = now(),\n                clusters_touched = $5,\n                recommendations_emitted = $6,\n                runner_id = $7,\n                agent_version = $8,\n                digest_summary = $9\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            RETURNING id, tenant_id, project_id, triggered_by, started_at,\n                      completed_at, status, clusters_touched,\n                      recommendations_emitted, runner_id, agent_version,\n                      digest_summary\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "triggered_by",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "started_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "completed_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 6,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "clusters_touched",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 8,
+        "name": "recommendations_emitted",
+        "type_info": "Int4"
+      },
+      {
+        "ordinal": 9,
+        "name": "runner_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 10,
+        "name": "agent_version",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 11,
+        "name": "digest_summary",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Int4",
+        "Int4",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "ff25f529bfb4d2c5dfb9a36bdd911a3a935563e829c6937e1fc39251f4f1ebd3"
+}

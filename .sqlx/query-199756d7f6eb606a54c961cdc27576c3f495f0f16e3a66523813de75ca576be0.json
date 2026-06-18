@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE work_orders\n            SET state = $4,\n                approved_by = COALESCE($5, approved_by),\n                approved_at = COALESCE($6, approved_at),\n                dispatched_at = COALESCE($7, dispatched_at),\n                claimed_by_runner = COALESCE($8, claimed_by_runner),\n                result_ref = COALESCE($9, result_ref),\n                failure_reason = COALESCE($10, failure_reason),\n                updated_at = now()\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Uuid",
+        "Timestamptz",
+        "Timestamptz",
+        "Text",
+        "Jsonb",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "199756d7f6eb606a54c961cdc27576c3f495f0f16e3a66523813de75ca576be0"
+}

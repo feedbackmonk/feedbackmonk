@@ -7,6 +7,7 @@
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 use feedbackmonk_core::{Feedback, FeedbackId, FeedbackKind, FeedbackStatus};
 
@@ -102,6 +103,32 @@ pub trait FeedbackRepo: Send + Sync {
         feedback_id: &FeedbackId,
         new_status: FeedbackStatus,
     ) -> Result<FeedbackStatus>;
+
+    // ==== P5a (FR-FBR-19) — cluster membership setter (decision point D1) ====
+
+    /// Set (or clear) `feedback.cluster_id` — the first-class "current cluster"
+    /// pointer (D1). Own transaction. When `cluster_id` is `Some`, it MUST
+    /// belong to `scope` (resolved within scope first; `NotFound` otherwise);
+    /// `None` un-clusters the row. `NotFound` if the feedback is absent or out
+    /// of scope.
+    async fn set_cluster_id(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+        cluster_id: Option<Uuid>,
+    ) -> Result<()>;
+
+    /// Same-transaction variant of [`set_cluster_id`]. Worker B's
+    /// clustering-on-submit assigns the cluster in the SAME txn as the feedback
+    /// insert (post-insert, same transaction — adds no new external surface and
+    /// no latency beyond the deterministic heuristic).
+    async fn set_cluster_id_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        cluster_id: Option<Uuid>,
+    ) -> Result<()>;
 
     // ==== Gap #4 (DELTA) — end-user (JWT-sub-scoped) read surface ===========
     // GitCellar customer-#1 parity gap #4. No schema change. These methods
@@ -587,6 +614,65 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         .await?;
 
         Ok(from_status)
+    }
+
+    // ==== P5a (FR-FBR-19) — cluster membership setter impl ==================
+
+    async fn set_cluster_id(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+        cluster_id: Option<Uuid>,
+    ) -> Result<()> {
+        let mut conn = self.pool.acquire().await?;
+        self.set_cluster_id_in_executor(scope, &mut conn, feedback_id, cluster_id)
+            .await
+    }
+
+    async fn set_cluster_id_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        cluster_id: Option<Uuid>,
+    ) -> Result<()> {
+        // When assigning (not clearing), the target cluster MUST belong to the
+        // same scope — a cross-tenant cluster_id cannot be stamped onto this
+        // feedback. The DB FK guarantees the cluster exists; this guarantees it
+        // is OURS.
+        if let Some(cid) = cluster_id {
+            sqlx::query!(
+                r#"
+                SELECT id FROM feedback_clusters
+                WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                cid,
+            )
+            .fetch_optional(&mut *conn)
+            .await?
+            .ok_or(crate::error::RepoError::NotFound)?;
+        }
+
+        let result = sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET cluster_id = $1
+            WHERE tenant_id = $2 AND project_id = $3 AND short_code = $4
+            "#,
+            cluster_id,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(crate::error::RepoError::NotFound);
+        }
+        Ok(())
     }
 
     // ==== Gap #4 (DELTA) — end-user read surface impl =======================

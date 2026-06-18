@@ -13,7 +13,9 @@
 //!   - DEC-FBR-03 (sole query path) / DEC-FBR-04 (JWT-only end-user identity)
 //!   - P0 plan Contract C1
 
+pub mod analysis_sweeps;
 pub mod attachments;
+pub mod clusters;
 pub mod email_verifications;
 pub mod error;
 pub mod feedback;
@@ -21,16 +23,21 @@ pub mod feedback_replies;
 pub mod feedback_status_history;
 pub mod health;
 pub mod projects;
+pub mod recommendations;
 pub mod roadmap_items;
 pub mod roadmap_votes;
 pub mod scope;
 pub mod signing_keys;
 pub mod tenants;
 pub mod tier_quota;
+pub mod work_order_events;
+pub mod work_orders;
 
+pub use analysis_sweeps::{AnalysisSweep, AnalysisSweepRepo, SqlxAnalysisSweepRepo, SweepOutcome};
 pub use attachments::{
     AttachmentKind, AttachmentRepo, AttachmentRow, NewAttachment, SqlxAttachmentRepo,
 };
+pub use clusters::{ClusterRepo, FeedbackCluster, SqlxClusterRepo};
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
 pub use feedback::{
@@ -40,6 +47,9 @@ pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, Sq
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
 pub use health::SqlxHealthCheck;
 pub use projects::{ProjectRepo, SqlxProjectRepo};
+pub use recommendations::{
+    NewRecommendation, Recommendation, RecommendationRepo, SqlxRecommendationRepo,
+};
 pub use roadmap_items::{
     NewRoadmapItem, RoadmapItemPatch, RoadmapItemRepo, SqlxRoadmapItemRepo,
 };
@@ -52,4 +62,10 @@ pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo, WidgetBrandOverr
 pub use tier_quota::{
     QuotaStatus, SqlxTierQuotaRepo, TierQuotaRepo, TierStatus, TierUsage,
     ROLLING_FEEDBACK_WINDOW_DAYS,
+};
+pub use work_order_events::{
+    NewWorkOrderEvent, SqlxWorkOrderEventRepo, WorkOrderEvent, WorkOrderEventRepo,
+};
+pub use work_orders::{
+    NewWorkOrder, SqlxWorkOrderRepo, WorkOrder, WorkOrderRepo, WorkOrderStatePatch,
 };

@@ -1,0 +1,41 @@
+{
+  "name": "approval-gate-enforcement",
+  "version": "0.1.0-scaffold",
+  "kind": "verification",
+  "question": "Can any work order reach an execution state (>= dispatched) without a prior owner-authored `approved` event? Probe A proves from work_order.rs that `Approved` is the SOLE predecessor of `Dispatched` and that is_execution_state classifies the execution set correctly. Probe B (activates when the handler lands) asserts the transition handler consults has_approved_event. Probe C (--full, activates when the test lands) runs tests/work_order_state_machine.rs.",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/oracles/approval-gate-enforcement/oracle.sh",
+    "windows": ".claude/oracles/approval-gate-enforcement/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe B/C report PENDING (not failure) until Worker A's handler + integration test land."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-core/src/work_order.rs",
+      "crates/feedbackmonk-api/src/handlers/work_orders.rs",
+      "crates/feedbackmonk-api/tests/work_order_state_machine.rs",
+      ".claude/oracles/approval-gate-enforcement/oracle.py"
+    ],
+    "compute_cost_ms": 40
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the work-order state machine, handler, or ledger",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "feedbackmonk: Worker A (primary) + every reviewer touching crates/feedbackmonk-core/src/work_order.rs (state machine), crates/feedbackmonk-api/src/handlers/work_orders.rs (transition handler), or the work_order_events ledger. A green oracle with Probe B+C ACTIVE is Worker A's Stage 1 exit gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-18T00:00:00Z"
+  },
+  "fallback": "Probe A: read crates/feedbackmonk-core/src/work_order.rs and confirm (1) is_execution_state matches exactly {dispatched,claimed,building,verifying,reported,completed,failed} and excludes {draft,approved,cancelled}; (2) in legal_transitions_from, ONLY `Approved` lists `Dispatched` as a legal target. Probe B: read crates/feedbackmonk-api/src/handlers/work_orders.rs and confirm the transition handler calls has_approved_event before any execution-state transition. Probe C: cargo test -p feedbackmonk-api --test work_order_state_machine.",
+  "provenance": {
+    "authored_by": "P5a Stage 0 (Task Zero scaffold) — finalized by Worker A as the state machine + handler land",
+    "created": "2026-06-18T00:00:00Z",
+    "rationale": "Testability Gate Flag 1 (the highest plan-wide fidelity risk, Q2=5): the work-order approval gate is THE security boundary between public internet input and code execution (FR-FBR-25a). A happy-path unit test confirms `approve -> approved` but cannot prove the ABSENCE of bypass code paths; an execution-state row with no `approved` event is a remote-code-execution path from public feedback. This oracle is detection-from-STATE (state-machine source + handler + ledger), the anti-reward-hacking leg per Contract C22 invariant 1 — it cannot be satisfied by a self-reported flag. Scaffolded in Stage 0 (Probe A live; B/C co-evolve with Worker A); a green oracle is Worker A's exit gate."
+  }
+}

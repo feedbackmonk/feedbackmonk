@@ -1,0 +1,109 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO recommendations\n                (tenant_id, project_id, cluster_id, sweep_id, action_type,\n                 title, body, rationale, source_refs, confidence)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n            RETURNING id, tenant_id, project_id, cluster_id, sweep_id,\n                      action_type, title, body, rationale, source_refs,\n                      confidence, status, generated_at, created_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "cluster_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "sweep_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
+        "name": "action_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "rationale",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 9,
+        "name": "source_refs",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 10,
+        "name": "confidence",
+        "type_info": "Float8"
+      },
+      {
+        "ordinal": 11,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 12,
+        "name": "generated_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 13,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "439ce82e29df8e0fa274cceabd9a7db9496f0f5263962a9904e50aca3ded3564"
+}
