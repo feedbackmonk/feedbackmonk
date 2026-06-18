@@ -21,3 +21,4 @@ KEEP-pin: no .claude/handoff/handoff-20260514-022752.md
 | 2026-05-14T12:02Z | KEEP-pin: no | handoff-20260514-120215-p3-stage2.md | brief lacks KEEP: marker (routine inner-loop handoff per feedback_keep_pin_prompts memory) | |
 | 2026-05-14T12:30:01Z | POST-FINALIZE (P3 closed df07241) | /0-uldf-ldis-plan "P4 Go-Public" | HANDOFF | 70% HERE vs 34% cold-start (clean 36pp win); single-stream planning; conv-NO; B1.5 picks HANDOFF |
 KEEP-pin: no .claude/handoff/handoff-20260514-123001-p4-plan.md (tactical phase-boundary handoff)
+KEEP-pin: no .claude/handoff/handoff-20260618-113930.md [routine routing brief; durable record is spec + ideation note]

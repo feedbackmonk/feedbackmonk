@@ -172,6 +172,8 @@ feedbackmonk's spec is a separate artifact from GitCellar's `docs/specs/feedback
 
 **Resolved**: 2026-05-13.
 
+> **AMENDED 2026-06-18 (see [`DEC-FBR-12`](#dec-fbr-12-open-core-boundary-for-the-agentic-loop-feedbackmonk-autopilot)).** The hard commitments below — "no private 'Pro features' branch," "no artificial feature gating beyond pricing-tier caps" — were authored at v1 spec time and are **no longer treated as binding constraints** on the P5 agentic loop. The user explicitly relaxed them (2026-06-18): DEC-FBR-05 reflects a v1 monetization stance, not an immovable law. The agentic-loop *packaging* (open vs proprietary) is now a **deferred, separate decision** (DEC-FBR-12) made behind the work-order API seam. This amendment does **not** change feedbackmonk's present state — the product remains fully AGPL today — it only removes DEC-FBR-05 as a blocker to future packaging choices.
+
 **Two distinct concerns**:
 - **License** = AGPL-3.0-or-later. How the code is distributed.
 - **Revenue model** = Commercial SaaS subscriptions ($9/$29/$79 per DEC-FBR-03), optional self-host support contracts later. How money flows in.
@@ -441,6 +443,46 @@ DEC-FBR-09's three suggested-candidate names (Earshot / Plumbline / Listenly) al
 ## Spec session — COMPLETE ✅
 
 All 10 critical questions resolved. Foundational triad (Q1-Q3) + 7 next-tier (Q4-Q10) closed. 10 decisions (DEC-FBR-01..10) plus 1 contingency amendment (DEC-FBR-11) recorded. 18 functional requirements derive from DEC-FBR-08. Ready for `/0-uldf-ldis-plan`.
+
+---
+
+## P5 Spec Session — Agentic Feedback Resolution Loop (IN PROGRESS, opened 2026-06-18)
+
+### DEC-FBR-12: Open-core boundary for the agentic loop ("feedbackmonk Autopilot")
+
+**Status**: **REVISED & RESOLVED 2026-06-18 — architecture DECIDED, open-vs-proprietary packaging DEFERRED.** The full open-core analysis further below is retained as *the option we are keeping open*, not a present commitment. Per user direction (2026-06-18): DEC-FBR-05 is relaxed (not sacred) and the immediate priority is the most efficient, quality, robust *build* — a separate axis from open-vs-proprietary *packaging*.
+
+**Decision (taken)** — two axes, decided separately:
+1. **Architecture (DECIDED, locked now).** The agentic loop runs in the customer's project and couples to feedbackmonk **only through the public work-order API seam** (FR-FBR-22), with the owner-approval gate as a security boundary (FR-FBR-25). Good engineering regardless of licensing.
+2. **Packaging / open-vs-proprietary (DEFERRED).** *Where* the agent code lives (in-repo vs separate) and *whether* any of it is proprietary is a **monetization-packaging** decision, not a build decision. The clean API seam keeps every option open (fully-open · open-core split · BYO-agent) at near-zero cost, so we do **not** pay the split-complexity tax now. Build it as one coherent system — it serves the owner's own projects + GitCellar customer #1 first, where open-vs-proprietary is moot — and make the packaging call when external commercialization is actually on the table, behind the seam, with no rework.
+
+**Why defer rather than commit open-core now**: committing to the split would add two repos, cross-repo CI, a boundary oracle, and BYO-agent docs — overhead that serves a monetization model not yet needed. Deferring is strictly more efficient and loses nothing because the seam preserves the open-core option intact. This directly serves the stated goal: "implement everything in the most efficient way possible without sacrificing quality or robustness."
+
+**Relationship to DEC-FBR-05**: relaxed, not binding (amendment noted on DEC-FBR-05). feedbackmonk stays fully AGPL *today*; any future proprietary packaging is a deliberate, separate choice made behind the seam — not a present commitment to violate DEC-FBR-05.
+
+---
+
+**Retained as the kept-open option (the open-core model, should packaging later go that way):**
+
+The agentic feedback-resolution capability (analyst + implementer; FR-FBR-19..24) *could* be delivered as **open-core**: the feedbackmonk product stays 100% AGPL, while the *agents* are a **separate, proprietary commercial product** that talks to feedbackmonk **only through the public work-order API** (FR-FBR-22).
+
+**The boundary, drawn once — licensing == architecture == code-location**:
+- **Open (the AGPL feedbackmonk repo)**: collection (widget/API), triage, roadmap/voting, the review & approval surface (FR-FBR-21), and the **work-order API contract** (FR-FBR-22). All of this stays fully AGPL.
+- **Proprietary (a separate repo / product, NOT a branch of feedbackmonk)**: the analyst intelligence (FR-FBR-19/20), the autonomous implementer (FR-FBR-23), and the turnkey ULDF-powered runner (FR-FBR-24). These never land in the AGPL repo — enforced as a code-level invariant by the proposed `agpl-boundary-check` oracle.
+
+**Reconciliation with [`DEC-FBR-05`](#dec-fbr-05-business-model--open-source-self-host-agpl-30-or-later--commercial-saas-same-codebase)** (the load-bearing tension this decision exists to resolve): DEC-FBR-05 committed to "No private 'Pro features' branch — single codebase, fully AGPL" and "no artificial feature gating beyond pricing-tier caps." This decision **does not violate that** — it *refines its scope*. DEC-FBR-05's promise is about the **feedbackmonk product**, and that promise is kept: feedbackmonk has no private branch and no gated features. The proprietary agents are **not a feature of feedbackmonk** — they are a *separate add-on product* that integrates over a public API, the same way any third-party BYO-agent could. A self-hoster gets the entire feedbackmonk product, fully open, plus a documented work-order API they can drive with **any** coding agent (open BYO-agent path). The proprietary turnkey runner is convenience + the ULDF moat, sold separately. *This is a refinement of DEC-FBR-05, not a supersession.*
+
+**Why this is the right line (WHY, not WHAT)**:
+- The architecture the user designed already draws it: the agent lives in the customer's project and works *only via the feedbackmonk API*. The technical seam and the licensing seam are the same seam — no awkward gating inside the product.
+- AGPL on the core actively *helps*: it stops a competitor from running a closed hosted fork of the feedback product, while the genuinely hard, genuinely differentiated part (autonomous, tested, verified implementation — running on the owner's private ULDF framework) is where the money is and is naturally defensible.
+- It preserves the DEC-FBR-02 privacy/trust brand intact (the open product is still the whole trustworthy product) while opening a high-value commercial surface.
+- It serves the owner's own projects on day one: the "runner" is just the existing Claude Code + ULDF setup pointed at the API.
+
+**Reversible sub-decision — analyst open-vs-proprietary (Q12)**: the user judged *analysis quality itself* a premium differentiator, so the **analyst (FR-FBR-19/20) starts proprietary**. This is recorded as **explicitly reversible**: revisit moving the analyst into the open core once it is built out and better understood. A future session must treat the analyst's proprietary status as *provisional*, not settled — unlike the implementer (FR-FBR-23), whose proprietary status is structural.
+
+**Load-bearing security corollary** (specced as FR-FBR-25): because feedback originates from the public web, the owner-approval gate (FR-FBR-21) is a **security boundary**, not a UX step. Only the authenticated owner triggers execution; feedback content is untrusted **data, never instructions**. This is non-negotiable in any open/proprietary split.
+
+**Open items before ratification**: Q11 (this reconciliation), Q12 (analyst reversibility trigger), Q13 (runner runtime/distribution/licensing), Q14 (agent auth shape), Q20 (BYO-agent contract). See OPEN_QUESTIONS.md.
 
 ---
 
