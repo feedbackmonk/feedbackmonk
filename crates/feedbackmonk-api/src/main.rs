@@ -33,8 +33,8 @@ use feedbackmonk_repository::{
     SqlxAnalysisSweepRepo, SqlxAttachmentRepo, SqlxClusterRepo, SqlxEmailVerificationRepo,
     SqlxFeedbackReplyRepo, SqlxFeedbackRepo, SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck,
     SqlxProjectRepo, SqlxRecommendationRepo, SqlxRoadmapItemRepo, SqlxRoadmapVoteRepo,
-    SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo, SqlxWorkOrderEventRepo,
-    SqlxWorkOrderRepo,
+    SqlxRunnerTokenRepo, SqlxRunnerTokenRevocationRepo, SqlxSigningKeyRepo, SqlxTenantRepo,
+    SqlxTierQuotaRepo, SqlxWorkOrderEventRepo, SqlxWorkOrderRepo,
 };
 
 use feedbackmonk_api::email::{
@@ -45,9 +45,9 @@ use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
     cluster_admin_router, me_feedback_router, ops_router, parse_origins, promote_router,
-    public_cors_layer, recommendation_admin_router, roadmap_router, spawn_voting_cache_refresh,
-    submission_router, sweep_admin_router, widget_config_router, work_order_admin_router,
-    work_order_runner_router, AttachmentState, VotingCache,
+    public_cors_layer, recommendation_admin_router, roadmap_router, runner_tokens_admin_router,
+    spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
+    work_order_admin_router, work_order_runner_router, AttachmentState, VotingCache,
 };
 
 #[tokio::main]
@@ -182,6 +182,10 @@ fn build_state(pool: PgPool) -> Result<AppState> {
     let analysis_sweeps = Arc::new(SqlxAnalysisSweepRepo::new(pool.clone()));
     let work_orders = Arc::new(SqlxWorkOrderRepo::new(pool.clone()));
     let work_order_events = Arc::new(SqlxWorkOrderEventRepo::new(pool.clone()));
+    // P5b: runner-token lifecycle registry + append-only revocation denylist
+    // (Contract C25).
+    let runner_tokens = Arc::new(SqlxRunnerTokenRepo::new(pool.clone()));
+    let runner_token_revocations = Arc::new(SqlxRunnerTokenRevocationRepo::new(pool.clone()));
     let voting_cache = VotingCache::new();
     let health = SqlxHealthCheck::new(pool.clone());
 
@@ -257,6 +261,8 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         analysis_sweeps,
         work_orders,
         work_order_events,
+        runner_tokens,
+        runner_token_revocations,
     })
 }
 
@@ -395,6 +401,12 @@ fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &
         // flags accidental CORS-exposure of admin/runner endpoints).
         .merge(work_order_admin_router(state.clone()))
         .merge(work_order_runner_router(state.clone()))
+        // P5b (Contract C25, Worker D consumes): runner-token lifecycle
+        // (list/register/revoke) behind AdminSession. Merged WITHOUT
+        // `.layer(cors)` — admin surface, never a browser embed. Only the
+        // public submit/attachments routers above carry CORS (Ripple Analysis
+        // flags accidental CORS-exposure of admin endpoints).
+        .merge(runner_tokens_admin_router(state.clone()))
         // P5a (Contract C23/C24, Worker B): clustering/sweep/recommendation
         // admin surface (merge/split, sweep trigger+digest, recommendation
         // ingestion + read). AdminSession; merged WITHOUT `.layer(cors)` — admin

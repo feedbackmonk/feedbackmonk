@@ -14,7 +14,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use feedbackmonk_core::SigningKeyId;
+use feedbackmonk_core::{KeyClass, SigningKeyId};
 
 use crate::auth::AdminSession;
 use crate::error::ApiError;
@@ -32,6 +32,12 @@ pub struct RegisterKeyRequest {
     #[serde(alias = "public_key_base64")]
     pub public_key_b64: String,
     pub label: String,
+    /// Privilege class of the key (Contract C25, P5b). Omitted ⇒ `identity`
+    /// (an end-user submission key — the byte-for-byte pre-P5b default).
+    /// Registering a `runner`-class key is how a customer enables runner-token
+    /// minting (FR-FBR-24). Accepts `"identity"` | `"runner"`.
+    #[serde(default)]
+    pub key_class: Option<KeyClass>,
 }
 
 #[derive(Debug, Serialize)]
@@ -84,9 +90,10 @@ pub async fn register(
     let public_key = decode_public_key(&req.public_key_b64)?;
 
     let scope = state.projects.open(&session.scope, project_id).await?;
+    let key_class = req.key_class.unwrap_or_default();
     let id = state
         .signing_keys
-        .register(&scope, &public_key, req.label.trim())
+        .register_with_class(&scope, &public_key, req.label.trim(), key_class)
         .await?;
 
     // The repo's `register` does not return the registered_at timestamp;

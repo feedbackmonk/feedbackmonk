@@ -52,10 +52,12 @@ use feedbackmonk_api::handlers::work_orders::{
 };
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{work_order_admin_router, work_order_runner_router};
-use feedbackmonk_core::{ActionType, FeedbackKind, WorkOrderState, WorkOrderTransitionError};
+use feedbackmonk_core::{
+    ActionType, FeedbackKind, KeyClass, WorkOrderState, WorkOrderTransitionError,
+};
 use feedbackmonk_repository::{
-    NewRecommendation, ProjectScope, SqlxAnalysisSweepRepo, SqlxClusterRepo,
-    SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
+    NewRecommendation, ProjectScope, SqlxAnalysisSweepRepo,
+    SqlxClusterRepo, SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRecommendationRepo,
     SqlxRoadmapItemRepo, SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo,
     SqlxWorkOrderEventRepo, SqlxWorkOrderRepo, WorkOrderStatePatch,
@@ -109,6 +111,8 @@ fn build_test_state(pool: &PgPool) -> AppState {
         analysis_sweeps: Arc::new(SqlxAnalysisSweepRepo::new(pool.clone())),
         work_orders: Arc::new(SqlxWorkOrderRepo::new(pool.clone())),
         work_order_events: Arc::new(SqlxWorkOrderEventRepo::new(pool.clone())),
+        runner_tokens: Arc::new(feedbackmonk_repository::SqlxRunnerTokenRepo::new(pool.clone())),
+        runner_token_revocations: Arc::new(feedbackmonk_repository::SqlxRunnerTokenRevocationRepo::new(pool.clone())),
         jwt_iat_leeway_seconds: 5,
         roadmap_items: Arc::new(SqlxRoadmapItemRepo::new(pool.clone())),
         roadmap_votes: Arc::new(SqlxRoadmapVoteRepo::new(pool.clone())),
@@ -167,19 +171,37 @@ async fn seed(state: &AppState, email: &str) -> Seeded {
     }
 }
 
-/// Register a fresh Ed25519 signing key; return the dalek key so the caller can
-/// mint tokens verifiable by the project.
+/// Register a fresh **runner-class** Ed25519 signing key (Contract C25); return
+/// the dalek key so the caller can mint runner tokens verifiable by the project.
+/// Runner-token verification selects only runner-class keys, so the seam test's
+/// key MUST be runner-class.
 async fn seed_signing_key(state: &AppState, scope: &ProjectScope) -> DalekSigningKey {
     let signing = DalekSigningKey::generate(&mut OsRng);
     let pk: [u8; 32] = signing.verifying_key().to_bytes();
-    state.signing_keys.register(scope, &pk, "runner-key").await.unwrap();
+    state
+        .signing_keys
+        .register_with_class(scope, &pk, "runner-key", KeyClass::Runner)
+        .await
+        .unwrap();
     signing
 }
 
 /// Mint an EdDSA token. When `runner` is true it carries the `scope:
 /// "runner:write"` class marker (a runner write-token); otherwise it is an
-/// ordinary end-user JWT.
+/// ordinary end-user JWT. A random `jti` is included.
 fn mint_token(signing: &DalekSigningKey, project_id: Uuid, sub: &str, runner: bool) -> String {
+    mint_token_jti(signing, project_id, sub, runner, &Uuid::new_v4().to_string())
+}
+
+/// Like [`mint_token`] but with a caller-chosen `jti` (so the revocation
+/// round-trip can target a known token).
+fn mint_token_jti(
+    signing: &DalekSigningKey,
+    project_id: Uuid,
+    sub: &str,
+    runner: bool,
+    jti: &str,
+) -> String {
     let header = json!({ "alg": "EdDSA", "typ": "JWT" });
     let now = Utc::now().timestamp();
     let mut payload = json!({
@@ -187,6 +209,7 @@ fn mint_token(signing: &DalekSigningKey, project_id: Uuid, sub: &str, runner: bo
         "aud": project_id.to_string(),
         "iat": now,
         "exp": now + 300,
+        "jti": jti,
     });
     if runner {
         payload["scope"] = json!(RUNNER_TOKEN_SCOPE);
@@ -511,4 +534,64 @@ async fn rung_zero_never_produces_a_work_order(pool: PgPool) {
     let s = seed(&state, "wo-rung0@example.com").await;
     let err = create_work_order(&state, &s.scope, s.recommendation_id, 0, None).await.unwrap_err();
     assert!(matches!(err, feedbackmonk_api::ApiError::BadRequest(_)), "rung 0 must be rejected; got {err:?}");
+}
+
+// ============================================================================
+// 11. Runner-token mint / verify / revoke round-trip (Contract C25, P5b).
+//     THE GATE 0 acceptance test: a customer-minted runner token verifies, and
+//     revoking its `jti` kills it at the auth seam BEFORE any state transition —
+//     while a different (unrevoked) token from the same key still works
+//     (revocation is jti-scoped, not key-scoped).
+// ============================================================================
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn runner_token_mint_verify_revoke_round_trip(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let s = seed(&state, "wo-runner-revoke@example.com").await;
+    let signing = seed_signing_key(&state, &s.scope).await;
+
+    // Drive an order to `dispatched` so `claim` is a legal edge.
+    let id = make_draft(&state, &s, 1).await;
+    admin_approve(&state, &s.scope, id).await;
+    transition_work_order(&state, &s.scope, id, "dispatch", &Actor::System, None,
+        WorkOrderStatePatch { dispatched_at: Some(Utc::now()), ..Default::default() }).await.unwrap();
+
+    let app = work_order_runner_router(state.clone());
+    let claim_url = format!("/api/v1/projects/{}/work-orders/{}/claim", s.project_id, id);
+    let claim_req = |bearer: String| {
+        Request::post(&claim_url)
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {bearer}"))
+            .body(Body::empty())
+            .unwrap()
+    };
+
+    // MINT a runner token with a known jti, then REVOKE that jti (the owner's
+    // kill-switch for a leaked token).
+    let revoked_jti = Uuid::new_v4().to_string();
+    let revoked_token = mint_token_jti(&signing, s.project_id, "runner-rev", true, &revoked_jti);
+    state
+        .runner_token_revocations
+        .revoke(&s.scope, &revoked_jti, Some("leaked"))
+        .await
+        .unwrap();
+
+    // VERIFY: the revoked token is rejected at the auth seam (401), BEFORE any
+    // transition — the order stays `dispatched` (no claim).
+    let resp = app.clone().oneshot(claim_req(revoked_token)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED, "a revoked runner token must 401");
+    let wo = state.work_orders.get(&s.scope, id).await.unwrap();
+    assert_eq!(
+        wo.state,
+        WorkOrderState::Dispatched,
+        "a revoked token must not transition the order"
+    );
+
+    // A DIFFERENT, unrevoked token minted from the SAME runner key still works —
+    // revocation is jti-scoped, not key-scoped (and proves mint+verify happy path).
+    let good_token = mint_token(&signing, s.project_id, "runner-ok", true);
+    let resp = app.clone().oneshot(claim_req(good_token)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "an unrevoked runner token must still claim");
+    let wo = state.work_orders.get(&s.scope, id).await.unwrap();
+    assert_eq!(wo.state, WorkOrderState::Claimed);
 }

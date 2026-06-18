@@ -53,3 +53,8 @@ pub mod work_orders;
 pub mod clusters;
 pub mod recommendations;
 pub mod sweeps;
+
+// P5b (Contract C25, FR-FBR-24): runner-token lifecycle admin surface
+// (list/register/revoke). Behind AdminSession; merged WITHOUT CORS. The
+// runner-token VERIFY seam lives in `work_orders.rs` (verify_runner_token).
+pub mod runner_tokens;

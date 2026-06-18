@@ -260,6 +260,8 @@ mod behavioural {
             analysis_sweeps: Arc::new(SqlxAnalysisSweepRepo::new(pool.clone())),
             work_orders: Arc::new(SqlxWorkOrderRepo::new(pool.clone())),
             work_order_events: Arc::new(SqlxWorkOrderEventRepo::new(pool.clone())),
+            runner_tokens: Arc::new(feedbackmonk_repository::SqlxRunnerTokenRepo::new(pool.clone())),
+            runner_token_revocations: Arc::new(feedbackmonk_repository::SqlxRunnerTokenRevocationRepo::new(pool.clone())),
         }
     }
 

@@ -46,6 +46,54 @@ pub struct SigningKey {
     pub deactivated_at: Option<DateTime<Utc>>,
 }
 
+/// Privilege class of a registered signing key (Contract C25, P5b).
+///
+/// The discriminator that gives runner-token privilege separation: end-user
+/// JWT verification accepts ONLY [`KeyClass::Identity`] keys, while runner
+/// write-token verification requires a [`KeyClass::Runner`] key. Enforced at
+/// the key-SELECTION layer (`SigningKeyRepo::list_active_for_class`), so the
+/// audited `feedbackmonk_jwt::verify` stays untouched and a stolen runner key
+/// can never mint an end-user identity JWT (it is strictly limited to
+/// runner-write transitions; a runner can never author `approve` — C22 inv. 2).
+///
+/// Persisted as the `signing_keys.key_class` TEXT column (migration 00015);
+/// existing rows default [`KeyClass::Identity`] so existing end-user auth is
+/// unaffected. Lives in `feedbackmonk-core` so the repository (selection) and
+/// the API (registration) layers share one definition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeyClass {
+    /// End-user identity key (the default). Verifies end-user submission JWTs
+    /// (FR-FBR-05 / DEC-FBR-04).
+    #[default]
+    Identity,
+    /// Runner write-token key (P5b). Verifies the runner's `scope:"runner:write"`
+    /// tokens (FR-FBR-24, Contract C25).
+    Runner,
+}
+
+impl KeyClass {
+    /// The exact DB string for the `signing_keys.key_class` CHECK set.
+    #[must_use]
+    pub fn as_db_str(self) -> &'static str {
+        match self {
+            Self::Identity => "identity",
+            Self::Runner => "runner",
+        }
+    }
+
+    /// Parse a DB string back to a `KeyClass`. Unknown values fall back to
+    /// [`KeyClass::Identity`] (the least-privileged class — a corrupt/unknown
+    /// marker must NEVER be treated as a runner key).
+    #[must_use]
+    pub fn from_db_str(s: &str) -> Self {
+        match s {
+            "runner" => Self::Runner,
+            _ => Self::Identity,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum FeedbackKind {
@@ -190,5 +238,23 @@ mod tests {
     #[test]
     fn feedback_kind_unknown_db_value_falls_back_to_other() {
         assert_eq!(FeedbackKind::from_db_str("definitely-not-a-kind"), FeedbackKind::Other);
+    }
+
+    #[test]
+    fn key_class_round_trip() {
+        for c in [KeyClass::Identity, KeyClass::Runner] {
+            assert_eq!(KeyClass::from_db_str(c.as_db_str()), c);
+        }
+    }
+
+    #[test]
+    fn key_class_default_is_identity() {
+        assert_eq!(KeyClass::default(), KeyClass::Identity);
+    }
+
+    #[test]
+    fn key_class_unknown_db_value_falls_back_to_identity() {
+        // Least-privilege: a corrupt/unknown marker must NEVER read as Runner.
+        assert_eq!(KeyClass::from_db_str("superuser"), KeyClass::Identity);
     }
 }

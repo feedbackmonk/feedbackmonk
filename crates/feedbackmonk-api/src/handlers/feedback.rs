@@ -46,7 +46,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::{FeedbackKind, ResourceKind, Tier};
+use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Tier};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -198,7 +198,12 @@ async fn submit_authenticated_path(
     body: &str,
     kind: FeedbackKind,
 ) -> Result<Response, ApiError> {
-    let active_keys = state.signing_keys.list_active(project_scope).await?;
+    // P5b (C25): end-user JWT verification selects ONLY identity-class keys — a
+    // runner-class key can never authenticate a submitter (privilege separation).
+    let active_keys = state
+        .signing_keys
+        .list_active_for_class(project_scope, KeyClass::Identity)
+        .await?;
     let now_unix = current_unix_timestamp();
 
     let claims: VerifiedClaims = match jwt_verify_with_leeway(

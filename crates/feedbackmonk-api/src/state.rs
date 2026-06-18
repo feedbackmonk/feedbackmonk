@@ -16,7 +16,8 @@ use feedbackmonk_anon::{AnonGate, LoginGate};
 use feedbackmonk_repository::{
     AnalysisSweepRepo, ClusterRepo, EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo,
     FeedbackStatusHistoryRepo, ProjectRepo, RecommendationRepo, RoadmapItemRepo, RoadmapVoteRepo,
-    SigningKeyRepo, SqlxHealthCheck, TenantRepo, TierQuotaRepo, WorkOrderEventRepo, WorkOrderRepo,
+    RunnerTokenRepo, RunnerTokenRevocationRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
+    TierQuotaRepo, WorkOrderEventRepo, WorkOrderRepo,
 };
 
 use crate::email::{EmailNotifier, Mailer};
@@ -127,4 +128,16 @@ pub struct AppState {
     /// `approval-gate-enforcement` oracle reads; `has_approved_event` is the
     /// security predicate for C22 inv. 1.
     pub work_order_events: Arc<dyn WorkOrderEventRepo>,
+
+    // -- P5b: runner-token issuance/auth + lifecycle (FR-FBR-24, Contract
+    //    C25) ----------------------------------------------------------------
+    /// Runner-token lifecycle REGISTRY (admin visibility). Lists issued runner
+    /// write-tokens (jti + label + expiry) for the admin UI; NOT consulted by
+    /// the verify hot path.
+    pub runner_tokens: Arc<dyn RunnerTokenRepo>,
+    /// APPEND-ONLY runner-token revocation denylist (the security table).
+    /// `verify_runner_token` rejects a token whose `jti` is listed here before
+    /// honoring it — the owner's kill-switch for a leaked runner token
+    /// (Contract C25). Independent of the registry (revoke-before-register).
+    pub runner_token_revocations: Arc<dyn RunnerTokenRevocationRepo>,
 }

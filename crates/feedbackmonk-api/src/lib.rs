@@ -51,6 +51,8 @@ pub use handlers::recommendations::{
     router as recommendation_admin_router, validate_source_refs,
 };
 pub use handlers::sweeps::router as sweep_admin_router;
+// P5b (Contract C25, FR-FBR-24): runner-token lifecycle admin router.
+pub use handlers::runner_tokens::router as runner_tokens_admin_router;
 pub use roadmap_voting_cache::{
     spawn_refresh_tick as spawn_voting_cache_refresh, VotingCache, VOTING_CACHE_TTL_SECS,
 };

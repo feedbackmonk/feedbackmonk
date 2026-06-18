@@ -50,7 +50,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use feedbackmonk_core::{FeedbackId, FeedbackKind, FeedbackStatus};
+use feedbackmonk_core::{FeedbackId, FeedbackKind, FeedbackStatus, KeyClass};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 use feedbackmonk_repository::ProjectScope;
 
@@ -231,9 +231,10 @@ async fn authenticate(
 
     let token = extract_bearer(headers).ok_or_else(|| ApiError::Unauthorized.into_response())?;
 
+    // P5b (C25): identity-class keys only for end-user JWT verification.
     let active_keys = state
         .signing_keys
-        .list_active(&scope)
+        .list_active_for_class(&scope, KeyClass::Identity)
         .await
         .map_err(|e| ApiError::from(e).into_response())?;
 

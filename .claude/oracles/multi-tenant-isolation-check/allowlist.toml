@@ -160,3 +160,21 @@ rationale = "Constructor: stores PgPool handle; performs no queries. Structural 
 type_name = "SqlxWorkOrderEventRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00014's append-only work_order_events ledger (Contract C22). All WorkOrderEventRepo trait methods take &ProjectScope first; append_in_executor takes &ProjectScope then the caller's &mut PgConnection. has_approved_event is the security predicate for the approval-gate-enforcement oracle (C22 inv. 1)."
+
+# --- P5b additions (Contract C25 / migration 00015) ---
+# The two runner-token repository constructors. Each is a structural mirror of
+# SqlxFeedbackRepo::new (P0 pre-authorized): stores a PgPool handle, performs no
+# queries. Every PUBLIC trait method takes &ProjectScope as its first non-&self
+# argument (Probe B compliance verified directly) — runner_tokens (registry) and
+# runner_token_revocations (append-only denylist) both filter by tenant_id +
+# project_id on every read/write (DEC-FBR-03).
+
+[[inherent_methods]]
+type_name = "SqlxRunnerTokenRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00015's runner_tokens lifecycle registry (Contract C25, FR-FBR-24). All RunnerTokenRepo trait methods (register, list) take &ProjectScope first."
+
+[[inherent_methods]]
+type_name = "SqlxRunnerTokenRevocationRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00015's append-only runner_token_revocations denylist (Contract C25). All RunnerTokenRevocationRepo trait methods (revoke, is_revoked, list) take &ProjectScope first; is_revoked is the security predicate consulted by verify_runner_token (C25 revocation gate)."

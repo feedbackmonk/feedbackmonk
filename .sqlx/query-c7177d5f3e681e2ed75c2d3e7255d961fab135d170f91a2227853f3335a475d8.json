@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO runner_tokens (tenant_id, project_id, jti, label, expires_at)\n            VALUES ($1, $2, $3, $4, $5)\n            ON CONFLICT (project_id, jti)\n            DO UPDATE SET label = EXCLUDED.label, expires_at = EXCLUDED.expires_at\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c7177d5f3e681e2ed75c2d3e7255d961fab135d170f91a2227853f3335a475d8"
+}

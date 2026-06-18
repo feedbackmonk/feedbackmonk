@@ -677,6 +677,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "feedbackmonk-runner"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "feedbackmonk-core",
+ "feedbackmonk-tracing",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "feedbackmonk-tracing"
 version = "0.1.0"
 dependencies = [

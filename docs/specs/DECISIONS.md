@@ -821,3 +821,51 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 ---
 
+## Implementation-Discovered Decisions (P5b — Autonomous Implementer + Runner)
+
+> Resolved in the P5b plan round + Stage 0 (foundation). The plan ([`20260618T174500-feedbackmonk-p5b-autonomous-implementer-runner.md`](../planning/plans/20260618T174500-feedbackmonk-p5b-autonomous-implementer-runner.md)) is the authoritative contract record (C25/C26/C27); these capture the load-bearing implementation choices. All sit under [`DEC-FBR-12`](#dec-fbr-12-open-core-boundary-for-the-agentic-loop-feedbackmonk-autopilot) (packaging axis).
+
+### DEC-FBR-IMPL-14: Runner = in-repo Rust crate `feedbackmonk-runner`, AGPL, one coherent system
+
+**Resolved**: 2026-06-18 (P5b plan round; runner implementation form USER-RATIFIED).
+
+**Decision**: The runner (FR-FBR-24) + implementer (FR-FBR-23) ship as a **new in-repo workspace crate `feedbackmonk-runner`**, fully AGPL, behind the frozen work-order API seam — **not** split into a proprietary repo now. This is the Q13 implementation-form ratification of DEC-FBR-12's packaging deferral: the split tax (two repos, cross-repo CI, an `agpl-boundary-check` oracle) serves a monetization model not yet on the table (the owner's own projects + GitCellar customer #1, where open-vs-proprietary is moot). The clean seam keeps the open-core / BYO / proprietary-turnkey options all open at near-zero cost. Rust (vs Node/skill-shim) chosen for one toolchain + reuse of `feedbackmonk-tracing::scrub` + `feedbackmonk-core` types.
+
+**Scope**: `crates/feedbackmonk-runner/` (new workspace member), `Cargo.toml` members. `agpl-boundary-check` oracle stays **conditional/unbuilt** (activates only if a split is later chosen).
+
+### DEC-FBR-IMPL-15: Runner-token model — customer-mints + `key_class` privilege separation
+
+**Resolved**: 2026-06-18 (Stage 0). Dictated by the frozen C22 `verify_runner_token` seam.
+
+**Decision**: The customer **mints** the runner write-token client-side with the private half of a registered **`runner`-class** Ed25519 key; feedbackmonk **holds no private key** (DEC-FBR-04 preserved) and only verifies. A `key_class` discriminator (`identity` | `runner`; `signing_keys.key_class`, migration 00015, default `identity`) gives privilege separation enforced at the key-**selection** layer (`SigningKeyRepo::list_active_for_class`) — end-user verify selects `identity`, runner verify selects `runner`; the audited `feedbackmonk_jwt::verify` is untouched. A stolen runner key cannot mint an end-user identity JWT and cannot author `approve` (C22 inv. 2), bounding the blast radius. The non-additive ripple (existing `list_active` callers in submit/vote/me-feedback pinned to `identity`) was traced + pinned in Stage 0.
+
+**Scope**: `migrations/00015_runner_tokens.sql`; `feedbackmonk-core::KeyClass`; `SigningKeyRepo::{register_with_class, list_active_for_class}`; `verify_runner_token` (runner-class selection); `feedback.rs`/`me_feedback.rs`/`roadmap.rs` (identity-class selection); `signing_keys` register handler (`key_class` field).
+
+### DEC-FBR-IMPL-16: Runner-token revocation — append-only `jti` denylist + lifecycle registry
+
+**Resolved**: 2026-06-18 (Stage 0).
+
+**Decision**: Revocation is an **append-only per-project `jti` denylist** (`runner_token_revocations`, no UPDATE/DELETE — mirrors the `work_order_events` ledger discipline); `verify_runner_token` rejects a revoked `jti` (401) before its `exp`. A separate lifecycle **registry** (`runner_tokens`) gives admin visibility (list issued tokens). The two are independent so a `jti` can be revoked without prior registration (revoke-before-register). Endpoints `/api/v1/projects/:id/runner-tokens` (`GET`/`POST`/`DELETE`) behind `AdminSession`, merged **without** `.layer(cors)` (admin surface, never a browser embed).
+
+**Scope**: `migrations/00015`; `feedbackmonk-repository::{runner_tokens, runner_token_revocations}`; `feedbackmonk-api::handlers::runner_tokens`; `AppState` (+2 repos) + all construction sites; router wiring.
+
+### DEC-FBR-IMPL-17: Dispatch-on-approve realized as a sequential gated transition (stronger-than-txn-ordering)
+
+**Resolved**: 2026-06-18 (Stage 0).
+
+**Decision**: Auto-dispatch on owner approval at autonomy **Rung ≥ 2** (C26) is realized as a **second `transition_work_order("dispatch", System)` call** in the `approve` handler, immediately after the owner `approve` commits — NOT a hand-rolled single DB transaction. The dispatch step routes through the ONE audited gate, whose own `has_approved_event` check independently re-verifies the just-committed owner `approve` event. This is a guarantee **strictly stronger** than relying on same-transaction ordering (a `dispatched` row can exist only after a committed owner approve, independently proven), and keeps the `approval-gate-enforcement` oracle trivially green. A dispatch failure does not roll back the owner-authored approval — the order rests in `approved`, re-dispatchable. Rung 1 stops at `approved` awaiting an explicit owner dispatch.
+
+**Rationale for the deviation from "same transaction"**: the frozen C26 wording said "same transaction" to make "no `dispatched` without a prior owner `approved`" trivially true; the sequential-with-independent-regate realization achieves that same security property more robustly (the gate re-checks rather than trusting ordering) while keeping all transition logic centralized in the one audited `transition_work_order` fn. The only property forgone is approve+dispatch atomicity, whose failure mode (an `approved`-but-not-yet-dispatched order on a crash between the two commits) is benign and self-healing.
+
+**Scope**: `feedbackmonk-api::handlers::work_orders` (`approve` handler; `TransitionResponse.auto_dispatched`).
+
+### DEC-FBR-IMPL-18: Poll-based runner trigger + `AgentCommand` = BYO seam ∧ test-injection seam
+
+**Resolved**: 2026-06-18 (P5b plan round).
+
+**Decision**: The runner trigger is a **poll-based CLI** (`feedbackmonk-runner poll`, runnable by cron/systemd/CI; `--watch` for a long-running loop; `--sweep` runs the analyst) — portable to the owner's *local* repos with no public webhook endpoint, matching the self-host story. Webhook push is a later optimization, explicitly out of P5b. The runner drives a swappable **`AgentCommand` trait** that is simultaneously the **BYO-agent contract (Q20)** (default impl spawns the owner's `claude` + ULDF; any configured command for BYO) and the **test-injection seam** (Testability Gate Flag 1: a fake `AgentCommand` keeps the real `claude` spawn out of unit tests — exercised only by a manual/`--full` e2e dry-run). One abstraction serves both.
+
+**Scope**: `feedbackmonk-runner::{agent (AgentCommand + StubAgent), main (poll/mint-token CLI)}`; `docs/operations/RUNNER_PROTOCOL.md` + reference adapter (Worker D, Stage 1).
+
+---
+

@@ -63,7 +63,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::{RoadmapItem, RoadmapItemStatus, RoadmapVoterMode};
+use feedbackmonk_core::{KeyClass, RoadmapItem, RoadmapItemStatus, RoadmapVoterMode};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError};
 use feedbackmonk_repository::{
     NewRoadmapItem, ProjectScope, RetractOutcome, RoadmapItemPatch, DEFAULT_RETRACTION_WINDOW,
@@ -542,7 +542,11 @@ async fn resolve_voter(
     addr: SocketAddr,
 ) -> Result<(String, RoadmapVoterMode, Option<HeaderValue>), VoteResolveError> {
     if let Some(token) = extract_bearer(headers) {
-        let active_keys = state.signing_keys.list_active(scope).await?;
+        // P5b (C25): identity-class keys only for end-user JWT verification.
+        let active_keys = state
+            .signing_keys
+            .list_active_for_class(scope, KeyClass::Identity)
+            .await?;
         let now_unix = current_unix_timestamp();
         let claims = jwt_verify_with_leeway(
             &token,
@@ -580,7 +584,11 @@ async fn resolve_voter_no_rate_limit(
     addr: SocketAddr,
 ) -> Result<(String, RoadmapVoterMode, Option<HeaderValue>), VoteResolveError> {
     if let Some(token) = extract_bearer(headers) {
-        let active_keys = state.signing_keys.list_active(scope).await?;
+        // P5b (C25): identity-class keys only for end-user JWT verification.
+        let active_keys = state
+            .signing_keys
+            .list_active_for_class(scope, KeyClass::Identity)
+            .await?;
         let now_unix = current_unix_timestamp();
         let claims = jwt_verify_with_leeway(
             &token,

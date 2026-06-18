@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO runner_token_revocations (tenant_id, project_id, jti, label)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (project_id, jti) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "2fcbf8b63aa9a246c98442182266a425406a9a53676b9b7bca6d8e6da6236568"
+}

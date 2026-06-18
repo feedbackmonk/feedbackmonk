@@ -26,6 +26,8 @@ pub mod projects;
 pub mod recommendations;
 pub mod roadmap_items;
 pub mod roadmap_votes;
+pub mod runner_token_revocations;
+pub mod runner_tokens;
 pub mod scope;
 pub mod signing_keys;
 pub mod tenants;
@@ -55,6 +57,12 @@ pub use roadmap_items::{
 };
 pub use roadmap_votes::{
     RetractOutcome, RoadmapVoteRepo, SqlxRoadmapVoteRepo, DEFAULT_RETRACTION_WINDOW,
+};
+pub use runner_token_revocations::{
+    RunnerTokenRevocation, RunnerTokenRevocationRepo, SqlxRunnerTokenRevocationRepo,
+};
+pub use runner_tokens::{
+    NewRunnerToken, RunnerTokenRecord, RunnerTokenRepo, SqlxRunnerTokenRepo,
 };
 pub use scope::{ProjectScope, TenantScope};
 pub use signing_keys::{SigningKeyRepo, SqlxSigningKeyRepo};

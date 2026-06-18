@@ -19,8 +19,8 @@ pub mod work_order;
 pub use action_type::ActionType;
 pub use ids::{FeedbackId, SigningKeyId};
 pub use models::{
-    AnonSubmission, Feedback, FeedbackKind, Project, RateLimitCounter, SigningKey, Tenant,
-    WidgetBrand,
+    AnonSubmission, Feedback, FeedbackKind, KeyClass, Project, RateLimitCounter, SigningKey,
+    Tenant, WidgetBrand,
 };
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use status::{legal_transitions_from, FeedbackStatus, TransitionError};

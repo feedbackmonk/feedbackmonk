@@ -6,6 +6,7 @@ members = [
     "crates/feedbackmonk-core",
     "crates/feedbackmonk-jwt",
     "crates/feedbackmonk-repository",
+    "crates/feedbackmonk-runner",
     "crates/feedbackmonk-tracing",
 ]
 

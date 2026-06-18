@@ -44,7 +44,7 @@ use serde_json::{json, Value as JsonValue};
 use uuid::Uuid;
 
 use feedbackmonk_core::{
-    is_legal_transition, ActionType, WorkOrderState, WorkOrderTransitionError,
+    is_legal_transition, ActionType, KeyClass, WorkOrderState, WorkOrderTransitionError,
 };
 use feedbackmonk_jwt::verify_with_leeway as jwt_verify_with_leeway;
 use feedbackmonk_repository::{
@@ -87,12 +87,27 @@ pub struct RunnerIdentity {
 /// crypto stays untouched; the class check is a thin authz layer on signed
 /// bytes.
 fn runner_scope_claim(token: &str) -> Option<String> {
+    runner_string_claim(token, "scope")
+}
+
+/// Read the signature-covered `jti` claim from a JWT payload (the revocation
+/// key — Contract C25). Same trust model as [`runner_scope_claim`]: callers
+/// MUST already have verified the signature over these bytes. `None` when the
+/// token carries no `jti` (such a token is unrevocable-by-jti but otherwise
+/// valid — revocation simply cannot target it).
+fn runner_jti_claim(token: &str) -> Option<String> {
+    runner_string_claim(token, "jti")
+}
+
+/// Read a signature-covered string claim from a JWT payload. Returns `None` on
+/// any structural/parse failure or a non-string/absent claim.
+fn runner_string_claim(token: &str, claim: &str) -> Option<String> {
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
     use base64::Engine;
     let payload_b64 = token.split('.').nth(1)?;
     let bytes = URL_SAFE_NO_PAD.decode(payload_b64).ok()?;
     let payload: serde_json::Map<String, JsonValue> = serde_json::from_slice(&bytes).ok()?;
-    payload.get("scope")?.as_str().map(str::to_string)
+    payload.get(claim)?.as_str().map(str::to_string)
 }
 
 /// Extract a `Bearer <token>` value from the `Authorization` header.
@@ -114,13 +129,26 @@ fn current_unix_timestamp() -> i64 {
         .unwrap_or_default()
 }
 
-/// Verify a project-scoped runner write-token (Q14 seam). Two gates:
+/// Verify a project-scoped runner write-token (Q14 seam; P5b guards — Contract
+/// C25). Four gates, each only ever *restrictive* (the P5b additions never
+/// loosen the P5a seam):
 ///   1. **Authenticity** — [`jwt_verify_with_leeway`] against the project's
-///      active Ed25519 signing keys, with `aud == project_id` + strict `exp`
-///      (the audited end-user verifier, reused verbatim).
-///   2. **Class** — the signature-covered `scope` claim MUST equal
+///      active `runner`-class Ed25519 signing keys, with `aud == project_id` +
+///      strict `exp` (the audited end-user verifier, reused verbatim).
+///   2. **Key-class privilege separation (P5b)** — the candidate keys are
+///      filtered to [`KeyClass::Runner`] via
+///      `SigningKeyRepo::list_active_for_class`. An end-user `identity` key can
+///      NEVER verify a runner token, and a runner key can NEVER verify an
+///      end-user JWT — so a stolen runner key is strictly limited to
+///      runner-write transitions (it cannot mint an identity JWT). The audited
+///      `feedbackmonk_jwt::verify` is untouched; only key selection changes.
+///   3. **Class scope claim** — the signature-covered `scope` claim MUST equal
 ///      [`RUNNER_TOKEN_SCOPE`]. A valid end-user JWT (no such claim) is rejected
 ///      `403 Forbidden` — it authenticates a *person*, never the runner.
+///   4. **Revocation gate (P5b)** — the token's `jti` claim is checked against
+///      the per-project append-only denylist; a revoked `jti` → `401`. This is
+///      the owner's kill-switch for a leaked runner token before its short
+///      `exp`.
 ///
 /// Returns the resolved [`ProjectScope`] (minted pre-auth from the path's
 /// `project_id`, like the public submission path — the token, not a session, is
@@ -136,7 +164,11 @@ async fn verify_runner_token(
     // authenticated by the TOKEN, not an admin session, so we mint the scope
     // straight from the path — exactly as the public submit handler does.
     let scope = state.projects.open_for_submission(project_id).await?;
-    let active_keys = state.signing_keys.list_active(&scope).await?;
+    // P5b gate 2: select ONLY runner-class keys (privilege separation).
+    let active_keys = state
+        .signing_keys
+        .list_active_for_class(&scope, KeyClass::Runner)
+        .await?;
     let now_unix = current_unix_timestamp();
 
     let claims = jwt_verify_with_leeway(
@@ -148,10 +180,23 @@ async fn verify_runner_token(
     )
     .map_err(|_| ApiError::Unauthorized)?;
 
-    // THE class gate: reject anything that is not a runner write-token, even a
-    // perfectly valid end-user JWT for this project.
+    // Gate 3 — THE class scope gate: reject anything that is not a runner
+    // write-token, even a perfectly valid end-user JWT for this project.
     if runner_scope_claim(&token).as_deref() != Some(RUNNER_TOKEN_SCOPE) {
         return Err(ApiError::Forbidden);
+    }
+
+    // P5b gate 4 — revocation: a token whose jti is on the per-project denylist
+    // is dead, even before its exp. A token without a jti is unrevocable-by-jti
+    // (valid, but cannot be individually killed — short TTL is the backstop).
+    if let Some(jti) = runner_jti_claim(&token) {
+        if state
+            .runner_token_revocations
+            .is_revoked(&scope, &jti)
+            .await?
+        {
+            return Err(ApiError::Unauthorized);
+        }
     }
 
     Ok((scope, RunnerIdentity { sub: claims.sub }))
@@ -595,6 +640,11 @@ pub struct TransitionResponse {
     /// Set when a runner `reported` auto-accepts at autonomy rung ≥ 2 (inv. 4).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auto_accepted: Option<bool>,
+    /// Set on `approve` when the order auto-dispatches at autonomy rung ≥ 2
+    /// (Contract C26 — owner approval IS the execution trigger). The runner
+    /// then polls `GET /work-orders?state=dispatched`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_dispatched: Option<bool>,
 }
 
 // ===========================================================================
@@ -779,6 +829,49 @@ pub async fn approve(
         );
     }
 
+    // Dispatch-on-approve (Contract C26, FR-FBR-22 — the dispatch half P5a
+    // specced but never fired): at autonomy rung ≥ 2, owner approval IS the
+    // execution trigger, so emit the system `dispatch` event right here. This
+    // is a SEPARATE `transition_work_order` call (not a hand-rolled txn) so it
+    // routes through the ONE audited gate: `dispatch`'s own `has_approved_event`
+    // check re-verifies the approve we just committed — a guarantee strictly
+    // STRONGER than txn-ordering (DEC-FBR-IMPL P5b). The `approval-gate-
+    // enforcement` oracle stays green: a `dispatched` row can exist only after a
+    // committed owner `approve` event, which the gate independently proves.
+    // Rung 1 stops at `approved`, awaiting an explicit owner dispatch (C22 inv.
+    // 4). A dispatch failure does NOT roll back the approval (the approval is
+    // owner-authored + committed); it surfaces in logs and the order rests in
+    // `approved`, re-dispatchable.
+    let mut auto_dispatched = None;
+    if wo.autonomy_rung >= 2 {
+        match transition_work_order(
+            &state,
+            &scope,
+            work_order_id,
+            "dispatch",
+            &Actor::System,
+            Some(&json!({ "reason": "auto-dispatch on owner approval at autonomy rung >= 2" })),
+            WorkOrderStatePatch {
+                dispatched_at: Some(Utc::now()),
+                ..Default::default()
+            },
+        )
+        .await
+        {
+            Ok(_) => auto_dispatched = Some(true),
+            Err(e) => {
+                let e = ApiError::from(e);
+                tracing::warn!(
+                    target: "work_order",
+                    %work_order_id,
+                    autonomy_rung = wo.autonomy_rung,
+                    error = ?e,
+                    "auto-dispatch after approval failed (approval still committed; order rests in `approved`)"
+                );
+            }
+        }
+    }
+
     Ok(Json(TransitionResponse {
         work_order_id,
         from_state: outcome.from_state,
@@ -786,6 +879,7 @@ pub async fn approve(
         event_type: "approve".into(),
         audit_id: outcome.audit_id,
         auto_accepted: None,
+        auto_dispatched,
     }))
 }
 
@@ -825,6 +919,7 @@ pub async fn owner_transition(
         event_type: req.event_type,
         audit_id: outcome.audit_id,
         auto_accepted: None,
+        auto_dispatched: None,
     }))
 }
 
@@ -864,6 +959,7 @@ pub async fn claim(
         event_type: "claim".into(),
         audit_id: outcome.audit_id,
         auto_accepted: None,
+        auto_dispatched: None,
     }))
 }
 
@@ -930,6 +1026,7 @@ pub async fn runner_transition(
         event_type: req.event_type,
         audit_id: outcome.audit_id,
         auto_accepted,
+        auto_dispatched: None,
     }))
 }
 

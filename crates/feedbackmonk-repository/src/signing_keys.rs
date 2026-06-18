@@ -7,20 +7,47 @@ use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::PgPool;
 
-use feedbackmonk_core::{SigningKey, SigningKeyId};
+use feedbackmonk_core::{KeyClass, SigningKey, SigningKeyId};
 
 use crate::error::{RepoError, Result};
 use crate::scope::ProjectScope;
 
 #[async_trait]
 pub trait SigningKeyRepo: Send + Sync {
-    /// Register a new signing key for the project. `public_key` MUST be
-    /// 32 raw Ed25519 public-key bytes; the schema column is BYTEA.
+    /// Register a new end-user IDENTITY signing key for the project (the
+    /// default class). `public_key` MUST be 32 raw Ed25519 public-key bytes;
+    /// the schema column is BYTEA. Convenience wrapper over
+    /// [`SigningKeyRepo::register_with_class`] preserved so existing callers
+    /// (and the end-user submission key path) are unchanged.
     async fn register(&self, scope: &ProjectScope, public_key: &[u8; 32], label: &str) -> Result<SigningKeyId>;
 
-    /// Active keys for this project, in registration order. The JWT
-    /// verifier tries each in turn and returns the first success.
+    /// Register a signing key of an explicit [`KeyClass`] (Contract C25, P5b).
+    /// Registering a [`KeyClass::Runner`] key is how a customer enables runner
+    /// minting; an `identity` key backs end-user submission JWTs.
+    async fn register_with_class(
+        &self,
+        scope: &ProjectScope,
+        public_key: &[u8; 32],
+        label: &str,
+        key_class: KeyClass,
+    ) -> Result<SigningKeyId>;
+
+    /// All active keys for this project regardless of class, in registration
+    /// order. Used for admin listing/echo only — **never** the verify path
+    /// (which MUST class-filter via [`SigningKeyRepo::list_active_for_class`]).
     async fn list_active(&self, scope: &ProjectScope) -> Result<Vec<SigningKey>>;
+
+    /// Active keys of a given [`KeyClass`] for this project, in registration
+    /// order (Contract C25 — the privilege-separation chokepoint). The JWT
+    /// verifier tries each in turn and returns the first success. End-user
+    /// verification passes [`KeyClass::Identity`]; runner-token verification
+    /// passes [`KeyClass::Runner`]. A runner key can never verify an end-user
+    /// JWT and vice-versa.
+    async fn list_active_for_class(
+        &self,
+        scope: &ProjectScope,
+        key_class: KeyClass,
+    ) -> Result<Vec<SigningKey>>;
 
     /// Mark a key inactive. The row is retained for audit; subsequent
     /// `list_active` calls exclude it.
@@ -42,16 +69,28 @@ impl SqlxSigningKeyRepo {
 #[async_trait]
 impl SigningKeyRepo for SqlxSigningKeyRepo {
     async fn register(&self, scope: &ProjectScope, public_key: &[u8; 32], label: &str) -> Result<SigningKeyId> {
+        self.register_with_class(scope, public_key, label, KeyClass::Identity)
+            .await
+    }
+
+    async fn register_with_class(
+        &self,
+        scope: &ProjectScope,
+        public_key: &[u8; 32],
+        label: &str,
+        key_class: KeyClass,
+    ) -> Result<SigningKeyId> {
         let bytes: &[u8] = public_key.as_slice();
         let row = sqlx::query!(
             r#"
-            INSERT INTO signing_keys (project_id, public_key, label)
-            VALUES ($1, $2, $3)
+            INSERT INTO signing_keys (project_id, public_key, label, key_class)
+            VALUES ($1, $2, $3, $4)
             RETURNING id
             "#,
             scope.project_id(),
             bytes,
-            label
+            label,
+            key_class.as_db_str()
         )
         .fetch_one(&self.pool)
         .await?;
@@ -67,6 +106,38 @@ impl SigningKeyRepo for SqlxSigningKeyRepo {
             ORDER BY registered_at ASC
             "#,
             scope.project_id()
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| SigningKey {
+                id: SigningKeyId(r.id),
+                project_id: r.project_id,
+                public_key: r.public_key,
+                label: r.label,
+                active: r.active,
+                registered_at: r.registered_at,
+                deactivated_at: r.deactivated_at,
+            })
+            .collect())
+    }
+
+    async fn list_active_for_class(
+        &self,
+        scope: &ProjectScope,
+        key_class: KeyClass,
+    ) -> Result<Vec<SigningKey>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT id, project_id, public_key, label, active, registered_at, deactivated_at
+            FROM signing_keys
+            WHERE project_id = $1 AND active = TRUE AND key_class = $2
+            ORDER BY registered_at ASC
+            "#,
+            scope.project_id(),
+            key_class.as_db_str()
         )
         .fetch_all(&self.pool)
         .await?;
@@ -136,6 +207,38 @@ mod tests {
         assert_eq!(keys[0].id, id);
         assert_eq!(keys[0].public_key, key_bytes.to_vec());
         assert!(keys[0].active);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn class_selection_separates_identity_from_runner(pool: PgPool) {
+        let repo = SqlxSigningKeyRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "kc@example.com", "KC").await;
+
+        // Default register => identity class.
+        let id_key = repo.register(&scope, &[3u8; 32], "id-key").await.unwrap();
+        // Explicit runner class.
+        let runner_key = repo
+            .register_with_class(&scope, &[4u8; 32], "runner-key", KeyClass::Runner)
+            .await
+            .unwrap();
+
+        // list_active (class-agnostic) sees both.
+        assert_eq!(repo.list_active(&scope).await.unwrap().len(), 2);
+
+        // Class selection is the privilege boundary: each class sees only its own.
+        let identity = repo
+            .list_active_for_class(&scope, KeyClass::Identity)
+            .await
+            .unwrap();
+        assert_eq!(identity.len(), 1);
+        assert_eq!(identity[0].id, id_key);
+
+        let runner = repo
+            .list_active_for_class(&scope, KeyClass::Runner)
+            .await
+            .unwrap();
+        assert_eq!(runner.len(), 1);
+        assert_eq!(runner[0].id, runner_key);
     }
 
     #[sqlx::test(migrations = "../../migrations")]

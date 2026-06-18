@@ -137,6 +137,8 @@ mod tests {
             analysis_sweeps: Arc::new(feedbackmonk_repository::SqlxAnalysisSweepRepo::new(pool.clone())),
             work_orders: Arc::new(feedbackmonk_repository::SqlxWorkOrderRepo::new(pool.clone())),
             work_order_events: Arc::new(feedbackmonk_repository::SqlxWorkOrderEventRepo::new(pool.clone())),
+            runner_tokens: Arc::new(feedbackmonk_repository::SqlxRunnerTokenRepo::new(pool.clone())),
+            runner_token_revocations: Arc::new(feedbackmonk_repository::SqlxRunnerTokenRevocationRepo::new(pool.clone())),
             jwt_iat_leeway_seconds: 5,
             roadmap_items: Arc::new(SqlxRoadmapItemRepo::new(pool.clone())),
             roadmap_votes: Arc::new(SqlxRoadmapVoteRepo::new(pool.clone())),
