@@ -29,6 +29,13 @@
   --status-wontfix: #6b6b6b;
   --status-duplicate: #6b21a8;
 
+  /* Sentiment tokens — paired with an icon + text label (SentimentBadge) and
+   * a data-table fallback (SentimentTrendChart) so meaning is never carried by
+   * color alone (WCAG 1.4.1). Each clears AA contrast against --surface. */
+  --sentiment-negative: #b3261e; /* ~5.9:1 on #fff — AA */
+  --sentiment-neutral: #5a5a5a; /* ~7.0:1 on #fff — AA */
+  --sentiment-positive: #15602e; /* ~6.5:1 on #fff — AA */
+
   /* Usage-meter tokens — paired with explicit "OK / Approaching cap / Over
    * cap" text labels (WCAG 1.4.1: meaning never carried by color alone).
    * Each token meets AA contrast against --surface. */
@@ -68,6 +75,12 @@
     --status-shipped: #6ee098;
     --status-wontfix: #a0a098;
     --status-duplicate: #d39bff;
+
+    /* Dark-theme sentiment tokens — each clears AA contrast against the dark
+     * --surface (#1d1d18). Same hue family as light, lifted for the dark bg. */
+    --sentiment-negative: #ff8a80; /* AA on #1d1d18 */
+    --sentiment-neutral: #c8c8c0; /* AA on #1d1d18 */
+    --sentiment-positive: #6ee098; /* AA on #1d1d18 */
 
     --meter-ok: #6ee098;
     --meter-warn: #ffb86c;
@@ -319,6 +332,29 @@ a {
 }
 .status-duplicate {
   color: var(--status-duplicate);
+}
+
+/* Sentiment badge — mirrors .status-badge (pill, icon + label, color via
+ * currentColor). Meaning carried by icon + text, never color alone. */
+.sentiment-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-size: 0.85rem;
+  background: var(--surface);
+}
+
+.sentiment-negative {
+  color: var(--sentiment-negative);
+}
+.sentiment-neutral {
+  color: var(--sentiment-neutral);
+}
+.sentiment-positive {
+  color: var(--sentiment-positive);
 }
 
 .empty-state {
@@ -613,6 +649,99 @@ a {
 }
 .usage-meter-danger .usage-meter-state {
   color: var(--meter-danger);
+}
+
+/* Satisfaction trend — collapsible panel above the feedback table + the
+ * dependency-free inline-SVG stacked-bar chart it contains. */
+.satisfaction-panel {
+  margin-bottom: 1rem;
+}
+
+.satisfaction-toggle {
+  background: none;
+  border: none;
+  padding: 0.25rem 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.satisfaction-toggle:hover {
+  color: var(--accent);
+}
+
+.satisfaction-body {
+  padding: 0.75rem 0 0;
+}
+
+.sentiment-trend {
+  margin: 0;
+}
+
+.sentiment-trend-summary {
+  margin-bottom: 0.5rem;
+}
+
+.sentiment-trend-pct {
+  font-weight: 600;
+}
+
+.sentiment-trend-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.sentiment-trend-seg {
+  stroke: var(--surface);
+  stroke-width: 0.5;
+}
+
+.sentiment-fill-negative {
+  fill: var(--sentiment-negative);
+  background: var(--sentiment-negative);
+}
+.sentiment-fill-neutral {
+  fill: var(--sentiment-neutral);
+  background: var(--sentiment-neutral);
+}
+.sentiment-fill-positive {
+  fill: var(--sentiment-positive);
+  background: var(--sentiment-positive);
+}
+
+.sentiment-trend-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.sentiment-trend-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sentiment-legend-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+.sentiment-trend-empty figcaption {
+  font-size: 0.9rem;
 }
 
 .capability-list {

@@ -178,3 +178,17 @@ rationale = "Constructor: stores PgPool handle; performs no queries. Structural 
 type_name = "SqlxRunnerTokenRevocationRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00015's append-only runner_token_revocations denylist (Contract C25). All RunnerTokenRevocationRepo trait methods (revoke, is_revoked, list) take &ProjectScope first; is_revoked is the security predicate consulted by verify_runner_token (C25 revocation gate)."
+
+# --- FR-FBR-29 addition (Contract: gitcellar-adoption.md §10 / migration 00017) ---
+
+[[inherent_methods]]
+type_name = "SqlxSolicitationRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxFeedbackRepo::new (P0). Backs migration 00017's feedback_solicitations table (FR-FBR-29). Both SolicitationRepo trait methods (get, upsert) take &ProjectScope as their first non-&self argument (Probe B compliance verified directly); every read/write filters tenant_id + project_id + end_user_sub (DEC-FBR-03)."
+
+# --- FR-FBR-28 addition (sentiment-trend query-param enum / migration 00017) ---
+
+[[inherent_methods]]
+type_name = "TrendBucket"
+method = "parse"
+rationale = "Pure value-parser on the sentiment-trend time-bucket enum (FR-FBR-28) — NOT a repository data-access method. `TrendBucket::parse(&str) -> Option<TrendBucket>` maps a query-param string (day|week|month) to a fixed enum; it touches no DB and needs no scope. The consuming repo method `FeedbackRepo::sentiment_trend(&self, scope: &ProjectScope, bucket: TrendBucket, since)` IS scope-protected (Probe B compliant). The enum lives in the repository crate because it is the typed input to that repo method (same locality as other repo-input types). `as_trunc_unit` is &self-only (oracle accepts)."

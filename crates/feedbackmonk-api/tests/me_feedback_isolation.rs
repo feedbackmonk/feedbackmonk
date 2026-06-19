@@ -202,12 +202,12 @@ async fn my_feedback_returns_only_callers_own_sub(pool: PgPool) {
     // Two distinct end-users submit to the same project.
     let a = state
         .feedback
-        .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, "A's bug", FeedbackKind::Bug)
+        .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, "A's bug", None, FeedbackKind::Bug)
         .await
         .unwrap();
     state
         .feedback
-        .submit_authenticated(&pscope, "user-B", Some("b@x.com"), None, None, None, "B's secret bug", FeedbackKind::Bug)
+        .submit_authenticated(&pscope, "user-B", Some("b@x.com"), None, None, None, "B's secret bug", None, FeedbackKind::Bug)
         .await
         .unwrap();
 
@@ -239,7 +239,7 @@ async fn thread_returns_public_replies_only(pool: PgPool) {
 
     let fb = state
         .feedback
-        .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, "needs triage", FeedbackKind::Bug)
+        .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, "needs triage", None, FeedbackKind::Bug)
         .await
         .unwrap();
     // Admin posts one public + one internal reply.
@@ -291,7 +291,7 @@ async fn thread_for_other_users_feedback_id_404(pool: PgPool) {
     // B owns this feedback.
     let b_fb = state
         .feedback
-        .submit_authenticated(&pscope, "user-B", Some("b@x.com"), None, None, None, "B's private item", FeedbackKind::Bug)
+        .submit_authenticated(&pscope, "user-B", Some("b@x.com"), None, None, None, "B's private item", None, FeedbackKind::Bug)
         .await
         .unwrap();
 
@@ -347,13 +347,13 @@ async fn anon_feedback_never_returned(pool: PgPool) {
     // An anonymous submission (no end_user_sub) exists in the project.
     state
         .feedback
-        .submit_anonymous(&pscope, &[7u8; 32], Some("anon@x.com"), "anonymous gripe", FeedbackKind::Other)
+        .submit_anonymous(&pscope, &[7u8; 32], Some("anon@x.com"), "anonymous gripe", None, FeedbackKind::Other)
         .await
         .unwrap();
     // And one authenticated row for the caller.
     let mine = state
         .feedback
-        .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, "my own row", FeedbackKind::Bug)
+        .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, "my own row", None, FeedbackKind::Bug)
         .await
         .unwrap();
 
@@ -413,6 +413,7 @@ async fn my_feedback_happy_path_shape(pool: PgPool) {
                 None,
                 None,
                 &format!("row {i}"),
+                None,
                 FeedbackKind::Feature,
             )
             .await

@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT date_trunc($1, accepted_at) AS \"bucket_start!\",\n                   count(*) FILTER (WHERE sentiment = 'negative') AS \"negative!\",\n                   count(*) FILTER (WHERE sentiment = 'neutral')  AS \"neutral!\",\n                   count(*) FILTER (WHERE sentiment = 'positive') AS \"positive!\"\n            FROM feedback\n            WHERE tenant_id = $2\n              AND project_id = $3\n              AND sentiment IS NOT NULL\n              AND accepted_at >= $4\n            GROUP BY date_trunc($1, accepted_at)\n            ORDER BY date_trunc($1, accepted_at) ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "bucket_start!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 1,
+        "name": "negative!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 2,
+        "name": "neutral!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "positive!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "f3af3e71adbc0e90684a03901cef976e0fea25af4651f43cc791cd4e6d46319a"
+}

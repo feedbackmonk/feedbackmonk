@@ -1,12 +1,18 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { fetchFeedbackList, searchFeedback } from "../shared/ApiClient";
+import {
+  fetchFeedbackList,
+  fetchSentimentTrend,
+  searchFeedback,
+} from "../shared/ApiClient";
 import {
   KIND_LABELS,
   STATUS_LABELS,
   type FeedbackStatus,
 } from "../shared/types.gen";
 import { StatusBadge } from "../components/StatusBadge";
+import { SentimentBadge } from "../components/SentimentBadge";
+import { SentimentTrendChart } from "../components/SentimentTrendChart";
 import { SearchBox } from "../components/SearchBox";
 import { useRouter, useSearchParams } from "../shared/router";
 import { formatRelative } from "../shared/format";
@@ -53,8 +59,18 @@ export function FeedbackList() {
   const [params, setParams] = useSearchParams();
   const { navigate } = useRouter();
   const parsed = useMemo(() => parseParams(params), [params]);
+  const [trendOpen, setTrendOpen] = useState(false);
 
   const searching = parsed.q.length > 0;
+
+  // Satisfaction trend — lazily fetched only when the panel is expanded, so
+  // the list page pays nothing for it by default. Sparse series; renders its
+  // own empty state when there's no sentiment data.
+  const trendQuery = useQuery({
+    queryKey: ["admin-sentiment-trend"],
+    queryFn: () => fetchSentimentTrend(),
+    enabled: trendOpen,
+  });
 
   const query = useQuery({
     queryKey: [
@@ -123,6 +139,35 @@ export function FeedbackList() {
         <SearchBox value={parsed.q} onSearch={setQuery} />
       </header>
 
+      <section className="satisfaction-panel">
+        <button
+          type="button"
+          className="satisfaction-toggle"
+          aria-expanded={trendOpen}
+          aria-controls="satisfaction-trend"
+          onClick={() => setTrendOpen((v) => !v)}
+        >
+          <span aria-hidden="true">{trendOpen ? "▾" : "▸"}</span> Satisfaction
+          trend
+        </button>
+        {trendOpen ? (
+          <div id="satisfaction-trend" className="satisfaction-body">
+            {trendQuery.isPending ? (
+              <p className="muted">Loading…</p>
+            ) : trendQuery.isError ? (
+              <div role="alert" className="error-block">
+                Failed to load satisfaction trend.{" "}
+                <button type="button" onClick={() => trendQuery.refetch()}>
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <SentimentTrendChart data={trendQuery.data} />
+            )}
+          </div>
+        ) : null}
+      </section>
+
       <nav className="status-filters" aria-label="Filter by status">
         {STATUS_FILTERS.map((key) => {
           const active = parsed.statusKey === key;
@@ -178,6 +223,7 @@ export function FeedbackList() {
               <th scope="col">ID</th>
               <th scope="col">Kind</th>
               <th scope="col">Status</th>
+              <th scope="col">Sentiment</th>
               <th scope="col">Excerpt</th>
               <th scope="col">Submitted</th>
               <th scope="col">From</th>
@@ -210,6 +256,15 @@ export function FeedbackList() {
                 </td>
                 <td>
                   <StatusBadge status={row.status} />
+                </td>
+                <td>
+                  {row.sentiment ? (
+                    <SentimentBadge sentiment={row.sentiment} />
+                  ) : (
+                    <span className="muted" aria-label="No sentiment">
+                      —
+                    </span>
+                  )}
                 </td>
                 <td className="excerpt">{row.body_excerpt}</td>
                 <td>

@@ -13,6 +13,8 @@ pub mod ids;
 pub mod models;
 pub mod moderation;
 pub mod roadmap;
+pub mod sentiment;
+pub mod solicitation;
 pub mod status;
 pub mod tier;
 pub mod work_order;
@@ -27,6 +29,11 @@ pub use moderation::{
     event_type_for_target, legal_moderation_transitions_from, ModerationError, ModerationStatus,
 };
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
+pub use sentiment::Sentiment;
+pub use solicitation::{
+    apply_event as apply_solicitation_event, SolicitationError, SolicitationEvent,
+    SolicitationStatus,
+};
 pub use status::{legal_transitions_from, FeedbackStatus, TransitionError};
 pub use tier::{tier_quotas, ResourceKind, Tier, TierParseError, TierQuotas};
 pub use work_order::{

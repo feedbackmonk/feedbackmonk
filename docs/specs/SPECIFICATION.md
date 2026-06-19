@@ -235,6 +235,25 @@ See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (10 of 10 RESOLVED).
 
 ---
 
+## Capability extension — GitCellar in-app solicitation (FR-FBR-28, FR-FBR-29)
+
+> Added 2026-06-19 in response to GitCellar's in-app feedback-solicitation prompt. Two
+> platform-generic capabilities (designed natively for the multi-tenant/multi-product model, not
+> GitCellar-specifically). Contract frozen in [`docs/integrations/gitcellar-adoption.md`](../integrations/gitcellar-adoption.md)
+> §9–§11. Migration `00017_feedback_sentiment_and_solicitation.sql`. Crate version → 0.2.0; advertised
+> via `GET /api/v1/capabilities`. Decisions: [`DEC-FBR-IMPL-23`](DECISIONS.md) (sentiment storage),
+> [`DEC-FBR-IMPL-24`](DECISIONS.md) (solicitation as a first-class feature).
+
+| ID | Requirement | Status | Implementation pointer |
+|---|---|---|---|
+| FR-FBR-28 | **Structured sentiment on submissions.** A first-class, optional 3-point sentiment field on feedback (`sentiment ∈ {negative, neutral, positive}`), set at submit time in BOTH auth and anonymous modes. `body` becomes OPTIONAL when `sentiment` is present (a sentiment-only one-tap submission is valid); a submission with neither body nor sentiment → 400. Sentiment is surfaced + aggregated in the admin/triage UI (list, detail, and a "satisfaction trend over time" view). Orthogonal to triage `status` and `moderation_status`. | **DONE** | Core `crates/feedbackmonk-core/src/sentiment.rs` (`Sentiment` enum, lowercase). Migration `00017` (nullable `feedback.sentiment` + CHECK; `body` made nullable + `feedback_body_or_sentiment_check`). Repo: `submit_authenticated`/`submit_anonymous` thread sentiment; `Feedback`/`FeedbackListItem`/`EndUserFeedback` carry it; new `sentiment_trend` aggregation. API: submit echo, `/me/feedback`, admin list/detail, `GET /api/v1/admin/feedback/sentiment-trend`. Admin-UI `SentimentBadge` + `SentimentTrendChart` (dependency-free SVG). |
+| FR-FBR-29 | **Durable per-user solicitation/suppression state.** A durable per-(project, end-user) record so a consumer can enforce "ask at most ~twice/year, honor dismissal, honor opt-out" without it resetting on client reinstall. Keyed by the stable JWT `sub` (JWT-only; no anonymous solicitation state). State machine `eligible → prompted → {dismissed, gave_feedback, opted_out}` with `opted_out` terminal. Read+write via the authenticated end-user API; server owns the state machine AND the frequency-cap policy (server-computed `eligible` + `next_eligible_at` from a configurable cooldown). | **DONE** | Core `crates/feedbackmonk-core/src/solicitation.rs` (`SolicitationStatus`/`SolicitationEvent`/`apply_event`, snake_case). Migration `00017` (`feedback_solicitations` table, UNIQUE `(project_id, end_user_sub)`). Repo `crates/feedbackmonk-repository/src/solicitations.rs` (`SolicitationRepo` get/upsert). API `crates/feedbackmonk-api/src/handlers/solicitation.rs` (`GET\|POST /api/v1/projects/{id}/me/solicitation`, JWT auth mirroring `/me/feedback`; cooldown default 182d via `FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS`). |
+
+> **ID note**: FR-FBR-26 / FR-FBR-27 were already assigned (public board / moderation gate). These
+> capabilities are FR-FBR-28 / FR-FBR-29.
+
+---
+
 ## Spec session — COMPLETE ✅
 
 **Verdict**: READY FOR `/0-uldf-ldis-plan`.

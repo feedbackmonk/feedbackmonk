@@ -31,6 +31,8 @@ page-level wrappers.
 | `StatusControls.tsx` | Status-transition control. `LEGAL_TRANSITIONS[currentStatus]` is the sole source of which transitions the UI offers; backend 409 (Contract C7 `TransitionError`) is the fallback guard. |
 | `Toast.tsx` | `ToastProvider` context + toast queue for transient success/error notifications. |
 | `SearchBox.tsx` | **GitCellar parity gap #3.** Debounced full-text search box for the admin feedback list. Exports `SEARCH_DEBOUNCE_MS` (250ms). Commits the trimmed query after the debounce settles; the page mirrors it to the URL `q` param and calls `GET /api/v1/admin/feedback/search`. |
+| `SentimentBadge.tsx` | **P5a**: Renders a `Sentiment` value (`Positive | Neutral | Negative`) as an icon + label + accessible color cue. Mirrors `StatusBadge` pattern — color + icon + label, never color alone (WCAG 1.4.1). |
+| `SentimentTrendChart.tsx` | **P5a**: Line chart visualizing sentiment distribution over a rolling time window (7/30/90 days). Consumes `GET /api/v1/admin/feedback/sentiment-trend` timeseries data. WCAG-compliant chart (data table alternative available, color-blind palette). |
 | `*.test.tsx` | Vitest unit tests colocated per component. |
 | `README.md` | This file. |
 

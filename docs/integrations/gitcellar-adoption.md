@@ -33,6 +33,16 @@ GitCellar's adoption intake (`../GitCellar/docs/planning/intakes/20260602T104026
 | JWT minting spec (Desktop authenticated mode) | see §5 | verifier built ✅ |
 | Signing-key registration | see §3.3 | built ✅ (`POST …/signing-keys`, Contract C4) |
 | End-user "my feedback" list + reply-thread read API | see §6 | built ✅ (parity gap #4 — `GET …/me/feedback` + `…/me/feedback/<FB>/thread`) |
+| **Structured sentiment** on submissions (`sentiment` ∈ `negative\|neutral\|positive`; body optional) | see §9 | **built ✅** (FR-FBR-28) |
+| **Durable per-user solicitation state** (ask-cap / dismiss / opt-out) | see §10 | **built ✅** (FR-FBR-29 — `GET\|POST …/me/solicitation`) |
+| **Capability/version detection** | see §11 | **built ✅** (`GET /api/v1/capabilities`) |
+
+> **⚠️ Deploy gate for §9–§11**: these three capabilities ship in feedbackmonk **v0.2.0** but the live
+> GitCellar instance (`feedback.gitcellar.com`) must be **redeployed at ≥ v0.2.0 + migration `00017`
+> applied** before the new endpoints/fields exist on it. Until then `GET /api/v1/capabilities` will
+> omit `feedback.sentiment` / `solicitation.v1` and the `…/me/solicitation` + `…/sentiment-trend`
+> routes 404 — which is exactly why the client should **feature-detect via §11**, not assume. No
+> launch-time pressure (GitCellar's side is gated behind its own "D-A" server-side-mint dependency).
 
 ---
 
@@ -230,13 +240,17 @@ is `crates/feedbackmonk-jwt` (Contract C2) and is **strict**:
 POST https://api.feedbackmonk.com/api/v1/projects/<PROJECT_ID>/feedback
 Authorization: Bearer <jwt>
 Content-Type: application/json
-{ "body": "...", "kind": "bug" }          # kind ∈ bug|feature|question|other (default other)
-→ 200 { "feedback_id": "FB-XXXXXX", "accepted_at": "...", "echo": { "body": "...", "kind": "bug" } }
+{ "body": "...", "kind": "bug", "sentiment": "positive" }   # kind ∈ bug|feature|question|other (default other)
+→ 200 { "feedback_id": "FB-XXXXXX", "accepted_at": "...",
+        "echo": { "body": "...", "sentiment": "positive", "kind": "bug" } }
 ```
+- **`sentiment`** (optional, FR-FBR-28): `negative | neutral | positive`, or omit. See §9.
+- **`body` is OPTIONAL** when `sentiment` is present (a sentiment-only one-tap submission is valid).
+  A submission with neither a body nor a sentiment → **400**. See §9.
 JWT failures return **401** with `{ "error": "<variant>" }` where variant ∈
 `BadSignature | Expired | NotYetValid | WrongAudience | AlgorithmNotAllowed | MissingRequiredClaim
 | ExternalMetadataTooLarge | MalformedToken` — Desktop can disambiguate (e.g. re-mint on `Expired`).
-Body cap 16384 chars (413 if exceeded). Tier cap → 402.
+Body cap 16384 chars (413 if exceeded). Invalid `sentiment` value → 400. Tier cap → 402.
 
 ### 5.6 Crash-event linking + crash-link banner (parity gap #2 — BUILT)
 
@@ -311,7 +325,8 @@ Authorization: Bearer <jwt>
         "feedback_id": "FB-XXXXXX",
         "kind": "bug" | "feature" | "question" | "other",
         "status": "submitted" | "triaged" | "in-progress" | "shipped" | "wont-fix" | "duplicate",
-        "body": "...",
+        "body": "...",                                  // "" for a sentiment-only submission
+        "sentiment": "negative" | "neutral" | "positive" | null,   // FR-FBR-28
         "submitted_at": "2026-06-02T15:00:00Z"
       }, …
     ],
@@ -334,6 +349,7 @@ Authorization: Bearer <jwt>
     "kind": "bug",
     "status": "in-progress",
     "body": "...",
+    "sentiment": "negative" | "neutral" | "positive" | null,   // FR-FBR-28
     "submitted_at": "2026-06-02T15:00:00Z",
     "replies": [
       { "reply_id": "<uuid>", "body": "...", "created_at": "2026-06-02T16:00:00Z" }, …
@@ -381,7 +397,167 @@ canonical embed.** Tracked as a discovery to fix on the feedbackmonk side (small
 
 ---
 
+## 9. ✅ BUILT & FROZEN — structured sentiment on submissions (FR-FBR-28)
+
+> **Status: BUILT** (2026-06-19). A first-class 3-point sentiment signal on feedback, with
+> sentiment-only submissions. Designed natively for feedbackmonk's multi-tenant model (not
+> GitCellar-specific). Storage: nullable `feedback.sentiment` column + a DB CHECK that every row has
+> at least a body or a sentiment (migration `00017`). Frozen by
+> `crates/feedbackmonk-core/src/sentiment.rs` + handler/repository tests.
+
+### 9.1 The field
+- **Field name**: `sentiment`
+- **Exact values** (lowercase): `"negative"`, `"neutral"`, `"positive"`. Any other value → **400**.
+- **Endpoint**: the SAME submit route — `POST /api/v1/projects/<PROJECT_ID>/feedback` — in BOTH
+  auth mode (Bearer JWT) and anonymous mode (widget). It is a top-level body field.
+
+### 9.2 Body-optional semantics (the one-tap signal)
+- `body` is now **optional**. A submission is valid if it has a non-empty `body`, a `sentiment`, or
+  both.
+- A submission with **neither** → **400** `{"error":"a submission must include a body or a sentiment"}`.
+- A **sentiment-only** submission (no `body`) is the supported one-tap case:
+  ```
+  POST /api/v1/projects/<PROJECT_ID>/feedback
+  Authorization: Bearer <jwt>
+  { "sentiment": "positive" }
+  → 200 { "feedback_id": "FB-XXXXXX", "accepted_at": "...",
+          "echo": { "body": "", "sentiment": "positive", "kind": "other" } }
+  ```
+  When no body is given, the stored/echoed `body` is the empty string `""` (the DB stores NULL;
+  the wire normalizes to `""`). `kind` still defaults to `other`.
+- `body`, when present, keeps its 1..16384-char bound (413 if exceeded).
+
+### 9.3 Where sentiment surfaces
+- **Submit echo** (above) — `echo.sentiment`.
+- **End-user reads** (§6): `me/feedback` items and `me/feedback/<FB>/thread` carry `sentiment`.
+- **Admin/triage** (operator UI, behind `AdminSession`): the admin list + detail responses carry
+  `sentiment`, and a new aggregation powers a "satisfaction trend over time" view:
+  ```
+  GET /api/v1/admin/feedback/sentiment-trend?bucket=week&days=90   (admin-session cookie)
+  → 200 {
+      "bucket": "week",                       // day | week | month (default week)
+      "since": "2026-03-21T00:00:00Z",
+      "buckets": [ { "bucket_start":"2026-03-16T00:00:00Z",
+                     "negative":2, "neutral":5, "positive":11, "total":18 }, … ],
+      "totals": { "negative":4, "neutral":9, "positive":20, "total":33 }
+    }
+  ```
+  (`days` default 90, clamped 1..730. Operator-only — GitCellar does not call this; it's the
+  feedbackmonk admin surface.)
+
+---
+
+## 10. ✅ BUILT & FROZEN — durable per-user solicitation state (FR-FBR-29)
+
+> **Status: BUILT** (2026-06-19). feedbackmonk owns the DURABLE record of whether a given end-user
+> may be solicited, keyed by the stable JWT `sub` (per project), so GitCellar can enforce "ask at
+> most ~twice/year, honor dismissal, honor opt-out" WITHOUT it resetting when the user reinstalls
+> the client. Modeled as a **first-class solicitation feature** (not a generic metadata store):
+> feedbackmonk owns the state machine AND the frequency-cap policy. State machine frozen by
+> `crates/feedbackmonk-core/src/solicitation.rs`; storage by `feedback_solicitations` (migration
+> `00017`).
+
+### 10.1 Auth + scope
+- **JWT-only**, identical to submit/§6 (Bearer EdDSA JWT, identity-class key, `aud == <PROJECT_ID>`).
+  The verified `sub` is the durable key. (Anonymous solicitation state is intentionally unsupported —
+  a durable "don't ask me again" requires a stable identity.)
+
+### 10.2 State machine
+```
+eligible ──prompted──▶ prompted ──┬─ dismissed
+                                   ├─ gave_feedback
+                                   └─ opted_out (TERMINAL)
+```
+- `prompted` is legal from any non-terminal state (re-prompt starts a new cycle).
+- `dismissed` / `gave_feedback` are legal ONLY from `prompted`.
+- `opted_out` is legal from ANY state (incl. preemptively from `eligible`), is idempotent, and is
+  **terminal** — once opted out, no other event is honored (409).
+
+### 10.3 Read current state
+```
+GET /api/v1/projects/<PROJECT_ID>/me/solicitation
+Authorization: Bearer <jwt>
+→ 200 {
+    "status": "eligible" | "prompted" | "dismissed" | "gave_feedback" | "opted_out",
+    "eligible": true,                       // ← the field to gate "may I prompt now?" on
+    "prompt_count": 0,
+    "prompted_at": null,                    // RFC3339 of last prompt, or null
+    "last_event_at": null,                  // RFC3339 of last event, or null (no record yet)
+    "next_eligible_at": null,               // RFC3339 when eligible flips true again, or null
+    "policy": { "cooldown_days": 182 }      // the server-side frequency cap
+  }
+```
+- A `sub` with no record yet returns the default: `status:"eligible"`, `eligible:true`, all
+  timestamps `null`. (No 404 for "never seen this user".)
+- **`eligible`** is computed server-side: `true` iff the user has never been prompted OR the last
+  prompt is older than `cooldown_days`, AND has not opted out. `next_eligible_at` is when it next
+  flips `true` (null if eligible now or permanently opted out).
+- Cooldown default **182 days** (≈ twice a year); deployment-tunable via
+  `FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS`.
+
+**Client decision rule**: show the prompt iff `eligible == true`. On show, POST `prompted`; on the
+user's choice, POST `dismissed` / `gave_feedback` / `opted_out`.
+
+### 10.4 Record an event
+```
+POST /api/v1/projects/<PROJECT_ID>/me/solicitation
+Authorization: Bearer <jwt>
+Content-Type: application/json
+{ "event": "prompted" | "dismissed" | "gave_feedback" | "opted_out" }
+→ 200  <same response shape as §10.3, reflecting the new state>
+```
+- `prompted` bumps `prompt_count` and stamps `prompted_at = now` (starts the cooldown).
+- Other events update `status` only.
+
+### 10.5 Errors
+| Condition | Status | Body |
+|---|---|---|
+| JWT failure (`Expired`, `WrongAudience`, …) | `401` | `{"error":"<JwtError variant>"}` (re-mint on `Expired`) |
+| Missing / empty Bearer | `401` | `{"error":"unauthorized"}` |
+| Unknown `<PROJECT_ID>` | `404` | `{"error":"not found"}` |
+| Malformed `event` value | `400` | (deserialize error) |
+| Illegal transition (e.g. `dismissed` with no outstanding prompt) | `409` | `{"error":"IllegalTransition","detail":"…"}` |
+| Any event other than `opted_out` after opt-out | `409` | `{"error":"OptedOut","detail":"…"}` |
+
+---
+
+## 11. Capability / version detection
+
+GitCellar should feature-detect via the public, unauthenticated discovery endpoint rather than
+hard-coding a version:
+
+```
+GET /api/v1/capabilities                      (no auth, no project scope)
+→ 200 {
+    "version": "0.2.0",                        // informational only — do NOT gate on this
+    "capabilities": [
+      "feedback.sentiment", "feedback.body-optional", "feedback.sentiment-trend",
+      "solicitation.v1", "feedback.my-feedback"
+    ],
+    "feedback": { "sentiment": { "field":"sentiment",
+                                 "values":["negative","neutral","positive"],
+                                 "body_optional": true } },
+    "solicitation": { "events":["prompted","dismissed","gave_feedback","opted_out"],
+                      "states":["eligible","prompted","dismissed","gave_feedback","opted_out"],
+                      "cooldown_days_default": 182 }
+  }
+```
+
+**Detection contract**: treat the **presence of a string in `capabilities`** as authoritative —
+`"feedback.sentiment"` for §9, `"solicitation.v1"` for §10. Do NOT parse the semver `version`; it is
+informational and the capability array is the stable, additive negotiation surface. An older
+deployment that predates these features simply omits the strings (and 404s the new routes), so a
+client that checks the array degrades gracefully.
+
+---
+
 ## Change log
+- 2026-06-19 (FR-FBR-28 / FR-FBR-29) — Added §9 (structured sentiment + sentiment-only submissions +
+  `…/admin/feedback/sentiment-trend`), §10 (durable per-user solicitation state, `GET|POST
+  …/me/solicitation`, first-class state machine + 182-day default cooldown), §11 (capability
+  discovery via `GET /api/v1/capabilities`). Updated §0 TL;DR, §5.5 submit (optional `sentiment` +
+  body-optional), and §6 my-feedback shapes (added `sentiment`). Migration `00017`; crate version
+  → 0.2.0. Built in response to GitCellar's in-app feedback-solicitation prompt.
 - 2026-06-02 — Initial draft authored from code verification at `78aca1e`. `project_id`, deploy host,
   and gap-#4 endpoints are placeholders pending PF-DEPLOY-01 and gap-closing build.
 - 2026-06-02 (BRAVO, PODS collab-20260602-123000) — Parity gap #2 BUILT: added §5.6 crash-event linking

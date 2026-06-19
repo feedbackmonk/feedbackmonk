@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT short_code, kind, status, body, accepted_at\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND end_user_sub = $3\n            ORDER BY accepted_at DESC\n            LIMIT $4 OFFSET $5\n            ",
+  "query": "\n            SELECT short_code, kind, status, body, sentiment, accepted_at\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2\n              AND short_code = $3 AND end_user_sub = $4\n            ",
   "describe": {
     "columns": [
       {
@@ -25,6 +25,11 @@
       },
       {
         "ordinal": 4,
+        "name": "sentiment",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
         "name": "accepted_at",
         "type_info": "Timestamptz"
       }
@@ -34,17 +39,17 @@
         "Uuid",
         "Uuid",
         "Text",
-        "Int8",
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
       false,
       false,
       false,
-      false,
+      true,
+      true,
       false
     ]
   },
-  "hash": "5c7314c06b484d4d88b4ec849ea19dfe0fa78ef1719a3738057dd8f0b34c4cd8"
+  "hash": "5324bb4d65c41163c5b0cb1cf4710ebbf1c86e8364e2722217e9c375bb3b7b8e"
 }

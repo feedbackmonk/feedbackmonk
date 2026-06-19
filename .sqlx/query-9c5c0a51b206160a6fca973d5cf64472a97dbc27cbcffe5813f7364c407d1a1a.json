@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO feedback (\n                short_code, project_id, tenant_id,\n                end_user_sub, end_user_email, end_user_name,\n                external_metadata, crash_event_id, body, sentiment, kind\n            )\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Text",
+        "Jsonb",
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9c5c0a51b206160a6fca973d5cf64472a97dbc27cbcffe5813f7364c407d1a1a"
+}

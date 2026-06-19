@@ -18,11 +18,27 @@ const LIST_BODY = {
       submitted_at: "2026-05-13T22:00:00Z",
       submitter_label: "alice@example.com",
       reply_count: 0,
+      sentiment: "negative",
     },
   ],
   total: 1,
   limit: 20,
   offset: 0,
+};
+
+const SENTIMENT_TREND_BODY = {
+  bucket: "week",
+  since: "2026-03-21T00:00:00Z",
+  buckets: [
+    {
+      bucket_start: "2026-03-16T00:00:00Z",
+      negative: 2,
+      neutral: 5,
+      positive: 11,
+      total: 18,
+    },
+  ],
+  totals: { negative: 2, neutral: 5, positive: 11, total: 18 },
 };
 
 const DETAIL_BODY = {
@@ -34,6 +50,7 @@ const DETAIL_BODY = {
   submitter: { kind: "authenticated", email: "alice@example.com" },
   status_history: [],
   replies: [],
+  sentiment: "negative",
 };
 
 async function installFakeApi(page: Page) {
@@ -42,6 +59,14 @@ async function installFakeApi(page: Page) {
     const method = route.request().method();
     if (url.match(/\/api\/v1\/login$/) && method === "POST") {
       await route.fulfill({ status: 200, body: "{}" });
+      return;
+    }
+    if (url.match(/\/admin\/feedback\/sentiment-trend/) && method === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(SENTIMENT_TREND_BODY),
+      });
       return;
     }
     if (url.match(/\/admin\/feedback\?/) && method === "GET") {

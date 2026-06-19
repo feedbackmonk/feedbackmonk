@@ -872,11 +872,11 @@ mod tests {
 
         // Two submissions.
         frepo
-            .submit_anonymous(&pscope, &[1u8; 32], None, "one", FeedbackKind::Other)
+            .submit_anonymous(&pscope, &[1u8; 32], None, "one", None, FeedbackKind::Other)
             .await
             .unwrap();
         frepo
-            .submit_anonymous(&pscope, &[2u8; 32], None, "two", FeedbackKind::Other)
+            .submit_anonymous(&pscope, &[2u8; 32], None, "two", None, FeedbackKind::Other)
             .await
             .unwrap();
         assert_eq!(repo_count_in_window(&trepo, &scope, 30).await, 2);

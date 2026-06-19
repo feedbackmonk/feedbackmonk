@@ -267,6 +267,7 @@ mod tests {
                     &[u8::try_from(i % 251).unwrap(); 32],
                     None,
                     &format!("fb {i}"),
+                    None,
                     FeedbackKind::Other,
                 )
                 .await
@@ -299,6 +300,7 @@ mod tests {
                     &[u8::try_from(i % 251).unwrap(); 32],
                     None,
                     &format!("fb {i}"),
+                    None,
                     FeedbackKind::Other,
                 )
                 .await

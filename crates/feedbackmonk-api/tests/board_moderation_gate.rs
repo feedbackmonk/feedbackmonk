@@ -132,7 +132,7 @@ async fn enable_board(state: &AppState, scope: &ProjectScope) {
 async fn submit(state: &AppState, scope: &ProjectScope, body: &str) -> FeedbackId {
     state
         .feedback
-        .submit_anonymous(scope, &[7u8; 32], None, body, FeedbackKind::Other)
+        .submit_anonymous(scope, &[7u8; 32], None, body, None, FeedbackKind::Other)
         .await
         .unwrap()
 }

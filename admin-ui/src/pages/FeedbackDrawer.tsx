@@ -7,6 +7,7 @@ import {
   type FeedbackSubmitter,
 } from "../shared/types.gen";
 import { StatusBadge } from "../components/StatusBadge";
+import { SentimentBadge } from "../components/SentimentBadge";
 import { StatusControls } from "../components/StatusControls";
 import { ReplyComposer } from "../components/ReplyComposer";
 import { PromoteButton } from "./roadmap/PromoteButton";
@@ -97,6 +98,14 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                 </dd>
                 <dt>Kind</dt>
                 <dd>{KIND_LABELS[detail.kind]}</dd>
+                <dt>Sentiment</dt>
+                <dd>
+                  {detail.sentiment ? (
+                    <SentimentBadge sentiment={detail.sentiment} />
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </dd>
                 <dt>Submitted</dt>
                 <dd>
                   <time dateTime={detail.submitted_at}>

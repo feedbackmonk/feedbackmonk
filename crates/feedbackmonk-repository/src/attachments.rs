@@ -265,7 +265,7 @@ mod tests {
         let pscope = prepo.open(&scope, p.id).await.unwrap();
         // Seed via anonymous submission (decoupled from BRAVO's auth-mode sig change).
         let fb = frepo
-            .submit_anonymous(&pscope, &[1u8; 32], None, "body", FeedbackKind::Bug)
+            .submit_anonymous(&pscope, &[1u8; 32], None, "body", None, FeedbackKind::Bug)
             .await
             .unwrap();
         let arepo = SqlxAttachmentRepo::new(pool.clone());

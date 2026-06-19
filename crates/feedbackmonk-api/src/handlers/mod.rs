@@ -47,6 +47,14 @@ pub mod attachments;
 // Gap #4 (GitCellar parity): end-user (JWT-sub-scoped) my-feedback read API.
 pub mod me_feedback;
 
+// GitCellar in-app solicitation (FR-FBR-29): durable per-user solicitation
+// state API (JWT end-user surface, mirrors me_feedback; no CORS).
+pub mod solicitation;
+
+// GitCellar capability negotiation (FR-FBR-28/27): public capability/version
+// discovery (`GET /api/v1/capabilities`).
+pub mod capabilities;
+
 // P5a (Contract C22, FR-FBR-22 / FR-FBR-25a): work-order API + approval state
 // machine — THE security boundary between public feedback and code execution
 // (Worker A). Admin routes behind AdminSession; runner routes behind the runner

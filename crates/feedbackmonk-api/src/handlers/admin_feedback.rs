@@ -20,8 +20,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use feedbackmonk_core::{legal_transitions_from, FeedbackId, FeedbackKind, FeedbackStatus};
-use feedbackmonk_repository::{ProjectScope, ReplyVisibility, TenantScope};
+use feedbackmonk_core::{
+    legal_transitions_from, FeedbackId, FeedbackKind, FeedbackStatus, Sentiment,
+};
+use feedbackmonk_repository::{ProjectScope, ReplyVisibility, TenantScope, TrendBucket};
 
 use crate::auth::AdminSession;
 use crate::email::{EmailContext, EmailKind, is_submitter_visible_transition};
@@ -43,6 +45,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/api/v1/admin/feedback/search",
             get(search_admin_feedback),
+        )
+        .route(
+            "/api/v1/admin/feedback/sentiment-trend",
+            get(sentiment_trend),
         )
         .route(
             "/api/v1/admin/feedback/:feedback_id",
@@ -404,6 +410,8 @@ pub struct FeedbackListItemWire {
     pub feedback_id: String,
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
+    /// 3-point satisfaction signal, or `null` when none was given (FR-FBR-28).
+    pub sentiment: Option<Sentiment>,
     pub body_excerpt: String,
     pub submitted_at: DateTime<Utc>,
     pub submitter_label: String,
@@ -435,6 +443,7 @@ pub async fn list_admin_feedback(
             feedback_id: it.feedback_id.as_str().to_string(),
             kind: it.kind,
             status: it.status,
+            sentiment: it.sentiment,
             body_excerpt: it.body_excerpt,
             submitted_at: it.submitted_at,
             submitter_label: format_submitter_label(it.submitter_email.as_deref(), it.is_anonymous),
@@ -502,6 +511,7 @@ pub async fn search_admin_feedback(
             feedback_id: it.feedback_id.as_str().to_string(),
             kind: it.kind,
             status: it.status,
+            sentiment: it.sentiment,
             body_excerpt: it.body_excerpt,
             submitted_at: it.submitted_at,
             submitter_label: format_submitter_label(it.submitter_email.as_deref(), it.is_anonymous),
@@ -514,6 +524,98 @@ pub async fn search_admin_feedback(
         total,
         limit,
         offset,
+    }))
+}
+
+// ---------- FR-FBR-28: sentiment trend ("satisfaction over time") ----------
+
+const DEFAULT_TREND_DAYS: i64 = 90;
+const MAX_TREND_DAYS: i64 = 730;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SentimentTrendParams {
+    /// Time-bucket granularity: `day | week | month`. Unknown/absent ⇒ `week`.
+    pub bucket: Option<String>,
+    /// Lookback window in days (default 90, clamped to 1..=730).
+    pub days: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SentimentTrendBucketWire {
+    pub bucket_start: DateTime<Utc>,
+    pub negative: i64,
+    pub neutral: i64,
+    pub positive: i64,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct SentimentTotals {
+    pub negative: i64,
+    pub neutral: i64,
+    pub positive: i64,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SentimentTrendResponse {
+    /// The bucket granularity actually used (`day | week | month`).
+    pub bucket: &'static str,
+    /// The lower bound of the window (UTC).
+    pub since: DateTime<Utc>,
+    /// One entry per non-empty time bucket, oldest-first.
+    pub buckets: Vec<SentimentTrendBucketWire>,
+    /// Window-wide totals (handy for a headline satisfaction figure).
+    pub totals: SentimentTotals,
+}
+
+/// `GET /api/v1/admin/feedback/sentiment-trend?bucket=week&days=90` — the
+/// admin "satisfaction trend over time" aggregation (FR-FBR-28). Counts
+/// sentiment-bearing feedback grouped by time bucket, scoped to the admin's
+/// project. Only buckets with at least one sentiment-bearing row appear.
+pub async fn sentiment_trend(
+    State(state): State<AppState>,
+    session: AdminSession,
+    Query(params): Query<SentimentTrendParams>,
+) -> Result<Json<SentimentTrendResponse>, ApiError> {
+    let bucket = params
+        .bucket
+        .as_deref()
+        .and_then(TrendBucket::parse)
+        .unwrap_or(TrendBucket::Week);
+    let days = params.days.unwrap_or(DEFAULT_TREND_DAYS).clamp(1, MAX_TREND_DAYS);
+    let since = Utc::now() - chrono::Duration::days(days);
+
+    let project_scope = sole_project_scope(&state, &session.scope).await?;
+    let rows = state
+        .feedback
+        .sentiment_trend(&project_scope, bucket, since)
+        .await?;
+
+    let mut totals = SentimentTotals::default();
+    let buckets: Vec<SentimentTrendBucketWire> = rows
+        .into_iter()
+        .map(|b| {
+            totals.negative += b.negative;
+            totals.neutral += b.neutral;
+            totals.positive += b.positive;
+            let total = b.negative + b.neutral + b.positive;
+            SentimentTrendBucketWire {
+                bucket_start: b.bucket_start,
+                negative: b.negative,
+                neutral: b.neutral,
+                positive: b.positive,
+                total,
+            }
+        })
+        .collect();
+    totals.total = totals.negative + totals.neutral + totals.positive;
+
+    Ok(Json(SentimentTrendResponse {
+        bucket: bucket.as_trunc_unit(),
+        since,
+        buckets,
+        totals,
     }))
 }
 
@@ -556,6 +658,8 @@ pub struct FeedbackDetailResponse {
     pub feedback_id: String,
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
+    /// 3-point satisfaction signal, or `null` when none was given (FR-FBR-28).
+    pub sentiment: Option<Sentiment>,
     pub body: String,
     pub submitted_at: DateTime<Utc>,
     pub submitter: SubmitterWire,
@@ -644,6 +748,7 @@ pub async fn get_admin_feedback(
         feedback_id: feedback.short_code.as_str().to_string(),
         kind: feedback.kind,
         status: feedback.status,
+        sentiment: feedback.sentiment,
         body: feedback.body,
         submitted_at: feedback.accepted_at,
         submitter,
@@ -812,6 +917,7 @@ mod tests {
                 &[1u8; 32],
                 email,
                 "submission body",
+                None,
                 FeedbackKind::Bug,
             )
             .await
@@ -890,7 +996,7 @@ mod tests {
         let fb_a = seed_feedback_with_email(&state, &s1, Some("a@example.com")).await;
         let fb_b = state
             .feedback
-            .submit_anonymous(&s2, &[9u8; 32], None, "other tenant", FeedbackKind::Other)
+            .submit_anonymous(&s2, &[9u8; 32], None, "other tenant", None, FeedbackKind::Other)
             .await
             .unwrap();
 

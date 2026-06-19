@@ -921,3 +921,31 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Alternatives considered**: *Make the toggle live-writable now* — exposes a control whose "off" path doesn't exist, inviting an owner to disable moderation with no effect (rejected — misleading). *Drop the column until needed* — the migration is frozen at GATE 0 and the column is a cheap forward-compatible placeholder (kept).
 
 ---
+
+### DEC-FBR-IMPL-23: Sentiment stored as a nullable TEXT enum column; body made nullable with a "body OR sentiment" CHECK; domain maps NULL body → "" (FR-FBR-28)
+
+**Resolved**: 2026-06-19 (GitCellar in-app solicitation capability request).
+
+**Decision**: `feedback.sentiment` is a nullable `TEXT` column with `CHECK (sentiment IS NULL OR sentiment IN ('negative','neutral','positive'))` — mirroring the existing `feedback_kind_check` convention (TEXT + CHECK, not a Postgres `ENUM` type). To allow sentiment-only submissions, `feedback.body` is made **nullable**: the original `feedback_body_check (length 1..16384)` is dropped and replaced with `feedback_body_len_check (body IS NULL OR length 1..16384)`, plus a row-level `feedback_body_or_sentiment_check (body IS NOT NULL OR sentiment IS NOT NULL)`. The Rust domain (`Feedback.body: String`) and every wire DTO keep `body` as a **non-optional `String`**, mapping a NULL column to `""` (the repository's read mappings do `r.body.unwrap_or_default()`; the inserts store `""` as NULL).
+
+**Rationale**: Two structural guarantees (sentiment ∈ a fixed set; every row carries body or sentiment) are enforced at the DB, the strongest place (DEC-FBR-03 ethos). Keeping `body: String` in the domain (rather than threading `Option<String>` through every existing consumer — admin list/detail, `/me/feedback`, board, clustering, FTS) is the **minimal-blast-radius** choice that does not break existing consumers (an explicit constraint of the request). The encoding is unambiguous: the `length >= 1` check means a non-null body is never empty, so `body == ""` ALWAYS and ONLY means "sentiment-only / no body". The FTS generated column (`body_tsv`) already tolerates NULL (no match), so body-less rows are correctly excluded from search.
+
+**Scope**: `crates/feedbackmonk-core/src/{sentiment.rs,models.rs}`, migration `00017`, `crates/feedbackmonk-repository/src/feedback.rs` (submit + reads + `sentiment_trend`), `crates/feedbackmonk-api/src/handlers/{feedback,admin_feedback,me_feedback}.rs`.
+
+**Alternatives considered**: *Postgres native ENUM type* — rejected for consistency with the established TEXT+CHECK convention (kind/status/moderation_status all use it) and cheaper future value additions. *`body: Option<String>` end-to-end* — more "type-correct" but a large ripple across every existing reader/DTO with real risk to live consumers; rejected in favor of the unambiguous NULL→"" mapping. *Empty-string sentinel in the DB (keep NOT NULL, relax length to 0)* — muddier (FTS would index empty; "is this empty or absent?" ambiguity); rejected — the nullable column with NULL→"" at the boundary is cleaner.
+
+---
+
+### DEC-FBR-IMPL-24: Solicitation modeled as a FIRST-CLASS feature (server-owned state machine + frequency-cap policy), not a generic per-user metadata store (FR-FBR-29)
+
+**Resolved**: 2026-06-19 (GitCellar in-app solicitation capability request).
+
+**Decision**: Build "solicitation / frequency-capping" as a first-class feedbackmonk primitive rather than a generic per-user key/value store the consumer drives. feedbackmonk owns: (1) the durable record (`feedback_solicitations`, keyed by `(project_id, end_user_sub)`, JWT-`sub`-only), (2) the **state machine** (`eligible → prompted → {dismissed, gave_feedback, opted_out}`, `opted_out` terminal; frozen in `feedbackmonk-core::solicitation`), and (3) the **eligibility/frequency-cap policy** (server computes `eligible` + `next_eligible_at` from `prompted_at` and a cooldown, default 182 days ≈ "twice a year", tunable via `FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS`). The consumer's decision is reduced to "show the prompt iff `eligible == true`, then POST the resulting event". The repo is constructed per-request from `state.pool` (the attachments precedent), adding **zero** `AppState` constructor churn.
+
+**Rationale**: The brief flagged this as a design choice and noted the first-class option is "probably the better product" — agreed. A first-class feature enforces the state machine and the privacy-load-bearing opt-out terminal server-side (a generic blob store would push the "honor opt-out" guarantee onto every consumer to re-implement, with no enforcement), keeps the consumer thin, and gives feedbackmonk a reusable platform primitive. JWT-`sub`-only (no anonymous) is required: a durable "don't ask me again" needs a stable identity that survives client reinstall — the entire point.
+
+**Scope**: `crates/feedbackmonk-core/src/solicitation.rs`, migration `00017` (`feedback_solicitations`), `crates/feedbackmonk-repository/src/solicitations.rs`, `crates/feedbackmonk-api/src/handlers/solicitation.rs` + `capabilities.rs`.
+
+**Alternatives considered**: *Generic per-user metadata store the consumer drives* — satisfies GitCellar but pushes the state machine + opt-out enforcement to every consumer, with no server guarantee; not a reusable product primitive (rejected). *Put the solicitation repo in `AppState`* — would force edits to ~15 `AppState` construction sites (incl. 9 test fixtures); rejected in favor of the sanctioned per-request-from-pool construction (the attachments precedent). *Anonymous solicitation state* — impossible to keep durable across reinstall without a stable id (rejected; JWT-only).
+
+---

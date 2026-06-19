@@ -150,7 +150,7 @@ async fn seed_full(state: &AppState, email: &str) -> Seeded {
         let hash = [u8::try_from(i + 1).unwrap(); 32];
         let fid = state
             .feedback
-            .submit_anonymous(&scope, &hash, None, body, FeedbackKind::Bug)
+            .submit_anonymous(&scope, &hash, None, body, None, FeedbackKind::Bug)
             .await
             .unwrap();
         state.feedback.set_cluster_id(&scope, &fid, Some(cluster.id)).await.unwrap();

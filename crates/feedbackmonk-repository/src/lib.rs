@@ -30,6 +30,7 @@ pub mod runner_token_revocations;
 pub mod runner_tokens;
 pub mod scope;
 pub mod signing_keys;
+pub mod solicitations;
 pub mod tenants;
 pub mod tier_quota;
 pub mod work_order_events;
@@ -44,7 +45,7 @@ pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerifi
 pub use error::{RepoError, Result};
 pub use feedback::{
     BoardItem, EndUserFeedback, FeedbackListItem, FeedbackRepo, ModerationQueueItem,
-    SqlxFeedbackRepo, StatusHistoryRow,
+    SentimentTrendBucket, SqlxFeedbackRepo, StatusHistoryRow, TrendBucket,
 };
 pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
@@ -67,6 +68,7 @@ pub use runner_tokens::{
 };
 pub use scope::{ProjectScope, TenantScope};
 pub use signing_keys::{SigningKeyRepo, SqlxSigningKeyRepo};
+pub use solicitations::{SolicitationRecord, SolicitationRepo, SqlxSolicitationRepo};
 pub use tenants::{EmailTenantBrand, SqlxTenantRepo, TenantRepo, WidgetBrandOverride};
 pub use tier_quota::{
     QuotaStatus, SqlxTierQuotaRepo, TierQuotaRepo, TierStatus, TierUsage,

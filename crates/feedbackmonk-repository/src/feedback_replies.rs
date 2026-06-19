@@ -295,7 +295,7 @@ mod tests {
         let scope = seed_project_scope(&pool, "reply-rt@example.com").await;
 
         let fb_id = fb_repo
-            .submit_anonymous(&scope, &[1u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&scope, &[1u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
         let author = Uuid::new_v4();
@@ -331,7 +331,7 @@ mod tests {
         let s2 = seed_project_scope(&pool, "rep-owner2@example.com").await;
 
         let fb_id = fb_repo
-            .submit_anonymous(&s1, &[2u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[2u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -351,7 +351,7 @@ mod tests {
         let s1 = seed_project_scope(&pool, "list-owner1@example.com").await;
         let s2 = seed_project_scope(&pool, "list-owner2@example.com").await;
         let fb_id = fb_repo
-            .submit_anonymous(&s1, &[3u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[3u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
         reply_repo
@@ -372,7 +372,7 @@ mod tests {
         let reply_repo = SqlxFeedbackReplyRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "no-replies@example.com").await;
         let fb_id = fb_repo
-            .submit_anonymous(&scope, &[4u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&scope, &[4u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -389,7 +389,7 @@ mod tests {
         let reply_repo = SqlxFeedbackReplyRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "pub-only@example.com").await;
         let fb_id = fb_repo
-            .submit_anonymous(&scope, &[8u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&scope, &[8u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
         let admin = Uuid::new_v4();
@@ -418,7 +418,7 @@ mod tests {
         let s1 = seed_project_scope(&pool, "pub-ct1@example.com").await;
         let s2 = seed_project_scope(&pool, "pub-ct2@example.com").await;
         let fb_id = fb_repo
-            .submit_anonymous(&s1, &[9u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[9u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
         reply_repo

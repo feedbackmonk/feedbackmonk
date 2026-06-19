@@ -44,11 +44,11 @@ use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
-    board_router, cluster_admin_router, me_feedback_router, moderation_router, ops_router,
-    parse_origins, promote_router, public_cors_layer, recommendation_admin_router, roadmap_router,
-    runner_tokens_admin_router, spawn_voting_cache_refresh, submission_router, sweep_admin_router,
-    widget_config_router, work_order_admin_router, work_order_runner_router, AttachmentState,
-    VotingCache,
+    board_router, capabilities_router, cluster_admin_router, me_feedback_router, moderation_router,
+    ops_router, parse_origins, promote_router, public_cors_layer, recommendation_admin_router,
+    roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_voting_cache_refresh,
+    submission_router, sweep_admin_router, widget_config_router, work_order_admin_router,
+    work_order_runner_router, AttachmentState, VotingCache,
 };
 
 #[tokio::main]
@@ -393,6 +393,12 @@ fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &
         // guarded by the OpsAuth bearer token (404 when token unset).
         .merge(ops_router(state.clone()))
         .merge(me_feedback_router(state.clone()))
+        // GitCellar in-app solicitation (FR-FBR-28/27): durable per-user
+        // solicitation state (JWT end-user surface; merged WITHOUT CORS, like
+        // me_feedback — driven by the consumer's own client) + public
+        // capability discovery (`GET /api/v1/capabilities`, metadata-only).
+        .merge(solicitation_router(state.clone()))
+        .merge(capabilities_router(state.clone()))
         .merge(attachments_router(attachment_state).layer(cors.clone()))
         // P5a (Contract C22, Worker A): work-order API + approval state machine.
         // Admin routes behind AdminSession; runner routes behind the runner

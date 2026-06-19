@@ -46,7 +46,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Tier};
+use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Sentiment, Tier};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -82,7 +82,15 @@ const ANON_COOKIE_MAX_AGE_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FeedbackRequest {
-    pub body: String,
+    /// The free-text feedback body. OPTIONAL since FR-FBR-28: a sentiment-only
+    /// submission (no body) is valid. Absent/null/empty ⇒ no body. At least one
+    /// of `body` / `sentiment` must be present, else `400`.
+    #[serde(default)]
+    pub body: Option<String>,
+    /// Optional 3-point satisfaction signal: `negative | neutral | positive`
+    /// (FR-FBR-28). Absent ⇒ no sentiment. An unrecognized value ⇒ `400`.
+    #[serde(default)]
+    pub sentiment: Option<String>,
     /// `bug | feature | question | other`. Defaults to `other` when absent.
     #[serde(default)]
     pub kind: Option<String>,
@@ -111,6 +119,8 @@ pub struct FeedbackResponse {
 #[derive(Debug, Clone, Serialize)]
 pub struct FeedbackEcho {
     pub body: String,
+    /// Echoes the stored sentiment, or `null` when none was given (FR-FBR-28).
+    pub sentiment: Option<Sentiment>,
     pub kind: &'static str,
 }
 
@@ -131,9 +141,11 @@ pub async fn submit(
     headers: HeaderMap,
     Json(req): Json<FeedbackRequest>,
 ) -> Result<Response, ApiError> {
-    // ----- 1. Body validation (Contract C3) --------------------------------
+    // ----- 1. Body + sentiment validation (Contract C3 / FR-FBR-28) --------
     let kind = parse_kind(req.kind.as_deref())?;
-    validate_body(&req.body)?;
+    let sentiment = parse_sentiment(req.sentiment.as_deref())?;
+    let body = req.body.as_deref().unwrap_or("");
+    validate_submission(body, sentiment)?;
 
     // ----- 2. Project scope (DEC-PODS-001) ---------------------------------
     let project_scope = state.projects.open_for_submission(project_id).await?;
@@ -164,7 +176,8 @@ pub async fn submit(
             &token,
             project_id,
             req.crash_event_id.as_deref(),
-            &req.body,
+            body,
+            sentiment,
             kind,
         )
         .await
@@ -177,7 +190,8 @@ pub async fn submit(
             &client_ip,
             &headers,
             req.email.as_deref(),
-            &req.body,
+            body,
+            sentiment,
             kind,
         )
         .await
@@ -196,6 +210,7 @@ async fn submit_authenticated_path(
     project_id: Uuid,
     crash_event_id: Option<&str>,
     body: &str,
+    sentiment: Option<Sentiment>,
     kind: FeedbackKind,
 ) -> Result<Response, ApiError> {
     // P5b (C25): end-user JWT verification selects ONLY identity-class keys — a
@@ -227,13 +242,14 @@ async fn submit_authenticated_path(
             claims.external_metadata.as_ref(),
             crash_event_id,
             body,
+            sentiment,
             kind,
         )
         .await?;
 
     cluster_on_submit_best_effort(state, project_scope, &feedback_id, body, kind).await;
 
-    Ok(success_response(feedback_id.as_str(), body, kind, None))
+    Ok(success_response(feedback_id.as_str(), body, sentiment, kind, None))
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +265,7 @@ async fn submit_anonymous_path(
     headers: &HeaderMap,
     optional_email: Option<&str>,
     body: &str,
+    sentiment: Option<Sentiment>,
     kind: FeedbackKind,
 ) -> Result<Response, ApiError> {
     let (cookie_value, set_cookie_header) = resolve_anon_cookie(headers);
@@ -263,7 +280,7 @@ async fn submit_anonymous_path(
 
     let feedback_id = state
         .feedback
-        .submit_anonymous(project_scope, &token_hash, optional_email, body, kind)
+        .submit_anonymous(project_scope, &token_hash, optional_email, body, sentiment, kind)
         .await?;
 
     cluster_on_submit_best_effort(state, project_scope, &feedback_id, body, kind).await;
@@ -271,6 +288,7 @@ async fn submit_anonymous_path(
     Ok(success_response(
         feedback_id.as_str(),
         body,
+        sentiment,
         kind,
         set_cookie_header,
     ))
@@ -325,16 +343,36 @@ fn parse_kind(s: Option<&str>) -> Result<FeedbackKind, ApiError> {
     })
 }
 
-fn validate_body(body: &str) -> Result<(), ApiError> {
-    let len = body.chars().count();
-    if len == 0 {
-        return Err(ApiError::BadRequest("body must be non-empty".into()));
+/// Parse the optional `sentiment` field. Absent / empty ⇒ `None`. An
+/// unrecognized value ⇒ `400` (FR-FBR-28).
+fn parse_sentiment(s: Option<&str>) -> Result<Option<Sentiment>, ApiError> {
+    match s {
+        None | Some("") => Ok(None),
+        Some(v) => Sentiment::parse(v).map(Some).ok_or_else(|| {
+            ApiError::BadRequest(format!(
+                "sentiment must be one of negative|neutral|positive; got {v:?}"
+            ))
+        }),
     }
+}
+
+/// Validate the (body, sentiment) pair (Contract C3 / FR-FBR-28):
+/// - body, when present, must be ≤ `MAX_BODY_CHARS` (413 otherwise);
+/// - at least one of a non-empty body or a sentiment must be present (400
+///   otherwise) — a fully-empty submission is rejected. The DB
+///   `feedback_body_or_sentiment_check` is the backstop.
+fn validate_submission(body: &str, sentiment: Option<Sentiment>) -> Result<(), ApiError> {
+    let len = body.chars().count();
     if len > MAX_BODY_CHARS {
         // 413 Payload Too Large per Contract C3.
         return Err(ApiError::PayloadTooLarge(format!(
             "body exceeds {MAX_BODY_CHARS} characters"
         )));
+    }
+    if len == 0 && sentiment.is_none() {
+        return Err(ApiError::BadRequest(
+            "a submission must include a body or a sentiment".into(),
+        ));
     }
     Ok(())
 }
@@ -394,6 +432,7 @@ fn current_unix_timestamp() -> i64 {
 fn success_response(
     feedback_id: &str,
     body: &str,
+    sentiment: Option<Sentiment>,
     kind: FeedbackKind,
     set_cookie: Option<HeaderValue>,
 ) -> Response {
@@ -402,6 +441,7 @@ fn success_response(
         accepted_at: Utc::now(),
         echo: FeedbackEcho {
             body: body.to_string(),
+            sentiment,
             kind: kind.as_str(),
         },
     };
@@ -482,23 +522,43 @@ mod tests {
     }
 
     #[test]
-    fn validate_body_rejects_empty() {
-        let err = validate_body("").unwrap_err();
+    fn validate_submission_rejects_fully_empty() {
+        // Empty body AND no sentiment → 400 (FR-FBR-28).
+        let err = validate_submission("", None).unwrap_err();
         assert!(matches!(err, ApiError::BadRequest(_)));
     }
 
     #[test]
-    fn validate_body_rejects_oversize() {
-        let big = "x".repeat(MAX_BODY_CHARS + 1);
-        let err = validate_body(&big).unwrap_err();
-        assert!(matches!(err, ApiError::PayloadTooLarge(_)));
+    fn validate_submission_allows_sentiment_only() {
+        // Sentiment-only submission (no body) is valid (FR-FBR-28).
+        validate_submission("", Some(Sentiment::Positive)).unwrap();
     }
 
     #[test]
-    fn validate_body_accepts_at_cap() {
+    fn validate_submission_rejects_oversize() {
+        let big = "x".repeat(MAX_BODY_CHARS + 1);
+        let err = validate_submission(&big, None).unwrap_err();
+        assert!(matches!(err, ApiError::PayloadTooLarge(_)));
+        // Oversize body is 413 even when a sentiment is present.
+        let err2 = validate_submission(&big, Some(Sentiment::Neutral)).unwrap_err();
+        assert!(matches!(err2, ApiError::PayloadTooLarge(_)));
+    }
+
+    #[test]
+    fn validate_submission_accepts_body_at_cap() {
         let cap = "x".repeat(MAX_BODY_CHARS);
-        validate_body(&cap).unwrap();
-        validate_body("one char").unwrap();
+        validate_submission(&cap, None).unwrap();
+        validate_submission("one char", None).unwrap();
+    }
+
+    #[test]
+    fn parse_sentiment_known_and_unknown() {
+        assert_eq!(parse_sentiment(None).unwrap(), None);
+        assert_eq!(parse_sentiment(Some("")).unwrap(), None);
+        assert_eq!(parse_sentiment(Some("positive")).unwrap(), Some(Sentiment::Positive));
+        assert_eq!(parse_sentiment(Some("negative")).unwrap(), Some(Sentiment::Negative));
+        assert_eq!(parse_sentiment(Some("neutral")).unwrap(), Some(Sentiment::Neutral));
+        assert!(matches!(parse_sentiment(Some("happy")), Err(ApiError::BadRequest(_))));
     }
 
     #[test]

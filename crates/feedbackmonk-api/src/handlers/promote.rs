@@ -704,6 +704,7 @@ mod tests {
                 &[1u8; 32],
                 Some("submitter@example.com"),
                 "Allow toggling dark mode in settings.",
+                None,
                 FeedbackKind::Feature,
             )
             .await
@@ -800,6 +801,7 @@ mod tests {
                 &[2u8; 32],
                 None,
                 "Login button stuck on mobile.",
+                None,
                 FeedbackKind::Bug,
             )
             .await

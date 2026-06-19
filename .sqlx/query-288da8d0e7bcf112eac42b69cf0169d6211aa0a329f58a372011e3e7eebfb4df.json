@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT short_code,\n                   kind,\n                   status,\n                   left(body, 200) AS body_excerpt,\n                   end_user_email,\n                   anon_token_hash IS NOT NULL AS is_anonymous,\n                   accepted_at\n            FROM feedback\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND body_tsv @@ websearch_to_tsquery('english', $3)\n            ORDER BY ts_rank(body_tsv, websearch_to_tsquery('english', $3)) DESC,\n                     accepted_at DESC\n            LIMIT $4\n            OFFSET $5\n            ",
+  "query": "\n            SELECT short_code,\n                   kind,\n                   status,\n                   sentiment,\n                   left(body, 200) AS body_excerpt,\n                   end_user_email,\n                   anon_token_hash IS NOT NULL AS is_anonymous,\n                   accepted_at\n            FROM feedback\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND ($3::text IS NULL OR status = $3)\n            ORDER BY accepted_at DESC\n            LIMIT $4\n            OFFSET $5\n            ",
   "describe": {
     "columns": [
       {
@@ -20,21 +20,26 @@
       },
       {
         "ordinal": 3,
-        "name": "body_excerpt",
+        "name": "sentiment",
         "type_info": "Text"
       },
       {
         "ordinal": 4,
-        "name": "end_user_email",
+        "name": "body_excerpt",
         "type_info": "Text"
       },
       {
         "ordinal": 5,
+        "name": "end_user_email",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
         "name": "is_anonymous",
         "type_info": "Bool"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "accepted_at",
         "type_info": "Timestamptz"
       }
@@ -52,11 +57,12 @@
       false,
       false,
       false,
+      true,
       null,
       true,
       null,
       false
     ]
   },
-  "hash": "b8e5d60d29a395597a289486199061623aee890785fbb6366de4137063ebc138"
+  "hash": "288da8d0e7bcf112eac42b69cf0169d6211aa0a329f58a372011e3e7eebfb4df"
 }

@@ -50,7 +50,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use feedbackmonk_core::{FeedbackId, FeedbackKind, FeedbackStatus, KeyClass};
+use feedbackmonk_core::{FeedbackId, FeedbackKind, FeedbackStatus, KeyClass, Sentiment};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 use feedbackmonk_repository::ProjectScope;
 
@@ -78,6 +78,8 @@ pub struct MeFeedbackItem {
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
     pub body: String,
+    /// The submitter's own sentiment, if given (FR-FBR-28).
+    pub sentiment: Option<Sentiment>,
     pub submitted_at: DateTime<Utc>,
 }
 
@@ -102,6 +104,8 @@ pub struct MeThreadResponse {
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
     pub body: String,
+    /// The submitter's own sentiment, if given (FR-FBR-28).
+    pub sentiment: Option<Sentiment>,
     pub submitted_at: DateTime<Utc>,
     /// Public replies only, chronological. Internal replies never appear.
     pub replies: Vec<MeReplyItem>,
@@ -139,6 +143,7 @@ pub async fn list_my_feedback(
             kind: f.kind,
             status: f.status,
             body: f.body,
+            sentiment: f.sentiment,
             submitted_at: f.submitted_at,
         })
         .collect();
@@ -197,6 +202,7 @@ pub async fn my_feedback_thread(
             kind: fb.kind,
             status: fb.status,
             body: fb.body,
+            sentiment: fb.sentiment,
             submitted_at: fb.submitted_at,
             replies,
         }),

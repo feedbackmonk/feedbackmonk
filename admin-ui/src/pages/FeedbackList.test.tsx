@@ -7,6 +7,8 @@ import type { FeedbackListResponse } from "../shared/types.gen";
 
 vi.mock("../shared/ApiClient", () => ({
   fetchFeedbackList: vi.fn(),
+  searchFeedback: vi.fn(),
+  fetchSentimentTrend: vi.fn(),
 }));
 
 import { fetchFeedbackList } from "../shared/ApiClient";

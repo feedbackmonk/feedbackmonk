@@ -407,7 +407,7 @@ mod behavioural {
             let token = [u8::try_from(i).unwrap(); 32];
             let fb = state
                 .feedback
-                .submit_anonymous(&scope, &token, None, poison, FeedbackKind::Feature)
+                .submit_anonymous(&scope, &token, None, poison, None, FeedbackKind::Feature)
                 .await
                 .unwrap();
             feedbackmonk_api::assign_cluster_on_submit(

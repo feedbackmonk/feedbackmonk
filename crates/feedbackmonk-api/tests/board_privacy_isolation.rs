@@ -175,6 +175,7 @@ async fn authenticated_submitter_pii_absent_from_board(pool: PgPool) {
             Some(&meta),
             Some("crash-SECRET-abc123"),
             "PUBLIC BODY: the checkout button is broken",
+            None,
             FeedbackKind::Bug,
         )
         .await
@@ -224,6 +225,7 @@ async fn anonymous_submitter_identity_absent_from_board(pool: PgPool) {
             &[42u8; 32],
             Some("anon-optin@private.example"),
             "PUBLIC BODY: please add dark mode",
+            None,
             FeedbackKind::Feature,
         )
         .await
@@ -264,6 +266,7 @@ async fn board_item_shape_is_public_only(pool: PgPool) {
             None,
             None,
             "PUBLIC BODY shape check",
+            None,
             FeedbackKind::Question,
         )
         .await

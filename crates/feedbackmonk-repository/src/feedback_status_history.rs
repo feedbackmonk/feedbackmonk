@@ -293,7 +293,7 @@ mod tests {
         let scope = seed_project_scope(&pool, "history-rt@example.com").await;
 
         let fb_id = feedback_repo
-            .submit_anonymous(&scope, &[8u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&scope, &[8u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -326,7 +326,7 @@ mod tests {
         let s1 = seed_project_scope(&pool, "owner1-h@example.com").await;
         let s2 = seed_project_scope(&pool, "owner2-h@example.com").await;
         let fb_id = feedback_repo
-            .submit_anonymous(&s1, &[9u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[9u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -354,7 +354,7 @@ mod tests {
         let s1 = seed_project_scope(&pool, "owner1-list@example.com").await;
         let s2 = seed_project_scope(&pool, "owner2-list@example.com").await;
         let fb_id = feedback_repo
-            .submit_anonymous(&s1, &[2u8; 32], None, "body", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[2u8; 32], None, "body", None, FeedbackKind::Other)
             .await
             .unwrap();
         history_repo
@@ -383,11 +383,11 @@ mod tests {
         let s2 = seed_project_scope(&pool, "dup-target@example.com").await;
 
         let fb_a = feedback_repo
-            .submit_anonymous(&s1, &[4u8; 32], None, "a", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[4u8; 32], None, "a", None, FeedbackKind::Other)
             .await
             .unwrap();
         let fb_b = feedback_repo
-            .submit_anonymous(&s2, &[5u8; 32], None, "b in other tenant", FeedbackKind::Other)
+            .submit_anonymous(&s2, &[5u8; 32], None, "b in other tenant", None, FeedbackKind::Other)
             .await
             .unwrap();
 

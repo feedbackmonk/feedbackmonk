@@ -30,6 +30,12 @@ export const LEGAL_TRANSITIONS: Record<FeedbackStatus, FeedbackStatus[]> = {
 
 export type FeedbackKind = "bug" | "feature" | "question" | "other";
 
+// Sentiment — first-class enum on feedback rows (backend serde lowercase).
+// Nullable everywhere it surfaces: `null` means the backend has not yet
+// classified the row (or sentiment is unavailable). Rendered icon+label
+// (never color alone) by SentimentBadge, exactly like StatusBadge.
+export type SentimentValue = "negative" | "neutral" | "positive";
+
 // Contract C8 — list response
 export interface FeedbackListItem {
   feedback_id: string; // "FB-XXXXXX"
@@ -39,6 +45,7 @@ export interface FeedbackListItem {
   submitted_at: string; // RFC 3339
   submitter_label: string; // formatted server-side; never raw email-only
   reply_count: number;
+  sentiment?: SentimentValue | null; // first-class sentiment; null = unclassified
 }
 export interface FeedbackListResponse {
   items: FeedbackListItem[];
@@ -79,6 +86,7 @@ export interface FeedbackDetail {
   external_metadata?: Record<string, unknown>;
   status_history: StatusHistoryEntry[];
   replies: ReplyEntry[];
+  sentiment?: SentimentValue | null; // first-class sentiment; null = unclassified
 }
 
 // Contract C7 — transition request/response
@@ -135,6 +143,50 @@ export const KIND_LABELS: Record<FeedbackKind, string> = {
   question: "Question",
   other: "Other",
 };
+
+export const SENTIMENT_LABELS: Record<SentimentValue, string> = {
+  negative: "Negative",
+  neutral: "Neutral",
+  positive: "Positive",
+};
+
+// Stable order for stacked-bar segments + summary tallies (most → least
+// favourable, bottom-up the stack reads negative → neutral → positive).
+export const SENTIMENT_ORDER: SentimentValue[] = [
+  "negative",
+  "neutral",
+  "positive",
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// Sentiment trend — admin "satisfaction over time".
+// GET /api/v1/admin/feedback/sentiment-trend?bucket=week&days=90
+// `buckets` is sparse: only periods with ≥1 sentiment-bearing feedback appear.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type SentimentBucketGranularity = "day" | "week" | "month";
+
+export interface SentimentTrendBucket {
+  bucket_start: string; // RFC 3339 — period start
+  negative: number;
+  neutral: number;
+  positive: number;
+  total: number;
+}
+
+export interface SentimentTrendTotals {
+  negative: number;
+  neutral: number;
+  positive: number;
+  total: number;
+}
+
+export interface SentimentTrendResponse {
+  bucket: SentimentBucketGranularity;
+  since: string; // RFC 3339 — lower bound of the window
+  buckets: SentimentTrendBucket[];
+  totals: SentimentTrendTotals;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // P2 — Customer-facing roadmap surfaces

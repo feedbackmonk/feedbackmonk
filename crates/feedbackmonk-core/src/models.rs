@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::ids::{FeedbackId, SigningKeyId};
+use crate::sentiment::Sentiment;
 use crate::status::FeedbackStatus;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,7 +148,18 @@ pub struct Feedback {
     pub crash_event_id: Option<String>,
     /// 32-byte hash of (cookie + project_id + IP). Anonymous mode only.
     pub anon_token_hash: Option<Vec<u8>>,
+    /// The free-text feedback body. Empty string when the submission carried
+    /// NO body (a sentiment-only submission; FR-FBR-28). The DB column is
+    /// nullable with a `length >= 1` check when present (migration `00017`), so
+    /// `body == ""` UNAMBIGUOUSLY means "no body" — the repository maps the
+    /// nullable column to `""` rather than threading `Option<String>` through
+    /// every existing consumer. At least one of `body` / `sentiment` is always
+    /// present (DB `feedback_body_or_sentiment_check`).
     pub body: String,
+    /// Optional 3-point satisfaction signal (FR-FBR-28). `None` when the
+    /// submitter gave no sentiment.
+    #[serde(default)]
+    pub sentiment: Option<Sentiment>,
     pub kind: FeedbackKind,
     pub accepted_at: DateTime<Utc>,
     /// FR-FBR-08 status workflow column. Defaults to `Submitted` for rows

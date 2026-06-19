@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use feedbackmonk_core::{
     event_type_for_target, Feedback, FeedbackId, FeedbackKind, FeedbackStatus, ModerationStatus,
+    Sentiment,
 };
 
 use crate::error::Result;
@@ -31,7 +32,13 @@ pub trait FeedbackRepo: Send + Sync {
         // not crash-linked. Persisted atomically in the same INSERT so a
         // crash-linked submit can never land without its link.
         crash_event_id: Option<&str>,
+        // `body` — the free-text body. An EMPTY `&str` is stored as SQL NULL (a
+        // sentiment-only submission; FR-FBR-28). `sentiment` — optional 3-point
+        // signal. At least one of (non-empty body, sentiment) must be present;
+        // the API layer validates this before calling (and the DB CHECK is the
+        // backstop).
         body: &str,
+        sentiment: Option<Sentiment>,
         kind: FeedbackKind,
     ) -> Result<FeedbackId>;
 
@@ -41,6 +48,7 @@ pub trait FeedbackRepo: Send + Sync {
         anon_token_hash: &[u8; 32],
         optional_email: Option<&str>,
         body: &str,
+        sentiment: Option<Sentiment>,
         kind: FeedbackKind,
     ) -> Result<FeedbackId>;
 
@@ -274,6 +282,67 @@ pub trait FeedbackRepo: Send + Sync {
         scope: &ProjectScope,
         feedback_id: &FeedbackId,
     ) -> Result<bool>;
+
+    // ==== Capability 1 (FR-FBR-28) — sentiment trend aggregation ============
+
+    /// Admin "satisfaction trend over time" aggregation. Scoped to
+    /// `(tenant, project)`, counts feedback rows that carry a sentiment grouped
+    /// by a time bucket (`day` | `week` | `month`) and sentiment value,
+    /// restricted to rows accepted on/after `since`. Returns ONE
+    /// [`SentimentTrendBucket`] per non-empty time bucket (oldest-first), each
+    /// fully populated (zero-filled per sentiment). Buckets with no
+    /// sentiment-bearing feedback are omitted; the handler fills calendar gaps
+    /// if it wants a dense series.
+    async fn sentiment_trend(
+        &self,
+        scope: &ProjectScope,
+        bucket: TrendBucket,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<SentimentTrendBucket>>;
+}
+
+/// Time-bucket granularity for [`FeedbackRepo::sentiment_trend`]. Maps to a
+/// Postgres `date_trunc` unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrendBucket {
+    Day,
+    Week,
+    Month,
+}
+
+impl TrendBucket {
+    /// The `date_trunc` field name. A fixed allowlist (never user-interpolated
+    /// raw) — the handler parses the query param into this enum first.
+    #[must_use]
+    pub fn as_trunc_unit(self) -> &'static str {
+        match self {
+            Self::Day => "day",
+            Self::Week => "week",
+            Self::Month => "month",
+        }
+    }
+
+    /// Parse the `bucket` query param. Unknown/absent ⇒ `None` (the handler
+    /// defaults to `Week`).
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "day" => Some(Self::Day),
+            "week" => Some(Self::Week),
+            "month" => Some(Self::Month),
+            _ => None,
+        }
+    }
+}
+
+/// One time bucket of the satisfaction trend. `bucket_start` is the truncated
+/// period start (UTC); the three counts are zero-filled.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SentimentTrendBucket {
+    pub bucket_start: chrono::DateTime<chrono::Utc>,
+    pub negative: i64,
+    pub neutral: i64,
+    pub positive: i64,
 }
 
 /// Admin moderation-queue row (C28). Behind `AdminSession`, so it MAY carry
@@ -311,7 +380,10 @@ pub struct EndUserFeedback {
     pub feedback_id: FeedbackId,
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
+    /// Empty string when the submission was sentiment-only (no body).
     pub body: String,
+    /// The submitter's own sentiment, if they gave one (FR-FBR-28).
+    pub sentiment: Option<Sentiment>,
     pub submitted_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -325,6 +397,9 @@ pub struct FeedbackListItem {
     pub feedback_id: FeedbackId,
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
+    /// Optional 3-point satisfaction signal (FR-FBR-28). `None` when the
+    /// submission carried no sentiment.
+    pub sentiment: Option<Sentiment>,
     /// First 200 chars of the body. The admin UI fetches the full body via
     /// `get_with_history` when the user opens the drawer.
     pub body_excerpt: String,
@@ -377,18 +452,23 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         external_metadata: Option<&JsonValue>,
         crash_event_id: Option<&str>,
         body: &str,
+        sentiment: Option<Sentiment>,
         kind: FeedbackKind,
     ) -> Result<FeedbackId> {
         let short_code = FeedbackId::generate();
         let kind_str = kind.as_str();
+        // Empty body => SQL NULL (sentiment-only submission, FR-FBR-28). The
+        // DB CHECK `feedback_body_or_sentiment_check` is the backstop.
+        let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
+        let sentiment_str: Option<&str> = sentiment.map(Sentiment::as_db_str);
         sqlx::query!(
             r#"
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
                 end_user_sub, end_user_email, end_user_name,
-                external_metadata, crash_event_id, body, kind
+                external_metadata, crash_event_id, body, sentiment, kind
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
             "#,
             short_code.as_str(),
             scope.project_id(),
@@ -398,7 +478,8 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             end_user_name,
             external_metadata,
             crash_event_id,
-            body,
+            body_opt,
+            sentiment_str,
             kind_str,
         )
         .execute(&self.pool)
@@ -412,25 +493,29 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         anon_token_hash: &[u8; 32],
         optional_email: Option<&str>,
         body: &str,
+        sentiment: Option<Sentiment>,
         kind: FeedbackKind,
     ) -> Result<FeedbackId> {
         let short_code = FeedbackId::generate();
         let kind_str = kind.as_str();
         let token: &[u8] = anon_token_hash.as_slice();
+        let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
+        let sentiment_str: Option<&str> = sentiment.map(Sentiment::as_db_str);
         sqlx::query!(
             r#"
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
-                end_user_email, anon_token_hash, body, kind
+                end_user_email, anon_token_hash, body, sentiment, kind
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             "#,
             short_code.as_str(),
             scope.project_id(),
             scope.tenant_id(),
             optional_email,
             token,
-            body,
+            body_opt,
+            sentiment_str,
             kind_str,
         )
         .execute(&self.pool)
@@ -459,7 +544,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             SELECT id, short_code, project_id, tenant_id,
                    end_user_sub, end_user_email, end_user_name,
-                   external_metadata, crash_event_id, anon_token_hash, body, kind, accepted_at, status
+                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status
             FROM feedback
             WHERE project_id = $1 AND tenant_id = $2
             ORDER BY accepted_at DESC
@@ -485,7 +570,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 external_metadata: r.external_metadata,
                 crash_event_id: r.crash_event_id,
                 anon_token_hash: r.anon_token_hash,
-                body: r.body,
+                // Nullable body (sentiment-only rows) maps to "" (FR-FBR-28).
+                body: r.body.unwrap_or_default(),
+                sentiment: r.sentiment.as_deref().and_then(Sentiment::parse),
                 kind: FeedbackKind::from_db_str(&r.kind),
                 accepted_at: r.accepted_at,
                 status: FeedbackStatus::from_db_str(&r.status),
@@ -510,6 +597,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             SELECT short_code,
                    kind,
                    status,
+                   sentiment,
                    left(body, 200) AS body_excerpt,
                    end_user_email,
                    anon_token_hash IS NOT NULL AS is_anonymous,
@@ -553,6 +641,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 feedback_id: FeedbackId::from(r.short_code),
                 kind: FeedbackKind::from_db_str(&r.kind),
                 status: FeedbackStatus::from_db_str(&r.status),
+                sentiment: r.sentiment.as_deref().and_then(Sentiment::parse),
                 body_excerpt: r.body_excerpt.unwrap_or_default(),
                 submitted_at: r.accepted_at,
                 submitter_email: r.end_user_email,
@@ -585,6 +674,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             SELECT short_code,
                    kind,
                    status,
+                   sentiment,
                    left(body, 200) AS body_excerpt,
                    end_user_email,
                    anon_token_hash IS NOT NULL AS is_anonymous,
@@ -629,6 +719,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 feedback_id: FeedbackId::from(r.short_code),
                 kind: FeedbackKind::from_db_str(&r.kind),
                 status: FeedbackStatus::from_db_str(&r.status),
+                sentiment: r.sentiment.as_deref().and_then(Sentiment::parse),
                 body_excerpt: r.body_excerpt.unwrap_or_default(),
                 submitted_at: r.accepted_at,
                 submitter_email: r.end_user_email,
@@ -652,7 +743,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             SELECT id, short_code, project_id, tenant_id,
                    end_user_sub, end_user_email, end_user_name,
-                   external_metadata, crash_event_id, anon_token_hash, body, kind, accepted_at, status
+                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status
             FROM feedback
             WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
             "#,
@@ -675,7 +766,8 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             external_metadata: row.external_metadata,
             crash_event_id: row.crash_event_id,
             anon_token_hash: row.anon_token_hash,
-            body: row.body,
+            body: row.body.unwrap_or_default(),
+            sentiment: row.sentiment.as_deref().and_then(Sentiment::parse),
             kind: FeedbackKind::from_db_str(&row.kind),
             accepted_at: row.accepted_at,
             status: FeedbackStatus::from_db_str(&row.status),
@@ -890,7 +982,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         )
         .fetch_all(&self.pool)
         .await?;
-        Ok(rows.into_iter().map(|r| r.body).collect())
+        // Sentiment-only rows (NULL body) carry no text to ground a
+        // recommendation — drop them from the member-bodies grounding read.
+        Ok(rows.into_iter().filter_map(|r| r.body).collect())
     }
 
     // ==== Gap #4 (DELTA) — end-user read surface impl =======================
@@ -907,7 +1001,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // match. No internal columns are selected.
         let rows = sqlx::query!(
             r#"
-            SELECT short_code, kind, status, body, accepted_at
+            SELECT short_code, kind, status, body, sentiment, accepted_at
             FROM feedback
             WHERE tenant_id = $1 AND project_id = $2 AND end_user_sub = $3
             ORDER BY accepted_at DESC
@@ -942,7 +1036,8 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 feedback_id: FeedbackId::from(r.short_code),
                 kind: FeedbackKind::from_db_str(&r.kind),
                 status: FeedbackStatus::from_db_str(&r.status),
-                body: r.body,
+                body: r.body.unwrap_or_default(),
+                sentiment: r.sentiment.as_deref().and_then(Sentiment::parse),
                 submitted_at: r.accepted_at,
             })
             .collect();
@@ -961,7 +1056,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // another tenant/project) returns NotFound, never another user's row.
         let row = sqlx::query!(
             r#"
-            SELECT short_code, kind, status, body, accepted_at
+            SELECT short_code, kind, status, body, sentiment, accepted_at
             FROM feedback
             WHERE tenant_id = $1 AND project_id = $2
               AND short_code = $3 AND end_user_sub = $4
@@ -979,7 +1074,8 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             feedback_id: FeedbackId::from(row.short_code),
             kind: FeedbackKind::from_db_str(&row.kind),
             status: FeedbackStatus::from_db_str(&row.status),
-            body: row.body,
+            body: row.body.unwrap_or_default(),
+            sentiment: row.sentiment.as_deref().and_then(Sentiment::parse),
             submitted_at: row.accepted_at,
         })
     }
@@ -1186,7 +1282,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 feedback_id: FeedbackId::from(r.short_code),
                 kind: FeedbackKind::from_db_str(&r.kind),
                 status: FeedbackStatus::from_db_str(&r.status),
-                body: r.body,
+                body: r.body.unwrap_or_default(),
                 accepted_at: r.accepted_at,
             })
             .collect();
@@ -1221,7 +1317,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             feedback_id: FeedbackId::from(row.short_code),
             kind: FeedbackKind::from_db_str(&row.kind),
             status: FeedbackStatus::from_db_str(&row.status),
-            body: row.body,
+            body: row.body.unwrap_or_default(),
             accepted_at: row.accepted_at,
         })
     }
@@ -1253,6 +1349,51 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         .fetch_one(&self.pool)
         .await?;
         Ok(row.exists)
+    }
+
+    async fn sentiment_trend(
+        &self,
+        scope: &ProjectScope,
+        bucket: TrendBucket,
+        since: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Vec<SentimentTrendBucket>> {
+        // `date_trunc($1, accepted_at)` takes the unit as a BOUND text param —
+        // `bucket.as_trunc_unit()` is a fixed allowlist (day|week|month), never
+        // raw user input. Same `(tenant_id, project_id)` scope clause as every
+        // other feedback read (DEC-FBR-03). FILTER aggregates zero-fill each
+        // sentiment per bucket in one pass.
+        let unit = bucket.as_trunc_unit();
+        let rows = sqlx::query!(
+            r#"
+            SELECT date_trunc($1, accepted_at) AS "bucket_start!",
+                   count(*) FILTER (WHERE sentiment = 'negative') AS "negative!",
+                   count(*) FILTER (WHERE sentiment = 'neutral')  AS "neutral!",
+                   count(*) FILTER (WHERE sentiment = 'positive') AS "positive!"
+            FROM feedback
+            WHERE tenant_id = $2
+              AND project_id = $3
+              AND sentiment IS NOT NULL
+              AND accepted_at >= $4
+            GROUP BY date_trunc($1, accepted_at)
+            ORDER BY date_trunc($1, accepted_at) ASC
+            "#,
+            unit,
+            scope.tenant_id(),
+            scope.project_id(),
+            since,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| SentimentTrendBucket {
+                bucket_start: r.bucket_start,
+                negative: r.negative,
+                neutral: r.neutral,
+                positive: r.positive,
+            })
+            .collect())
     }
 }
 
@@ -1288,6 +1429,7 @@ mod tests {
                 Some(&meta),
                 None, // crash_event_id — not crash-linked here
                 "It crashed when I clicked save",
+                None,
                 FeedbackKind::Bug,
             )
             .await
@@ -1324,6 +1466,7 @@ mod tests {
                 None,
                 Some(crash_id),
                 "App panicked on save",
+                None,
                 FeedbackKind::Bug,
             )
             .await
@@ -1348,11 +1491,11 @@ mod tests {
 
         let token = [9u8; 32];
         let id1 = repo
-            .submit_anonymous(&scope, &token, None, "First note", FeedbackKind::Other)
+            .submit_anonymous(&scope, &token, None, "First note", None, FeedbackKind::Other)
             .await
             .unwrap();
         let id2 = repo
-            .submit_anonymous(&scope, &token, Some("opt@in.com"), "Second", FeedbackKind::Feature)
+            .submit_anonymous(&scope, &token, Some("opt@in.com"), "Second", None, FeedbackKind::Feature)
             .await
             .unwrap();
         assert_ne!(id1.as_str(), id2.as_str());
@@ -1370,7 +1513,7 @@ mod tests {
 
         // Seed three submissions.
         for body in ["one", "two", "three"] {
-            repo.submit_anonymous(&scope, &[7u8; 32], None, body, FeedbackKind::Other)
+            repo.submit_anonymous(&scope, &[7u8; 32], None, body, None, FeedbackKind::Other)
                 .await
                 .unwrap();
         }
@@ -1389,7 +1532,7 @@ mod tests {
         let repo = SqlxFeedbackRepo::new(pool.clone());
         let s1 = seed_project_scope(&pool, "owner1-admin@example.com").await;
         let s2 = seed_project_scope(&pool, "owner2-admin@example.com").await;
-        repo.submit_anonymous(&s1, &[1u8; 32], None, "from s1", FeedbackKind::Other)
+        repo.submit_anonymous(&s1, &[1u8; 32], None, "from s1", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -1404,7 +1547,7 @@ mod tests {
     async fn list_for_admin_status_filter_returns_matching_rows(pool: PgPool) {
         let repo = SqlxFeedbackRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "status-filter@example.com").await;
-        repo.submit_anonymous(&scope, &[5u8; 32], None, "row", FeedbackKind::Other)
+        repo.submit_anonymous(&scope, &[5u8; 32], None, "row", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -1431,7 +1574,7 @@ mod tests {
         let repo = SqlxFeedbackRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "history@example.com").await;
         let id = repo
-            .submit_anonymous(&scope, &[3u8; 32], None, "row body", FeedbackKind::Bug)
+            .submit_anonymous(&scope, &[3u8; 32], None, "row body", None, FeedbackKind::Bug)
             .await
             .unwrap();
 
@@ -1448,7 +1591,7 @@ mod tests {
         let s1 = seed_project_scope(&pool, "owner1-history@example.com").await;
         let s2 = seed_project_scope(&pool, "owner2-history@example.com").await;
         let id = repo
-            .submit_anonymous(&s1, &[6u8; 32], None, "cross-tenant target", FeedbackKind::Other)
+            .submit_anonymous(&s1, &[6u8; 32], None, "cross-tenant target", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -1463,9 +1606,9 @@ mod tests {
         let s1 = seed_project_scope(&pool, "owner1@example.com").await;
         let s2 = seed_project_scope(&pool, "owner2@example.com").await;
 
-        repo.submit_anonymous(&s1, &[1u8; 32], None, "from s1", FeedbackKind::Other).await.unwrap();
-        repo.submit_anonymous(&s2, &[2u8; 32], None, "from s2-a", FeedbackKind::Other).await.unwrap();
-        repo.submit_anonymous(&s2, &[3u8; 32], None, "from s2-b", FeedbackKind::Other).await.unwrap();
+        repo.submit_anonymous(&s1, &[1u8; 32], None, "from s1", None, FeedbackKind::Other).await.unwrap();
+        repo.submit_anonymous(&s2, &[2u8; 32], None, "from s2-a", None, FeedbackKind::Other).await.unwrap();
+        repo.submit_anonymous(&s2, &[3u8; 32], None, "from s2-b", None, FeedbackKind::Other).await.unwrap();
 
         let s1_rows = repo.list_recent(&s1, 10).await.unwrap();
         let s2_rows = repo.list_recent(&s2, 10).await.unwrap();
@@ -1487,10 +1630,10 @@ mod tests {
         let repo = SqlxFeedbackRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "fts-match@example.com").await;
 
-        repo.submit_anonymous(&scope, &[1u8; 32], None, "the checkout button is broken", FeedbackKind::Bug)
+        repo.submit_anonymous(&scope, &[1u8; 32], None, "the checkout button is broken", None, FeedbackKind::Bug)
             .await
             .unwrap();
-        repo.submit_anonymous(&scope, &[2u8; 32], None, "please add a dark theme", FeedbackKind::Feature)
+        repo.submit_anonymous(&scope, &[2u8; 32], None, "please add a dark theme", None, FeedbackKind::Feature)
             .await
             .unwrap();
 
@@ -1513,7 +1656,7 @@ mod tests {
         let repo = SqlxFeedbackRepo::new(pool.clone());
         let s1 = seed_project_scope(&pool, "fts-owner1@example.com").await;
         let s2 = seed_project_scope(&pool, "fts-owner2@example.com").await;
-        repo.submit_anonymous(&s1, &[1u8; 32], None, "secret roadmap leak details", FeedbackKind::Other)
+        repo.submit_anonymous(&s1, &[1u8; 32], None, "secret roadmap leak details", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -1538,6 +1681,7 @@ mod tests {
                 &[u8::try_from(i).unwrap(); 32],
                 None,
                 "shared keyword in every row",
+                None,
                 FeedbackKind::Other,
             )
             .await
@@ -1557,7 +1701,7 @@ mod tests {
     async fn search_for_admin_blank_query_matches_nothing(pool: PgPool) {
         let repo = SqlxFeedbackRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "fts-blank@example.com").await;
-        repo.submit_anonymous(&scope, &[1u8; 32], None, "some body text", FeedbackKind::Other)
+        repo.submit_anonymous(&scope, &[1u8; 32], None, "some body text", None, FeedbackKind::Other)
             .await
             .unwrap();
 
@@ -1594,7 +1738,7 @@ mod tests {
         let mut ids = Vec::new();
         for i in 0..3 {
             let id = repo
-                .submit_anonymous(&scope, &[u8::try_from(i).unwrap(); 32], None, "x", FeedbackKind::Bug)
+                .submit_anonymous(&scope, &[u8::try_from(i).unwrap(); 32], None, "x", None, FeedbackKind::Bug)
                 .await
                 .unwrap();
             repo.set_cluster_id(&scope, &id, Some(a.id)).await.unwrap();

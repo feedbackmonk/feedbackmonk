@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, short_code, project_id, tenant_id,\n                   end_user_sub, end_user_email, end_user_name,\n                   external_metadata, crash_event_id, anon_token_hash, body, kind, accepted_at, status\n            FROM feedback\n            WHERE project_id = $1 AND tenant_id = $2\n            ORDER BY accepted_at DESC\n            LIMIT $3\n            ",
+  "query": "\n            SELECT id, short_code, project_id, tenant_id,\n                   end_user_sub, end_user_email, end_user_name,\n                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3\n            ",
   "describe": {
     "columns": [
       {
@@ -60,16 +60,21 @@
       },
       {
         "ordinal": 11,
-        "name": "kind",
+        "name": "sentiment",
         "type_info": "Text"
       },
       {
         "ordinal": 12,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 13,
         "name": "accepted_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 13,
+        "ordinal": 14,
         "name": "status",
         "type_info": "Text"
       }
@@ -78,7 +83,7 @@
       "Left": [
         "Uuid",
         "Uuid",
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
@@ -92,11 +97,12 @@
       true,
       true,
       true,
-      false,
+      true,
+      true,
       false,
       false,
       false
     ]
   },
-  "hash": "d085b8d9add8429673ab099de16eee9d0146ae4fe231a4457a19f894dd4e4089"
+  "hash": "971efec0136855043a9cc3bdcd731500bd37eee9203cb15cc6e53f7560177c81"
 }

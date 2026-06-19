@@ -26,6 +26,7 @@ import type {
   RoadmapItem,
   RoadmapListResponse,
   RunnerTokenListResponse,
+  SentimentTrendResponse,
   TierCapExceededBody,
   TierStatus,
   TopVotedResponse,
@@ -150,6 +151,28 @@ export async function fetchFeedbackDetail(
 ): Promise<FeedbackDetail> {
   const r = await api.get<FeedbackDetail>(
     `/admin/feedback/${encodeURIComponent(feedbackId)}`,
+  );
+  return r.data;
+}
+
+export interface SentimentTrendParams {
+  bucket?: string; // "day" | "week" | "month"; server defaults to week
+  days?: number; // server defaults to 90, clamps 1..730
+}
+
+// Admin satisfaction-trend aggregate (sparse bucketed series). baseURL is
+// already /api/v1, so the path is the admin route minus that prefix.
+export async function fetchSentimentTrend(
+  params: SentimentTrendParams = {},
+): Promise<SentimentTrendResponse> {
+  const r = await api.get<SentimentTrendResponse>(
+    "/admin/feedback/sentiment-trend",
+    {
+      params: {
+        bucket: params.bucket,
+        days: params.days,
+      },
+    },
   );
   return r.data;
 }
