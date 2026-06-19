@@ -144,9 +144,13 @@ Integration handshake (all built + exercised): customer signs up → gets `proje
 
 The separate Astro **marketing site** (`feedbackmonk.com` landing page, FR-FBR-16) is product marketing — not required for GitCellar's functional integration.
 
-### PF-A11Y-LOGIN-01: Fix pre-existing broken `admin-ui/e2e/a11y.spec.ts` login test
+### ~~PF-A11Y-LOGIN-01: Fix pre-existing broken `admin-ui/e2e/a11y.spec.ts` login test~~ — DONE
 
-**Status (2026-06-19): open, out-of-scope follow-up surfaced during Public Board Stage 1 convergence.** The login a11y test in `admin-ui/e2e/a11y.spec.ts` is broken on `main` (since e8ef874, predates the board work): `getByLabel('Password')` resolves in strict-mode to **two** elements because of the committed "Show password" toggle button — Playwright throws a strict-mode violation. Verified by CLAUDE-D to predate and be unrelated to the board work; deliberately NOT blocked GATE 1 and NOT fixed in that session per the handoff scope. Fix: disambiguate the locator (e.g. `getByLabel('Password', { exact: true })` or a `data-testid`) so the login-page axe scan runs. Small (<10 LOC), one spec file. The two **new** a11y specs (`moderation-a11y.spec.ts`, `public-board-a11y.spec.ts`) are green (4/4, 0 violations) and unaffected.
+**Status (2026-06-19): FIXED.** Two latent bugs in the login a11y spec, both test-harness-only (no app/board/moderation code touched):
+- **Strict-mode locator collision** (the named bug): `getByLabel('Password')` matched **two** elements — the password input (`<label>Password</label>`) and the "Show password" toggle (`aria-label="Show password"`), since Playwright `getByLabel` is case-insensitive substring by default. Fix: `getByLabel('Password', { exact: true })`.
+- **Stale fake-API mock** (surfaced once the locator was fixed): the mock routed `/auth/login`, but the app moved to `POST /api/v1/login` (DEC-FBR-IMPL-10), so the login POST fell through to the absent backend and `waitForURL('**/feedback')` timed out. Fix: mock matcher → `/\/api\/v1\/login$/`.
+
+Full e2e a11y suite green: **13/13 passed**, including the previously-failing login spec and the two new board specs (`moderation-a11y.spec.ts`, `public-board-a11y.spec.ts`). No regressions.
 
 ---
 

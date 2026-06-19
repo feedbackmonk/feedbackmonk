@@ -40,7 +40,7 @@ async function installFakeApi(page: Page) {
   await page.route("**/api/v1/**", async (route: Route) => {
     const url = route.request().url();
     const method = route.request().method();
-    if (url.includes("/auth/login") && method === "POST") {
+    if (url.match(/\/api\/v1\/login$/) && method === "POST") {
       await route.fulfill({ status: 200, body: "{}" });
       return;
     }
@@ -121,7 +121,7 @@ test.describe("Admin UI a11y smoke", () => {
 
     // Fill + submit
     await page.getByLabel("Email").fill("admin@example.com");
-    await page.getByLabel("Password").fill("hunter2");
+    await page.getByLabel("Password", { exact: true }).fill("hunter2");
     await page.getByRole("button", { name: /Sign in/i }).click();
 
     // 2. List page
