@@ -1,0 +1,44 @@
+{
+  "name": "public-board-moderation-gate",
+  "version": "0.1.0-scaffold",
+  "kind": "verification",
+  "question": "Can any public-board endpoint return a feedback row whose moderation_status != approved, or leak submitter PII? Probe A proves from moderation.rs that `is_publicly_visible` classifies EXACTLY {Approved} as visible (and excludes Pending/Rejected). Probe B (activates when the board repo/handler lands) asserts the board read query hard-filters moderation_status='approved' in SQL and the board wire shape carries no submitter PII. Probe C (--full, activates when the tests land) runs the board moderation-gate + privacy isolation tests.",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/oracles/public-board-moderation-gate/oracle.sh",
+    "windows": ".claude/oracles/public-board-moderation-gate/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe B/C report PENDING (not failure) until Worker A's board repo/handler + integration tests land."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-core/src/moderation.rs",
+      "crates/feedbackmonk-repository/src/feedback.rs",
+      "crates/feedbackmonk-api/src/handlers/board.rs",
+      "crates/feedbackmonk-api/src/handlers/moderation.rs",
+      "crates/feedbackmonk-api/tests/board_moderation_gate.rs",
+      "crates/feedbackmonk-api/tests/board_privacy_isolation.rs",
+      ".claude/oracles/public-board-moderation-gate/oracle.py"
+    ],
+    "compute_cost_ms": 45
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the moderation state machine, the board read path, or the board wire shapes",
+    "estimated_token_savings_per_call": 950
+  },
+  "consumer_scope": "feedbackmonk: Worker A (primary) + Workers C/D + every reviewer touching crates/feedbackmonk-core/src/moderation.rs (state machine), the board read repo/handler, or the board wire shapes. A green oracle with Probe B+C ACTIVE is the Stage 1 exit gate (GATE 1).",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-19T00:00:00Z"
+  },
+  "fallback": "Probe A: read crates/feedbackmonk-core/src/moderation.rs and confirm `is_publicly_visible` returns true for EXACTLY {Approved} and false for {Pending, Rejected}. Probe B: read the board read repo/handler and confirm the SQL hard-filters moderation_status='approved' (not an optional/handler-side filter) AND the board wire shape names none of {end_user_email, end_user_name, end_user_sub, anon_token_hash, external_metadata, crash_event_id}. Probe C: cargo test -p feedbackmonk-api --test board_moderation_gate --test board_privacy_isolation.",
+  "provenance": {
+    "authored_by": "Stage 0 freeze (scaffold) — finalized by Workers A/B as the board repo/handler + tests land",
+    "created": "2026-06-19T00:00:00Z",
+    "rationale": "Testability Gate Flag 1 (Q2=5, highest plan-wide fidelity risk): the moderation gate is THE trust boundary between public submission and public exposure (FR-FBR-25a sibling). A happy-path test confirms `approve -> visible` but cannot prove the ABSENCE of a code path that returns an unapproved row on the public board, or that leaks submitter PII. This oracle is detection-from-CODE (state-machine source + SQL filter + wire shape + ledger), the anti-reward-hacking leg — it cannot be satisfied by a self-reported `is_public` flag. Scaffolded in Stage 0 (Probe A live; B/C co-evolve with Worker A); a green oracle with B+C active is GATE 1."
+  }
+}

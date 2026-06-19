@@ -11,6 +11,7 @@
 pub mod action_type;
 pub mod ids;
 pub mod models;
+pub mod moderation;
 pub mod roadmap;
 pub mod status;
 pub mod tier;
@@ -21,6 +22,9 @@ pub use ids::{FeedbackId, SigningKeyId};
 pub use models::{
     AnonSubmission, Feedback, FeedbackKind, KeyClass, Project, RateLimitCounter, SigningKey,
     Tenant, WidgetBrand,
+};
+pub use moderation::{
+    event_type_for_target, legal_moderation_transitions_from, ModerationError, ModerationStatus,
 };
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use status::{legal_transitions_from, FeedbackStatus, TransitionError};

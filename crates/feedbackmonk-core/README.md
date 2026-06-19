@@ -22,7 +22,8 @@ It deliberately holds **no** DB access, **no** async code, and **no** network I/
 | `src/ids.rs` | `FeedbackId` (FB-1234-style display ID generator) and `SigningKeyId`. Includes 3 unit tests covering format invariants and uniqueness. |
 | `src/models.rs` | Plain `struct` / `enum` records mirroring the P0 schema. Includes 3 unit tests over `FeedbackKind` parse round-trips and `Feedback` field defaults. |
 | `src/roadmap.rs` | P2: `RoadmapItem`, `RoadmapStatus`, public-roadmap value types (Contract C13). |
-| `src/status.rs` | P1: `FeedbackStatus` enum + transitions (Contract C6). |
+| `src/status.rs` | P1: `FeedbackStatus` enum + transitions (Contract C6). The **triage** workflow axis (submitted/triaged/…), NOT public visibility. |
+| `src/moderation.rs` | Public Feedback Board: `ModerationStatus` enum (`Pending`/`Approved`/`Rejected`) + `legal_moderation_transitions_from` + `is_publicly_visible` (only `Approved`) + `event_type_for_target` (Contract C28). The **public-visibility** axis, orthogonal to `status.rs`. `is_publicly_visible` is the structural moderation gate the `public-board-moderation-gate` oracle reads. 10 unit tests. |
 | `src/tier.rs` | **P3 Stage 1**: `Tier` enum (`Free | Starter | Pro | SelfHost`), `ResourceKind`, `TierQuotas` config struct, and the `tier_quotas(tier) -> TierQuotas` const fn that is the **single source of truth** for per-tier caps + capability flags + footer copy. `as_db_str` / `from_db_str` are the canonical conversion path used by `feedbackmonk-repository`. 11 unit tests cover round-trip, default, exhaustive matching, and `tier_quotas()` shape per Contract C19. |
 | `Cargo.toml` | Depends on `uuid`, `chrono`, `serde`, `serde_json`. No DB / HTTP crates. |
 
