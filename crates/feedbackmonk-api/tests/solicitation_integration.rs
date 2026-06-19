@@ -91,6 +91,7 @@ fn build_test_state(pool: &PgPool) -> AppState {
         jwt_iat_leeway_seconds: 5,
         roadmap_items: Arc::new(feedbackmonk_repository::SqlxRoadmapItemRepo::new(pool.clone())),
         roadmap_votes: Arc::new(feedbackmonk_repository::SqlxRoadmapVoteRepo::new(pool.clone())),
+        board_votes: Arc::new(feedbackmonk_repository::SqlxBoardVoteRepo::new(pool.clone())),
         voting_cache: feedbackmonk_api::VotingCache::new(),
         started_at: chrono::Utc::now(),
         health: SqlxHealthCheck::new(pool.clone()),

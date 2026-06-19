@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import axios from "axios";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { PublicBoard } from "../PublicBoard";
 import { ToastProvider } from "../../../components/Toast";
 import { renderWithClient } from "../../../test/testUtils";
@@ -8,10 +8,18 @@ import type { BoardListResponse } from "../../../shared/types.gen";
 
 vi.mock("../../../shared/ApiClient", () => ({
   fetchPublicBoard: vi.fn(),
+  castBoardVote: vi.fn(),
+  retractBoardVote: vi.fn(),
 }));
 
-import { fetchPublicBoard } from "../../../shared/ApiClient";
+import {
+  castBoardVote,
+  fetchPublicBoard,
+  retractBoardVote,
+} from "../../../shared/ApiClient";
 const mockedList = vi.mocked(fetchPublicBoard);
+const mockedCast = vi.mocked(castBoardVote);
+const mockedRetract = vi.mocked(retractBoardVote);
 
 const PROJECT_ID = "00000000-0000-0000-0000-000000000abc";
 
@@ -42,9 +50,11 @@ const exampleList: BoardListResponse = {
 describe("PublicBoard", () => {
   beforeEach(() => {
     mockedList.mockReset();
+    mockedCast.mockReset();
+    mockedRetract.mockReset();
   });
 
-  it("renders approved board items with body, kind, status and read-only vote count", async () => {
+  it("renders approved board items with body, kind, status and a vote button carrying the count", async () => {
     mockedList.mockResolvedValueOnce(exampleList);
     renderWithClient(
       <ToastProvider>
@@ -64,10 +74,41 @@ describe("PublicBoard", () => {
     expect(
       screen.getByRole("heading", { name: /Bug · FB-AAA111/, level: 2 }),
     ).toBeInTheDocument();
-    // Vote count is read-only this stage (voting deferred — no vote button).
-    expect(screen.getByText("14 votes")).toBeInTheDocument();
-    expect(screen.getByText("9 votes")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /vote/i })).not.toBeInTheDocument();
+    // The real vote count (C30) is carried by an accessible vote button per item.
+    expect(
+      screen.getByRole("button", {
+        name: /Vote for FB-AAA111 — current count 9/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Vote for FB-BBB222 — current count 14/,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it("casts a board vote on click (C30) and refetches the list", async () => {
+    mockedList.mockResolvedValue(exampleList);
+    mockedCast.mockResolvedValueOnce({
+      short_code: "FB-AAA111",
+      voter_mode: "anon",
+      cast_at: "2026-06-19T12:00:00Z",
+    });
+    renderWithClient(
+      <ToastProvider>
+        <PublicBoard projectId={PROJECT_ID} />
+      </ToastProvider>,
+      { withRouter: true, initialPath: `/public/projects/${PROJECT_ID}/board` },
+    );
+
+    const voteBtn = await screen.findByRole("button", {
+      name: /Vote for FB-AAA111 — current count 9/,
+    });
+    fireEvent.click(voteBtn);
+
+    await waitFor(() => {
+      expect(mockedCast).toHaveBeenCalledWith(PROJECT_ID, "FB-AAA111");
+    });
   });
 
   it("never references a submitter-identity field (C29 privacy invariant)", async () => {

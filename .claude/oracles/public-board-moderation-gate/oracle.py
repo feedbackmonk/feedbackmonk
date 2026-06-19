@@ -35,7 +35,12 @@ THREE probes (detection-from-code, co-evolving with Worker A):
          a bound param is rejected — it can't be statically proven always-approved);
        - the scope MUST NOT name any submitter-PII field, MUST NOT reference a
          non-approved moderation literal (`pending`/`rejected`), and MUST NOT
-         surface `feedback_replies` (internal reply content).
+         surface `feedback_replies` (internal reply content);
+       - VOTE PATH (D3, PF-BOARD-VOTING-01): every board.rs handler that writes
+         through `state.board_votes` (cast/retract) MUST run `ensure_board_enabled`
+         AND an approved-only resolution (`resolve_approved_board_*`) BEFORE the
+         write — so a vote/retract on a pending/rejected/board-disabled item 404s
+         like the read path (plan D2). Gracefully skipped before voting is wired.
      Before board.rs exists this probe reports PENDING (does not fail).
      NOTE — C29 inv. 2 (board-disabled→404) is a distinct leak vector (approved
      rows from a non-opted-in project), OUTSIDE this oracle's framed question
@@ -118,6 +123,23 @@ PII_FIELDS = [
 # rows; the board wire shape (C29) has no reply field, so any reference to the
 # replies table inside the board read scope is a leak vector.
 REPLY_TABLE_TOKEN = "feedback_replies"
+
+# --- Vote-path gate (D3, PF-BOARD-VOTING-01) --------------------------------
+# The board VOTE write surface: a board.rs handler that votes/retracts goes
+# through `state.board_votes.{cast,retract}`. Such a handler MUST first run the
+# board-enabled check AND resolve the target through an approved-only path before
+# the write — otherwise the vote endpoint confirms the existence of hidden
+# (pending/rejected/board-disabled) feedback (plan D2; sibling to C29/FR-FBR-27).
+# Match the actual repo WRITE call `state.board_votes.{cast,retract}` (the `.`
+# prefix), NOT the bare substring — so a comment or the table name
+# `feedback_board_votes` (e.g. in item_response's D1 doc, where the substring
+# `board_votes` appears) is not mistaken for a vote handler.
+BOARD_VOTE_REPO_TOKEN = ".board_votes"
+BOARD_ENABLED_FN = "ensure_board_enabled"
+# The approved-only resolution fn the vote handlers must call before any write.
+# It is itself a board-read fn (named *board*, queries `FROM feedback`), so its
+# approved-only SQL literal is already enforced by the per-read-fn check (1).
+APPROVED_RESOLVE_RE = re.compile(r"resolve_approved_board\w*")
 
 
 def rel(p: Path) -> str:
@@ -329,6 +351,51 @@ def probe_b() -> Tuple[List[str], bool]:
                 "internal/admin reply content (C29 wire shape has no reply field; "
                 "`feedback_replies` carries internal-visibility rows)."
             )
+
+    # (4) VOTE-PATH gate (D3, PF-BOARD-VOTING-01): every board.rs handler that
+    #     writes through `state.board_votes` (cast/retract) MUST route through
+    #     ensure_board_enabled AND an approved-only resolution (resolve_approved_
+    #     board_*) BEFORE the vote write — so a vote/retract on a pending/rejected/
+    #     board-disabled item 404s identically to the read path (plan D2). Without
+    #     this the vote endpoint is an existence oracle for hidden feedback
+    #     (privacy leak, sibling to C29/FR-FBR-27). The resolution fn is itself a
+    #     board-read fn, so check (1) already pins its approved-only SQL literal.
+    #     Gracefully skipped before voting is wired (no board_votes reference yet).
+    if BOARD_VOTE_REPO_TOKEN in handler_text:
+        vote_handlers = [
+            (name, body)
+            for name, body in _iter_fn_bodies(handler_text, r"\w+")
+            if BOARD_VOTE_REPO_TOKEN in body
+        ]
+        if not vote_handlers:
+            offenders.append(
+                f"{rel(BOARD_HANDLER_RS)}: `{BOARD_VOTE_REPO_TOKEN}` is referenced but no enclosing "
+                "vote handler fn body was found — the vote-path moderation gate (D2) cannot be "
+                "scope-verified."
+            )
+        for name, body in vote_handlers:
+            if BOARD_ENABLED_FN not in body:
+                offenders.append(
+                    f"{rel(BOARD_HANDLER_RS)}::{name}: board vote handler does not call "
+                    f"`{BOARD_ENABLED_FN}` — a vote/retract on a board-DISABLED project must 404 "
+                    "(C29 inv. 2 extended to the vote path, plan D2)."
+                )
+            rm = APPROVED_RESOLVE_RE.search(body)
+            if not rm:
+                offenders.append(
+                    f"{rel(BOARD_HANDLER_RS)}::{name}: board vote handler does not resolve the "
+                    "target through an approved-only path (`resolve_approved_board_*`) before the "
+                    f"`{BOARD_VOTE_REPO_TOKEN}` write — a vote on a pending/rejected item would be "
+                    "an existence oracle for hidden feedback (plan D2; sibling to C29/FR-FBR-27)."
+                )
+            else:
+                write_idx = body.find(BOARD_VOTE_REPO_TOKEN)
+                if write_idx != -1 and rm.start() > write_idx:
+                    offenders.append(
+                        f"{rel(BOARD_HANDLER_RS)}::{name}: the approved-only resolution must run "
+                        f"BEFORE the `{BOARD_VOTE_REPO_TOKEN}` write (the moderation gate is a "
+                        "pre-write check, not a post-hoc one) — plan D2."
+                    )
     return offenders, False
 
 
@@ -398,7 +465,7 @@ def main() -> int:
             )
         else:
             print(
-                "  Probe B (board read approved-only + no PII): clean "
+                "  Probe B (board read + vote path approved-only + no PII): clean "
                 f"({rel(BOARD_HANDLER_RS)})"
             )
         print(f"  Probe C (behavioral drift-detection): {c_message}")

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3\n              AND moderation_status = 'approved'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7383f4d3a599ecd0cfae8ffc57025bd6b6709173ab4cafbde4d11b0ba2028c57"
+}

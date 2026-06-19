@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-`/public/projects/:projectId/board` — the hosted, no-auth public feedback board end-users see. Renders APPROVED feedback only (a server-side SQL invariant), no admin chrome, mirroring `pages/roadmap/PublicRoadmap.tsx`. Read-only consumer of `GET /api/v1/projects/{id}/board` (Contract C29). Voting is deferred to a follow-up — `vote_count` ships read-only.
+`/public/projects/:projectId/board` — the hosted, no-auth public feedback board end-users see. Renders APPROVED feedback only (a server-side SQL invariant), no admin chrome, mirroring `pages/roadmap/PublicRoadmap.tsx`. Consumes `GET /api/v1/projects/{id}/board` (Contract C29) and the `POST`/`DELETE .../board/items/{short_code}/vote` voting surface (Contract C30, PF-BOARD-VOTING-01) — `vote_count` is the real aggregate and each item carries an accessible vote button.
 
 ## Purpose & Responsibilities
 
@@ -10,14 +10,14 @@ The customer-embeddable public board surface for the Public Feedback Board + Mod
 
 - **Approved-only list** — renders whatever the C29 board endpoint returns; does NOT re-filter. Approved-only is a server invariant (the board repo query hard-filters `moderation_status = 'approved'` in SQL — Worker A / C29 inv. 1).
 - **Board-disabled state** — a project with `public_board_enabled = FALSE` 404s server-side (C29 inv. 2); the page renders a clean "not available" message, not an error.
-- **Read-only vote counts** — voting deferred (see Decision Log); `vote_count` is rendered as text, no vote button.
+- **Voting (C30)** — `vote_count` is the real aggregate over `feedback_board_votes`; each item renders an accessible vote button (`castBoardVote` / `retractBoardVote`). The server enforces the moderation gate (a vote on a non-approved / board-disabled item 404s), so the client just renders + mutates.
 
 ## File Index
 
 | File | Role |
 |---|---|
 | `PublicBoard.tsx` | Page component — query + loading/empty/error/board-disabled/list states; `BoardItemRow` renders one approved item |
-| `__tests__/PublicBoard.test.tsx` | Vitest suite — list render, **privacy-leak guard**, empty state, board-disabled (404) state |
+| `__tests__/PublicBoard.test.tsx` | Vitest suite — list render + vote button, **vote-cast on click (C30)**, **privacy-leak guard**, empty state, board-disabled (404) state |
 
 E2E a11y coverage lives in `admin-ui/e2e/public-board-a11y.spec.ts` (Playwright + axe-core, idle + board-disabled, 0 violations).
 
@@ -38,7 +38,7 @@ Data shape consumed verbatim from Contract C29 (`BoardListResponse` / `BoardItem
 
 ## Relationships & Dependencies
 
-- **`shared/ApiClient.ts`** — `fetchPublicBoard()` is the single read path. It deliberately does NOT swallow a 404 (board-disabled), so the page can distinguish it from a transport error. `PUBLIC_BOARD_PATHS.vote` is a stub for the deferred voting follow-up — no client fn calls it yet.
+- **`shared/ApiClient.ts`** — `fetchPublicBoard()` is the single read path (it deliberately does NOT swallow a 404, so the page can distinguish board-disabled from a transport error); `castBoardVote()` / `retractBoardVote()` drive `PUBLIC_BOARD_PATHS.vote` (Contract C30).
 - **`shared/types.gen.ts`** — `BoardItem` / `BoardListResponse` (Contract C29 mirror), plus `KIND_LABELS` / `STATUS_LABELS` / `FeedbackKind` / `FeedbackStatus`.
 - **Backend**: `crates/feedbackmonk-api/src/handlers/board.rs` (`board_router`, CORS-exposed) is the server side of Contract C29. The `public-board-moderation-gate` Verification Oracle (Probe B) asserts the approved-only SQL filter + no-PII from the Rust side.
 
@@ -46,15 +46,15 @@ Data shape consumed verbatim from Contract C29 (`BoardListResponse` / `BoardItem
 
 ### Current
 
-#### Voting deferred — `vote_count` rendered read-only
+#### Voting wired (C30, PF-BOARD-VOTING-01) — mirrors the roadmap vote button
 
-**Decision**: Stage 1 renders `vote_count` as a read-only text count with no vote/retract button.
+**Decision**: Each board item renders an accessible vote button; `vote_count` is the real aggregate. Cast/retract go through `castBoardVote` / `retractBoardVote` (the previously-stubbed `PUBLIC_BOARD_PATHS.vote`).
 
-**Rationale**: Worker A's Task Zero deferred board voting to a follow-up (new `feedback_board_votes` table; not generalizing `roadmap_votes`). The server returns a hard `0` this stage, mirroring how `reply_count` shipped in C8 Stage 1. The core GATE 1 deliverable is approved-only board read + the moderation queue — voting is additive.
+**Rationale**: Completes the deferred follow-up. The pattern mirrors `PublicRoadmap.tsx` exactly (mutation + query invalidation + 409/403 toast), and the backend reuses the shared `voting_common` voter chokepoint. The server does not yet echo a per-viewer `voted_by_me`, so the affordance renders as "Vote" and surfaces a friendly toast on the 409 (AlreadyVoted) — same as the roadmap; the retract branch is wired for when `voted_by_me` support lands.
 
-**Trade-offs**: The board looks "backed by 0 people" until the voting follow-up lands and counts populate. Acceptable for the gate.
+**Trade-offs**: Without `voted_by_me`, a repeat voter gets a 409 toast rather than a pre-disabled button (accepted; parity with roadmap).
 
-**Implementation**: `BoardItemRow` renders a `board-item-votes` span; no mutation hooks. `PUBLIC_BOARD_PATHS.vote` and the reserved `BoardItem.voted_by_me?` widening mark the follow-up's seam. `TODO(board-voting follow-up)` in `PublicBoard.tsx` header.
+**Implementation**: `voteMutation` / `retractMutation` in `PublicBoard.tsx`; `BoardItemRow` renders the button keyed on `voted_by_me`. Backend: `board.rs` POST/DELETE vote routes + the `feedback_board_votes` table (migration 00018).
 
 #### Board-disabled (404) is a normal state, not an error
 

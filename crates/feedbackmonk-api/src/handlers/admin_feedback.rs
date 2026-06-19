@@ -880,6 +880,7 @@ mod tests {
             roadmap_votes: Arc::new(feedbackmonk_repository::SqlxRoadmapVoteRepo::new(
                 pool.clone(),
             )),
+            board_votes: Arc::new(feedbackmonk_repository::SqlxBoardVoteRepo::new(pool.clone())),
             voting_cache: crate::roadmap_voting_cache::VotingCache::new(),
             started_at: Utc::now(),
             health: SqlxHealthCheck::new(pool.clone()),

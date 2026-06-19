@@ -272,6 +272,18 @@ pub trait FeedbackRepo: Send + Sync {
         feedback_id: &FeedbackId,
     ) -> Result<BoardItem>;
 
+    /// Board-vote moderation gate (D2, PF-BOARD-VOTING-01): resolve a public
+    /// board `short_code` to its internal `feedback.id` ONLY for an approved,
+    /// in-scope row (approved-only hard SQL literal). A pending/rejected/
+    /// out-of-scope `short_code` returns `NotFound` so the vote endpoints 404
+    /// identically to the read path (no existence oracle for hidden feedback).
+    /// SELECTs `id` only — carries no submitter identity (C29 inv. 3).
+    async fn resolve_approved_board_feedback_id(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<Uuid>;
+
     /// Ledger predicate (C28 inv. 1): true iff an owner-authored `approve`
     /// event (`event_type='approve' AND actor='admin'`) exists for this
     /// feedback within scope. Mirrors `WorkOrderEventRepo::has_approved_event`;
@@ -361,14 +373,16 @@ pub struct ModerationQueueItem {
 
 /// Narrow PUBLIC-board projection (C29). Mirrors [`EndUserFeedback`]: it carries
 /// ONLY public-facing fields and NEVER submitter identity (privacy invariant,
-/// sibling to Q24). `vote_count` is added at the HTTP layer (hard `0` — voting
-/// deferred per Worker A Task Zero).
+/// sibling to Q24). `vote_count` is the real aggregate over
+/// `feedback_board_votes` (D1 — direct SQL `LEFT JOIN` count, not a cache;
+/// PF-BOARD-VOTING-01). It is a public aggregate count, never voter identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoardItem {
     pub feedback_id: FeedbackId,
     pub kind: FeedbackKind,
     pub status: FeedbackStatus,
     pub body: String,
+    pub vote_count: i64,
     pub accepted_at: chrono::DateTime<chrono::Utc>,
 }
 
@@ -1244,14 +1258,22 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // C29 inv. 1: approved-only is a HARD SQL LITERAL filter — never a
         // bound param, never handler-side, never optional. The projection is
         // exactly the public-facing columns (no submitter identity; C29 inv. 3
-        // / Q24 class), mirroring `list_for_end_user`.
+        // / Q24 class), mirroring `list_for_end_user`. `vote_count` is a
+        // correlated count over `feedback_board_votes` (D1, PF-BOARD-VOTING-01)
+        // — a public aggregate, never voter identity.
         let items = sqlx::query!(
             r#"
-            SELECT short_code, kind, status, body, accepted_at
-            FROM feedback
-            WHERE tenant_id = $1 AND project_id = $2
-              AND moderation_status = 'approved'
-            ORDER BY accepted_at DESC
+            SELECT
+                f.short_code,
+                f.kind,
+                f.status,
+                f.body,
+                f.accepted_at,
+                (SELECT count(*) FROM feedback_board_votes v WHERE v.feedback_id = f.id) AS "vote_count!"
+            FROM feedback AS f
+            WHERE f.tenant_id = $1 AND f.project_id = $2
+              AND f.moderation_status = 'approved'
+            ORDER BY f.accepted_at DESC
             LIMIT $3 OFFSET $4
             "#,
             scope.tenant_id(),
@@ -1283,6 +1305,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 kind: FeedbackKind::from_db_str(&r.kind),
                 status: FeedbackStatus::from_db_str(&r.status),
                 body: r.body.unwrap_or_default(),
+                vote_count: r.vote_count,
                 accepted_at: r.accepted_at,
             })
             .collect();
@@ -1297,13 +1320,20 @@ impl FeedbackRepo for SqlxFeedbackRepo {
     ) -> Result<BoardItem> {
         // Approved-only hard SQL literal (C29 inv. 1). A non-approved or
         // out-of-scope short_code returns NotFound — unreachable through the
-        // board. Same public-only projection as `list_public_board`.
+        // board. Same public-only projection as `list_public_board`, plus the
+        // `feedback_board_votes` aggregate (D1, PF-BOARD-VOTING-01).
         let row = sqlx::query!(
             r#"
-            SELECT short_code, kind, status, body, accepted_at
-            FROM feedback
-            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
-              AND moderation_status = 'approved'
+            SELECT
+                f.short_code,
+                f.kind,
+                f.status,
+                f.body,
+                f.accepted_at,
+                (SELECT count(*) FROM feedback_board_votes v WHERE v.feedback_id = f.id) AS "vote_count!"
+            FROM feedback AS f
+            WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.short_code = $3
+              AND f.moderation_status = 'approved'
             "#,
             scope.tenant_id(),
             scope.project_id(),
@@ -1318,8 +1348,39 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             kind: FeedbackKind::from_db_str(&row.kind),
             status: FeedbackStatus::from_db_str(&row.status),
             body: row.body.unwrap_or_default(),
+            vote_count: row.vote_count,
             accepted_at: row.accepted_at,
         })
+    }
+
+    async fn resolve_approved_board_feedback_id(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<Uuid> {
+        // Board-vote MODERATION GATE (plan D2). Resolves a public board
+        // short_code to its internal `feedback.id` ONLY when the row is
+        // approved + in scope — approved-only is a HARD SQL LITERAL (C29 inv. 1
+        // posture, same as the board reads). A pending/rejected/out-of-scope
+        // short_code returns NotFound, so the vote endpoints 404 identically to
+        // the read path and never become an existence oracle for hidden
+        // feedback. SELECTs `id` ONLY — no submitter identity (C29 inv. 3).
+        let row = sqlx::query!(
+            r#"
+            SELECT id
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+              AND moderation_status = 'approved'
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+
+        Ok(row.id)
     }
 
     async fn has_approve_event(

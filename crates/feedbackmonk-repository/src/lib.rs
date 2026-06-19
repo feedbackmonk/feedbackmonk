@@ -15,6 +15,7 @@
 
 pub mod analysis_sweeps;
 pub mod attachments;
+pub mod board_votes;
 pub mod clusters;
 pub mod email_verifications;
 pub mod error;
@@ -40,6 +41,7 @@ pub use analysis_sweeps::{AnalysisSweep, AnalysisSweepRepo, SqlxAnalysisSweepRep
 pub use attachments::{
     AttachmentKind, AttachmentRepo, AttachmentRow, NewAttachment, SqlxAttachmentRepo,
 };
+pub use board_votes::{BoardVote, BoardVoteRepo, SqlxBoardVoteRepo};
 pub use clusters::{ClusterRepo, FeedbackCluster, SqlxClusterRepo};
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};

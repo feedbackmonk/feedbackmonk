@@ -112,7 +112,7 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
 
 ### Deferred Features
 
-- **PF-BOARD-VOTING-01 — OPEN (deferred feature).** Public Board Stage 1 shipped the board read-only: `vote_count` is a hard `0` placeholder and the vote controls in `PublicBoard.tsx` are unwired. This follow-up wires real voting (DEC-FBR-IMPL-21 design already decided: new `feedback_board_votes` table, NOT a generalization of `roadmap_votes`). Start with `/0-uldf-ldis-intake "feedbackmonk — public board voting"` in a fresh session when prioritized.
+- **PF-BOARD-VOTING-01 — DONE (2026-06-19, Contract C30).** Public-board voting shipped: migration `00018_feedback_board_votes.sql` (new table keyed on `feedback_id`, `roadmap_votes`/cache untouched per DEC-FBR-IMPL-21) + `BoardVoteRepo` + direct-SQL `vote_count` aggregate (D1) + `board.rs` POST/DELETE vote endpoints with the moderation gate (D2 — approved-only resolution before any write → 404 on pending/rejected/board-disabled). Anon/JWT voter chokepoint extracted into shared `handlers/voting_common.rs` (roadmap behavior byte-identical). `public-board-moderation-gate` Probe B extended to the vote path (v1.1.0, A/B/C green). Frontend `PublicBoard.tsx` vote button wired. Full gate green: clippy `-D warnings`, board_vote*/roadmap-vote/repo tests, oracles, admin-ui tsc+vitest+a11y.
 
 ### Completed Operational Items
 

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT short_code, kind, status, body, accepted_at\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2\n              AND moderation_status = 'approved'\n            ORDER BY accepted_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "query": "\n            SELECT\n                f.short_code,\n                f.kind,\n                f.status,\n                f.body,\n                f.accepted_at,\n                (SELECT count(*) FROM feedback_board_votes v WHERE v.feedback_id = f.id) AS \"vote_count!\"\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.short_code = $3\n              AND f.moderation_status = 'approved'\n            ",
   "describe": {
     "columns": [
       {
@@ -27,14 +27,18 @@
         "ordinal": 4,
         "name": "accepted_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "vote_count!",
+        "type_info": "Int8"
       }
     ],
     "parameters": {
       "Left": [
         "Uuid",
         "Uuid",
-        "Int8",
-        "Int8"
+        "Text"
       ]
     },
     "nullable": [
@@ -42,8 +46,9 @@
       false,
       false,
       true,
-      false
+      false,
+      null
     ]
   },
-  "hash": "ea00203301baea8830393924fca77d899df095b5ad39b83b149e6c4bef3c7651"
+  "hash": "4bb6f58346ba27c19a87aea0ecebfcbe183b97aed4f3a20812a626a8366c5e29"
 }

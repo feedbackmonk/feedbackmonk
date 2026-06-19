@@ -906,6 +906,8 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 **Alternatives considered**: *Generalize `roadmap_votes`* — forces a polymorphic FK onto a shipped, working surface and couples roadmap + board vote lifecycles (rejected). *Ship voting in Stage 1* — C29 explicitly makes voting deferrable; the GATE 1 deliverable is approved-only board read + the moderation queue, voting is additive (deferred).
 
+**Follow-up implemented (2026-06-19, PF-BOARD-VOTING-01 — Contract C30)**: the deferred voting is now shipped exactly per this decision. Migration `00018_feedback_board_votes.sql` adds the NEW `feedback_board_votes` table (keyed on `feedback_id`, mirroring `roadmap_votes`; `roadmap_votes` + `roadmap_voting_cache` untouched). `feedbackmonk-repository/src/board_votes.rs` (`BoardVoteRepo`) + `feedback.rs` LEFT-JOIN `vote_count` aggregate (D1 — direct SQL, no cache) + `resolve_approved_board_feedback_id` (the D2 moderation gate). API: `board.rs` POST/DELETE `.../board/items/{short_code}/vote` (Contract C30), with the anon/JWT voter chokepoint extracted into the shared `handlers/voting_common.rs` (consumed by BOTH roadmap + board — migration 00007/00018 inv #2). The `public-board-moderation-gate` oracle Probe B extended (v1.1.0) to cover the vote path. Frontend `PublicBoard.tsx` wires the vote button (mirrors `PublicRoadmap.tsx`). DEC-FBR-IMPL-22 (`board_requires_moderation`) remains inert — out of scope.
+
 ---
 
 ### DEC-FBR-IMPL-22: `projects.board_requires_moderation` is currently INERT — board read hard-filters approved-only unconditionally; flag is read-only in admin UI v1

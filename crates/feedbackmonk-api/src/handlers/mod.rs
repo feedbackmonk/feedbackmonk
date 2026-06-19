@@ -28,6 +28,11 @@ pub mod widget_config;
 // P2: public + admin roadmap endpoints (FR-FBR-11 + FR-FBR-13, Contract C15, Worker B).
 pub mod roadmap;
 
+// Shared voter-resolution chokepoint for the public voting surfaces (roadmap
+// C15 + board C30). Extracted from roadmap.rs so the anon/JWT voter primitive
+// is implemented ONCE (migration 00007/00018 invariant #2). PF-BOARD-VOTING-01.
+pub mod voting_common;
+
 // Public Feedback Board + Moderation Gate (Contracts C28/C29):
 //   moderation — admin moderate + queue + board-settings (C28, AdminSession, no CORS)
 //   board      — public approved-only board read (C29, CORS-exposed)

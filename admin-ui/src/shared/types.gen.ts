@@ -355,12 +355,12 @@ export interface BoardItem {
   body: string; // verbatim feedback body
   kind: FeedbackKind; // bug | feature | question | other
   status: FeedbackStatus; // submitted | triaged | in-progress | shipped | wontfix | duplicate
-  vote_count: number; // Stage 1: server returns a hard 0 (voting deferred); rendered read-only.
+  vote_count: number; // real aggregate over feedback_board_votes (C30, D1)
   accepted_at: string; // RFC 3339 — when the item was approved onto the board
-  // RESERVED for the deferred board-voting follow-up (new `feedback_board_votes`
-  // table — Task Zero). NOT present on the Stage 1 read; mirror
-  // DEC-PODS-C-01's `voted_by_me` widening on RoadmapItem when voting lands.
-  // NOT a submitter-identity field — it is the *current viewer's* vote state.
+  // The *current viewer's* vote state. The server does not yet echo this on the
+  // board read (reserved, wire-absent — mirrors DEC-PODS-C-01's `voted_by_me` on
+  // RoadmapItem); the vote button renders "Vote" until it does. NOT a
+  // submitter-identity field.
   voted_by_me?: boolean;
 }
 
@@ -369,6 +369,22 @@ export interface BoardListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+// --- C30: board voting (PF-BOARD-VOTING-01) ---------------------------------
+// The board sibling of the roadmap VoteResponse/RetractResponse, keyed on
+// `short_code` (the board item id) instead of `item_slug`. Voter resolution +
+// error bodies (AlreadyVoted/RateLimitExceeded/VoteNotFound/
+// RetractionWindowExpired) are identical to roadmap voting — reuse VoteErrorBody.
+export interface BoardVoteResponse {
+  short_code: string;
+  voter_mode: RoadmapVoterMode;
+  cast_at: string;
+}
+
+export interface BoardRetractResponse {
+  short_code: string;
+  retracted_at: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

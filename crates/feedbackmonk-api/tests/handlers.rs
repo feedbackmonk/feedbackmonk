@@ -109,6 +109,7 @@ fn build_test_state(pool: &PgPool, mailer: Arc<RecordingMailer>) -> (AppState, A
         roadmap_votes: Arc::new(feedbackmonk_repository::SqlxRoadmapVoteRepo::new(
             pool.clone(),
         )),
+        board_votes: Arc::new(feedbackmonk_repository::SqlxBoardVoteRepo::new(pool.clone())),
         voting_cache: feedbackmonk_api::VotingCache::new(),
         started_at: chrono::Utc::now(),
         health: feedbackmonk_repository::SqlxHealthCheck::new(pool.clone()),

@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO feedback_board_votes (tenant_id, project_id, feedback_id, voter_id, voter_mode)\n            SELECT $1, $2, f.id, $4, $5\n            FROM feedback AS f\n            WHERE f.id = $3 AND f.tenant_id = $1 AND f.project_id = $2\n            RETURNING id, tenant_id, project_id, feedback_id, voter_id, voter_mode, cast_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "tenant_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "project_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "feedback_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 4,
+        "name": "voter_id",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "voter_mode",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "cast_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "89f779638c97c6ba738dedf313cea2a45faf1418009c3a50e3edb91b7caf744e"
+}

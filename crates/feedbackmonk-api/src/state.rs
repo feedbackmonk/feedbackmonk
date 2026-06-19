@@ -14,10 +14,10 @@ use sqlx::PgPool;
 
 use feedbackmonk_anon::{AnonGate, LoginGate};
 use feedbackmonk_repository::{
-    AnalysisSweepRepo, ClusterRepo, EmailVerificationRepo, FeedbackReplyRepo, FeedbackRepo,
-    FeedbackStatusHistoryRepo, ProjectRepo, RecommendationRepo, RoadmapItemRepo, RoadmapVoteRepo,
-    RunnerTokenRepo, RunnerTokenRevocationRepo, SigningKeyRepo, SqlxHealthCheck, TenantRepo,
-    TierQuotaRepo, WorkOrderEventRepo, WorkOrderRepo,
+    AnalysisSweepRepo, BoardVoteRepo, ClusterRepo, EmailVerificationRepo, FeedbackReplyRepo,
+    FeedbackRepo, FeedbackStatusHistoryRepo, ProjectRepo, RecommendationRepo, RoadmapItemRepo,
+    RoadmapVoteRepo, RunnerTokenRepo, RunnerTokenRevocationRepo, SigningKeyRepo, SqlxHealthCheck,
+    TenantRepo, TierQuotaRepo, WorkOrderEventRepo, WorkOrderRepo,
 };
 
 use crate::email::{EmailNotifier, Mailer};
@@ -79,6 +79,11 @@ pub struct AppState {
     /// In-process 60s voting aggregate cache (Contract C15). Cloneable
     /// handle backed by `Arc<RwLock<…>>`.
     pub voting_cache: VotingCache,
+    /// Public-feedback-board vote repository (Contract C30, PF-BOARD-VOTING-01).
+    /// Sibling of `roadmap_votes` keyed on `feedback_id`; carries the same
+    /// 409-on-duplicate + retraction-window invariants. Board `vote_count` is a
+    /// direct SQL aggregate (D1), so there is no board voting cache.
+    pub board_votes: Arc<dyn BoardVoteRepo>,
 
     // -- Stage 3: health + observability (FR-FBR-18) -----------------------
     /// Wall-clock timestamp captured at binary startup. Used for the

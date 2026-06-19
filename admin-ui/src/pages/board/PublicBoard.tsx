@@ -1,11 +1,16 @@
 import axios from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   KIND_LABELS,
   STATUS_LABELS,
   type BoardItem,
 } from "../../shared/types.gen";
-import { fetchPublicBoard } from "../../shared/ApiClient";
+import {
+  castBoardVote,
+  fetchPublicBoard,
+  retractBoardVote,
+} from "../../shared/ApiClient";
+import { useToast } from "../../components/Toast";
 import { formatRelative } from "../../shared/format";
 
 interface PublicBoardProps {
@@ -13,9 +18,10 @@ interface PublicBoardProps {
 }
 
 // Public-facing feedback board (Public Feedback Board + Moderation Gate,
-// Contract C29). NO admin chrome — intentionally minimal so the page can be
-// embedded under a customer's docs domain or linked from the widget, mirroring
-// PublicRoadmap. End-users (no login) see APPROVED feedback only.
+// Contract C29 + C30 voting). NO admin chrome — intentionally minimal so the
+// page can be embedded under a customer's docs domain or linked from the
+// widget, mirroring PublicRoadmap. End-users (no login) see APPROVED feedback
+// only.
 //
 // PRIVACY (C29 / Q24 sibling): the payload carries NO submitter identity — the
 // server never sends email/name/sub/anon-token/metadata/crash-id. There is
@@ -25,12 +31,19 @@ interface PublicBoardProps {
 // `moderation_status = 'approved'` in SQL — Worker A / C29 inv. 1). The client
 // renders whatever the board endpoint returns; it does not re-filter.
 //
-// VOTING: deferred to a follow-up (Worker A Task Zero — new
-// `feedback_board_votes` table). Stage 1 ships `vote_count` READ-ONLY (the
-// server returns a hard `0`, mirroring how `reply_count` shipped in C8 Stage
-// 1). No vote button is wired this stage. TODO(board-voting follow-up): add the
-// vote/retract affordance once A exposes `POST/DELETE .../board/items/{code}/vote`.
+// VOTING (Contract C30, PF-BOARD-VOTING-01): `vote_count` is the real aggregate
+// over `feedback_board_votes`, and the vote button POSTs/DELETEs
+// `.../board/items/{short_code}/vote` (mirrors the roadmap vote button). The
+// server enforces the moderation gate (D2): a vote on a non-approved /
+// board-disabled item 404s, so the endpoint never confirms hidden feedback. The
+// server does not currently echo a per-viewer `voted_by_me`, so the affordance
+// renders as "Vote" and surfaces a friendly toast on the 409 (AlreadyVoted) —
+// same shape as PublicRoadmap; the retract path is wired for when `voted_by_me`
+// support lands.
 export function PublicBoard({ projectId }: PublicBoardProps) {
+  const queryClient = useQueryClient();
+  const { notify } = useToast();
+
   const listQuery = useQuery({
     queryKey: ["public-board", projectId],
     queryFn: () => fetchPublicBoard(projectId),
@@ -42,7 +55,38 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
     },
   });
 
+  const voteMutation = useMutation({
+    mutationFn: async (shortCode: string) => castBoardVote(projectId, shortCode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["public-board", projectId] });
+    },
+    onError: (err) => {
+      const msg =
+        axios.isAxiosError(err) && err.response?.status === 409
+          ? "You've already voted on this item."
+          : "Vote failed — please try again.";
+      notify(msg, "error");
+    },
+  });
+
+  const retractMutation = useMutation({
+    mutationFn: async (shortCode: string) =>
+      retractBoardVote(projectId, shortCode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["public-board", projectId] });
+      notify("Vote retracted.", "info");
+    },
+    onError: (err) => {
+      const msg =
+        axios.isAxiosError(err) && err.response?.status === 403
+          ? "The 60s retract window has closed for this vote."
+          : "Retract failed — please try again.";
+      notify(msg, "error");
+    },
+  });
+
   const items = listQuery.data?.items ?? [];
+  const busy = voteMutation.isPending || retractMutation.isPending;
 
   if (listQuery.isPending) {
     return (
@@ -90,7 +134,8 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
       <header>
         <h1 id="public-board-title">Feedback board</h1>
         <p className="muted">
-          Feedback we’ve published, with how many people have backed it.
+          Feedback we’ve published, with how many people have backed it. One vote
+          per visitor per item.
         </p>
       </header>
 
@@ -100,7 +145,12 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
         <ol className="board-item-list">
           {items.map((it) => (
             <li key={it.short_code}>
-              <BoardItemRow item={it} />
+              <BoardItemRow
+                item={it}
+                onVote={() => voteMutation.mutate(it.short_code)}
+                onRetract={() => retractMutation.mutate(it.short_code)}
+                busy={busy}
+              />
             </li>
           ))}
         </ol>
@@ -111,10 +161,14 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
 
 interface BoardItemRowProps {
   item: BoardItem;
+  onVote: () => void;
+  onRetract: () => void;
+  busy: boolean;
 }
 
-function BoardItemRow({ item }: BoardItemRowProps) {
+function BoardItemRow({ item, onVote, onRetract, busy }: BoardItemRowProps) {
   const title = `${KIND_LABELS[item.kind]} · ${item.short_code}`;
+  const voteCount = item.vote_count;
   return (
     <article
       className="board-item"
@@ -133,10 +187,29 @@ function BoardItemRow({ item }: BoardItemRowProps) {
       </header>
       <p className="board-item-body">{item.body}</p>
       <div className="board-item-meta">
-        {/* Read-only vote count this stage (voting deferred — see file header). */}
-        <span className="board-item-votes">
-          {item.vote_count} {item.vote_count === 1 ? "vote" : "votes"}
-        </span>
+        <div className="board-item-actions">
+          {item.voted_by_me ? (
+            <button
+              type="button"
+              onClick={onRetract}
+              disabled={busy}
+              aria-pressed="true"
+              aria-label={`Retract vote — current count ${voteCount}`}
+            >
+              ★ Voted ({voteCount})
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onVote}
+              disabled={busy}
+              aria-pressed="false"
+              aria-label={`Vote for ${item.short_code} — current count ${voteCount}`}
+            >
+              ☆ Vote ({voteCount})
+            </button>
+          )}
+        </div>
         <time className="muted" dateTime={item.accepted_at}>
           {formatRelative(item.accepted_at)}
         </time>

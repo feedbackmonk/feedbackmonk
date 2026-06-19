@@ -2,7 +2,7 @@ import { test, expect, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // A11y smoke for the public feedback board page (Public Feedback Board +
-// Moderation Gate, Contract C29).
+// Moderation Gate, Contract C29 + C30 voting).
 //
 // Mirrors `public-roadmap-a11y.spec.ts`: FAKE_API mode intercepts
 // `/api/v1/projects/.../board*` and `/vote` and serves fixture JSON so this
@@ -10,11 +10,9 @@ import AxeBuilder from "@axe-core/playwright";
 // seeded local server.
 //
 // WCAG 2.1 AA target: zero axe-core violations on:
-//   1. Initial idle render with approved items present (read-only vote counts)
+//   1. Initial idle render with approved items present (each carrying an
+//      accessible vote button — Contract C30)
 //   2. The board-disabled (404) "not available" state
-//
-// Voting is deferred to a follow-up (Worker A Task Zero) — Stage 1 renders
-// `vote_count` read-only, so there is no vote button to exercise here.
 //
 // The public route is /public/projects/:projectId/board and has NO admin
 // chrome. The fixture deliberately carries NO submitter identity (C29 privacy

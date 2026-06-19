@@ -5,6 +5,8 @@ import type {
   AnalysisSweep,
   ApproveWorkOrderRequest,
   BoardListResponse,
+  BoardRetractResponse,
+  BoardVoteResponse,
   ClusterDetail,
   ClusterListResponse,
   ClusterPriority,
@@ -611,18 +613,18 @@ export async function registerSigningKey(
 //   { items:[{short_code, body, kind, status, vote_count, accepted_at}],
 //     total, limit, offset }   — matches `BoardListResponse`/`BoardItem`.
 //
-// VOTING is DEFERRED to a follow-up (new `feedback_board_votes` table).
-// `vote_count` ships read-only as
-// a hard `0` this stage. The `vote` path below is a STUB for that follow-up —
-// no client fn calls it yet (mirrors the isolated-path `P5A_PATHS` convention
-// so wiring it later is a one-line addition).
+// VOTING (Contract C30, PF-BOARD-VOTING-01): `vote_count` is the real aggregate
+// over the `feedback_board_votes` table, and `PUBLIC_BOARD_PATHS.vote` is driven
+// by `castBoardVote` / `retractBoardVote` below (mirrors the roadmap
+// postCastVote/deleteVote pair).
 // ─────────────────────────────────────────────────────────────────────────
 
 const PUBLIC_BOARD_PATHS = {
   list: (pid: string) => `/projects/${encodeURIComponent(pid)}/board`,
   item: (pid: string, shortCode: string) =>
     `/projects/${encodeURIComponent(pid)}/board/items/${encodeURIComponent(shortCode)}`,
-  // STUB — board voting deferred to a follow-up (A Task Zero). Not wired yet.
+  // Board voting (Contract C30, PF-BOARD-VOTING-01). Wired by castBoardVote /
+  // retractBoardVote below — mirrors the roadmap postCastVote/deleteVote pair.
   vote: (pid: string, shortCode: string) =>
     `/projects/${encodeURIComponent(pid)}/board/items/${encodeURIComponent(shortCode)}/vote`,
 } as const;
@@ -646,6 +648,32 @@ export async function fetchPublicBoard(
       offset: params.offset ?? 0,
     },
   });
+  return r.data;
+}
+
+// Cast a vote on an approved board item (Contract C30). 409 AlreadyVoted /
+// 429 RateLimitExceeded / 404 (non-approved or board-disabled) surface as
+// AxiosErrors for the caller to map — mirrors postCastVote.
+export async function castBoardVote(
+  projectId: string,
+  shortCode: string,
+): Promise<BoardVoteResponse> {
+  const r = await api.post<BoardVoteResponse>(
+    PUBLIC_BOARD_PATHS.vote(projectId, shortCode),
+  );
+  return r.data;
+}
+
+// Retract a board vote within the retraction window (Contract C30). 403
+// RetractionWindowExpired / 404 VoteNotFound surface as AxiosErrors — mirrors
+// deleteVote.
+export async function retractBoardVote(
+  projectId: string,
+  shortCode: string,
+): Promise<BoardRetractResponse> {
+  const r = await api.delete<BoardRetractResponse>(
+    PUBLIC_BOARD_PATHS.vote(projectId, shortCode),
+  );
   return r.data;
 }
 

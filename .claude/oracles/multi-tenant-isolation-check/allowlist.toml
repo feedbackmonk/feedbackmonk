@@ -107,6 +107,11 @@ type_name = "SqlxRoadmapVoteRepo"
 method = "new"
 rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxRoadmapItemRepo::new (this commit) and SqlxFeedbackRepo::new (P0). Backs migration 00007's roadmap_votes table. All public methods on the trait take &ProjectScope as their first non-self argument (Probe B compliance verified). The cast() method's INSERT...SELECT enforces scope at the SQL level (cross-tenant item_id returns RepoError::NotFound, not silent insert). Pre-authorized per GUIDE.md §8."
 
+[[inherent_methods]]
+type_name = "SqlxBoardVoteRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Structural mirror of SqlxRoadmapVoteRepo::new (above) and SqlxFeedbackRepo::new (P0). Backs migration 00018's feedback_board_votes table (PF-BOARD-VOTING-01, Contract C30). All public methods on the trait take &ProjectScope as their first non-self argument (Probe B compliance verified). The cast() method's INSERT...SELECT enforces scope at the SQL level (cross-tenant feedback_id returns RepoError::NotFound, not silent insert), mirroring roadmap_votes. The board-vote moderation gate (D2) is enforced one layer up in the API handler via FeedbackRepo::resolve_approved_board_feedback_id (approved-only SQL resolution before any write)."
+
 # --- Gap #1 additions (Attachments / migration 00009, collab-20260602-123000) ---
 
 [[inherent_methods]]
