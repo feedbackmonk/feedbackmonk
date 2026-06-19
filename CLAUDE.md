@@ -83,6 +83,15 @@ Verification Oracles built so far + scheduled:
 
 <!-- /0-uldf-schedule writes here -->
 
+### PF-BOARD-VOTING-01: Public-board voting (`feedback_board_votes`) — deferred feature, intake when prioritized
+
+**Status: OPEN (event-triggered — pick up when public-board voting is prioritized; no hard date).** Public Board Stage 1 (commit `5490600`) shipped the board read-only: `vote_count` is a hard `0` placeholder and the vote controls in `PublicBoard.tsx` are unwired. This follow-up wires real voting.
+
+- **Start with**: `/0-uldf-ldis-intake "feedbackmonk — public board voting (feedback_board_votes)"` in a fresh session (it's a clean feature arc, deserves its own intake — do NOT graft onto unrelated work).
+- **Design already decided** (DEC-FBR-IMPL-21): a NEW `feedback_board_votes` table mirroring `roadmap_votes` (anon/JWT voter resolution + retraction window), NOT a polymorphic generalization of `roadmap_votes` (keeps the live `roadmap_voting_cache` untouched).
+- **Scope**: new migration (`feedback_board_votes`) + tenant-scoped repo methods + `POST`/`DELETE /api/v1/projects/{id}/board/items/{short_code}/vote` endpoints (mirror `roadmap.rs` voter resolution) + wire the deferred `PUBLIC_BOARD_PATHS.vote` stub + vote controls in `admin-ui/src/pages/board/PublicBoard.tsx`.
+- **Also revisit** (related, lower priority): DEC-FBR-IMPL-22 — `projects.board_requires_moderation` is currently inert; it only becomes meaningful if/when an auto-approve relaxation is built.
+
 ### ~~PF-RENAME-01: Cargo / env-var / package-name rename `feedbackr-*` → `feedbackmonk-*`~~ — DONE
 
 Completed in a single atomic commit at the P1-finalize → P2-plan boundary. Scope delivered:
