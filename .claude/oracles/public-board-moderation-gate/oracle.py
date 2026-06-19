@@ -23,12 +23,23 @@ THREE probes (detection-from-code, co-evolving with Worker A):
      `Pending` and `Rejected`. If any non-approved state were visible, the
      moderation gate is bypassable by construction.
 
-  B) BOARD READ PATH (static, ACTIVATES when Worker A lands the board repo/handler):
-     the public-board read query MUST hard-filter `moderation_status = 'approved'`
-     in SQL, AND the board wire shape MUST NOT name any submitter-PII field. While
-     the board files do not yet exist (Stage 0), this probe reports PENDING and
-     does not fail; the moment they land it becomes a hard check (the GATE 1 exit
-     condition).
+  B) BOARD READ PATH (static, ACTIVE — engaged when Worker A landed board.rs):
+     the BOARD READ SCOPE = the `board.rs` handler + every repository fn named
+     `*board*` that queries `FROM feedback` (so an unrelated query cannot
+     false-satisfy the marker, a PII column in the repo query is caught, and
+     board-SETTINGS fns querying `projects` are excluded). Within it:
+       - the handler MUST invoke the approved-only board reads (not an unfiltered
+         feedback read) — mirrors approval-gate-enforcement's handler binding;
+       - EACH board read fn MUST hard-filter `moderation_status = 'approved'` as a
+         SQL literal (per-fn, so a regression on one read isn't masked by another;
+         a bound param is rejected — it can't be statically proven always-approved);
+       - the scope MUST NOT name any submitter-PII field, MUST NOT reference a
+         non-approved moderation literal (`pending`/`rejected`), and MUST NOT
+         surface `feedback_replies` (internal reply content).
+     Before board.rs exists this probe reports PENDING (does not fail).
+     NOTE — C29 inv. 2 (board-disabled→404) is a distinct leak vector (approved
+     rows from a non-opted-in project), OUTSIDE this oracle's framed question
+     (non-approved OR PII); it is covered by the behavioral Probe C.
 
   C) BEHAVIOR (gated behind --full, ACTIVATES when the tests land):
      runs `tests/board_moderation_gate.rs` + `tests/board_privacy_isolation.rs`
@@ -61,19 +72,39 @@ from typing import List, Optional, Tuple
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[2]
 MODERATION_RS = REPO_ROOT / "crates" / "feedbackmonk-core" / "src" / "moderation.rs"
-# Worker A's board read path. Either file landing activates Probe B; the SQL
-# filter is expected wherever the board read query is authored.
+# Worker A's board read path. board.rs landing activates Probe B (per the C29
+# announcement protocol). The approved-only SQL filter + the board wire shape
+# are verified within the BOARD READ SCOPE (see _board_scope_texts): the board
+# handler plus any *repository* fn whose name mentions the board — so detection
+# works whether `list_public_board`/`get_public_board_item` live in `feedback.rs`
+# or in a dedicated `feedbackmonk-repository/src/board.rs`. DEC-FBR-03 forbids
+# raw SQL outside the repository layer, so the query lives in a repo fn.
 BOARD_HANDLER_RS = REPO_ROOT / "crates" / "feedbackmonk-api" / "src" / "handlers" / "board.rs"
-FEEDBACK_REPO_RS = REPO_ROOT / "crates" / "feedbackmonk-repository" / "src" / "feedback.rs"
+REPOSITORY_SRC = REPO_ROOT / "crates" / "feedbackmonk-repository" / "src"
 GATE_TEST_RS = REPO_ROOT / "crates" / "feedbackmonk-api" / "tests" / "board_moderation_gate.rs"
 PRIVACY_TEST_RS = REPO_ROOT / "crates" / "feedbackmonk-api" / "tests" / "board_privacy_isolation.rs"
 
 VISIBLE_VARIANTS = {"Approved"}
 NON_VISIBLE_VARIANTS = {"Pending", "Rejected"}
 VISIBILITY_PREDICATE = "is_publicly_visible"
-# The board read query must hard-filter this in SQL (any quote style).
-APPROVED_SQL_MARKERS = ["moderation_status = 'approved'", 'moderation_status = "approved"']
-# Submitter-PII columns that must NEVER appear in a board wire/response shape.
+# The board read query MUST hard-filter on the literal `'approved'` (C29 inv. 1).
+# Tolerant of: table-alias/qualifier prefix (substring match), whitespace around
+# `=`, single/double quotes, an optional `::text`/`::cast`, and `IN ('approved')`
+# as an equivalent. A BOUND PARAM (`moderation_status = $N`) deliberately does
+# NOT match — a bound value cannot be statically proven to always be 'approved',
+# and the anti-reward-hacking invariant wants the hard literal in the query.
+APPROVED_SQL_RE = re.compile(
+    r"moderation_status\s*(?:::\s*\w+)?\s*(?:=|\bIN\b\s*\()\s*['\"]approved['\"]",
+    re.IGNORECASE,
+)
+# A board read must NEVER reference a non-approved moderation-status literal —
+# catches `!= 'rejected'` / `IN ('approved','pending')`-style mistakes that would
+# leak pending/rejected rows. These are moderation values (not triage statuses,
+# which are submitted/triaged/in-progress/shipped/wontfix/duplicate), so their
+# appearance in board scope is a filter bug.
+NON_APPROVED_LITERAL_RE = re.compile(r"['\"](?:pending|rejected)['\"]", re.IGNORECASE)
+# Submitter-PII columns that must NEVER appear anywhere in the board read scope
+# (handler wire shape OR the repo query SELECT list). DEC-FBR-02 / Q24 class.
 PII_FIELDS = [
     "end_user_email",
     "end_user_name",
@@ -82,6 +113,11 @@ PII_FIELDS = [
     "external_metadata",
     "crash_event_id",
 ]
+# The board must not surface internal/admin reply content (C29: "internal/admin
+# reply content"). `feedback_replies` carries `visibility IN ('public','internal')`
+# rows; the board wire shape (C29) has no reply field, so any reference to the
+# replies table inside the board read scope is a leak vector.
+REPLY_TABLE_TOKEN = "feedback_replies"
 
 
 def rel(p: Path) -> str:
@@ -149,35 +185,149 @@ def probe_a() -> List[str]:
     return offenders
 
 
-def probe_b() -> Tuple[List[str], bool]:
-    """Board read hard-filters approved-only in SQL + no PII in the wire shape.
+def _iter_fn_bodies(text: str, name_re: str):
+    """Yield (fn_name, body) for every fn whose name matches `name_re` AND has a
+    body. Skips signature-only trait declarations (`fn foo(...) -> T;`) — the
+    `;` terminator appears before any `{`. Handles a name appearing BOTH as a
+    trait decl and an impl (the real `feedback.rs` shape): the decl is skipped,
+    the impl body is returned. Handles multiple impls of the same name."""
+    for m in re.finditer(rf"fn\s+({name_re})\s*[(<]", text, re.IGNORECASE):
+        brace = text.find("{", m.end())
+        semi = text.find(";", m.end())
+        if brace == -1:
+            continue
+        if semi != -1 and semi < brace:
+            continue  # signature-only declaration — no body to inspect
+        # brace-balanced body extraction from the opening brace.
+        depth = 0
+        body = None
+        for i in range(brace, len(text)):
+            c = text[i]
+            if c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    body = text[brace : i + 1]
+                    break
+        if body:
+            yield m.group(1), body
 
-    PENDING until Worker A lands the board read path. Returns (offenders, pending)."""
-    board_files = [p for p in (BOARD_HANDLER_RS, FEEDBACK_REPO_RS) if p.exists()]
-    # Probe B only engages once the board handler exists; the feedback repo
-    # exists already (it predates this feature), so gate on the handler.
+
+# A board READ fn touches the `feedback` table (the rows the board exposes).
+# `\b` after `feedback` excludes `feedback_moderation_events` / `feedback_replies`.
+BOARD_READS_FEEDBACK_RE = re.compile(r"FROM\s+feedback\b", re.IGNORECASE)
+
+
+def _board_read_fns() -> List[Tuple[str, str, str]]:
+    """Repository fns that are the public-board READ: name mentions `board` AND
+    the body queries the `feedback` table. Returns (relpath, fn_name, body).
+
+    Name-keying on `board` excludes the admin moderation queue
+    (`list_pending_for_admin`, PII-allowed behind `AdminSession`); the
+    `FROM feedback` requirement further excludes board-SETTINGS fns
+    (`get_board_settings`/`update_board_settings`, which query `projects`, not
+    `feedback`) so the read invariants are checked only against actual reads."""
+    out: List[Tuple[str, str, str]] = []
+    if not REPOSITORY_SRC.is_dir():
+        return out
+    for src in sorted(REPOSITORY_SRC.glob("*.rs")):
+        text = src.read_text(encoding="utf-8")
+        for name, body in _iter_fn_bodies(text, r"\w*board\w*"):
+            if BOARD_READS_FEEDBACK_RE.search(body):
+                out.append((rel(src), name, body))
+    return out
+
+
+def probe_b() -> Tuple[List[str], bool]:
+    """Board read hard-filters approved-only in SQL (PER read fn) + leaks no PII
+    / reply content.
+
+    Detection is BOARD-READ-SCOPED — the `board.rs` handler plus every repository
+    fn that is named `*board*` AND queries `FROM feedback` — so (a) an unrelated
+    query elsewhere in `feedback.rs` cannot false-satisfy the approved marker,
+    (b) a PII column SELECTed in the repo query (not just the handler wire shape)
+    is caught, and (c) the approved-only literal is required in EACH read fn (a
+    regression that drops the filter from just one of the two reads is caught,
+    not masked by the other).
+
+    PENDING until Worker A lands `board.rs`. Returns (offenders, pending)."""
+    # Probe B engages once the board handler exists (the C29 announcement
+    # trigger). The board read fns only exist post-A.
     if not BOARD_HANDLER_RS.exists():
         return [], True  # PENDING — Worker A has not implemented the board path yet.
 
     offenders: List[str] = []
-    combined = "\n".join(p.read_text(encoding="utf-8") for p in board_files)
+    handler_text = BOARD_HANDLER_RS.read_text(encoding="utf-8")
+    read_fns = _board_read_fns()
 
-    # (1) approved-only SQL filter present somewhere in the board read path.
-    if not any(marker in combined for marker in APPROVED_SQL_MARKERS):
+    # Scope units for the leak scans: the handler (wire shape) + each read fn.
+    scope: List[Tuple[str, str]] = [(rel(BOARD_HANDLER_RS), handler_text)]
+    scope += [(f"{relpath}::{name}", body) for relpath, name, body in read_fns]
+
+    # (0) sanity — at least one board read fn must be discoverable, else the
+    # approved-only invariant cannot be scope-verified at all.
+    if not read_fns:
         offenders.append(
-            f"{rel(BOARD_HANDLER_RS)} / {rel(FEEDBACK_REPO_RS)}: the public-board read path "
-            "does not hard-filter `moderation_status = 'approved'` in SQL. The approved-only "
-            "invariant (C29 inv. 1) MUST live in the query, not be an optional/handler-side "
-            "filter that a code path can skip."
+            f"{rel(BOARD_HANDLER_RS)} exists but no board READ fn was found (a repository fn "
+            "named `*board*` that queries `FROM feedback`) — the approved-only filter (C29 inv. 1) "
+            "cannot be scope-verified. Name the board reads `list_public_board`/"
+            "`get_public_board_item` per C29 and keep the SQL in the repository layer (DEC-FBR-03)."
         )
 
-    # (2) no submitter PII in the board handler's response shape.
-    handler_text = BOARD_HANDLER_RS.read_text(encoding="utf-8")
-    for field in PII_FIELDS:
-        if re.search(rf"\b{re.escape(field)}\b", handler_text):
+    # (0b) the handler must READ feedback only through the approved-only board
+    # reads — a handler rewired to call an unfiltered feedback read (e.g.
+    # `list_for_end_user`) would bypass the SQL gate while every read fn above
+    # still filters correctly. Mirrors approval-gate-enforcement's handler-binding
+    # check (handler must consult has_approved_event). Defense-in-depth behind the
+    # behavioral Probe C, but catchable WITHOUT --full.
+    if read_fns and not any(name in handler_text for _, name, _ in read_fns):
+        offenders.append(
+            f"{rel(BOARD_HANDLER_RS)}: the board handler does not invoke any approved-only "
+            f"board read fn ({', '.join(sorted({n for _, n, _ in read_fns}))}) — it may read "
+            "feedback through an unfiltered path that bypasses the SQL moderation gate (C29 inv. 1)."
+        )
+
+    # (1) approved-only SQL literal required in EACH board read fn.
+    for relpath, name, body in read_fns:
+        if not APPROVED_SQL_RE.search(body):
             offenders.append(
-                f"{rel(BOARD_HANDLER_RS)}: references submitter-PII field `{field}` — the "
-                "board wire shape MUST NOT carry submitter identity (C29 inv. 3, Q24 class)."
+                f"{relpath}::{name}: board read fn does not hard-filter "
+                "`moderation_status = 'approved'` as a SQL literal. The approved-only invariant "
+                "(C29 inv. 1) MUST live in this query as a literal — not a bound param a code "
+                "path could vary, not a handler-side filter. A non-approved row would be reachable "
+                "through this read."
+            )
+
+    # (1b) no non-approved moderation literal anywhere in board scope.
+    for label, body in scope:
+        mm = NON_APPROVED_LITERAL_RE.search(body)
+        if mm:
+            offenders.append(
+                f"{label}: references non-approved moderation literal `{mm.group(0)}` — a board "
+                "read must filter EXACTLY `= 'approved'`; `!= 'rejected'` / "
+                "`IN ('approved','pending')`-style filters leak pending rows (C29 inv. 1)."
+            )
+
+    # (2) no submitter PII anywhere in board scope (handler wire shape OR repo
+    # query SELECT list).
+    for label, body in scope:
+        for field in PII_FIELDS:
+            if re.search(rf"\b{re.escape(field)}\b", body):
+                offenders.append(
+                    f"{label}: references submitter-PII field `{field}` — the board read scope "
+                    "(wire shape AND query) MUST NOT carry submitter identity (C29 inv. 3, Q24 "
+                    "class). Model on feedback.rs::list_for_end_user (selects exactly "
+                    "short_code, kind, status, body, accepted_at)."
+                )
+
+    # (3) no internal/admin reply content surfaced by the board.
+    for label, body in scope:
+        if REPLY_TABLE_TOKEN in body:
+            offenders.append(
+                f"{label}: references `{REPLY_TABLE_TOKEN}` — the board MUST NOT surface "
+                "internal/admin reply content (C29 wire shape has no reply field; "
+                "`feedback_replies` carries internal-visibility rows)."
             )
     return offenders, False
 

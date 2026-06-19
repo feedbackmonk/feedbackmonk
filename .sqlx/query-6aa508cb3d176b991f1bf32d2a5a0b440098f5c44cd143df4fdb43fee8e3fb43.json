@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE projects\n            SET public_board_enabled = COALESCE($3, public_board_enabled),\n                board_requires_moderation = COALESCE($4, board_requires_moderation)\n            WHERE id = $1 AND tenant_id = $2\n            RETURNING public_board_enabled, board_requires_moderation\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "public_board_enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "board_requires_moderation",
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "6aa508cb3d176b991f1bf32d2a5a0b440098f5c44cd143df4fdb43fee8e3fb43"
+}

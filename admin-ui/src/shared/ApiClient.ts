@@ -4,6 +4,7 @@ import type {
   AdminRoadmapPatchRequest,
   AnalysisSweep,
   ApproveWorkOrderRequest,
+  BoardListResponse,
   ClusterDetail,
   ClusterListResponse,
   ClusterPriority,
@@ -573,6 +574,55 @@ export async function registerSigningKey(
     `/projects/${encodeURIComponent(projectId)}/signing-keys`,
     body,
   );
+  return r.data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// C29 — Public feedback board read (Public Feedback Board + Moderation Gate,
+// Stage 1). Public, unauthenticated surface (CORS-exposed, mirrors the roadmap
+// public endpoints). Approved-only + no-PII are enforced server-side by Worker
+// A's board repo query (SQL hard-filter `moderation_status = 'approved'`) —
+// there is nothing to filter or anonymize here.
+//
+// Board read shape is FROZEN per Contract C29:
+//   { items:[{short_code, body, kind, status, vote_count, accepted_at}],
+//     total, limit, offset }   — matches `BoardListResponse`/`BoardItem`.
+//
+// VOTING is DEFERRED to a follow-up (new `feedback_board_votes` table).
+// `vote_count` ships read-only as
+// a hard `0` this stage. The `vote` path below is a STUB for that follow-up —
+// no client fn calls it yet (mirrors the isolated-path `P5A_PATHS` convention
+// so wiring it later is a one-line addition).
+// ─────────────────────────────────────────────────────────────────────────
+
+const PUBLIC_BOARD_PATHS = {
+  list: (pid: string) => `/projects/${encodeURIComponent(pid)}/board`,
+  item: (pid: string, shortCode: string) =>
+    `/projects/${encodeURIComponent(pid)}/board/items/${encodeURIComponent(shortCode)}`,
+  // STUB — board voting deferred to a follow-up (A Task Zero). Not wired yet.
+  vote: (pid: string, shortCode: string) =>
+    `/projects/${encodeURIComponent(pid)}/board/items/${encodeURIComponent(shortCode)}/vote`,
+} as const;
+
+export interface BoardListParams {
+  limit?: number;
+  offset?: number;
+}
+
+// A board-disabled project (`public_board_enabled = FALSE`) returns 404 from
+// this endpoint (C29 inv. 2). Callers (PublicBoard) distinguish the 404 from a
+// transport error to render the "board not available" state — so this fn does
+// NOT swallow the 404; it surfaces the AxiosError unchanged.
+export async function fetchPublicBoard(
+  projectId: string,
+  params: BoardListParams = {},
+): Promise<BoardListResponse> {
+  const r = await api.get<BoardListResponse>(PUBLIC_BOARD_PATHS.list(projectId), {
+    params: {
+      limit: params.limit ?? 50,
+      offset: params.offset ?? 0,
+    },
+  });
   return r.data;
 }
 

@@ -893,3 +893,31 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 ---
 
+
+### DEC-FBR-IMPL-21: Board voting uses a NEW `feedback_board_votes` table, not a generalization of `roadmap_votes`
+
+**Resolved**: 2026-06-19 (Public Feedback Board Stage 1, Task Zero — deferred-implementation decision, LD-ratified). *(reconciled from implementation)*
+
+**Decision**: Board voting is **deferred to a follow-up**; Public Board Stage 1 ships `vote_count` as a hard `0` placeholder (exactly as `reply_count` shipped in C8 Stage 1) rendered read-only on the public board. **When implemented, vote storage will be a NEW `feedback_board_votes` table** (mirroring `roadmap_votes`: anon/JWT voter resolution + retraction window), NOT a polymorphic generalization of `roadmap_votes`.
+
+**Rationale**: Generalizing `roadmap_votes` to a `(target_type, target_id)` shape would complicate its FK + the live `roadmap_voting_cache` (a shipped, working surface) and couple two independent lifecycles. A dedicated table keeps each isolation predicate simple and leaves the roadmap voting path untouched — lowest risk to shipped code, long-term-correct per Decision Defaults. No migration `00017` this stage. The C29 board read shape carries `vote_count` so the wire shape is forward-compatible; `voted_by_me` is reserved (wire-absent) until voting lands.
+
+**Scope**: `crates/feedbackmonk-api/src/handlers/board.rs` (`vote_count` placeholder), `admin-ui/src/pages/board/PublicBoard.tsx` (read-only render), `admin-ui/src/shared/ApiClient.ts` (`PUBLIC_BOARD_PATHS.vote` stub, unwired). Future: new `feedback_board_votes` table + migration + vote/retract endpoints.
+
+**Alternatives considered**: *Generalize `roadmap_votes`* — forces a polymorphic FK onto a shipped, working surface and couples roadmap + board vote lifecycles (rejected). *Ship voting in Stage 1* — C29 explicitly makes voting deferrable; the GATE 1 deliverable is approved-only board read + the moderation queue, voting is additive (deferred).
+
+---
+
+### DEC-FBR-IMPL-22: `projects.board_requires_moderation` is currently INERT — board read hard-filters approved-only unconditionally; flag is read-only in admin UI v1
+
+**Resolved**: 2026-06-19 (Public Feedback Board Stage 1, LD-ratified; surfaced by the convergence critic as concern C-001). *(reconciled from implementation)*
+
+**Decision**: Migration 00016 added two `projects` columns, `public_board_enabled` and `board_requires_moderation`. The board read path (`list_public_board` / `get_public_board_item`) hard-filters `moderation_status = 'approved'` **unconditionally** — it never consults `board_requires_moderation`. The admin `BoardSettings.tsx` toggle for `board_requires_moderation` is therefore **read-only in v1** (`public_board_enabled` is live-writable; `board_requires_moderation` is displayed but not editable).
+
+**Rationale**: The flag's eventual purpose is to gate an auto-approve relaxation (bypass the moderation queue when an owner opts out of moderation). That relaxation path does not exist yet — so the flag's "off" behavior has no implementation. Making it read-only is the safe default: the approved-only gate (C29 inv. 1, Probe B-verified) stays unconditional, and the UI does not expose a toggle whose effect doesn't exist. **Load-bearing for any future stage**: a stage wiring an auto-approve path must treat this column as currently inert and add the relaxation read deliberately — do not assume the column is already consulted.
+
+**Scope**: `crates/feedbackmonk-repository/src/projects.rs` (`get/set_board_settings`), `crates/feedbackmonk-repository/src/feedback.rs` (board reads — unconditional filter), `admin-ui/src/pages/settings/BoardSettings.tsx` (read-only render).
+
+**Alternatives considered**: *Make the toggle live-writable now* — exposes a control whose "off" path doesn't exist, inviting an owner to disable moderation with no effect (rejected — misleading). *Drop the column until needed* — the migration is frozen at GATE 0 and the column is a cheap forward-compatible placeholder (kept).
+
+---

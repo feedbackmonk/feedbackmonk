@@ -43,12 +43,13 @@ pub use clusters::{ClusterRepo, FeedbackCluster, SqlxClusterRepo};
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
 pub use feedback::{
-    EndUserFeedback, FeedbackListItem, FeedbackRepo, SqlxFeedbackRepo, StatusHistoryRow,
+    BoardItem, EndUserFeedback, FeedbackListItem, FeedbackRepo, ModerationQueueItem,
+    SqlxFeedbackRepo, StatusHistoryRow,
 };
 pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
 pub use health::SqlxHealthCheck;
-pub use projects::{ProjectRepo, SqlxProjectRepo};
+pub use projects::{BoardSettings, ProjectRepo, SqlxProjectRepo};
 pub use recommendations::{
     NewRecommendation, Recommendation, RecommendationRepo, SqlxRecommendationRepo,
 };

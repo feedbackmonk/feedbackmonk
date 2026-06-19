@@ -41,6 +41,35 @@ pub trait ProjectRepo: Send + Sync {
     /// **Allow-listed** in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
     /// under rationale "pre-authentication boundary". See DEC-PODS-001.
     async fn open_for_submission(&self, project_id: Uuid) -> Result<ProjectScope>;
+
+    // ==== Public Feedback Board settings (00016, C28/C29-adjacent) ===========
+
+    /// Read the per-project board settings (`public_board_enabled` +
+    /// `board_requires_moderation`). Scope-bound; `NotFound` if the project is
+    /// absent/out-of-scope. Used by BOTH the public board read path (to enforce
+    /// board-disabled → 404, via an `open_for_submission` scope) and the admin
+    /// settings UI (via an `open` scope). Read-only — no new `ProjectScope`
+    /// constructor, so no `multi-tenant-isolation-check` allowlist entry.
+    async fn get_board_settings(&self, scope: &ProjectScope) -> Result<BoardSettings>;
+
+    /// Partial update of the per-project board settings (admin only). A `None`
+    /// leg leaves that column unchanged (COALESCE). Returns the resulting
+    /// settings. `NotFound` if the project is absent/out-of-scope.
+    async fn set_board_settings(
+        &self,
+        scope: &ProjectScope,
+        public_board_enabled: Option<bool>,
+        board_requires_moderation: Option<bool>,
+    ) -> Result<BoardSettings>;
+}
+
+/// Per-project public-board settings (migration 00016). `public_board_enabled`
+/// defaults FALSE (no project exposes feedback on deploy); `board_requires_moderation`
+/// defaults TRUE (v1 always curates from the moderation queue).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BoardSettings {
+    pub public_board_enabled: bool,
+    pub board_requires_moderation: bool,
 }
 
 #[derive(Clone)]
@@ -165,6 +194,56 @@ impl ProjectRepo for SqlxProjectRepo {
 
         let tenant = TenantScope::new(row.tenant_id);
         Ok(ProjectScope::new(tenant, project_id))
+    }
+
+    async fn get_board_settings(&self, scope: &ProjectScope) -> Result<BoardSettings> {
+        let row = sqlx::query!(
+            r#"
+            SELECT public_board_enabled, board_requires_moderation
+            FROM projects WHERE id = $1 AND tenant_id = $2
+            "#,
+            scope.project_id(),
+            scope.tenant_id(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        Ok(BoardSettings {
+            public_board_enabled: row.public_board_enabled,
+            board_requires_moderation: row.board_requires_moderation,
+        })
+    }
+
+    async fn set_board_settings(
+        &self,
+        scope: &ProjectScope,
+        public_board_enabled: Option<bool>,
+        board_requires_moderation: Option<bool>,
+    ) -> Result<BoardSettings> {
+        // COALESCE keeps a column unchanged when its leg is None — a partial
+        // PATCH. Scope predicate (id + tenant_id) is the isolation bound.
+        let row = sqlx::query!(
+            r#"
+            UPDATE projects
+            SET public_board_enabled = COALESCE($3, public_board_enabled),
+                board_requires_moderation = COALESCE($4, board_requires_moderation)
+            WHERE id = $1 AND tenant_id = $2
+            RETURNING public_board_enabled, board_requires_moderation
+            "#,
+            scope.project_id(),
+            scope.tenant_id(),
+            public_board_enabled,
+            board_requires_moderation,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        Ok(BoardSettings {
+            public_board_enabled: row.public_board_enabled,
+            board_requires_moderation: row.board_requires_moderation,
+        })
     }
 }
 

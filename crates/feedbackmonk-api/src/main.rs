@@ -44,10 +44,11 @@ use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
-    cluster_admin_router, me_feedback_router, ops_router, parse_origins, promote_router,
-    public_cors_layer, recommendation_admin_router, roadmap_router, runner_tokens_admin_router,
-    spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
-    work_order_admin_router, work_order_runner_router, AttachmentState, VotingCache,
+    board_router, cluster_admin_router, me_feedback_router, moderation_router, ops_router,
+    parse_origins, promote_router, public_cors_layer, recommendation_admin_router, roadmap_router,
+    runner_tokens_admin_router, spawn_voting_cache_refresh, submission_router, sweep_admin_router,
+    widget_config_router, work_order_admin_router, work_order_runner_router, AttachmentState,
+    VotingCache,
 };
 
 #[tokio::main]
@@ -415,6 +416,15 @@ fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &
         .merge(cluster_admin_router(state.clone()))
         .merge(recommendation_admin_router(state.clone()))
         .merge(sweep_admin_router(state.clone()))
+        // Public Feedback Board + Moderation Gate (Contracts C28/C29):
+        //   board_router is the PUBLIC approved-only board read — merged WITH
+        //   `.layer(cors)`, matching the submit/attachments public surface
+        //   (`cors-allowlist-enforcement`). moderation_router is the admin
+        //   moderate + queue + board-settings surface — merged WITHOUT CORS
+        //   (AdminSession, never a browser embed; Ripple Analysis flags
+        //   accidental CORS-exposure of admin endpoints).
+        .merge(board_router(state.clone()).layer(cors.clone()))
+        .merge(moderation_router(state.clone()))
         .merge(promote_router(state));
     app.layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace_layer)

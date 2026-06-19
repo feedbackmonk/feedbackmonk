@@ -283,6 +283,43 @@ export interface PromoteErrorBody {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// C29 — Public feedback board read + privacy shape (Public Feedback Board +
+// Moderation Gate, Stage 1). Owner of the wire shape: Worker A (backend);
+// consumer: Worker D (this file's mirror) + the PublicBoard page.
+//
+// PRIVACY INVARIANT (load-bearing, sibling to Q24): the board item NEVER
+// carries submitter identity — no `end_user_email` / `end_user_name` /
+// `end_user_sub` / `anon_token_hash`, no `external_metadata`, no
+// `crash_event_id`, no admin/internal reply content. The server simply never
+// sends those fields, so there is nothing to anonymize client-side. Do NOT
+// widen this interface with any submitter-identity field.
+//
+// Source of truth: docs/planning/handoffs/board-moderation-contracts.md §C29.
+// Frozen at Stage 0 (GATE 0 = e8ef874). Drift here is a Stage 1 impl bug.
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface BoardItem {
+  short_code: string; // "FB-XXXXXX" — the public board item identifier
+  body: string; // verbatim feedback body
+  kind: FeedbackKind; // bug | feature | question | other
+  status: FeedbackStatus; // submitted | triaged | in-progress | shipped | wontfix | duplicate
+  vote_count: number; // Stage 1: server returns a hard 0 (voting deferred); rendered read-only.
+  accepted_at: string; // RFC 3339 — when the item was approved onto the board
+  // RESERVED for the deferred board-voting follow-up (new `feedback_board_votes`
+  // table — Task Zero). NOT present on the Stage 1 read; mirror
+  // DEC-PODS-C-01's `voted_by_me` widening on RoadmapItem when voting lands.
+  // NOT a submitter-identity field — it is the *current viewer's* vote state.
+  voted_by_me?: boolean;
+}
+
+export interface BoardListResponse {
+  items: BoardItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // P3 — Tier model + cap-aware error rendering (Contracts C17/C18/C19).
 //
 // Source of truth: docs/planning/handoffs/p3-stage1-to-stage2.md

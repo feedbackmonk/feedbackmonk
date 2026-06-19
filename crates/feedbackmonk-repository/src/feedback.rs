@@ -9,7 +9,9 @@ use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use feedbackmonk_core::{Feedback, FeedbackId, FeedbackKind, FeedbackStatus};
+use feedbackmonk_core::{
+    event_type_for_target, Feedback, FeedbackId, FeedbackKind, FeedbackStatus, ModerationStatus,
+};
 
 use crate::error::Result;
 use crate::scope::ProjectScope;
@@ -199,6 +201,106 @@ pub trait FeedbackRepo: Send + Sync {
         end_user_sub: &str,
         feedback_id: &FeedbackId,
     ) -> Result<EndUserFeedback>;
+
+    // ==== Public Feedback Board + Moderation Gate (C28/C29) ==================
+
+    /// Read the current `moderation_status` for one feedback row (scope-bound).
+    /// `NotFound` if absent/out-of-scope. The moderation handler reads this
+    /// BEFORE the txn for the pre-DB legality check (C28 inv. 2), mirroring
+    /// `perform_transition`'s `get_with_history` pre-read.
+    async fn get_moderation_status(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<ModerationStatus>;
+
+    /// Same-transaction moderation transition (C28 inv. 1): locks the row,
+    /// UPDATEs `feedback.moderation_status`, and appends a
+    /// `feedback_moderation_events` row (`actor='admin'`, `event_type` derived
+    /// from the target) in ONE transaction. The caller opens the txn via
+    /// `pool.begin()` and passes `&mut *tx`. Returns
+    /// `(actual_from_status, audit_id)` — `actual_from` is read under the row
+    /// lock so the handler can re-validate against a concurrent racer (TOCTOU),
+    /// mirroring `update_status_in_executor`. `actor_id` is the acting admin's
+    /// tenant UUID (stored as string form per migration 00016).
+    async fn moderate_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        to_status: ModerationStatus,
+        reason_note: Option<&str>,
+        actor_id: Uuid,
+    ) -> Result<(ModerationStatus, Uuid)>;
+
+    /// Admin moderation-queue read (C28): rows in `status_filter` for the
+    /// project, newest-first, paged. Returns `(page, total_matching)`. Behind
+    /// `AdminSession` — submitter columns ARE included (admin-internal surface,
+    /// out of the public-board PII scope).
+    async fn list_pending_for_admin(
+        &self,
+        scope: &ProjectScope,
+        status_filter: ModerationStatus,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<ModerationQueueItem>, u32)>;
+
+    /// Public board read (C29 inv. 1): approved-only via a HARD SQL LITERAL
+    /// filter, newest-first, paged. Returns `(page, total_approved)`. The
+    /// projection carries NO submitter identity (C29 inv. 3 / Q24 class).
+    async fn list_public_board(
+        &self,
+        scope: &ProjectScope,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<BoardItem>, u32)>;
+
+    /// Public board single-item read (C29). Approved-only hard SQL literal — a
+    /// `pending`/`rejected` or out-of-scope `short_code` returns `NotFound`
+    /// (structurally unreachable through the board).
+    async fn get_public_board_item(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<BoardItem>;
+
+    /// Ledger predicate (C28 inv. 1): true iff an owner-authored `approve`
+    /// event (`event_type='approve' AND actor='admin'`) exists for this
+    /// feedback within scope. Mirrors `WorkOrderEventRepo::has_approved_event`;
+    /// the `public-board-moderation-gate` oracle proves the same property
+    /// independently from the ledger (anti-reward-hacking leg).
+    async fn has_approve_event(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<bool>;
+}
+
+/// Admin moderation-queue row (C28). Behind `AdminSession`, so it MAY carry
+/// submitter columns — distinct from the public [`BoardItem`], which never does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModerationQueueItem {
+    pub feedback_id: FeedbackId,
+    pub kind: FeedbackKind,
+    pub moderation_status: ModerationStatus,
+    /// First 200 chars of the body.
+    pub body_excerpt: String,
+    pub submitted_at: chrono::DateTime<chrono::Utc>,
+    pub submitter_email: Option<String>,
+    pub is_anonymous: bool,
+}
+
+/// Narrow PUBLIC-board projection (C29). Mirrors [`EndUserFeedback`]: it carries
+/// ONLY public-facing fields and NEVER submitter identity (privacy invariant,
+/// sibling to Q24). `vote_count` is added at the HTTP layer (hard `0` — voting
+/// deferred per Worker A Task Zero).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoardItem {
+    pub feedback_id: FeedbackId,
+    pub kind: FeedbackKind,
+    pub status: FeedbackStatus,
+    pub body: String,
+    pub accepted_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Narrow projection of a feedback row for the end-user (JWT) read surface
@@ -880,6 +982,277 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             body: row.body,
             submitted_at: row.accepted_at,
         })
+    }
+
+    // ==== Public Feedback Board + Moderation Gate (C28/C29) impl =============
+
+    async fn get_moderation_status(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<ModerationStatus> {
+        let row = sqlx::query!(
+            r#"
+            SELECT moderation_status
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+        Ok(ModerationStatus::from_db_str(&row.moderation_status))
+    }
+
+    async fn moderate_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        feedback_id: &FeedbackId,
+        to_status: ModerationStatus,
+        reason_note: Option<&str>,
+        actor_id: Uuid,
+    ) -> Result<(ModerationStatus, Uuid)> {
+        // Lock the row + recover the pre-update status AND the UUID PK (the
+        // events ledger keys on feedback.id, not short_code). Scope filter on
+        // both read/write rejects a cross-tenant short_code before any write.
+        let pre = sqlx::query!(
+            r#"
+            SELECT id, moderation_status
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+            FOR UPDATE
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&mut *conn)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+        let from_status = ModerationStatus::from_db_str(&pre.moderation_status);
+
+        sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET moderation_status = $1
+            WHERE tenant_id = $2 AND project_id = $3 AND short_code = $4
+            "#,
+            to_status.as_db_str(),
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        // Append the immutable ledger row in the SAME txn (C28 inv. 1). actor
+        // is always 'admin' in v1 (only the owner moderates); event_type is
+        // derived from the target (approve|reject|reset).
+        let event_type = event_type_for_target(to_status);
+        let actor_id_str = actor_id.to_string();
+        let inserted = sqlx::query!(
+            r#"
+            INSERT INTO feedback_moderation_events (
+                tenant_id, project_id, feedback_id,
+                from_status, to_status, event_type, actor, actor_id, reason_note
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, 'admin', $7, $8)
+            RETURNING id
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            pre.id,
+            from_status.as_db_str(),
+            to_status.as_db_str(),
+            event_type,
+            actor_id_str,
+            reason_note,
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+
+        Ok((from_status, inserted.id))
+    }
+
+    async fn list_pending_for_admin(
+        &self,
+        scope: &ProjectScope,
+        status_filter: ModerationStatus,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<ModerationQueueItem>, u32)> {
+        let status_str = status_filter.as_db_str();
+        let items = sqlx::query!(
+            r#"
+            SELECT short_code,
+                   kind,
+                   moderation_status,
+                   left(body, 200) AS body_excerpt,
+                   end_user_email,
+                   anon_token_hash IS NOT NULL AS is_anonymous,
+                   accepted_at
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND moderation_status = $3
+            ORDER BY accepted_at DESC
+            LIMIT $4 OFFSET $5
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            status_str,
+            i64::from(limit),
+            i64::from(offset),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total_row = sqlx::query!(
+            r#"
+            SELECT count(*) AS "count!"
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND moderation_status = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            status_str,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let total: u32 = total_row.count.try_into().unwrap_or(u32::MAX);
+
+        let list = items
+            .into_iter()
+            .map(|r| ModerationQueueItem {
+                feedback_id: FeedbackId::from(r.short_code),
+                kind: FeedbackKind::from_db_str(&r.kind),
+                moderation_status: ModerationStatus::from_db_str(&r.moderation_status),
+                body_excerpt: r.body_excerpt.unwrap_or_default(),
+                submitted_at: r.accepted_at,
+                submitter_email: r.end_user_email,
+                is_anonymous: r.is_anonymous.unwrap_or(false),
+            })
+            .collect();
+
+        Ok((list, total))
+    }
+
+    async fn list_public_board(
+        &self,
+        scope: &ProjectScope,
+        limit: u32,
+        offset: u32,
+    ) -> Result<(Vec<BoardItem>, u32)> {
+        // C29 inv. 1: approved-only is a HARD SQL LITERAL filter — never a
+        // bound param, never handler-side, never optional. The projection is
+        // exactly the public-facing columns (no submitter identity; C29 inv. 3
+        // / Q24 class), mirroring `list_for_end_user`.
+        let items = sqlx::query!(
+            r#"
+            SELECT short_code, kind, status, body, accepted_at
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2
+              AND moderation_status = 'approved'
+            ORDER BY accepted_at DESC
+            LIMIT $3 OFFSET $4
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            i64::from(limit),
+            i64::from(offset),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        let total_row = sqlx::query!(
+            r#"
+            SELECT count(*) AS "count!"
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2
+              AND moderation_status = 'approved'
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        let total: u32 = total_row.count.try_into().unwrap_or(u32::MAX);
+
+        let list = items
+            .into_iter()
+            .map(|r| BoardItem {
+                feedback_id: FeedbackId::from(r.short_code),
+                kind: FeedbackKind::from_db_str(&r.kind),
+                status: FeedbackStatus::from_db_str(&r.status),
+                body: r.body,
+                accepted_at: r.accepted_at,
+            })
+            .collect();
+
+        Ok((list, total))
+    }
+
+    async fn get_public_board_item(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<BoardItem> {
+        // Approved-only hard SQL literal (C29 inv. 1). A non-approved or
+        // out-of-scope short_code returns NotFound — unreachable through the
+        // board. Same public-only projection as `list_public_board`.
+        let row = sqlx::query!(
+            r#"
+            SELECT short_code, kind, status, body, accepted_at
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+              AND moderation_status = 'approved'
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+
+        Ok(BoardItem {
+            feedback_id: FeedbackId::from(row.short_code),
+            kind: FeedbackKind::from_db_str(&row.kind),
+            status: FeedbackStatus::from_db_str(&row.status),
+            body: row.body,
+            accepted_at: row.accepted_at,
+        })
+    }
+
+    async fn has_approve_event(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<bool> {
+        // The ledger predicate (C28 inv. 1). Scoped on the events table
+        // directly; the scalar subquery resolves short_code -> id within the
+        // same scope so a cross-tenant short_code yields no match.
+        let row = sqlx::query!(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM feedback_moderation_events e
+                WHERE e.tenant_id = $1 AND e.project_id = $2
+                  AND e.event_type = 'approve' AND e.actor = 'admin'
+                  AND e.feedback_id = (
+                      SELECT id FROM feedback
+                      WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+                  )
+            ) AS "exists!"
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.exists)
     }
 }
 

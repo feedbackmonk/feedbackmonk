@@ -24,7 +24,7 @@
 
   --status-submitted: #5a5a5a;
   --status-triaged: #1e4ed8;
-  --status-in-progress: #a86b00;
+  --status-in-progress: #9a6400; /* ~5.0:1 on --surface (#fff) — AA. Was #a86b00 (4.4:1, sub-AA; latent until the board rendered an in-progress badge). */
   --status-shipped: #15602e;
   --status-wontfix: #6b6b6b;
   --status-duplicate: #6b21a8;
@@ -1103,4 +1103,68 @@ a {
 }
 .runner-token-actions {
   margin-top: 0.75rem;
+}
+
+/* ====================================================================== */
+/* Public Feedback Board admin surfaces */
+/* Moderation queue (/admin/moderation) + board settings (/admin/settings/board). */
+/* Reuses existing tokens; all colors meet AA against --surface (line 34 note). */
+/* ====================================================================== */
+
+/* ---------- Moderation queue actions ---------- */
+.moderation-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.moderation-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.moderation-action-approved {
+  background: var(--accent);
+  color: var(--accent-on);
+  border-color: var(--accent);
+}
+.moderation-action-approved:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.moderation-action-rejected {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* ---------- Board settings toggles ---------- */
+.board-settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 1.25rem;
+  margin-top: 1rem;
+  max-width: 40rem;
+}
+.settings-toggle {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+.settings-toggle input[type="checkbox"] {
+  margin-top: 0.2rem;
+  flex: 0 0 auto;
+}
+.settings-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.settings-toggle-text label {
+  font-weight: 600;
+}
+.settings-toggle-text p {
+  margin: 0;
 }

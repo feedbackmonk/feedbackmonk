@@ -4,8 +4,11 @@ import { FeedbackList } from "./pages/FeedbackList";
 import { FeedbackDrawer } from "./pages/FeedbackDrawer";
 import { AdminRoadmap } from "./pages/roadmap/AdminRoadmap";
 import { PublicRoadmap } from "./pages/roadmap/PublicRoadmap";
+import { PublicBoard } from "./pages/board/PublicBoard";
 import { TierSettings } from "./pages/settings/TierSettings";
 import { RunnerTokens } from "./pages/settings/RunnerTokens";
+import { BoardSettings } from "./pages/settings/BoardSettings";
+import { ModerationQueue } from "./pages/moderation/ModerationQueue";
 import { AutopilotDigest } from "./pages/autopilot/AutopilotDigest";
 import { ClusterDetail } from "./pages/autopilot/ClusterDetail";
 import { WorkOrderList } from "./pages/autopilot/WorkOrderList";
@@ -18,11 +21,14 @@ import { WorkOrderDetail } from "./pages/autopilot/WorkOrderDetail";
 //   /admin/roadmap                           → AdminRoadmap (server-side sole-project resolution)
 //   /admin/settings/tier                     → TierSettings (P3 Stage 2 — plan & usage)
 //   /admin/settings/runner-tokens            → RunnerTokens (P5b — runner key + token lifecycle)
+//   /admin/settings/board                    → BoardSettings (public-board enable + moderation toggles, Contract C28/00016)
+//   /admin/moderation                        → ModerationQueue (owner approve/reject queue, Contract C28)
 //   /admin/autopilot                         → AutopilotDigest (P5a — digest + cluster list)
 //   /admin/autopilot/clusters/:clusterId     → ClusterDetail (members + rec cards)
 //   /admin/autopilot/work-orders             → WorkOrderList
 //   /admin/autopilot/work-orders/:id         → WorkOrderDetail (state + ledger + owner actions)
 //   /public/projects/:projectId/roadmap      → PublicRoadmap (no admin chrome; project-segmented per Contract C15)
+//   /public/projects/:projectId/board        → PublicBoard (no admin chrome; approved-only public board per Contract C29)
 //   anything else                            → redirect to /feedback (or /login when API 401s)
 //
 // `/admin/roadmap` deliberately omits the project segment to mirror the
@@ -44,6 +50,17 @@ export function App() {
     return <PublicRoadmap projectId={decodeURIComponent(publicRoadmap[1])} />;
   }
 
+  // Public feedback board — no auth, no admin chrome. Project-segmented,
+  // cross-tenant addressable (mirrors the public roadmap route). Shows only
+  // approved feedback; a board-disabled project 404s server-side and the page
+  // renders a clean "not available" state (Contract C29).
+  const publicBoard = pathname.match(
+    /^\/public\/projects\/([^/]+)\/board\/?$/,
+  );
+  if (publicBoard) {
+    return <PublicBoard projectId={decodeURIComponent(publicBoard[1])} />;
+  }
+
   if (pathname === "/admin/roadmap" || pathname === "/admin/roadmap/") {
     return <AdminRoadmap />;
   }
@@ -60,6 +77,19 @@ export function App() {
     pathname === "/admin/settings/runner-tokens/"
   ) {
     return <RunnerTokens />;
+  }
+
+  // Public Feedback Board admin surfaces (Contract C28 / migration 00016).
+  // Project-less admin URLs (sole-project resolution), mirroring the
+  // /admin/roadmap + /admin/autopilot convention.
+  if (
+    pathname === "/admin/settings/board" ||
+    pathname === "/admin/settings/board/"
+  ) {
+    return <BoardSettings />;
+  }
+  if (pathname === "/admin/moderation" || pathname === "/admin/moderation/") {
+    return <ModerationQueue />;
   }
 
   // P5a autopilot surface (FR-FBR-21). Project-less admin URLs (sole-project

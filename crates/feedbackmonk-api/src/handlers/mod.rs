@@ -28,6 +28,12 @@ pub mod widget_config;
 // P2: public + admin roadmap endpoints (FR-FBR-11 + FR-FBR-13, Contract C15, Worker B).
 pub mod roadmap;
 
+// Public Feedback Board + Moderation Gate (Contracts C28/C29):
+//   moderation — admin moderate + queue + board-settings (C28, AdminSession, no CORS)
+//   board      — public approved-only board read (C29, CORS-exposed)
+pub mod board;
+pub mod moderation;
+
 // P3 Stage 1: admin tier-status endpoint (FR-FBR-14, Contract C17).
 pub mod admin_tier;
 

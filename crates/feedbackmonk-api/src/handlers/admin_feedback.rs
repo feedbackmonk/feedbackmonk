@@ -657,7 +657,7 @@ pub async fn get_admin_feedback(
 
 /// Map (`submitter_email`, `is_anonymous`) -> the formatted
 /// `submitter_label` string per Contract C8 list response.
-fn format_submitter_label(email: Option<&str>, is_anonymous: bool) -> String {
+pub(crate) fn format_submitter_label(email: Option<&str>, is_anonymous: bool) -> String {
     match (is_anonymous, email) {
         (false, Some(e)) => e.to_string(),
         (false, None) => "authenticated".to_string(),
@@ -670,7 +670,7 @@ fn format_submitter_label(email: Option<&str>, is_anonymous: bool) -> String {
 /// endpoints scope to the tenant's first project. Future work: per-project
 /// admin URLs (FR-FBR-15 / P3 work). For now, return Conflict if the
 /// tenant has zero projects so the caller can surface a setup error.
-async fn sole_project_scope(
+pub(crate) async fn sole_project_scope(
     state: &AppState,
     scope: &TenantScope,
 ) -> Result<ProjectScope, ApiError> {

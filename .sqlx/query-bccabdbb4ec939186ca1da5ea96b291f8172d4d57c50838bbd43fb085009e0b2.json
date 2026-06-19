@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT moderation_status\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "moderation_status",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bccabdbb4ec939186ca1da5ea96b291f8172d4d57c50838bbd43fb085009e0b2"
+}

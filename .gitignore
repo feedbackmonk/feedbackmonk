@@ -50,7 +50,9 @@ pnpm-debug.log*
 **/.claude/session-state/
 
 # Handoff briefs (default gitignored; KEEP-pin override per HANDOFF-01)
-**/.claude/handoff/handoff-*.md
+# Covers all brief names (proceed `handoff-*`, converge `converge-*`, etc.) —
+# a brief is a routing artifact unless explicitly KEEP-pinned.
+**/.claude/handoff/*.md
 !**/.claude/handoff/*.KEEP
 
 # App-lifecycle dev-server artifacts
