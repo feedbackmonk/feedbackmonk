@@ -34,6 +34,7 @@
 //! - **DEC-FBR-03**: every write goes through `feedbackmonk-repository`.
 
 use axum::extract::{Path, State};
+use axum::http::HeaderMap;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
@@ -42,10 +43,11 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use feedbackmonk_core::ActionType;
-use feedbackmonk_repository::{NewRecommendation, Recommendation};
+use feedbackmonk_repository::{NewRecommendation, ProjectScope, Recommendation};
 
 use crate::auth::AdminSession;
 use crate::error::ApiError;
+use crate::handlers::work_orders::verify_runner_token;
 use crate::state::AppState;
 
 // ---------------------------------------------------------------------------
@@ -228,17 +230,17 @@ pub struct IngestRequest {
     pub sweep_id: Option<Uuid>,
 }
 
-/// `POST /api/v1/projects/:project_id/clusters/:cluster_id/recommendations` —
-/// ingest a `proposed` recommendation for a cluster. The `source_refs` exfil
-/// gate runs BEFORE any DB write (C24 case f).
-pub async fn ingest_recommendation(
-    State(state): State<AppState>,
-    session: AdminSession,
-    Path((project_id, cluster_id)): Path<(Uuid, Uuid)>,
-    Json(req): Json<IngestRequest>,
-) -> Result<Json<RecommendationView>, ApiError> {
-    let scope = state.projects.open(&session.scope, project_id).await?;
-
+/// Shared ingestion core: validate + create a `proposed` recommendation within
+/// an ALREADY-RESOLVED scope. Both the admin (`AdminSession`) and runner
+/// (runner-token) entrypoints funnel through this, so the `source_refs` exfil
+/// gate (C24 case f) + the title/body/confidence caps run IDENTICALLY
+/// regardless of credential class. All validation is pre-DB.
+async fn ingest_into_scope(
+    state: &AppState,
+    scope: &ProjectScope,
+    cluster_id: Uuid,
+    req: IngestRequest,
+) -> Result<RecommendationView, ApiError> {
     // ----- validation (all pre-DB) -----
     let title = req.title.trim();
     if title.is_empty() || title.chars().count() > TITLE_MAX_CHARS {
@@ -264,7 +266,7 @@ pub async fn ingest_recommendation(
     let rec = state
         .recommendations
         .create(
-            &scope,
+            scope,
             NewRecommendation {
                 cluster_id,
                 sweep_id: req.sweep_id,
@@ -278,7 +280,37 @@ pub async fn ingest_recommendation(
         )
         .await?;
 
-    Ok(Json(rec.into()))
+    Ok(rec.into())
+}
+
+/// `POST /api/v1/projects/:project_id/clusters/:cluster_id/recommendations` —
+/// ingest a `proposed` recommendation for a cluster (admin). The `source_refs`
+/// exfil gate runs BEFORE any DB write (C24 case f).
+pub async fn ingest_recommendation(
+    State(state): State<AppState>,
+    session: AdminSession,
+    Path((project_id, cluster_id)): Path<(Uuid, Uuid)>,
+    Json(req): Json<IngestRequest>,
+) -> Result<Json<RecommendationView>, ApiError> {
+    let scope = state.projects.open(&session.scope, project_id).await?;
+    Ok(Json(ingest_into_scope(&state, &scope, cluster_id, req).await?))
+}
+
+/// `POST /api/v1/projects/:project_id/runner/clusters/:cluster_id/recommendations`
+/// — the runner-authed analyst ingestion path (DEC-001 / MSG-C01 Q2). Same exfil
+/// gate + caps as the admin path (shared [`ingest_into_scope`]); the only
+/// difference is the credential class — a runner write-token instead of an
+/// `AdminSession`. Runner-token; NO CORS. A dedicated `/runner/` path so it does
+/// not overlap the admin ingestion route (`.merge()` forbids overlap) and the
+/// existing `AdminSession` path keeps working unchanged.
+pub async fn runner_ingest_recommendation(
+    State(state): State<AppState>,
+    Path((project_id, cluster_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+    Json(req): Json<IngestRequest>,
+) -> Result<Json<RecommendationView>, ApiError> {
+    let (scope, _runner) = verify_runner_token(&state, project_id, &headers).await?;
+    Ok(Json(ingest_into_scope(&state, &scope, cluster_id, req).await?))
 }
 
 /// `POST /api/v1/projects/:project_id/recommendations/:rec_id/supersede` —
@@ -338,6 +370,13 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/projects/:project_id/clusters/:cluster_id/recommendations",
             get(list_recommendations).post(ingest_recommendation),
+        )
+        // Runner-authed analyst ingestion (DEC-001 / MSG-C01 Q2). Dedicated
+        // `/runner/` path — runner-token + NO CORS; does NOT overlap the admin
+        // ingestion route above.
+        .route(
+            "/api/v1/projects/:project_id/runner/clusters/:cluster_id/recommendations",
+            post(runner_ingest_recommendation),
         )
         .route(
             "/api/v1/projects/:project_id/recommendations/:rec_id/supersede",

@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT body\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3\n            ORDER BY accepted_at ASC, short_code ASC\n            LIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "body",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7a29543b461cd45e149da2d20086360c69c4636dacf285f1ca10469afe1bd564"
+}

@@ -1008,3 +1008,99 @@ a {
   color: var(--danger);
   border-color: var(--danger);
 }
+
+/* ── P5b — Runner-token settings surface (FR-FBR-24 / Contract C25) ───────── */
+.runner-tokens-page {
+  max-width: 52rem;
+}
+.runner-tokens-explainer {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.5rem;
+}
+.runner-tokens-explainer p {
+  margin: 0.5rem 0;
+}
+.runner-tokens-security {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.75rem;
+}
+.runner-key-register,
+.runner-token-register,
+.runner-tokens-list {
+  margin-bottom: 2rem;
+}
+.runner-token-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 34rem;
+}
+.runner-token-form label {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+.runner-token-form-actions {
+  margin-top: 0.75rem;
+}
+.runner-token-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.runner-token-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+}
+.runner-token-revoked {
+  opacity: 0.7;
+}
+.runner-token-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.runner-token-label {
+  font-weight: 600;
+}
+.runner-token-status {
+  font-size: 0.85rem;
+  padding: 0.05rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+.runner-token-status-active {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.runner-token-status-revoked,
+.runner-token-status-expired {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.runner-token-meta {
+  margin: 0.5rem 0 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.75rem;
+}
+.runner-token-meta dt {
+  font-weight: 600;
+  color: var(--muted, inherit);
+}
+.runner-token-meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.runner-token-actions {
+  margin-top: 0.75rem;
+}

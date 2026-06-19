@@ -5,6 +5,7 @@ import { FeedbackDrawer } from "./pages/FeedbackDrawer";
 import { AdminRoadmap } from "./pages/roadmap/AdminRoadmap";
 import { PublicRoadmap } from "./pages/roadmap/PublicRoadmap";
 import { TierSettings } from "./pages/settings/TierSettings";
+import { RunnerTokens } from "./pages/settings/RunnerTokens";
 import { AutopilotDigest } from "./pages/autopilot/AutopilotDigest";
 import { ClusterDetail } from "./pages/autopilot/ClusterDetail";
 import { WorkOrderList } from "./pages/autopilot/WorkOrderList";
@@ -16,6 +17,7 @@ import { WorkOrderDetail } from "./pages/autopilot/WorkOrderDetail";
 //   /feedback/FB-XXXXXX                      → FeedbackList + FeedbackDrawer overlay
 //   /admin/roadmap                           → AdminRoadmap (server-side sole-project resolution)
 //   /admin/settings/tier                     → TierSettings (P3 Stage 2 — plan & usage)
+//   /admin/settings/runner-tokens            → RunnerTokens (P5b — runner key + token lifecycle)
 //   /admin/autopilot                         → AutopilotDigest (P5a — digest + cluster list)
 //   /admin/autopilot/clusters/:clusterId     → ClusterDetail (members + rec cards)
 //   /admin/autopilot/work-orders             → WorkOrderList
@@ -51,6 +53,13 @@ export function App() {
     pathname === "/admin/settings/tier/"
   ) {
     return <TierSettings />;
+  }
+
+  if (
+    pathname === "/admin/settings/runner-tokens" ||
+    pathname === "/admin/settings/runner-tokens/"
+  ) {
+    return <RunnerTokens />;
   }
 
   // P5a autopilot surface (FR-FBR-21). Project-less admin URLs (sole-project

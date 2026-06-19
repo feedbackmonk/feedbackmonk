@@ -1,6 +1,6 @@
 {
   "name": "feedback-as-data-audit",
-  "version": "0.1.0-scaffold",
+  "version": "1.0.0",
   "kind": "verification",
   "question": "Does any code path let feedback-derived (public-internet) text reach the implementer's instruction/system layer instead of the single untrusted-data envelope (25b), or let an outbound payload bypass the egress sanitizer chokepoint and leak source/secrets (25c)? Probe A proves the prompt data-envelope has exactly one chokepoint (prompt::wrap_untrusted) + the DEC-84 preamble. Probe B proves every outbound POST routes through sanitizer::sanitize_outbound (reusing the canonical PII scrubber). Probe C (--full) runs the C24 adversarial corpus incl. the P5b (g)/(f) cases.",
   "category": "security",
@@ -10,7 +10,7 @@
   },
   "output": {
     "format": "text",
-    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe A LIVE in Stage 0 (chokepoint present; full-assembly tightening activates when Worker A finalizes prompt::assemble). Probe B reports PENDING until the outbound modules (report/analyst) land. Probe C reports PENDING while the P5b corpus cases remain #[ignore]."
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe A ACTIVE (prompt::assemble finalized — single chokepoint enforced, no untrusted field concatenated outside wrap_untrusted). Probe B ACTIVE (the outbound modules landed — every POST path routes through sanitize_outbound). Probe C ACTIVE under --full (the C24 P5b cases (g)/(f) are un-ignored and backed by the real runner prompt-assembly + egress sanitizer; full corpus green needs the dev DB for the sqlx::test behavioural cases). The probe-state language auto-degrades to PENDING if a future change removes assemble's body or the outbound modules."
   },
   "freshness": {
     "strategy": "trigger-invalidate",
@@ -33,7 +33,7 @@
   "validation": {
     "self_test_unix": null,
     "self_test_windows": null,
-    "last_validated": "2026-06-18T00:00:00Z"
+    "last_validated": "2026-06-18T21:00:00Z"
   },
   "fallback": "Probe A: read crates/feedbackmonk-runner/src/prompt.rs and confirm (1) `fn wrap_untrusted` exists + builds the `<untrusted-feedback-data>` envelope; (2) the DEC-84 preamble const is present; (3) the envelope literal appears in NO other runner source file (single chokepoint). Probe B: read crates/feedbackmonk-runner/src/sanitizer.rs and confirm `fn sanitize_outbound` exists + reuses feedbackmonk_tracing::scrub; then confirm every outbound POST module (report/analyst) routes its payload through it. Probe C: cargo test -p feedbackmonk-api --test feedback_injection_corpus.",
   "provenance": {

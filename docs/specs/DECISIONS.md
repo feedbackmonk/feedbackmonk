@@ -867,5 +867,29 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 **Scope**: `feedbackmonk-runner::{agent (AgentCommand + StubAgent), main (poll/mint-token CLI)}`; `docs/operations/RUNNER_PROTOCOL.md` + reference adapter (Worker D, Stage 1).
 
+### DEC-FBR-IMPL-19: Close the runner server-side read/ingestion gap before convergence (DEC-001)
+
+**Resolved**: 2026-06-18 (Stage 1 LD decision — DEC-001). *(reconciled from implementation)*
+
+**Decision**: Stage 0 built the runner client + write endpoints but not the server-side read/ingestion endpoints frozen C26 requires (`GET /runner/work-orders[?state=dispatched]`, `GET /runner/work-orders/:id`, `POST /runner/clusters/:id/recommendations`). Without them, the runner binary could not function end-to-end. The LD promoted this gap to a **Stage 1 blocker** and closed it before convergence rather than shipping a non-functional runner.
+
+**Rationale**: A runner binary that can authenticate and poll but has no server-side endpoint to poll is not "Stage 1 DONE" — it is a gap that would require a follow-up stage to be runnable at all. The gap was surfaced by the diff-against-C26 check on the Stage 1 workers' output; closing it was the least-surprise path (avoids a STAGE-2 gate whose only deliverable is endpoint plumbing).
+
+**Scope**: `crates/feedbackmonk-api/src/handlers/work_orders.rs` (GET /runner/ endpoints) + `crates/feedbackmonk-api/src/handlers/recommendations.rs` (POST /runner/ endpoint) + `crates/feedbackmonk-repository/src/feedback.rs` (runner-scoped queries). Runner binary + admin-ui unchanged.
+
+**Alternatives considered**: *Ship Stage 1 without the server endpoints, add them in a subsequent micro-stage* — rejected; would produce a binary that cannot poll, contradicting the Stage 1 exit gate ("runner loop functional end-to-end").
+
+### DEC-FBR-IMPL-20: Runner reads use a dedicated `/runner/` route namespace to avoid axum merge-conflict (DEC-E01)
+
+**Resolved**: 2026-06-18 (Stage 1 emergent decision — DEC-E01, LD-ratified). *(reconciled from implementation)*
+
+**Decision**: The runner-side read endpoints use a `/runner/` path prefix (`GET /runner/work-orders`, `GET /runner/work-orders/:id`, `POST /runner/clusters/:id/recommendations`) rather than reusing the existing `/api/v1/projects/{id}/...` paths. The literal `/work-orders` path collides with the admin router's existing routes; axum's `.merge()` panics on route overlap at startup. The frozen client signatures, admin surface, and approve handler are untouched.
+
+**Rationale**: The runner is a different security principal (runner-token auth, no CORS, no AdminSession) and a different call pattern (it pulls by state, not by project — the dispatched-state poll is the trigger) from the admin API. A separate namespace makes the distinction explicit, avoids axum startup panics on `.merge()`, and keeps the admin router unchanged (zero regression risk).
+
+**Scope**: `crates/feedbackmonk-api/src/handlers/work_orders.rs` (GET /runner/ routes), `crates/feedbackmonk-api/src/handlers/recommendations.rs` (POST /runner/ route), `crates/feedbackmonk-api/src/main.rs` (router assembly). Frozen C26 client paths are separate from server paths — the runner HTTP client calls these /runner/ endpoints.
+
+**Alternatives considered**: *Reuse `/api/v1/projects/{id}/work-orders` with auth-tier dispatch* — axum `.merge()` panics on route overlap (rejected). *Separate router with `.nest("/runner", ...)` under the existing prefix* — visually similar but adds one prefix layer; chosen `/runner/` keeps it flat and distinct (rejected the nesting for simplicity).
+
 ---
 

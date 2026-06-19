@@ -149,6 +149,24 @@ pub trait FeedbackRepo: Send + Sync {
         only: Option<&[String]>,
     ) -> Result<i64>;
 
+    // ==== P5b (C26) — runner ClaimedOrder grounding read ====================
+
+    /// List the verbatim `body` text of every feedback row CURRENTLY in
+    /// `cluster_id`, oldest-first (`accepted_at ASC`), capped at `limit` rows.
+    /// Tenant+project scoped — a cross-tenant `cluster_id` yields an empty Vec
+    /// (no row matches the scope predicate), never another tenant's bodies.
+    ///
+    /// Backs the runner's `ClaimedOrder.recommendation.member_bodies` assembly
+    /// (C26): the rawest UNTRUSTED feedback text the implementer prompt wraps
+    /// (CLAUDE-A's `prompt::wrap_untrusted` envelope). Read-only; no new
+    /// constructor → no `multi-tenant-isolation-check` allowlist entry.
+    async fn list_member_bodies_for_cluster(
+        &self,
+        scope: &ProjectScope,
+        cluster_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<String>>;
+
     // ==== Gap #4 (DELTA) — end-user (JWT-sub-scoped) read surface ===========
     // GitCellar customer-#1 parity gap #4. No schema change. These methods
     // back the public `/me/feedback` + `/me/feedback/:fb/thread` routes. They
@@ -741,6 +759,36 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         .await?;
 
         Ok(i64::try_from(result.rows_affected()).unwrap_or(i64::MAX))
+    }
+
+    // ==== P5b (C26) — runner ClaimedOrder grounding read impl ================
+
+    async fn list_member_bodies_for_cluster(
+        &self,
+        scope: &ProjectScope,
+        cluster_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<String>> {
+        // Scope predicate (tenant + project) is the isolation guarantee: a
+        // cross-tenant cluster_id matches no rows. Oldest-first + short_code
+        // tiebreak for a deterministic, stable order (the runner prompt is
+        // order-insensitive, but tests assert on it).
+        let rows = sqlx::query!(
+            r#"
+            SELECT body
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3
+            ORDER BY accepted_at ASC, short_code ASC
+            LIMIT $4
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            cluster_id,
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| r.body).collect())
     }
 
     // ==== Gap #4 (DELTA) — end-user read surface impl =======================

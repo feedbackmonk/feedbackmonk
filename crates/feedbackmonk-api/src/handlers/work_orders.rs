@@ -153,7 +153,11 @@ fn current_unix_timestamp() -> i64 {
 /// Returns the resolved [`ProjectScope`] (minted pre-auth from the path's
 /// `project_id`, like the public submission path — the token, not a session, is
 /// the credential) alongside the [`RunnerIdentity`].
-async fn verify_runner_token(
+///
+/// `pub(crate)` so the runner-authed ingestion route in `recommendations.rs`
+/// applies the SAME audited verifier (DEC-001 / MSG-C01 Q2) — the verify logic
+/// is unchanged, only its visibility.
+pub(crate) async fn verify_runner_token(
     state: &AppState,
     project_id: Uuid,
     headers: &HeaderMap,
@@ -1031,6 +1035,98 @@ pub async fn runner_transition(
 }
 
 // ===========================================================================
+// Runner READ surface (C26 — the frozen ClaimedOrder shape; runner-token; NO
+// CORS). Closes the DEC-001 gap: Stage 0 froze the rich ClaimedOrder return
+// types + the WorkOrderClient read signatures but built only the runner WRITE
+// endpoints. These two reads serve the runner the data its frozen return types
+// require. They live under a dedicated `/runner/` path (NOT the admin
+// `GET /work-orders`) because the two surfaces serve different JSON shapes to
+// different credential classes and axum `.merge()` forbids overlapping routes.
+// ===========================================================================
+
+/// Cap on the member feedback bodies embedded in one `ClaimedOrder` (C26). A
+/// cluster's rawest UNTRUSTED text — bounded so a pathologically large cluster
+/// cannot bloat the runner payload; the deep-read still has `cluster_summary`
+/// for the long tail.
+const MAX_CLAIMED_ORDER_MEMBER_BODIES: i64 = 200;
+
+/// Assemble the FROZEN C26 `ClaimedOrder` JSON for one work order,
+/// STRUCTURALLY: the API crate has NO Rust dependency on the runner crate — the
+/// runner deserializes this into `feedbackmonk_runner::types::ClaimedOrder`.
+/// Joins the **trusted** work-order instruction layer (`title`/`instructions`/
+/// `owner_overrides` — owner-approved, survived the gate) with the
+/// **untrusted** feedback-derived grounding (recommendation body/rationale/
+/// `source_refs` + cluster summary + verbatim member bodies), all via
+/// tenant-scoped repos (DEC-FBR-03; NO raw SQL here). `action_type` serialises
+/// `snake_case` (`feedbackmonk_core::ActionType`), round-tripping into the
+/// runner's frozen `ActionType`.
+async fn assemble_claimed_order(
+    state: &AppState,
+    scope: &ProjectScope,
+    wo: WorkOrder,
+) -> Result<JsonValue, ApiError> {
+    let rec = state.recommendations.get(scope, wo.recommendation_id).await?;
+    let cluster = state.clusters.get(scope, wo.cluster_id).await?;
+    let member_bodies = state
+        .feedback
+        .list_member_bodies_for_cluster(scope, wo.cluster_id, MAX_CLAIMED_ORDER_MEMBER_BODIES)
+        .await?;
+    // cluster_summary: the analyst-written summary, else the always-present label.
+    let cluster_summary = cluster.summary.unwrap_or(cluster.label);
+    Ok(json!({
+        "work_order_id": wo.id,
+        "project_id": wo.project_id,
+        "action_type": wo.action_type,
+        "title": wo.title,
+        "instructions": wo.instructions,
+        "owner_overrides": wo.owner_overrides,
+        "recommendation": {
+            "body": rec.body,
+            "rationale": rec.rationale,
+            "cluster_summary": cluster_summary,
+            "member_bodies": member_bodies,
+            "source_refs": rec.source_refs,
+        }
+    }))
+}
+
+/// `GET /api/v1/projects/:project_id/runner/work-orders?state=dispatched` — the
+/// runner poll (C26 loop step 1). Returns `{ items: [ClaimedOrder] }` — the
+/// FROZEN rich shape `WorkOrderClient::poll_dispatched` deserializes. Honors
+/// the same `state`/`cluster_id` filters as the admin list. Runner-token; NO
+/// CORS.
+pub async fn runner_list(
+    State(state): State<AppState>,
+    Path(project_id): Path<Uuid>,
+    Query(q): Query<ListQuery>,
+    headers: HeaderMap,
+) -> Result<Json<JsonValue>, ApiError> {
+    let (scope, _runner) = verify_runner_token(&state, project_id, &headers).await?;
+    let wos = state
+        .work_orders
+        .list(&scope, q.state.as_deref(), q.cluster_id)
+        .await?;
+    let mut items = Vec::with_capacity(wos.len());
+    for wo in wos {
+        items.push(assemble_claimed_order(&state, &scope, wo).await?);
+    }
+    Ok(Json(json!({ "items": items })))
+}
+
+/// `GET /api/v1/projects/:project_id/runner/work-orders/:id` — the runner
+/// detail fetch (C26 loop step 3). Returns one FROZEN `ClaimedOrder`.
+/// Runner-token; NO CORS.
+pub async fn runner_detail(
+    State(state): State<AppState>,
+    Path((project_id, work_order_id)): Path<(Uuid, Uuid)>,
+    headers: HeaderMap,
+) -> Result<Json<JsonValue>, ApiError> {
+    let (scope, _runner) = verify_runner_token(&state, project_id, &headers).await?;
+    let wo = state.work_orders.get(&scope, work_order_id).await?;
+    Ok(Json(assemble_claimed_order(&state, &scope, wo).await?))
+}
+
+// ===========================================================================
 // Routers (merged WITHOUT .layer(cors) in main.rs)
 // ===========================================================================
 
@@ -1068,6 +1164,17 @@ pub fn work_order_runner_router(state: AppState) -> Router {
         .route(
             "/api/v1/projects/:project_id/work-orders/:work_order_id/runner-transition",
             post(runner_transition),
+        )
+        // C26 runner READ surface (DEC-001). Dedicated `/runner/` path — does
+        // NOT overlap the admin `GET /work-orders[/:id]` (which `.merge()`
+        // would reject), and serves the frozen `ClaimedOrder` shape.
+        .route(
+            "/api/v1/projects/:project_id/runner/work-orders",
+            get(runner_list),
+        )
+        .route(
+            "/api/v1/projects/:project_id/runner/work-orders/:work_order_id",
+            get(runner_detail),
         )
         .with_state(state)
 }

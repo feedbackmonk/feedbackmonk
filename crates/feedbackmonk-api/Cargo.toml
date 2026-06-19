@@ -48,6 +48,10 @@ http-body-util = "0.1"
 mime = "0.3"
 insta = "1"
 rand_core = "0.6"
+# C24 corpus (feedback_injection_corpus.rs) P5b cases (g)/(f) drive the real
+# runner-side prompt-assembly + egress sanitizer (acyclic: runner does not depend
+# on the api crate).
+feedbackmonk-runner = { path = "../feedbackmonk-runner" }
 
 [lints.clippy]
 pedantic = { level = "warn", priority = -1 }

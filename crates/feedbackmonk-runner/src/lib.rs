@@ -49,6 +49,17 @@ pub mod implementer;
 pub mod prompt;
 pub mod sanitizer;
 pub mod types;
+// Stage 1 appends (append-only; do not reorder/remove existing declarations):
+// [CLAUDE-C][2026-06-18 20:47]: analyst runtime (FR-FBR-20 customer-side deep-read).
+pub mod analyst;
+// [CLAUDE-B][2026-06-18 21:05]: runner host loop (FR-FBR-24 / C26) — transport,
+// claim/report/poll/schedule, customer-side mint helper, default spawn agent.
+pub mod claim;
+pub mod default_agent;
+pub mod poll;
+pub mod report;
+pub mod schedule;
+pub mod token_mint;
 
 pub use agent::{AgentCommand, StubAgent};
 pub use client::WorkOrderClient;

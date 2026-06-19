@@ -25,31 +25,34 @@ it does NOT prove the ABSENCE of a bypass path (feedback text reaching the
 instruction layer) or an outbound path that skips the sanitizer. This oracle is
 the anti-reward-hacking leg — a worker cannot satisfy it with a flag.
 
-THREE probes (detection-from-code, co-evolving with Worker A):
+THREE probes (detection-from-code; ALL ACTIVE as of Worker A's Stage-1 landing):
 
-  A) ENVELOPE CHOKEPOINT (static, LIVE in Stage 0):
+  A) ENVELOPE CHOKEPOINT (static, ACTIVE):
      `feedbackmonk-runner/src/prompt.rs` defines `wrap_untrusted` + the envelope
      delimiters + the DEC-84 preamble, and the `<untrusted-feedback-data>`
-     envelope literal appears in EXACTLY ONE place (the chokepoint). When Worker
-     A finalizes `assemble` (no longer `unimplemented!`), the probe additionally
-     asserts no untrusted `RecommendationContext` field is formatted into the
-     prompt outside `wrap_untrusted`.
+     envelope literal appears in EXACTLY ONE place (the chokepoint). Now that
+     `assemble` is finalized (no longer `unimplemented!`), the probe additionally
+     asserts it routes feedback-derived fields through `wrap_untrusted` rather
+     than concatenating them raw. (Auto-degrades to PENDING if assemble's body is
+     ever removed.)
 
-  B) EGRESS CHOKEPOINT (static, partially LIVE):
-     `feedbackmonk-runner/src/sanitizer.rs` defines `sanitize_outbound`. When the
-     outbound modules land (Worker B `report`, Worker C `analyst`), the probe
-     asserts each routes its POST payload through `sanitize_outbound`. PENDING
-     until those modules exist.
+  B) EGRESS CHOKEPOINT (static, ACTIVE):
+     `feedbackmonk-runner/src/sanitizer.rs` defines `sanitize_outbound`. The
+     outbound modules have landed (Worker B `report`, Worker C `analyst`); the
+     probe asserts each routes its POST payload through `sanitize_outbound`.
+     (Auto-degrades to PENDING if every outbound module is removed.)
 
-  C) CORPUS / BEHAVIOR (gated behind --full):
+  C) CORPUS / BEHAVIOR (gated behind --full, ACTIVE):
      runs the C24 adversarial corpus (`tests/feedback_injection_corpus.rs`). The
      P5b cases `case_g_destructive_steering_p5b` + `case_f_runner_side_exfil_
-     defense_p5b` are `#[ignore]` until Worker A un-ignores + backs them with
-     real prompt-assembly / sanitizer code; the probe reports PENDING while they
-     remain ignored.
+     defense_p5b` are un-ignored and backed by the real runner prompt-assembly /
+     egress sanitizer; the probe reports them ACTIVE once they are no longer
+     `#[ignore]` and the corpus is green. (Full corpus green needs the dev DB for
+     the `sqlx::test` behavioural cases.)
 
-A green oracle (Probe A clean + B/C clean-or-pending) is the SCAFFOLD state now;
-a green oracle with B+C ACTIVE is Worker A's Stage-1 exit gate.
+A green oracle with A+B+C ACTIVE is Worker A's Stage-1 exit gate — MET. The probe
+states are computed dynamically from the code, so the language self-degrades to
+PENDING if a future change removes a chokepoint body or an outbound module.
 
 Output: machine-parseable PASS / FAIL. Exit 0 PASS, 1 FAIL, 2 environment.
 

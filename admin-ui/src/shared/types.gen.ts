@@ -755,3 +755,77 @@ export const WORK_ORDER_OWNER_TRANSITIONS: Record<
   failed: ["retry", "cancel"],
   cancelled: [], // terminal
 };
+
+// ─────────────────────────────────────────────────────────────────────────
+// P5b — Runner-token lifecycle admin surface + key-class registration
+// (Contract C25, FR-FBR-24).
+//
+// Hand-rolled mirror — NO ts-rs/typeshare in this repo. KEEP IN SYNC with the
+// Rust source of truth (field names + types verbatim):
+//   - Runner-token shapes  → crates/feedbackmonk-api/src/handlers/runner_tokens.rs
+//                            (RegisterRunnerTokenRequest, RunnerTokenView,
+//                             RunnerTokenListResponse)
+//   - key_class + key register → crates/feedbackmonk-api/src/handlers/signing_keys.rs
+//                            (RegisterKeyRequest.key_class, RegisterKeyResponse)
+//   - KeyClass enum (lowercase serde) → crates/feedbackmonk-core/src/models.rs
+//
+// All `/runner-tokens` + `/signing-keys` endpoints are AdminSession-only and
+// merged WITHOUT `.layer(cors)` — same admin-session calls as TierSettings.
+//
+// SECURITY note to surface in UI copy: a runner token authorizes ONLY runner
+// transitions and can NEVER author `approved` (C22 inv. 2). Even full token
+// compromise cannot bypass the owner-approval gate — which is why issuance is
+// safe to automate. Drift between Rust + TS surfaces in the Stage 3 e2e parse
+// test.
+// ─────────────────────────────────────────────────────────────────────────
+
+// Privilege class of a registered signing key (mirror of KeyClass, lowercase).
+// `identity` (default) verifies end-user submission JWTs; `runner` verifies the
+// runner's `scope:"runner:write"` tokens. Registering a `runner`-class key is
+// how an owner enables runner-token minting.
+export type KeyClass = "identity" | "runner";
+
+export const KEY_CLASS_LABELS: Record<KeyClass, string> = {
+  identity: "Identity (end-user submissions)",
+  runner: "Runner (autonomous agent)",
+};
+
+// --- C25: signing-key registration (key_class field, P5b) -------------------
+
+// POST /api/v1/projects/:project_id/signing-keys request. The contract-of-record
+// field name is `public_key_base64` (the handler also accepts the `public_key_b64`
+// alias, but the spec name is what we send). `key_class` omitted ⇒ "identity".
+export interface RegisterKeyRequest {
+  public_key_base64: string; // standard base64 of the 32-byte raw Ed25519 public key
+  label: string; // 1..=100 chars after trim
+  key_class?: KeyClass; // omit ⇒ "identity"
+}
+
+export interface RegisterKeyResponse {
+  key_id: string; // UUID
+  label: string;
+  registered_at: string; // RFC 3339
+}
+
+// --- C25: runner-token lifecycle --------------------------------------------
+
+// POST /api/v1/projects/:project_id/runner-tokens — register an issued token
+// for visibility (optional bookkeeping; idempotent upsert on (project, jti)).
+export interface RegisterRunnerTokenRequest {
+  jti: string; // the token's jti claim (client-minted UUID); 1..=200 chars
+  label: string; // human label, e.g. "ci-runner"; 1..=100 chars
+  expires_at?: string | null; // the token's exp as RFC3339 (visibility only)
+}
+
+// One runner-token row: registry fields + the joined revocation state.
+export interface RunnerTokenView {
+  jti: string;
+  label: string;
+  expires_at: string | null; // RFC 3339 or null
+  created_at: string; // RFC 3339
+  revoked_at: string | null; // Some ⇒ revoked (dead regardless of exp)
+}
+
+export interface RunnerTokenListResponse {
+  items: RunnerTokenView[];
+}

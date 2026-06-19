@@ -20,7 +20,16 @@ Wire the (proven, recommend-only) work-order seam to ACTUAL code execution in th
 - `prompt.rs` — 25b data-envelope: `wrap_untrusted` (the single chokepoint) + `DEC84_PREAMBLE`. Assembly finalized by Worker A.
 - `sanitizer.rs` — 25c egress chokepoint `sanitize_outbound` (reuses `feedbackmonk_tracing::scrub`). Finalized by Worker A.
 - `implementer.rs` — `implement` (the B→A seam). Filled by Worker A.
-- `main.rs` — poll-based CLI (`poll`/`mint-token`). Loop bodies wired by Worker B/C.
+- `poll.rs` — main runner loop: poll dispatched orders → claim → drive implementer → report.
+- `claim.rs` — claim a dispatched work order (state `dispatched → building`).
+- `report.rs` — report results and transition states (building/verifying/reported/failed); posts sanitized `result_ref`.
+- `schedule.rs` — scheduler: `--watch` continuous loop, `--sweep` analyst run, cron/systemd/CI-portable.
+- `token_mint.rs` — customer-side runner-token mint helper (Ed25519 seed → signed JWT).
+- `default_agent.rs` — `DefaultAgent` impl of `AgentCommand`: spawns `FEEDBACKMONK_AGENT_CMD` (default `claude`) with prompt on stdin; captures `FEEDBACKMONK_RESULT_REF: {json}` from final stdout line.
+- `analyst/mod.rs` — analyst runtime entry: `sweep()` over clusters, `ClusterInput`, `SweepTally`, `CandidateRecommendation`.
+- `analyst/deep_read.rs` — `deep_read()` (deterministic floor + injectable `AnalystAgent`), `StubAnalystAgent`.
+- `analyst/ingest.rs` — `ingest()` per candidate through egress sanitizer + `RecommendationSink` trait, `RecordingSink`.
+- `main.rs` — poll-based CLI (`poll`/`mint-token`); wired to the real loop (poll/watch/sweep) and token mint.
 
 ## 3. Public API & Usage
 
@@ -29,7 +38,9 @@ feedbackmonk-runner poll [--watch] [--sweep]   # drive dispatched orders (+ anal
 feedbackmonk-runner mint-token --key <path>    # customer-side runner-token mint helper
 ```
 
-Library: `WorkOrderClient`, `AgentCommand`/`StubAgent`, `prompt::wrap_untrusted`, `sanitizer::sanitize_outbound`, `implementer::implement`, and the `types` data seam.
+Library: `WorkOrderClient`, `AgentCommand`/`StubAgent`/`DefaultAgent`, `prompt::wrap_untrusted`, `sanitizer::sanitize_outbound`, `implementer::implement`, the `types` data seam, and the analyst runtime (`analyst::sweep`, `analyst::deep_read`, `analyst::ingest`).
+
+**Agent result protocol**: agents print `FEEDBACKMONK_RESULT_REF: {json}` as their final stdout line; `DefaultAgent` captures this and returns it as the `ImplementResult`.
 
 ## 4. Constraints & Business Rules
 
@@ -50,3 +61,8 @@ Library: `WorkOrderClient`, `AgentCommand`/`StubAgent`, `prompt::wrap_untrusted`
 - **Customer-mints token model**: dictated by the frozen C22 `verify_runner_token` seam (verifies against the project's registered public keys); feedbackmonk stays private-key-free (DEC-FBR-04).
 - **Poll-based, not webhook**: portable to local repos with no public endpoint; matches the self-host story. Push is a later optimization.
 - **One abstraction for BYO + testability**: the swappable `AgentCommand` is both the BYO-agent seam (Q20) and the test-injection seam (Testability Gate Flag 1).
+- **`/runner/` namespace for server-side read endpoints** (DEC-FBR-IMPL-20): avoids axum merge-conflict with the admin router; the different auth principal (runner-token, no CORS) and call pattern (state-poll vs. project-CRUD) make the separation explicit.
+- **Server-side read/ingestion endpoints as Stage 1 blocker** (DEC-FBR-IMPL-19): the runner binary cannot poll without a server to poll; these endpoints were a gap that had to be closed before Stage 1 convergence.
+- **C27 25b single chokepoint design**: feedback-derived text (cluster summaries, recommendation body/rationale, member bodies, source_refs) enters the implementer prompt through exactly ONE function — `prompt::wrap_untrusted` — inside a delimited `<untrusted-feedback-data>` envelope. The trusted instruction layer carries only owner-approved `instructions`/`owner_overrides` + the DEC-84 critical-action preamble. Forged-delimiter defanging (`assemble` strips the delimiter string from any untrusted field before passing it to `wrap_untrusted`) closes the envelope-escape attack. The `feedback-as-data-audit` oracle Probe A verifies this single-chokepoint property from code, not from a self-reported flag.
+- **C27 25c egress design**: every outbound POST (implementer `result_ref`, analyst recommendations) routes through `sanitizer::sanitize_outbound` — no exceptions. The sanitizer reuses `feedbackmonk_tracing::scrub` (the canonical 20-pattern PII scrubber), adds a secret-pattern denylist (reject on secret-dump), and enforces references-not-dumps on `source_refs`/`result_ref`. `SanitizeError` has exactly two variants: `SecretDump` (reject the payload) and `Malformed` (parse failure). Probe B verifies the "every outbound path" property from code.
+- **Runner-token structural trust bound**: a runner token (key_class=runner) authorizes only runner state transitions (`claim`/`building`/`verifying`/`reported`/`failed`) and can never author an `approved` event (C22 invariant 2). The `verify_runner_token` function selects only `runner`-class keys; the `approve` handler requires `AdminSession` (a different auth path entirely). This means even complete compromise of a runner token cannot bypass the owner-approval gate — the security boundary is structural, not policy.

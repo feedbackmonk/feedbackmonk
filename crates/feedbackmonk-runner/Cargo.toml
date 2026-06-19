@@ -27,11 +27,31 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
+base64 = { workspace = true }
+tracing = { workspace = true }
+# Outbound sanitizer (Worker A, Stage 1): secret-pattern denylist + high-entropy
+# redaction (C27 25c, leg b/c). Compiled once via `once_cell`.
+regex = { workspace = true }
+once_cell = { workspace = true }
+# Runner host loop transport (Worker B, Stage 1): the authenticated HTTP client
+# against the work-order API (C25/C26). rustls (no system OpenSSL — Windows-safe).
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# Customer-side runner-token mint helper (Worker B): Ed25519 SIGN. The API server
+# stays verify-only (DEC-FBR-04); sign/verify share key handling with feedbackmonk-jwt.
+ed25519-dalek = { workspace = true }
 # Reused by the outbound sanitizer (Worker A, Stage 1) — the canonical
 # 20-pattern PII scrubber chokepoint (FR-FBR-10 / C27 25c).
 feedbackmonk-tracing = { path = "../feedbackmonk-tracing" }
 # Shared domain types (ActionType, WorkOrderState, ...).
 feedbackmonk-core = { path = "../feedbackmonk-core" }
+
+[dev-dependencies]
+# Hermetic HTTP mock for the runner-loop transport tests (no real API, no real
+# `claude` — StubAgent + a wiremock server drive the loop end-to-end).
+wiremock = "0.6"
+# Cross-check: the mint helper's token must verify under the SAME verifier the
+# backend runs (`verify_runner_token` → `feedbackmonk_jwt::verify_with_leeway`).
+feedbackmonk-jwt = { path = "../feedbackmonk-jwt" }
 
 [lints]
 workspace = true

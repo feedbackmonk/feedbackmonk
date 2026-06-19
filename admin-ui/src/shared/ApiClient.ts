@@ -16,11 +16,15 @@ import type {
   PromoteResponse,
   Recommendation,
   RecommendationListResponse,
+  RegisterKeyRequest,
+  RegisterKeyResponse,
+  RegisterRunnerTokenRequest,
   RetractResponse,
   ReplyRequest,
   ReplyResponse,
   RoadmapItem,
   RoadmapListResponse,
+  RunnerTokenListResponse,
   TierCapExceededBody,
   TierStatus,
   TopVotedResponse,
@@ -508,6 +512,65 @@ export async function transitionWorkOrder(
 ): Promise<WorkOrderTransitionResponse> {
   const r = await api.post<WorkOrderTransitionResponse>(
     P5A_PATHS.workOrderTransition(projectId, workOrderId),
+    body,
+  );
+  return r.data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// P5b — Runner-token lifecycle + runner-key registration (Contract C25,
+// FR-FBR-24). All AdminSession-only, OFF CORS — same admin-session plumbing as
+// the tier/roadmap admin calls above. Paths match `runner_tokens.rs` +
+// `signing_keys.rs` routers verbatim.
+//
+// Issuance is NOT a server endpoint: the customer mints the runner write-token
+// client-side (`feedbackmonk-runner mint-token`) with the private half of a
+// registered `runner`-class key. `register` is optional visibility bookkeeping;
+// `revoke` is the load-bearing one (writes the jti to the denylist).
+// ─────────────────────────────────────────────────────────────────────────
+
+export async function listRunnerTokens(
+  projectId: string,
+): Promise<RunnerTokenListResponse> {
+  const r = await api.get<RunnerTokenListResponse>(
+    `/projects/${encodeURIComponent(projectId)}/runner-tokens`,
+  );
+  return r.data;
+}
+
+// POST returns 204 No Content (visibility upsert; idempotent on (project, jti)).
+export async function registerRunnerToken(
+  projectId: string,
+  body: RegisterRunnerTokenRequest,
+): Promise<void> {
+  await api.post(
+    `/projects/${encodeURIComponent(projectId)}/runner-tokens`,
+    body,
+  );
+}
+
+// DELETE returns 204 No Content. Writes the jti to the append-only revocation
+// denylist; `verify_runner_token` rejects it thereafter (even before exp).
+// Idempotent (a second revoke is a no-op); a jti can be revoked without prior
+// registration (revoke-before-register).
+export async function revokeRunnerToken(
+  projectId: string,
+  jti: string,
+): Promise<void> {
+  await api.delete(
+    `/projects/${encodeURIComponent(projectId)}/runner-tokens/${encodeURIComponent(jti)}`,
+  );
+}
+
+// Register the PUBLIC half of an Ed25519 signing key (Contract C4 + C25). Pass
+// `key_class:"runner"` to enable runner-token minting; omit/"identity" for the
+// end-user submission default. feedbackmonk never holds the private key.
+export async function registerSigningKey(
+  projectId: string,
+  body: RegisterKeyRequest,
+): Promise<RegisterKeyResponse> {
+  const r = await api.post<RegisterKeyResponse>(
+    `/projects/${encodeURIComponent(projectId)}/signing-keys`,
     body,
   );
   return r.data;
