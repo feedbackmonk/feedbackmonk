@@ -1797,4 +1797,97 @@ mod tests {
         assert!(matches!(err, crate::error::RepoError::NotFound));
         tx.rollback().await.ok();
     }
+
+    // ---- FR-FBR-28 sentiment: storage round-trip + trend aggregation ----
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn submit_persists_sentiment(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "sentiment-rt@example.com").await;
+
+        // Authenticated submit with a sentiment.
+        let id = repo
+            .submit_authenticated(
+                &scope, "auth0|sub-s", Some("u@x.com"), None, None, None,
+                "loved it", Some(Sentiment::Positive), FeedbackKind::Other,
+            )
+            .await
+            .unwrap();
+        // Anonymous submit with a different sentiment.
+        repo.submit_anonymous(&scope, &[4u8; 32], None, "hated it", Some(Sentiment::Negative), FeedbackKind::Bug)
+            .await
+            .unwrap();
+
+        // list_recent read path carries sentiment.
+        let recent = repo.list_recent(&scope, 10).await.unwrap();
+        assert_eq!(recent.len(), 2);
+        assert!(recent.iter().any(|f| f.sentiment == Some(Sentiment::Positive)));
+        assert!(recent.iter().any(|f| f.sentiment == Some(Sentiment::Negative)));
+
+        // get_with_history read path carries sentiment.
+        let (fb, _h) = repo.get_with_history(&scope, &id).await.unwrap();
+        assert_eq!(fb.sentiment, Some(Sentiment::Positive));
+        assert_eq!(fb.body, "loved it");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn sentiment_only_submission_stores_empty_body(pool: PgPool) {
+        // A sentiment-only submission (no body) is valid; the empty body maps
+        // to "" on read (DB stores NULL). FR-FBR-28 + DEC-FBR-IMPL-23.
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "sentiment-only@example.com").await;
+
+        let id = repo
+            .submit_anonymous(&scope, &[5u8; 32], None, "", Some(Sentiment::Neutral), FeedbackKind::Other)
+            .await
+            .unwrap();
+
+        let (fb, _h) = repo.get_with_history(&scope, &id).await.unwrap();
+        assert_eq!(fb.body, "", "sentiment-only submission has empty body");
+        assert_eq!(fb.sentiment, Some(Sentiment::Neutral));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn sentiment_trend_aggregates_and_excludes_bodyless_nulls(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "sentiment-trend@example.com").await;
+
+        // Seed 2 positive, 1 neutral, 1 negative (all "now") + 1 row with NO
+        // sentiment (must be excluded from the trend).
+        for s in [Sentiment::Positive, Sentiment::Positive, Sentiment::Neutral, Sentiment::Negative] {
+            repo.submit_anonymous(&scope, &[1u8; 32], None, "x", Some(s), FeedbackKind::Other)
+                .await
+                .unwrap();
+        }
+        repo.submit_anonymous(&scope, &[2u8; 32], None, "no sentiment here", None, FeedbackKind::Other)
+            .await
+            .unwrap();
+
+        let since = chrono::Utc::now() - chrono::Duration::days(1);
+        let buckets = repo.sentiment_trend(&scope, TrendBucket::Day, since).await.unwrap();
+
+        // All four sentiment-bearing rows land in one day bucket.
+        assert_eq!(buckets.len(), 1, "all rows in a single day bucket");
+        let b = &buckets[0];
+        assert_eq!(b.positive, 2);
+        assert_eq!(b.neutral, 1);
+        assert_eq!(b.negative, 1);
+        // The body-only (NULL sentiment) row is excluded: total == 4, not 5.
+        assert_eq!(b.positive + b.neutral + b.negative, 4);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn sentiment_trend_is_scope_isolated(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let s1 = seed_project_scope(&pool, "trend-ct1@example.com").await;
+        let s2 = seed_project_scope(&pool, "trend-ct2@example.com").await;
+        repo.submit_anonymous(&s1, &[1u8; 32], None, "x", Some(Sentiment::Positive), FeedbackKind::Other)
+            .await
+            .unwrap();
+
+        let since = chrono::Utc::now() - chrono::Duration::days(1);
+        // s2 sees none of s1's sentiment.
+        let buckets = repo.sentiment_trend(&s2, TrendBucket::Day, since).await.unwrap();
+        assert!(buckets.is_empty(), "cross-tenant trend must not leak rows");
+    }
 }

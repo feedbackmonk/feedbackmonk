@@ -1,0 +1,42 @@
+{
+  "name": "solicitation-invariant-check",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Can a user who has opted out of solicitation (FR-FBR-29) ever have a non-opt-out event honored, or can the HTTP handler write a new status without routing through the state machine? Probe A proves from solicitation.rs that the `OptedOut` variant exists, `is_opted_out` matches EXACTLY {OptedOut}, and `apply_event` carries the terminal guard `_ if current.is_opted_out() => Err(SolicitationError::OptedOut)` (every non-opt-out event rejected once opted out). Probe B asserts post_solicitation_event routes every `upsert(` write through a prior `apply_solicitation_event(...)` call (no write bypasses the state machine) and that auth requires JWT identity-class keys (list_active_for_class(..., KeyClass::Identity), DEC-FBR-04). Probe C (--full) runs tests/solicitation_integration.rs.",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/oracles/solicitation-invariant-check/oracle.sh",
+    "windows": ".claude/oracles/solicitation-invariant-check/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe C reports PENDING (not failure) until tests/solicitation_integration.rs lands."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-core/src/solicitation.rs",
+      "crates/feedbackmonk-api/src/handlers/solicitation.rs",
+      "crates/feedbackmonk-repository/src/solicitations.rs",
+      "crates/feedbackmonk-api/tests/solicitation_integration.rs",
+      ".claude/oracles/solicitation-invariant-check/oracle.py"
+    ],
+    "compute_cost_ms": 40
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the solicitation state machine, the solicitation handler, or the solicitation repository",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "feedbackmonk: every reviewer touching crates/feedbackmonk-core/src/solicitation.rs (state machine), crates/feedbackmonk-api/src/handlers/solicitation.rs (write path + auth), or crates/feedbackmonk-repository/src/solicitations.rs (durable record). A green oracle with Probe C ACTIVE is the solicitation-feature exit gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-19T00:00:00Z"
+  },
+  "fallback": "Probe A: read crates/feedbackmonk-core/src/solicitation.rs and confirm (1) the `OptedOut` variant exists; (2) `is_opted_out` returns true for EXACTLY `Self::OptedOut`; (3) `apply_event` returns `Err(SolicitationError::OptedOut)` from a `_ if current.is_opted_out()` guard for every non-opt-out event. Probe B: read crates/feedbackmonk-api/src/handlers/solicitation.rs and confirm post_solicitation_event calls `apply_solicitation_event(...)` before `repo.upsert(...)` AND that auth calls `list_active_for_class(&scope, KeyClass::Identity)`. Probe C: cargo test -p feedbackmonk-api --test solicitation_integration.",
+  "provenance": {
+    "authored_by": "Solicitation-feature build — Probe A+B finalized + LIVE against the shipped state machine + handler; Probe C (--full) co-evolves with the integration test authored concurrently by the main session.",
+    "created": "2026-06-19T00:00:00Z",
+    "rationale": "FR-FBR-29 / DEC-FBR-IMPL-24: `opted_out` is a TERMINAL state — the load-bearing privacy promise of the per-user solicitation feature ('never solicit me again' must be honored forever, surviving client reinstalls). A happy-path unit test confirms `opt out -> opted_out` but cannot prove the ABSENCE of a code path that honors a prompted/dismissed/gave_feedback event after opt-out, nor that the handler can be rewired to upsert a status WITHOUT the terminal guard. This oracle is detection-from-CODE (state-machine source + terminal guard + handler binding + ledger), the anti-reward-hacking leg — it cannot be satisfied by a self-reported `opted_out` flag. Mirrors approval-gate-enforcement (work-order trust boundary) and public-board-moderation-gate (board moderation trust boundary)."
+  }
+}
