@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT body_translated, source_lang, translation_status\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "body_translated",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "source_lang",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "translation_status",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "01b46ae25ef3c4cec2299a4c80b5f5bed4cbd8780b78304f5ec6a08579ed49ab"
+}

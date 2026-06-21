@@ -26,7 +26,8 @@ The per-row storage + the four worklist repository methods (`claim_pending_trans
 | File | One-line summary |
 |------|---|
 | `mod.rs` | Module surface — `TranslationProvider` trait + `TranslateOutput` + re-exports. |
-| `deepl.rs` | DeepL cloud adapter (`reqwest` 0.12 rustls). Auto-detects source language; routes free (`…:fx`) vs Pro keys by host. |
+| `deepl.rs` | DeepL **cloud** adapter (`reqwest` 0.12 rustls) — egress. Auto-detects source language; routes free (`…:fx`) vs Pro keys by host. |
+| `libretranslate.rs` | LibreTranslate adapter — the **no-egress** option (self-hosted, AGPL). Operator-supplied URL + optional api key; `source: "auto"` returns the detected language. |
 | `noop.rs` | `NoOpTranslator` — the default-off contract type; returns input unchanged (detected == target → worker marks `skipped`). |
 | `worker.rs` | `spawn_translation_worker` + `translate_once` poll-loop; `same_language` skip-detection; worklist constants (poll secs, batch, attempts cap). |
 | `README.md` | This file. |
@@ -49,7 +50,8 @@ Tests substitute a `FakeTranslator` implementing `TranslationProvider` and drive
 - **Provider DEFAULTS to `off`.** Enabling a cloud provider egresses feedback bodies (personal data) to a GDPR data processor (DEC-FBR-IMPL-26). Do NOT change the default away from `off`, remove the `off` option, or hardcode a provider without re-opening DEC-FBR-IMPL-26. Enforced by the `translation-egress-q24-isolation` oracle (Probe A) + disclosed in `docs/operations/SELFHOST_ENV.md` (Contract C21).
 - **NEVER on the submit path.** Translation runs ONLY in the background worker, after a row is accepted (DEC-FBR-IMPL-25 D3). The submit path only STAMPS `pending`; it never calls a provider. Keeps the public widget endpoint's latency + uptime independent of the provider.
 - **Store-both; the original is never overwritten.** The worker writes `body_translated` + `source_lang` alongside the verbatim `body` (Q24). `set_translation` is the ONLY writer of `body_translated`, and ONLY the worker calls it (enforced by the oracle, Probe C).
-- **Human-facing surfaces read the verbatim original.** Only the machine consumer `list_member_bodies_for_cluster` reads the translation (with fallback to the original). No public / end-user / board / admin-display read may select `body_translated` (Q24; oracle Probe B).
+- **Public surfaces read the verbatim original.** The machine consumer `list_member_bodies_for_cluster` reads the translation (with fallback to the original), and the data-controller admin may view it via the ONE scoped reader `get_translation_for_admin` (the admin-UI original↔translation toggle, FR-FBR-30 #3). No **public / end-user / board** read may select `body_translated` (Q24; oracle Probe B allowlist).
+- **Lazy backfill + manual escape hatch.** Only feedback accepted after a provider is enabled is translated. The operator endpoint `POST /api/v1/ops/translation/backfill` (behind `FEEDBACKMONK_OPS_TOKEN`) stamps pre-existing body-bearing rows `pending` so the worker picks them up (FR-FBR-30 #5).
 - **Provider outage is never user-visible.** A failed translation marks the row `failed` (re-pollable until the attempts cap); every consumer falls back to the verbatim `body` while a row is un-translated.
 - **No body in logs.** The worker logs only `feedback_id` + error on failure; the DeepL adapter never logs the response body verbatim.
 

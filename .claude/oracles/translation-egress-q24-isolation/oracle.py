@@ -12,12 +12,15 @@ multilingual-translation pipeline:
      arm silently makes every self-hoster a data exporter (DEC-FBR-IMPL-26).
 
   B) READ ISOLATION (static, repository + all crate src): NO public / end-user /
-     board / admin-display code may read `body_translated`. Every function that
-     references the column must be in a tiny ALLOWLIST — the single analyst/
-     clustering consumer (`list_member_bodies_for_cluster`) and the worker writer
-     (`set_translation`). A new read that surfaces the translation to a request
-     handler shows up as an un-allowlisted referent and FAILS. This is the Q24 +
-     privacy leg: the verbatim original is what every human-facing surface shows.
+     board code may read `body_translated`. Every function that references the
+     column must be in a tiny ALLOWLIST — the analyst/clustering consumer
+     (`list_member_bodies_for_cluster`), the worker writer (`set_translation`),
+     and the ONE scoped admin-controller reader (`get_translation_for_admin`, the
+     admin-UI original↔translation toggle, FR-FBR-30 #3). A new read that
+     surfaces the translation to a public/end-user/board request handler shows up
+     as an un-allowlisted referent and FAILS. This is the Q24 + privacy leg: the
+     verbatim original is what every PUBLIC surface shows; only the data
+     controller (admin) and machine consumers see the translation.
 
   C) WRITER UNIQUENESS (static): the column is WRITTEN (`SET body_translated`) in
      exactly ONE repository fn (`set_translation`), and that fn is CALLED only
@@ -64,12 +67,20 @@ WORKER_TEST_RS = CRATES_DIR / "feedbackmonk-api" / "tests" / "translation_worker
 
 TRANSLATED_COL = "body_translated"
 # Functions permitted to REFERENCE body_translated (read or write). Anything else
-# referencing it is a potential leak of the translation to a human-facing surface
-# (Q24) — adding a referent must be a conscious decision (extend this set + cite
-# why), mirroring the moderation-gate oracle's allowlist discipline.
+# referencing it is a potential leak of the translation to a PUBLIC / END-USER /
+# BOARD surface (Q24) — adding a referent must be a conscious decision (extend
+# this set + cite why), mirroring the moderation-gate oracle's allowlist
+# discipline. NOTE: the admin (data controller) MAY view a translation of
+# feedback they own — `get_translation_for_admin` is the ONE scoped admin reader
+# (FR-FBR-30 future-item #3, the admin-UI original↔translation toggle); it does
+# not weaken the public/end-user/board protection, which is the real Q24/privacy
+# concern.
 ALLOWED_REFERENT_FNS = {
     "set_translation",                 # the worker's writer (Probe C pins uniqueness)
     "list_member_bodies_for_cluster",  # the sole analyst/clustering consumer (Stream D)
+    "get_translation_for_admin",       # the sole admin (controller) repo reader, scoped (#3)
+    "get_admin_feedback",              # the admin detail HANDLER that plumbs the above into
+                                       # the admin (controller) response — not public/end-user/board (#3)
 }
 # The single fn allowed to WRITE the column.
 WRITER_FN = "set_translation"

@@ -661,6 +661,17 @@ pub struct FeedbackDetailResponse {
     /// 3-point satisfaction signal, or `null` when none was given (FR-FBR-28).
     pub sentiment: Option<Sentiment>,
     pub body: String,
+    /// FR-FBR-30 (#3): the English translation of `body`, or `null` when the
+    /// row is untranslated (pre-feature / disabled / skipped / failed / pending).
+    /// The verbatim `body` above is ALWAYS the original — the admin UI shows a
+    /// toggle to the translation only when this is present. The data controller
+    /// (admin) is the only request surface allowed to see the translation
+    /// (public / end-user / board surfaces never receive it; Q24).
+    pub body_translated: Option<String>,
+    /// Detected source language for the translation (e.g. `DE`), or `null`.
+    pub source_lang: Option<String>,
+    /// `pending | translated | skipped | failed`, or `null` (never considered).
+    pub translation_status: Option<String>,
     pub submitted_at: DateTime<Utc>,
     pub submitter: SubmitterWire,
     pub external_metadata: Option<serde_json::Value>,
@@ -679,6 +690,14 @@ pub async fn get_admin_feedback(
     let replies = state
         .feedback_replies
         .list_for_feedback(&project_scope, &fb_id)
+        .await?;
+    // FR-FBR-30 (#3): the admin (data controller) may view the translation of
+    // feedback they own. The verbatim `body` above stays the original; this is
+    // the one scoped admin read of the translation columns (Q24-safe — public /
+    // end-user / board surfaces never receive it).
+    let translation = state
+        .feedback
+        .get_translation_for_admin(&project_scope, &fb_id)
         .await?;
 
     // Admin label resolution: in P0/P1 the only "admin user" identity is
@@ -750,6 +769,9 @@ pub async fn get_admin_feedback(
         status: feedback.status,
         sentiment: feedback.sentiment,
         body: feedback.body,
+        body_translated: translation.body_translated,
+        source_lang: translation.source_lang,
+        translation_status: translation.translation_status,
         submitted_at: feedback.accepted_at,
         submitter,
         external_metadata: feedback.external_metadata,

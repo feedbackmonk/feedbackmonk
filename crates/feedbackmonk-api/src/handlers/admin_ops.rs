@@ -27,14 +27,14 @@
 //! is driven through (set `tier=self_host` + `footer_text_override=""` now; clear
 //! the override when feedbackmonk.com is live) instead of raw SQL.
 
-use axum::extract::{Path, State};
-use axum::routing::patch;
+use axum::extract::{Path, Query, State};
+use axum::routing::{patch, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use feedbackmonk_core::{Tier, WidgetBrand};
-use feedbackmonk_repository::WidgetBrandOverride;
+use feedbackmonk_repository::{TranslationFlag, WidgetBrandOverride};
 
 use crate::auth::OpsAuth;
 use crate::error::ApiError;
@@ -186,11 +186,64 @@ pub async fn patch_tenant(
     }))
 }
 
+// ---------- FR-FBR-30 (#5): manual translation backfill ----------
+
+/// Default backfill batch size when the operator omits `?limit=`.
+const DEFAULT_BACKFILL_LIMIT: i64 = 1000;
+/// Hard cap on a single backfill call so one request can't lock a huge table.
+const MAX_BACKFILL_LIMIT: i64 = 100_000;
+
+#[derive(Debug, Deserialize)]
+pub struct BackfillParams {
+    /// Max rows to stamp `pending` in this call. Operator calls repeatedly until
+    /// `stamped` is 0. Defaults to `DEFAULT_BACKFILL_LIMIT`.
+    #[serde(default)]
+    pub limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BackfillResponse {
+    /// Rows stamped `pending` by this call (0 ⇒ nothing left to backfill).
+    pub stamped: u64,
+    /// Whether a translation provider is currently enabled. When `false`, the
+    /// stamped rows wait until a provider is configured (no worker drains them
+    /// yet) — surfaced so the operator notices a misconfiguration.
+    pub translation_enabled: bool,
+}
+
+/// `POST /api/v1/ops/translation/backfill?limit=N` — stamp never-considered,
+/// body-bearing feedback rows as `pending` so the translate-after-accept worker
+/// picks them up (FR-FBR-30 lazy-backfill escape hatch, #5). Operator surface,
+/// guarded by `OpsAuth` (404 when `FEEDBACKMONK_OPS_TOKEN` unset). Idempotent in
+/// effect: re-running only stamps rows that are still `translation_status IS
+/// NULL`. Bounded by `limit`; call until `stamped` is 0.
+pub async fn backfill_translations(
+    State(state): State<AppState>,
+    _ops: OpsAuth,
+    Query(params): Query<BackfillParams>,
+) -> Result<Json<BackfillResponse>, ApiError> {
+    let limit = params.limit.unwrap_or(DEFAULT_BACKFILL_LIMIT);
+    if limit <= 0 || limit > MAX_BACKFILL_LIMIT {
+        return Err(ApiError::BadRequest(format!(
+            "limit must be between 1 and {MAX_BACKFILL_LIMIT}"
+        )));
+    }
+    let stamped = state.feedback.backfill_pending_translations(limit).await?;
+    Ok(Json(BackfillResponse {
+        stamped,
+        translation_enabled: TranslationFlag::enabled(),
+    }))
+}
+
 /// Ops router. Merged WITHOUT the public CORS layer (operator-only, called
 /// server-side / via curl — never from a browser embed).
 pub fn ops_router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/ops/tenants/:tenant_id", patch(patch_tenant))
+        .route(
+            "/api/v1/ops/translation/backfill",
+            post(backfill_translations),
+        )
         .with_state(state)
 }
 
@@ -206,10 +259,12 @@ mod tests {
     use tower::ServiceExt;
 
     use feedbackmonk_anon::{AnonGate, DEFAULT_RATE_LIMIT_PER_HOUR};
+    use feedbackmonk_core::FeedbackKind;
     use feedbackmonk_repository::{
-        SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
-        SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRoadmapItemRepo,
-        SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo, TenantRepo,
+        FeedbackRepo, ProjectRepo, SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo,
+        SqlxFeedbackRepo, SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo,
+        SqlxRoadmapItemRepo, SqlxRoadmapVoteRepo, SqlxSigningKeyRepo, SqlxTenantRepo,
+        SqlxTierQuotaRepo, TenantRepo,
     };
 
     use crate::email::Mailer;
@@ -383,6 +438,71 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    // ---------- FR-FBR-30 (#5): backfill endpoint ----------
+
+    fn backfill_req(token: Option<&str>, query: &str) -> Request<Body> {
+        let mut b = Request::post(format!("/api/v1/ops/translation/backfill{query}"));
+        if let Some(tok) = token {
+            b = b.header(AUTHORIZATION, format!("Bearer {tok}"));
+        }
+        b.body(Body::empty()).unwrap()
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn backfill_requires_ops_token(pool: PgPool) {
+        let state = build_state(&pool, Some(OPS_TOKEN));
+        let app = ops_router(state);
+        let resp = app.oneshot(backfill_req(None, "")).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn backfill_rejects_bad_limit(pool: PgPool) {
+        let state = build_state(&pool, Some(OPS_TOKEN));
+        let app = ops_router(state);
+        for q in ["?limit=0", "?limit=-3", "?limit=999999"] {
+            let resp = app
+                .clone()
+                .oneshot(backfill_req(Some(OPS_TOKEN), q))
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "limit {q}");
+        }
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn backfill_stamps_null_body_bearing_rows(pool: PgPool) {
+        // Seed a project + two body-bearing feedback rows. Pin the flag OFF so
+        // submit leaves translation_status NULL — exactly the backfill target.
+        TranslationFlag::set(false);
+        let state = build_state(&pool, Some(OPS_TOKEN));
+        let trepo = SqlxTenantRepo::new(pool.clone());
+        let prepo = SqlxProjectRepo::new(pool.clone());
+        let frepo = SqlxFeedbackRepo::new(pool.clone());
+        let t = trepo.create("backfill@example.com", "h").await.unwrap();
+        let tscope = trepo.scope_for(t.id).await.unwrap();
+        let p = prepo.create(&tscope, "Proj", "bf-proj").await.unwrap();
+        let pscope = prepo.open(&tscope, p.id).await.unwrap();
+        for i in 0..2u8 {
+            frepo
+                .submit_anonymous(&pscope, &[i; 32], None, "Hallo", None, FeedbackKind::Bug)
+                .await
+                .unwrap();
+        }
+
+        let app = ops_router(state);
+        let resp = app
+            .oneshot(backfill_req(Some(OPS_TOKEN), "?limit=10"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let bytes = to_bytes(resp.into_body(), 8 * 1024).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["stamped"], 2);
+        // No provider configured in tests ⇒ enabled flag false (operator hint).
+        assert_eq!(body["translation_enabled"], false);
     }
 
     #[sqlx::test(migrations = "../../migrations")]

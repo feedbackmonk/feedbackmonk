@@ -239,3 +239,8 @@ rationale = "FR-FBR-30. PK-keyed UPDATE (WHERE id = $1) recording the detected s
 trait = "FeedbackRepo"
 method = "mark_translation_failed"
 rationale = "FR-FBR-30. PK-keyed UPDATE (WHERE id = $1) flipping translation_status to 'failed' and incrementing translation_attempts (bounded auto-retry). No &ProjectScope — same tenant-agnostic-transport rationale as set_translation. Reads fall back to `body` while failed, so a provider outage is never user-visible."
+
+[[methods]]
+trait = "FeedbackRepo"
+method = "backfill_pending_translations"
+rationale = "FR-FBR-30 manual backfill (future-item #5). Bounded UPDATE that stamps never-considered, body-bearing rows (translation_status IS NULL AND body IS NOT NULL) as 'pending' so the worker picks them up. No &ProjectScope: like the worklist methods it is a GLOBAL maintenance op keyed only on the status/body predicate — it returns no row data and exposes nothing cross-tenant (it only flips a status column). Invoked exclusively by the operator-token-gated ops endpoint (POST /api/v1/ops/translation/backfill); the operator chooses to run an instance-wide backfill. SQL lives in the repository crate (DEC-FBR-03). Same tenant-agnostic-transport rationale as the four worklist methods."

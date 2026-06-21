@@ -19,12 +19,14 @@
 //! only by the background worker, after a row is accepted.
 
 pub mod deepl;
+pub mod libretranslate;
 pub mod noop;
 pub mod worker;
 
 use async_trait::async_trait;
 
 pub use deepl::DeepLTranslator;
+pub use libretranslate::LibreTranslateTranslator;
 pub use noop::NoOpTranslator;
 pub use worker::{
     same_language, spawn_translation_worker, translate_once, DEFAULT_TRANSLATION_POLL_SECS,

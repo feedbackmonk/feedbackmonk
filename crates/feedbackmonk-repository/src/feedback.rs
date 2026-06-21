@@ -71,6 +71,20 @@ pub struct PendingTranslation {
     pub body: String,
 }
 
+/// The translation facets of a single feedback row, for the admin-only
+/// original↔translation toggle (FR-FBR-30 future-item #3). All fields are
+/// `None`/NULL for an untranslated row (the UI then shows only the original).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminTranslationView {
+    /// The English translation, or `None` when absent (untranslated / skipped /
+    /// failed / pre-feature). The admin UI shows the toggle only when present.
+    pub body_translated: Option<String>,
+    /// The provider-detected source language (e.g. `DE`), or `None`.
+    pub source_lang: Option<String>,
+    /// `pending | translated | skipped | failed`, or `None` (never considered).
+    pub translation_status: Option<String>,
+}
+
 #[async_trait]
 pub trait FeedbackRepo: Send + Sync {
     async fn submit_authenticated(
@@ -282,6 +296,33 @@ pub trait FeedbackRepo: Send + Sync {
     /// cap (then it falls out of the worklist). Reads fall back to `body`
     /// throughout, so a provider outage is never user-visible. Keyed on `id`.
     async fn mark_translation_failed(&self, id: Uuid) -> Result<()>;
+
+    /// Manual backfill (FR-FBR-30 future-item #5): stamp up to `limit`
+    /// never-considered rows (`translation_status IS NULL` AND `body IS NOT
+    /// NULL`) as `pending` so the worker picks them up. Lazy backfill leaves
+    /// pre-feature rows (and rows accepted while the provider was off) NULL
+    /// forever; this lets an operator opt those rows into translation after
+    /// enabling a provider. Tenant-agnostic transport (like the worklist
+    /// methods) — keyed only on the status/body predicate, returns no row data,
+    /// global by design; allow-listed in `multi-tenant-isolation-check`. Returns
+    /// the number of rows stamped; an operator calls it repeatedly until it
+    /// returns 0. Bounded by `limit` so one call can't lock a huge table.
+    async fn backfill_pending_translations(&self, limit: i64) -> Result<u64>;
+
+    /// Admin (data-controller) read of a single row's translation (FR-FBR-30
+    /// future-item #3): the verbatim `body` stays on every human-facing surface
+    /// (Q24), but the ADMIN who owns the feedback may view its English
+    /// translation via this ONE scoped read, backing the admin-UI
+    /// original↔translation toggle. Scope-protected (`&ProjectScope` first), so
+    /// it satisfies `multi-tenant-isolation-check` directly; allow-listed in the
+    /// `translation-egress-q24-isolation` oracle as the sole admin reader of
+    /// `body_translated` (public / end-user / board reads remain forbidden).
+    /// `NotFound` for an absent / cross-scope `feedback_id`.
+    async fn get_translation_for_admin(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<AdminTranslationView>;
 
     // ==== Gap #4 (DELTA) — end-user (JWT-sub-scoped) read surface ===========
     // GitCellar customer-#1 parity gap #4. No schema change. These methods
@@ -1216,6 +1257,57 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         .execute(&self.pool)
         .await?;
         Ok(())
+    }
+
+    async fn backfill_pending_translations(&self, limit: i64) -> Result<u64> {
+        // Stamp a bounded batch of never-considered, body-bearing rows as
+        // `pending`. The inner LIMIT subquery bounds the UPDATE so a large table
+        // can't be locked in one statement (operator calls until it returns 0).
+        let result = sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET translation_status = 'pending'
+            WHERE id IN (
+                SELECT id FROM feedback
+                WHERE translation_status IS NULL AND body IS NOT NULL
+                ORDER BY accepted_at ASC
+                LIMIT $1
+            )
+            "#,
+            limit,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    async fn get_translation_for_admin(
+        &self,
+        scope: &ProjectScope,
+        feedback_id: &FeedbackId,
+    ) -> Result<AdminTranslationView> {
+        // Scope predicate (tenant + project) is the isolation guarantee; a
+        // cross-scope short_code yields NotFound. The verbatim `body` is NOT
+        // selected here — this is purely the translation facets for the admin
+        // toggle (the detail handler already has `body` from get_with_history).
+        let row = sqlx::query!(
+            r#"
+            SELECT body_translated, source_lang, translation_status
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+        Ok(AdminTranslationView {
+            body_translated: row.body_translated,
+            source_lang: row.source_lang,
+            translation_status: row.translation_status,
+        })
     }
 
     // ==== Gap #4 (DELTA) — end-user read surface impl =======================

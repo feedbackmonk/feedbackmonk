@@ -27,6 +27,9 @@ function submitterLabel(s: FeedbackSubmitter): string {
 
 export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
   const [tab, setTab] = useState<"public" | "internal">("public");
+  // FR-FBR-30 (#3): show the English translation in place of the verbatim
+  // original. Off by default — the admin sees the original first (Q24/authenticity).
+  const [showTranslated, setShowTranslated] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
 
   const query = useQuery({
@@ -44,6 +47,8 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
 
   useEffect(() => {
     drawerRef.current?.focus();
+    // Reset the translation toggle when switching to a different feedback.
+    setShowTranslated(false);
   }, [feedbackId]);
 
   const detail = query.data;
@@ -124,8 +129,40 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                   Body is rendered as plain text. Submitter-provided content
                   MUST NOT pass through dangerouslySetInnerHTML — stored-XSS
                   defense per handoff doc Contract C8 invariant.
+
+                  FR-FBR-30 (#3): when an English translation exists, offer a
+                  toggle. The verbatim original is shown by default; the
+                  translation is machine-generated and never replaces the stored
+                  original (Q24). Untranslated rows show no toggle.
                 */}
-              <p className="feedback-body">{detail.body}</p>
+              {detail.body_translated ? (
+                <div className="translation-toggle">
+                  <button
+                    type="button"
+                    className="tab"
+                    aria-pressed={showTranslated}
+                    onClick={() => setShowTranslated((v) => !v)}
+                  >
+                    {showTranslated
+                      ? "Show original"
+                      : `Show translation${
+                          detail.source_lang ? ` (from ${detail.source_lang})` : ""
+                        }`}
+                  </button>{" "}
+                  {showTranslated ? (
+                    <span className="muted">
+                      Machine translation
+                      {detail.source_lang ? ` from ${detail.source_lang}` : ""} —
+                      original preserved.
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              <p className="feedback-body" lang={showTranslated ? "en" : undefined}>
+                {showTranslated && detail.body_translated
+                  ? detail.body_translated
+                  : detail.body}
+              </p>
             </section>
 
             <section aria-labelledby="drawer-history-label">

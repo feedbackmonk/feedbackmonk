@@ -42,7 +42,7 @@ use feedbackmonk_api::email::{
 };
 use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
-use feedbackmonk_api::translation::{DeepLTranslator, TranslationProvider};
+use feedbackmonk_api::translation::{DeepLTranslator, LibreTranslateTranslator, TranslationProvider};
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
     board_router, capabilities_router, cluster_admin_router, me_feedback_router, moderation_router,
@@ -321,8 +321,18 @@ fn build_translation_provider() -> Result<Option<Arc<dyn TranslationProvider>>> 
             )?;
             Ok(Some(Arc::new(DeepLTranslator::new(key)?)))
         }
+        "libretranslate" => {
+            // No-egress option (DEC-FBR-IMPL-26): an operator-supplied, self-hosted
+            // LibreTranslate endpoint. Optional api key for instances that require one.
+            let url = env::var("FEEDBACKMONK_TRANSLATION_LIBRETRANSLATE_URL").context(
+                "FEEDBACKMONK_TRANSLATION_LIBRETRANSLATE_URL is required when \
+                 FEEDBACKMONK_TRANSLATION_PROVIDER=libretranslate (e.g. http://libretranslate:5000)",
+            )?;
+            let key = env::var("FEEDBACKMONK_TRANSLATION_LIBRETRANSLATE_API_KEY").ok();
+            Ok(Some(Arc::new(LibreTranslateTranslator::new(&url, key)?)))
+        }
         other => Err(anyhow::anyhow!(
-            "FEEDBACKMONK_TRANSLATION_PROVIDER must be 'off' or 'deepl', got {other}"
+            "FEEDBACKMONK_TRANSLATION_PROVIDER must be 'off', 'deepl', or 'libretranslate', got {other}"
         )),
     }
 }

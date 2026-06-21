@@ -17,8 +17,8 @@
 
 use feedbackmonk_core::{FeedbackKind, Sentiment};
 use feedbackmonk_repository::{
-    ClusterRepo, FeedbackRepo, ProjectRepo, ProjectScope, SqlxClusterRepo, SqlxFeedbackRepo,
-    SqlxProjectRepo, SqlxTenantRepo, TenantRepo, TranslationFlag,
+    ClusterRepo, FeedbackRepo, ProjectRepo, ProjectScope, RepoError, SqlxClusterRepo,
+    SqlxFeedbackRepo, SqlxProjectRepo, SqlxTenantRepo, TenantRepo, TranslationFlag,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -257,4 +257,78 @@ async fn cluster_member_bodies_read_translation_with_fallback(pool: PgPool) {
         !bodies.contains(&"Hallo".to_string()),
         "the verbatim original of a translated row is NOT what the consumer reads"
     );
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn backfill_stamps_null_body_bearing_rows_in_bounded_batches(pool: PgPool) {
+    // FR-FBR-30 #5: lazy backfill leaves pre-feature rows NULL; backfill stamps
+    // them pending. Force every row's status back to NULL after submit so the
+    // setup is deterministic regardless of the process-global flag (a sibling
+    // test may have flipped it ON).
+    let repo = SqlxFeedbackRepo::new(pool.clone());
+    let scope = seed_project_scope(&pool, "xlate-backfill@example.com").await;
+
+    // 3 body-bearing rows + 1 sentiment-only (NULL body).
+    for i in 0..3u8 {
+        repo.submit_anonymous(&scope, &[i; 32], None, "Hallo Welt", None, FeedbackKind::Bug)
+            .await
+            .unwrap();
+    }
+    repo.submit_anonymous(&scope, &[9u8; 32], None, "", Some(Sentiment::Positive), FeedbackKind::Other)
+        .await
+        .unwrap();
+    // Pre-feature baseline: translation_status IS NULL for all rows.
+    sqlx::query("UPDATE feedback SET translation_status = NULL WHERE project_id = $1")
+        .bind(scope.project_id())
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    // Bounded batch of 2 → stamps 2; nothing claimable before backfill.
+    assert!(repo.claim_pending_translations(5, 100).await.unwrap().is_empty());
+    assert_eq!(repo.backfill_pending_translations(2).await.unwrap(), 2);
+    assert_eq!(repo.claim_pending_translations(5, 100).await.unwrap().len(), 2);
+
+    // Next batch stamps the remaining body-bearing row (the sentiment-only row
+    // is body-less → never stamped). Then 0 left.
+    assert_eq!(repo.backfill_pending_translations(100).await.unwrap(), 1);
+    assert_eq!(repo.backfill_pending_translations(100).await.unwrap(), 0);
+    assert_eq!(repo.claim_pending_translations(5, 100).await.unwrap().len(), 3);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn get_translation_for_admin_returns_view_and_rejects_cross_scope(pool: PgPool) {
+    // FR-FBR-30 #3: the admin (controller) read of the translation facets.
+    let repo = SqlxFeedbackRepo::new(pool.clone());
+    let scope = seed_project_scope(&pool, "xlate-admin1@example.com").await;
+    let other = seed_project_scope(&pool, "xlate-admin2@example.com").await;
+
+    let fb = repo
+        .submit_anonymous(&scope, &[1u8; 32], None, "Hallo", None, FeedbackKind::Bug)
+        .await
+        .unwrap();
+
+    // Untranslated → the translation itself is absent (these are NULL regardless
+    // of whether the row was stamped `pending`, which only touches the status).
+    let view = repo.get_translation_for_admin(&scope, &fb).await.unwrap();
+    assert_eq!(view.body_translated, None);
+    assert_eq!(view.source_lang, None);
+
+    // After translation → facets populated; body NOT part of the view.
+    let id = sqlx::query!("SELECT id FROM feedback WHERE short_code = $1", fb.as_str())
+        .fetch_one(&pool)
+        .await
+        .unwrap()
+        .id;
+    repo.set_translation(id, "Hello", "DE").await.unwrap();
+    let view = repo.get_translation_for_admin(&scope, &fb).await.unwrap();
+    assert_eq!(view.body_translated.as_deref(), Some("Hello"));
+    assert_eq!(view.source_lang.as_deref(), Some("DE"));
+    assert_eq!(view.translation_status.as_deref(), Some("translated"));
+
+    // Cross-scope read → NotFound (never another tenant's translation).
+    assert!(matches!(
+        repo.get_translation_for_admin(&other, &fb).await.unwrap_err(),
+        RepoError::NotFound
+    ));
 }

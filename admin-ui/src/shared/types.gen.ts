@@ -80,7 +80,18 @@ export interface FeedbackDetail {
   feedback_id: string;
   kind: FeedbackKind;
   status: FeedbackStatus;
-  body: string; // full body, unredacted (Contract C8 invariant)
+  body: string; // full body, unredacted (Contract C8 invariant). ALWAYS the verbatim original (Q24).
+  // FR-FBR-30: the English translation of `body`, or null when untranslated
+  // (pre-feature / disabled / skipped / failed / pending). The admin UI shows a
+  // toggle to the translation only when this is present; `body` stays the original.
+  body_translated?: string | null;
+  source_lang?: string | null; // detected source language (e.g. "DE"), or null
+  translation_status?:
+    | "pending"
+    | "translated"
+    | "skipped"
+    | "failed"
+    | null;
   submitted_at: string;
   submitter: FeedbackSubmitter;
   external_metadata?: Record<string, unknown>;

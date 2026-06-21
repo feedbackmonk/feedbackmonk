@@ -276,10 +276,9 @@ See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (10 of 10 RESOLVED).
 > **ID note**: FR-FBR-26/27 = public board / moderation; FR-FBR-28/29 = sentiment / solicitation;
 > FR-FBR-30 = multilingual translation.
 >
-> **Deferred (future, not FR-FBR-30 scope)**: configurable per-project *primary/admin* target language
-> (v1 always targets English — the machine consumers genuinely need English); a local no-egress
-> translation engine (LibreTranslate is the likely AGPL-compatible candidate); admin-UI original↔translation
-> display toggle. See the ideation note's "Future phases".
+> **Shipped post-v1 (2026-06-21)**: the **local no-egress engine** (LibreTranslate provider — `FEEDBACKMONK_TRANSLATION_PROVIDER=libretranslate`, operator-supplied URL), the **admin-UI original↔translation toggle** (admin/data-controller reads the translation via the one scoped `get_translation_for_admin`; the verbatim original stays on every public surface), and a **manual backfill** for pre-feature rows (`POST /api/v1/ops/translation/backfill`). See `docs/planning/plans/20260621T160022-fr-fbr-30-multilingual-translation.md` follow-on batch.
+>
+> **Still deferred (future)**: configurable per-project *primary/admin* target language (v1 always targets English — the machine consumers genuinely need English; a non-English target would break them); bilingual FTS (indexing the original language in addition to the translation). See the ideation note's "Future phases".
 
 ---
 

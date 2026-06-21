@@ -46,9 +46,9 @@ pub use clusters::{ClusterRepo, FeedbackCluster, SqlxClusterRepo};
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
 pub use feedback::{
-    BoardItem, EndUserFeedback, FeedbackListItem, FeedbackRepo, ModerationQueueItem,
-    PendingTranslation, SentimentTrendBucket, SqlxFeedbackRepo, StatusHistoryRow, TranslationFlag,
-    TrendBucket,
+    AdminTranslationView, BoardItem, EndUserFeedback, FeedbackListItem, FeedbackRepo,
+    ModerationQueueItem, PendingTranslation, SentimentTrendBucket, SqlxFeedbackRepo,
+    StatusHistoryRow, TranslationFlag, TrendBucket,
 };
 pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};

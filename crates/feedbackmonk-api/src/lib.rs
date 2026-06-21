@@ -64,9 +64,9 @@ pub use roadmap_voting_cache::{
 };
 // FR-FBR-30: translation provider abstraction + translate-after-accept worker.
 pub use translation::{
-    spawn_translation_worker, translate_once, DeepLTranslator, NoOpTranslator, TranslateOutput,
-    TranslationProvider, DEFAULT_TRANSLATION_POLL_SECS, DEFAULT_TRANSLATION_TARGET_LANG,
-    MAX_TRANSLATION_ATTEMPTS, TRANSLATION_BATCH_LIMIT,
+    spawn_translation_worker, translate_once, DeepLTranslator, LibreTranslateTranslator,
+    NoOpTranslator, TranslateOutput, TranslationProvider, DEFAULT_TRANSLATION_POLL_SECS,
+    DEFAULT_TRANSLATION_TARGET_LANG, MAX_TRANSLATION_ATTEMPTS, TRANSLATION_BATCH_LIMIT,
 };
 pub use router::router as worker_a_router;
 pub use state::AppState;
