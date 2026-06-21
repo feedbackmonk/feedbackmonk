@@ -47,7 +47,8 @@ pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerifi
 pub use error::{RepoError, Result};
 pub use feedback::{
     BoardItem, EndUserFeedback, FeedbackListItem, FeedbackRepo, ModerationQueueItem,
-    SentimentTrendBucket, SqlxFeedbackRepo, StatusHistoryRow, TrendBucket,
+    PendingTranslation, SentimentTrendBucket, SqlxFeedbackRepo, StatusHistoryRow, TranslationFlag,
+    TrendBucket,
 };
 pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};

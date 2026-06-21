@@ -42,13 +42,15 @@ use feedbackmonk_api::email::{
 };
 use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
+use feedbackmonk_api::translation::{DeepLTranslator, TranslationProvider};
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
     board_router, capabilities_router, cluster_admin_router, me_feedback_router, moderation_router,
     ops_router, parse_origins, promote_router, public_cors_layer, recommendation_admin_router,
-    roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_voting_cache_refresh,
-    submission_router, sweep_admin_router, widget_config_router, work_order_admin_router,
-    work_order_runner_router, AttachmentState, VotingCache,
+    roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
+    spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
+    work_order_admin_router, work_order_runner_router, AttachmentState, VotingCache,
+    DEFAULT_TRANSLATION_POLL_SECS, DEFAULT_TRANSLATION_TARGET_LANG,
 };
 
 #[tokio::main]
@@ -95,6 +97,36 @@ async fn main() -> Result<()> {
         Arc::clone(&state.projects),
         Arc::clone(&state.roadmap_items),
     );
+
+    // FR-FBR-30: translate-after-accept worker. The provider DEFAULTS OFF
+    // (DEC-FBR-IMPL-26) — translation egress is a conscious, opt-in, disclosed
+    // choice (docs/operations/SELFHOST_ENV.md C21). When off (`None`), no worker
+    // is spawned and submits stamp NO `translation_status` (the global flag stays
+    // false). When a provider is configured, submits stamp `pending` and this
+    // background worker drains the queue off the request path (DEC-FBR-IMPL-25
+    // D3). JoinHandle intentionally not held — process exit aborts the task,
+    // exactly like the voting-cache tick above.
+    let translation_provider = build_translation_provider()?;
+    feedbackmonk_repository::TranslationFlag::set(translation_provider.is_some());
+    if let Some(provider) = translation_provider {
+        let target_lang = env::var("FEEDBACKMONK_TRANSLATION_TARGET_LANG")
+            .unwrap_or_else(|_| DEFAULT_TRANSLATION_TARGET_LANG.to_string());
+        let poll_secs = env::var("FEEDBACKMONK_TRANSLATION_POLL_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_TRANSLATION_POLL_SECS);
+        tracing::info!(
+            target_lang = %target_lang,
+            poll_secs,
+            "translation provider ENABLED — spawning translate-after-accept worker (FR-FBR-30)"
+        );
+        let _translation_tick = spawn_translation_worker(
+            provider,
+            Arc::clone(&state.feedback),
+            target_lang,
+            poll_secs,
+        );
+    }
 
     // CORS allowlist for the public, credentialed widget endpoints (submission
     // + attachments). Customer sites embed the widget cross-origin; their
@@ -267,6 +299,32 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         runner_tokens,
         runner_token_revocations,
     })
+}
+
+/// Build the translation provider from env (FR-FBR-30, DEC-FBR-IMPL-26).
+///
+/// `FEEDBACKMONK_TRANSLATION_PROVIDER` selects the backend and DEFAULTS to
+/// `off`. `off` returns `None` (no worker spawned, no pending-stamping — the
+/// default-off privacy posture). `deepl` requires
+/// `FEEDBACKMONK_TRANSLATION_DEEPL_API_KEY`. Mirrors `build_mailer()`.
+///
+/// Do NOT change the default away from `off`, or remove the `off` option,
+/// without re-opening DEC-FBR-IMPL-26 (the egress-consent decision).
+fn build_translation_provider() -> Result<Option<Arc<dyn TranslationProvider>>> {
+    let mode = env::var("FEEDBACKMONK_TRANSLATION_PROVIDER").unwrap_or_else(|_| "off".to_string());
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "" | "off" => Ok(None),
+        "deepl" => {
+            let key = env::var("FEEDBACKMONK_TRANSLATION_DEEPL_API_KEY").context(
+                "FEEDBACKMONK_TRANSLATION_DEEPL_API_KEY is required when \
+                 FEEDBACKMONK_TRANSLATION_PROVIDER=deepl",
+            )?;
+            Ok(Some(Arc::new(DeepLTranslator::new(key)?)))
+        }
+        other => Err(anyhow::anyhow!(
+            "FEEDBACKMONK_TRANSLATION_PROVIDER must be 'off' or 'deepl', got {other}"
+        )),
+    }
 }
 
 fn build_mailer() -> Result<Arc<dyn Mailer>> {

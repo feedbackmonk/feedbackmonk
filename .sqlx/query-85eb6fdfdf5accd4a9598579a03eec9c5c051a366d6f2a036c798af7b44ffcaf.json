@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE feedback\n            SET translation_status = 'failed',\n                translation_attempts = translation_attempts + 1\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "85eb6fdfdf5accd4a9598579a03eec9c5c051a366d6f2a036c798af7b44ffcaf"
+}

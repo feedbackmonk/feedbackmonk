@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT coalesce(NULLIF(body_translated, ''), body) AS body\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3\n            ORDER BY accepted_at ASC, short_code ASC\n            LIMIT $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "body",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "13bcc17d06d630ec4cf0641d24b6d5db6893d300f41ab295e367996e3952a890"
+}

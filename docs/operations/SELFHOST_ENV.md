@@ -94,6 +94,19 @@ Backs the feedback attachment upload endpoint (Gap #1 — `POST …/feedback/{id
 | `FEEDBACKMONK_S3_PUBLIC_BASE_URL` | optional* | derived | | Base URL for returned object URLs (CDN / public bucket URL). If omitted, derived from endpoint+bucket. *Used iff backend=`s3`. |
 | `FEEDBACKMONK_S3_FORCE_PATH_STYLE` | optional* | `true` if endpoint set, else `false` | | Path-style addressing (`{endpoint}/{bucket}/{key}`). Required `true` for MinIO. *Used iff backend=`s3`. |
 
+### Translation Provider (FR-FBR-30)
+
+Optional multilingual-feedback translation (FR-FBR-30, DEC-FBR-IMPL-25 / DEC-FBR-IMPL-26). Non-English feedback is translated to a canonical language (English, v1) by a background **translate-after-accept** worker — NEVER synchronously on the public submit path — so English-assuming consumers (sentiment, the agentic resolution loop / clustering, admin full-text search) work correctly. The verbatim `body` is **never overwritten** (the translation is stored alongside it).
+
+> **⚠️ Egress disclosure (DEC-FBR-IMPL-26 — read before enabling).** The provider DEFAULTS to **`off`**. Setting it to `deepl` sends feedback bodies (personal data: free text, and any `end_user_email` / `end_user_name` embedded in it) to **DeepL**, a third-party cloud service. DeepL is then a **GDPR data processor**: a self-hoster enabling this becomes a data **controller** who must have a DPA with DeepL and disclose the processing in their own privacy policy. DeepL is the v1 choice because it is EU-based, offers a DPA, and contractually does not train on Pro-API text. A local no-egress engine is future work. **Enabling translation is a conscious, explicit choice — leaving it off keeps feedback bodies entirely within your deployment.** Do not enable without completing the controller-side obligations.
+
+| Name | Required | Default | 🔒 | Semantics |
+|---|---|---|---|---|
+| `FEEDBACKMONK_TRANSLATION_PROVIDER` | optional | `off` | | Translation backend: `off` (no translation; no egress — the privacy-safe default) or `deepl` (DeepL cloud). Anything else → startup error. When `off`, the worker is not spawned and feedback is never stamped for translation. Source: `crates/feedbackmonk-api/src/main.rs` (`build_translation_provider`). |
+| `FEEDBACKMONK_TRANSLATION_DEEPL_API_KEY` | optional* | — | 🔒 | DeepL Auth Key. *Required iff `FEEDBACKMONK_TRANSLATION_PROVIDER=deepl`. A `…:fx` suffix routes to the DeepL **free** API host; otherwise the **Pro** host. Source: `crates/feedbackmonk-api/src/translation/deepl.rs`. |
+| `FEEDBACKMONK_TRANSLATION_TARGET_LANG` | optional | `EN` | | Canonical target language (DeepL language code). v1 targets English (the machine consumers need it); per-project target language is deferred. Source: `crates/feedbackmonk-api/src/main.rs`. |
+| `FEEDBACKMONK_TRANSLATION_POLL_SECS` | optional | `15` | | Worker poll interval (seconds) between worklist drains. Source: `crates/feedbackmonk-api/src/translation/worker.rs`. |
+
 ---
 
 ## Self-Host Quickstart Env Profile

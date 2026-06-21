@@ -4,6 +4,8 @@
 //! Contract C3. The schema enforces the XOR invariant via a CHECK constraint
 //! (exactly one of `end_user_sub` / `anon_token_hash` is non-NULL).
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
@@ -16,6 +18,58 @@ use feedbackmonk_core::{
 
 use crate::error::Result;
 use crate::scope::ProjectScope;
+
+/// Process-global "is translation enabled" flag (FR-FBR-30, DEC-FBR-IMPL-25 D1).
+///
+/// Set ONCE at startup from the same env read that builds the translation
+/// provider (`main.rs::build_translation_provider`). Read by the submit methods
+/// to decide whether to stamp `translation_status = 'pending'` on a new row.
+///
+/// Why a process global and not an `AppState` field (Deferred Decision D1):
+/// the pending-stamp happens INSIDE the repository INSERT (Stream A), and the
+/// repository crate cannot depend on the api crate where the provider is built.
+/// A repo-crate global keeps the stamp decision co-located with the INSERT and
+/// preserves the OnceLock recommendation's goal — zero submit-signature churn
+/// and zero `AppState`-literal/test-fixture ripple (the ~9-fixture cost the
+/// solicitation work, DEC-FBR-IMPL-24, flagged). Default `false` => today's
+/// behaviour (no stamping) unless a deployment opts in. The translate-after-
+/// accept worker is only spawned when the provider is `Some`, so a `pending`
+/// row can only exist when a worker exists to drain it.
+static TRANSLATION_ENABLED: AtomicBool = AtomicBool::new(false);
+
+/// Process-global translation-enablement flag (FR-FBR-30, Deferred Decision D1).
+///
+/// A zero-sized handle over the [`TRANSLATION_ENABLED`] atomic. It is a TYPE
+/// (not two free functions) so the `multi-tenant-isolation-check` oracle can
+/// reason about it as an inherent-method surface: `set` carries a `bool`, not a
+/// scope, and is a documented pre-auth exception in that oracle's allowlist
+/// (it is process config, not tenant data access); `enabled` takes no argument
+/// and is accepted by the oracle automatically.
+pub struct TranslationFlag;
+
+impl TranslationFlag {
+    /// Enable (or disable) pending-translation stamping at submit. Called once at
+    /// startup with `provider.is_some()`. Idempotent.
+    pub fn set(enabled: bool) {
+        TRANSLATION_ENABLED.store(enabled, Ordering::Relaxed);
+    }
+
+    /// Whether new feedback submissions are stamped `translation_status = 'pending'`.
+    #[must_use]
+    pub fn enabled() -> bool {
+        TRANSLATION_ENABLED.load(Ordering::Relaxed)
+    }
+}
+
+/// One claimed row in the translate-after-accept worklist (FR-FBR-30). The
+/// worker translates `body` and writes the result back to `id` via
+/// [`FeedbackRepo::set_translation`]. Tenant-agnostic transport: keyed on the
+/// immutable `feedback.id` primary key, never returned to a request surface.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PendingTranslation {
+    pub id: Uuid,
+    pub body: String,
+}
 
 #[async_trait]
 pub trait FeedbackRepo: Send + Sync {
@@ -176,6 +230,58 @@ pub trait FeedbackRepo: Send + Sync {
         cluster_id: Uuid,
         limit: i64,
     ) -> Result<Vec<String>>;
+
+    // ==== FR-FBR-30 — translate-after-accept worklist (tenant-agnostic) ======
+    // The translate-after-accept worker (DEC-FBR-IMPL-25) drains rows stamped
+    // `translation_status='pending'`, translates them off the request path, and
+    // writes the result back. These four methods are tenant-AGNOSTIC transport
+    // keyed on the immutable `feedback.id` PK — they read a row's `body`,
+    // translate it, and write the translation back to the SAME row; no data
+    // crosses tenants and nothing is returned to a request surface. They are
+    // documented pre-auth exceptions in the multi-tenant-isolation-check
+    // allowlist (no &ProjectScope first arg by design — translation is a global
+    // background queue, not a scoped read). DEC-FBR-03 is upheld: the SQL lives
+    // here, in the sole query-path crate.
+
+    /// Claim up to `limit` rows from the translation worklist, oldest-first.
+    /// The worklist is `pending` rows PLUS `failed` rows whose attempt count is
+    /// below `max_attempts` (bounded auto-retry; DEC-FBR-IMPL-25 D2). Only rows
+    /// with a non-NULL `body` are returned (a sentiment-only row carries no text
+    /// to translate). Read-only; the per-row status transition happens via
+    /// `set_translation` / `mark_translation_skipped` / `mark_translation_failed`
+    /// AFTER the provider call (the worker never holds a DB txn across a provider
+    /// call). The worker loop is non-overlapping (awaits processing before the
+    /// next tick, like the voting-cache tick), so a plain SELECT cannot
+    /// double-claim.
+    async fn claim_pending_translations(
+        &self,
+        max_attempts: i16,
+        limit: i64,
+    ) -> Result<Vec<PendingTranslation>>;
+
+    /// Record a successful translation: write `body_translated` + the detected
+    /// `source_lang` and flip `translation_status` to `translated`. The verbatim
+    /// `body` is NEVER touched (store-both / Q24). The `body_tsv` FTS vector
+    /// auto-recomputes from the new translation (generated column; migration
+    /// 00019). Keyed on `id`.
+    async fn set_translation(
+        &self,
+        id: Uuid,
+        translated: &str,
+        source_lang: &str,
+    ) -> Result<()>;
+
+    /// Mark a row `skipped` — the provider detected the source already equals
+    /// the target language, so no translation is needed. Records the detected
+    /// `source_lang`; leaves `body_translated` NULL so reads fall back to the
+    /// (already-canonical-language) `body`. Keyed on `id`.
+    async fn mark_translation_skipped(&self, id: Uuid, source_lang: &str) -> Result<()>;
+
+    /// Mark a row `failed` after a provider error and increment its attempt
+    /// counter. The row stays re-pollable until its attempts reach the worker's
+    /// cap (then it falls out of the worklist). Reads fall back to `body`
+    /// throughout, so a provider outage is never user-visible. Keyed on `id`.
+    async fn mark_translation_failed(&self, id: Uuid) -> Result<()>;
 
     // ==== Gap #4 (DELTA) — end-user (JWT-sub-scoped) read surface ===========
     // GitCellar customer-#1 parity gap #4. No schema change. These methods
@@ -475,14 +581,21 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // DB CHECK `feedback_body_or_sentiment_check` is the backstop.
         let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
         let sentiment_str: Option<&str> = sentiment.map(Sentiment::as_db_str);
+        // FR-FBR-30: stamp `pending` for the translate-after-accept worker ONLY
+        // when translation is enabled AND the row carries body text. Else NULL
+        // (lazy backfill: untouched). Computed here, off the public submit path's
+        // critical work — no provider call ever happens synchronously.
+        let translation_status: Option<&str> =
+            (TranslationFlag::enabled() && body_opt.is_some()).then_some("pending");
         sqlx::query!(
             r#"
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
                 end_user_sub, end_user_email, end_user_name,
-                external_metadata, crash_event_id, body, sentiment, kind
+                external_metadata, crash_event_id, body, sentiment, kind,
+                translation_status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
             "#,
             short_code.as_str(),
             scope.project_id(),
@@ -495,6 +608,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             body_opt,
             sentiment_str,
             kind_str,
+            translation_status,
         )
         .execute(&self.pool)
         .await?;
@@ -515,13 +629,18 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         let token: &[u8] = anon_token_hash.as_slice();
         let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
         let sentiment_str: Option<&str> = sentiment.map(Sentiment::as_db_str);
+        // FR-FBR-30: see submit_authenticated — stamp `pending` only when
+        // translation is enabled AND the row carries body text.
+        let translation_status: Option<&str> =
+            (TranslationFlag::enabled() && body_opt.is_some()).then_some("pending");
         sqlx::query!(
             r#"
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
-                end_user_email, anon_token_hash, body, sentiment, kind
+                end_user_email, anon_token_hash, body, sentiment, kind,
+                translation_status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             "#,
             short_code.as_str(),
             scope.project_id(),
@@ -531,6 +650,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             body_opt,
             sentiment_str,
             kind_str,
+            translation_status,
         )
         .execute(&self.pool)
         .await?;
@@ -981,9 +1101,17 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // cross-tenant cluster_id matches no rows. Oldest-first + short_code
         // tiebreak for a deterministic, stable order (the runner prompt is
         // order-insensitive, but tests assert on it).
+        // FR-FBR-30 (Stream D): the analyst/clustering machine consumer reads the
+        // English translation when present, falling back to the verbatim original
+        // when absent (NULL/disabled/skipped/failed) or empty. `NULLIF(...,'')`
+        // guards against an empty-string translation collapsing to the original.
+        // This is the ONLY consumer read-site that switches to the translation;
+        // every public / end-user / board / admin-display read keeps the verbatim
+        // `body` (Q24 + display authenticity). The `body` column is selected as
+        // `text` (the coalesce of two text columns) — shape unchanged (Vec<String>).
         let rows = sqlx::query!(
             r#"
-            SELECT body
+            SELECT coalesce(NULLIF(body_translated, ''), body) AS body
             FROM feedback
             WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3
             ORDER BY accepted_at ASC, short_code ASC
@@ -996,9 +1124,98 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         )
         .fetch_all(&self.pool)
         .await?;
-        // Sentiment-only rows (NULL body) carry no text to ground a
-        // recommendation — drop them from the member-bodies grounding read.
+        // Sentiment-only rows (NULL body AND NULL translation) carry no text to
+        // ground a recommendation — drop them from the member-bodies read.
         Ok(rows.into_iter().filter_map(|r| r.body).collect())
+    }
+
+    // ==== FR-FBR-30 — translate-after-accept worklist impl ===================
+
+    async fn claim_pending_translations(
+        &self,
+        max_attempts: i16,
+        limit: i64,
+    ) -> Result<Vec<PendingTranslation>> {
+        // Worklist = pending rows + bounded-retry failed rows. `body IS NOT NULL`
+        // excludes sentiment-only rows (which are never stamped pending anyway,
+        // but the predicate makes the SELECT total). Oldest-first for fair drain.
+        let rows = sqlx::query!(
+            r#"
+            SELECT id, body
+            FROM feedback
+            WHERE body IS NOT NULL
+              AND (translation_status = 'pending'
+                   OR (translation_status = 'failed' AND translation_attempts < $1))
+            ORDER BY accepted_at ASC
+            LIMIT $2
+            "#,
+            max_attempts,
+            limit,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|r| r.body.map(|body| PendingTranslation { id: r.id, body }))
+            .collect())
+    }
+
+    async fn set_translation(
+        &self,
+        id: Uuid,
+        translated: &str,
+        source_lang: &str,
+    ) -> Result<()> {
+        // Store-both: writes body_translated + source_lang and flips status.
+        // NEVER touches `body` (Q24). body_tsv auto-recomputes (generated col).
+        sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET body_translated = $2,
+                source_lang = $3,
+                translation_status = 'translated'
+            WHERE id = $1
+            "#,
+            id,
+            translated,
+            source_lang,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn mark_translation_skipped(&self, id: Uuid, source_lang: &str) -> Result<()> {
+        // Already-canonical-language row: record the detected language, leave
+        // body_translated NULL so reads coalesce to the original `body`.
+        sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET source_lang = $2,
+                translation_status = 'skipped'
+            WHERE id = $1
+            "#,
+            id,
+            source_lang,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn mark_translation_failed(&self, id: Uuid) -> Result<()> {
+        sqlx::query!(
+            r#"
+            UPDATE feedback
+            SET translation_status = 'failed',
+                translation_attempts = translation_attempts + 1
+            WHERE id = $1
+            "#,
+            id,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     // ==== Gap #4 (DELTA) — end-user read surface impl =======================

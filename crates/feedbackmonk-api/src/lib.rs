@@ -24,6 +24,7 @@ pub mod roadmap_voting_cache;
 pub mod router;
 pub mod state;
 pub mod storage;
+pub mod translation;
 
 pub use cors::{parse_origins, public_cors_layer};
 pub use crash_correlation::{
@@ -60,6 +61,12 @@ pub use handlers::sweeps::router as sweep_admin_router;
 pub use handlers::runner_tokens::router as runner_tokens_admin_router;
 pub use roadmap_voting_cache::{
     spawn_refresh_tick as spawn_voting_cache_refresh, VotingCache, VOTING_CACHE_TTL_SECS,
+};
+// FR-FBR-30: translation provider abstraction + translate-after-accept worker.
+pub use translation::{
+    spawn_translation_worker, translate_once, DeepLTranslator, NoOpTranslator, TranslateOutput,
+    TranslationProvider, DEFAULT_TRANSLATION_POLL_SECS, DEFAULT_TRANSLATION_TARGET_LANG,
+    MAX_TRANSLATION_ATTEMPTS, TRANSLATION_BATCH_LIMIT,
 };
 pub use router::router as worker_a_router;
 pub use state::AppState;

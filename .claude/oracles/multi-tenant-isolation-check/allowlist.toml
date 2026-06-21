@@ -197,3 +197,45 @@ rationale = "Constructor: stores PgPool handle; performs no queries. Structural 
 type_name = "TrendBucket"
 method = "parse"
 rationale = "Pure value-parser on the sentiment-trend time-bucket enum (FR-FBR-28) — NOT a repository data-access method. `TrendBucket::parse(&str) -> Option<TrendBucket>` maps a query-param string (day|week|month) to a fixed enum; it touches no DB and needs no scope. The consuming repo method `FeedbackRepo::sentiment_trend(&self, scope: &ProjectScope, bucket: TrendBucket, since)` IS scope-protected (Probe B compliant). The enum lives in the repository crate because it is the typed input to that repo method (same locality as other repo-input types). `as_trunc_unit` is &self-only (oracle accepts)."
+
+# --- FR-FBR-30 addition (translation-enablement flag) ---
+
+[[inherent_methods]]
+type_name = "TranslationFlag"
+method = "set"
+rationale = "FR-FBR-30 process-global translation-enablement flag (Deferred Decision D1). `TranslationFlag::set(enabled: bool)` is NOT a data-access method — it stores a process-wide config bit (set ONCE at startup from `provider.is_some()`) that the submit methods read to decide whether to stamp `translation_status='pending'`. No DB access, no tenant data, no scope. It lives in the repository crate because the stamp it gates happens inside the repository INSERT and the repository crate cannot depend on the api crate where the provider is built (the OnceLock/D1 rationale). The companion `TranslationFlag::enabled()` getter takes no argument and is accepted by Probe B automatically."
+
+# --- FR-FBR-30 addition (translate-after-accept worklist / migration 00019) ---
+# The four translate-after-accept worker methods are tenant-AGNOSTIC transport:
+# they take no &ProjectScope by design because translation is a GLOBAL background
+# queue, not a scoped request read. Each is keyed on the immutable `feedback.id`
+# primary key and never returns one tenant's data to another tenant's surface —
+# the worker reads a row's `body`, hands it to the translation provider, and
+# writes the result (`body_translated` + `source_lang`) back to the SAME row.
+# No request handler calls these; the only caller is the in-process worker
+# (`spawn_translation_worker`), spawned only when the provider is enabled. The
+# SQL lives in the repository crate (DEC-FBR-03 upheld). DEC-FBR-IMPL-25 D3
+# (global claim with tenant/project carried on each row) ratifies the global
+# shape. Cross-tenant exposure is structurally impossible: `set_translation`
+# /`mark_*` are PK-keyed UPDATEs of two non-PII columns; `claim_pending_translations`
+# returns (id, body) only to the trusted worker, which writes back by the same id.
+
+[[methods]]
+trait = "FeedbackRepo"
+method = "claim_pending_translations"
+rationale = "FR-FBR-30 translate-after-accept worklist. Global (no &ProjectScope): translation is a process-wide background queue draining `translation_status='pending'`/bounded-retry `failed` rows across all tenants. Returns (feedback.id, body) ONLY to the in-process worker (never a request surface); the worker translates and writes back to the same id. Tenant-agnostic transport — no cross-tenant data flow. DEC-FBR-IMPL-25 D3."
+
+[[methods]]
+trait = "FeedbackRepo"
+method = "set_translation"
+rationale = "FR-FBR-30. PK-keyed UPDATE (WHERE id = $1) writing body_translated + source_lang and flipping translation_status to 'translated'. No &ProjectScope: the worker addresses the exact row it claimed by immutable id; the verbatim `body` is never touched (Q24). Tenant-agnostic transport — writes two non-PII columns on one row."
+
+[[methods]]
+trait = "FeedbackRepo"
+method = "mark_translation_skipped"
+rationale = "FR-FBR-30. PK-keyed UPDATE (WHERE id = $1) recording the detected source_lang and flipping translation_status to 'skipped' (source already equals target). No &ProjectScope — same tenant-agnostic-transport rationale as set_translation."
+
+[[methods]]
+trait = "FeedbackRepo"
+method = "mark_translation_failed"
+rationale = "FR-FBR-30. PK-keyed UPDATE (WHERE id = $1) flipping translation_status to 'failed' and incrementing translation_attempts (bounded auto-retry). No &ProjectScope — same tenant-agnostic-transport rationale as set_translation. Reads fall back to `body` while failed, so a provider outage is never user-visible."

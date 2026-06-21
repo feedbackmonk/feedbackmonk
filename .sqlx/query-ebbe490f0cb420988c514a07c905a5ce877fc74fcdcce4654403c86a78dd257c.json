@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE feedback\n            SET source_lang = $2,\n                translation_status = 'skipped'\n            WHERE id = $1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ebbe490f0cb420988c514a07c905a5ce877fc74fcdcce4654403c86a78dd257c"
+}
