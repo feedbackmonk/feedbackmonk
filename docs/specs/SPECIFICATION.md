@@ -256,6 +256,33 @@ See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (10 of 10 RESOLVED).
 
 ---
 
+## Capability extension — multilingual feedback / translation (FR-FBR-30)
+
+> Added 2026-06-21 in response to GitCellar's many-language userbase (it inherits Gitea's full
+> translation set, so non-English feedback is expected in production). Today feedback is stored and
+> processed as a single verbatim `body` with no language awareness — and handed verbatim to
+> English-assuming consumers (FR-FBR-28 sentiment, the P5 agentic resolution loop), where non-English
+> input silently degrades quality. This capability adds a translation pipeline so feedback is made
+> available in a canonical language (English for v1) for both admins and machine consumers, while
+> preserving the verbatim original. Explored in
+> [`docs/planning/ideations/20260621T144557-non-english-feedback-translation.md`](../planning/ideations/20260621T144557-non-english-feedback-translation.md).
+> Decisions: [`DEC-FBR-IMPL-25`](DECISIONS.md) (translation data/processing model),
+> [`DEC-FBR-IMPL-26`](DECISIONS.md) (provider abstraction + privacy/legal posture).
+
+| ID | Requirement | Status | Implementation pointer |
+|---|---|---|---|
+| FR-FBR-30 | **Translation of non-English feedback to a canonical language (English, v1).** On accept, feedback is language-detected and, when not already English, translated to English by a background job (NEVER synchronously on the public submit path). **Store-both**: the verbatim `body` is never overwritten (Q24 preserved); the translation + detected source language are persisted alongside it. English-assuming consumers (FR-FBR-28 sentiment, the P5 agentic loop / clustering) read the translated field with fallback to the original when translation is absent or disabled. Admin full-text search indexes the translated-English text (Postgres `body_tsv` is already `'english'`-configured, so translation makes the existing index *correct* for non-English rows). Translation is **universal** (all tiers + self-host; not tier-gated). Provider is **pluggable, default OFF** (a conscious, disclosed egress choice): v1 ships DeepL (cloud, EU) + off; a local no-egress engine is future. **Lazy backfill**: applies only to feedback accepted after the feature is enabled; pre-existing rows keep a NULL translation and fall back to the original. | **PLANNED** | New migration (`00019`, planned): nullable `feedback.body_translated` + `feedback.source_lang` (detected BCP-47 / ISO-639) + FTS source change to index the translation. Provider abstraction crate/module (DeepL adapter + off); async translate-after-accept job. Consumer wiring: sentiment + analyst/clustering read the translated field with original fallback. Config: provider selection + credentials + target-language (English in v1); egress disclosed in `docs/operations/SELFHOST_ENV.md` (Contract C21). |
+
+> **ID note**: FR-FBR-26/27 = public board / moderation; FR-FBR-28/29 = sentiment / solicitation;
+> FR-FBR-30 = multilingual translation.
+>
+> **Deferred (future, not FR-FBR-30 scope)**: configurable per-project *primary/admin* target language
+> (v1 always targets English — the machine consumers genuinely need English); a local no-egress
+> translation engine (LibreTranslate is the likely AGPL-compatible candidate); admin-UI original↔translation
+> display toggle. See the ideation note's "Future phases".
+
+---
+
 ## Spec session — COMPLETE ✅
 
 **Verdict**: READY FOR `/0-uldf-ldis-plan`.
