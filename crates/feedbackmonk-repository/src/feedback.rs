@@ -29,7 +29,7 @@ use crate::scope::ProjectScope;
 /// the pending-stamp happens INSIDE the repository INSERT (Stream A), and the
 /// repository crate cannot depend on the api crate where the provider is built.
 /// A repo-crate global keeps the stamp decision co-located with the INSERT and
-/// preserves the OnceLock recommendation's goal — zero submit-signature churn
+/// preserves the `OnceLock` recommendation's goal — zero submit-signature churn
 /// and zero `AppState`-literal/test-fixture ripple (the ~9-fixture cost the
 /// solicitation work, DEC-FBR-IMPL-24, flagged). Default `false` => today's
 /// behaviour (no stamping) unless a deployment opts in. The translate-after-

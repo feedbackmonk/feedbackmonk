@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // module-doc names product/types verbatim (DeepL/LibreTranslate)
 //! No-op translation provider (FR-FBR-30, DEC-FBR-IMPL-26 — the default-off
 //! contract type).
 //!

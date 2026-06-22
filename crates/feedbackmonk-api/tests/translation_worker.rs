@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // test-file doc comments name columns/types verbatim
 //! FR-FBR-30 — translate-after-accept worker integration (Stream C + Stream D).
 //!
 //! Drives `translate_once` with a deterministic `FakeTranslator` (the

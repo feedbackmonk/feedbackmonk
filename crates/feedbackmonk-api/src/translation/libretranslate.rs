@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // module-doc names product/types verbatim (DeepL/LibreTranslate)
 //! LibreTranslate adapter (FR-FBR-30 future-item #2, DEC-FBR-IMPL-26).
 //!
 //! The **no-egress** provider option: LibreTranslate is AGPL and self-hostable,

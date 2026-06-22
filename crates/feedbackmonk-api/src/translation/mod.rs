@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // module-doc names product/types verbatim (DeepL/LibreTranslate)
 //! Translation provider abstraction (FR-FBR-30, DEC-FBR-IMPL-26).
 //!
 //! Mirrors the `email::Mailer` trait + `main.rs::build_mailer()` precedent: a

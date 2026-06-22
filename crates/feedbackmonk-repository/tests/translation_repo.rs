@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // test-file doc comments name columns/types verbatim
 //! FR-FBR-30 — translate-after-accept worklist + store-both repository tests.
 //!
 //! Exercises the four worklist methods (`claim_pending_translations`,

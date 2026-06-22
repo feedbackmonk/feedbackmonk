@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // module-doc names product/types verbatim (DeepL/LibreTranslate)
 //! DeepL cloud translation adapter (FR-FBR-30, DEC-FBR-IMPL-26).
 //!
 //! v1's recommended cloud provider: EU-based, offers a DPA, and contractually

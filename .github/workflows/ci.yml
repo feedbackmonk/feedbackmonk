@@ -67,9 +67,14 @@ jobs:
       - name: Verify .sqlx cache exists (offline build contract)
         run: |
           if [ ! -d .sqlx ]; then
-            echo "::error::.sqlx/ cache missing -- run 'cargo sqlx prepare --workspace' and commit the result"
+            echo "::error::.sqlx/ cache missing -- run 'cargo sqlx prepare --workspace -- --all-targets' and commit the result"
             exit 1
           fi
+          # NOTE: the build/test/clippy steps below all use --all-targets under
+          # SQLX_OFFLINE=true, so the cache MUST include test-target queries.
+          # Regenerate with: cargo sqlx prepare --workspace -- --all-targets
+          # (a plain `cargo sqlx prepare --workspace` misses sqlx::query! macros
+          # in tests/ and fails this job on the offline --all-targets compile).
 
       - name: cargo build --workspace
         run: cargo build --workspace --all-targets

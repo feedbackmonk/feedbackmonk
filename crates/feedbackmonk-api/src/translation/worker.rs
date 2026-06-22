@@ -1,3 +1,4 @@
+#![allow(clippy::doc_markdown)] // module-doc names product/types verbatim (DeepL/LibreTranslate)
 //! Async translate-after-accept worker (FR-FBR-30, DEC-FBR-IMPL-25 D3).
 //!
 //! A background poll-loop — modelled on `roadmap_voting_cache::spawn_refresh_tick`

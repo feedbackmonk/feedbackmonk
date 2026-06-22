@@ -63,14 +63,21 @@ DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev cargo build
 SQLX_OFFLINE=true cargo build --workspace
 ```
 
-CI runs in offline mode (`SQLX_OFFLINE=true`). After modifying any
-`sqlx::query!` invocation, regenerate the cache:
+CI runs in offline mode (`SQLX_OFFLINE=true`) and compiles **all targets**
+(`cargo build/test/clippy --workspace --all-targets`). After modifying any
+`sqlx::query!` invocation — **including in `tests/`** — regenerate the cache
+with `--all-targets` so test-target queries are captured too:
 
 ```bash
 DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev \
-  cargo sqlx prepare --workspace
+  cargo sqlx prepare --workspace -- --all-targets
 git add .sqlx/
 ```
+
+> ⚠️ A plain `cargo sqlx prepare --workspace` (no `-- --all-targets`) only
+> caches lib/bin queries. If a `sqlx::query!` lives in a test file, the offline
+> `--all-targets` build in CI will fail with *"no cached data for this query"*.
+> Always prepare with `-- --all-targets`.
 
 ## Running tests
 
