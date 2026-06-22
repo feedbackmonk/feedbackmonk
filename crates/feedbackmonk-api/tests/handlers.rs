@@ -630,13 +630,21 @@ async fn login_unverified_tenant_with_correct_password_yields_403(pool: PgPool) 
 #[sqlx::test(migrations = "../../migrations")]
 async fn login_rate_limit_trips_at_429_before_argon2(pool: PgPool) {
     let mailer = Arc::new(RecordingMailer::default());
-    let (state, mailer) = build_test_state(&pool, mailer);
+    let (mut state, mailer) = build_test_state(&pool, mailer);
+    // Use a TINY login quota (2/min) for determinism. With the default 10/min,
+    // the throttle only trips on the 11th attempt — i.e. after 10 argon2-
+    // verifying 401s. The governor refills 1 cell every 6s (10/min), so on a
+    // slow CI runner those 10 argon2 calls can exceed 6s, refill a cell, and the
+    // 11th is NOT throttled (flaky 401 vs 429). A 2/min quota trips on the 3rd
+    // attempt after only 2 argon2 calls — far inside the 30s/cell window — so the
+    // assertion is deterministic regardless of runner speed. Same IP + email =
+    // same bucket. (The gate-level burst/refill math is unit-tested in
+    // feedbackmonk-anon; this test only verifies the HTTP wiring: 429 +
+    // Retry-After once the bucket is empty.)
+    state.login_gate = feedbackmonk_anon::LoginGate::new(std::num::NonZeroU32::new(2).unwrap());
     let _ = signup_and_verify(state.clone(), &mailer, "rl@example.com").await;
     let app = router(state);
-    // build_test_state uses LoginGate::with_default_quota() = 10/min. Ten
-    // attempts pass the gate (each 401); the 11th is throttled BEFORE the
-    // argon2 verify -> 429 with Retry-After. Same IP + email = same bucket.
-    for _ in 0..10 {
+    for _ in 0..2 {
         let resp = app
             .clone()
             .oneshot(login_request("rl@example.com", "wrong"))
