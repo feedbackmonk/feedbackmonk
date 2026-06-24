@@ -79,6 +79,19 @@ git add .sqlx/
 > `--all-targets` build in CI will fail with *"no cached data for this query"*.
 > Always prepare with `-- --all-targets`.
 
+### Before pushing: CI-parity gate
+
+Run the one-command local gate that mirrors CI (offline `clippy --all-targets
+-D warnings` + the isolation oracle) — it catches the missing-test-target-`.sqlx`
+case **and** clippy/rustc warnings, the two things a plain build/test skips:
+
+```bash
+bash scripts/ci-local.sh           # fast, DB-free
+bash scripts/ci-local.sh --tests   # also the test suite (needs DATABASE_URL)
+```
+
+PowerShell: `pwsh scripts/ci-local.ps1 [-Tests]`. Green here ⇒ green CI.
+
 ## Running tests
 
 ```bash
