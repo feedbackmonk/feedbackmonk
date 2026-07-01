@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT short_code AS \"short_code!\",\n                   kind AS \"kind!\",\n                   status AS \"status!\",\n                   body,\n                   sentiment,\n                   severity,\n                   accepted_at AS \"accepted_at!\",\n                   reply_count AS \"reply_count!\",\n                   updated_at AS \"updated_at!\"\n            FROM (\n                SELECT f.short_code, f.kind, f.status, f.body, f.sentiment,\n                       f.severity, f.accepted_at,\n                       (SELECT count(*) FROM feedback_replies r\n                         WHERE r.feedback_id = f.id AND r.visibility = 'public') AS reply_count,\n                       GREATEST(\n                           f.accepted_at,\n                           (SELECT max(r.created_at) FROM feedback_replies r\n                             WHERE r.feedback_id = f.id AND r.visibility = 'public'),\n                           (SELECT max(h.transitioned_at) FROM feedback_status_history h\n                             WHERE h.feedback_id = f.id)\n                       ) AS updated_at\n                FROM feedback AS f\n                WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.end_user_sub = $3\n            ) AS t\n            WHERE ($4::timestamptz IS NULL OR updated_at > $4)\n            ORDER BY accepted_at DESC\n            LIMIT $5 OFFSET $6\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "kind!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "status!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "sentiment",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "severity",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "accepted_at!",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "reply_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "2dccf3129f6167b5db85ea1be6795e201511e61e14f3d751624f5b886b488a90"
+}

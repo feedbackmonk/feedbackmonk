@@ -36,6 +36,12 @@ GitCellar's adoption intake (`../GitCellar/docs/planning/intakes/20260602T104026
 | **Structured sentiment** on submissions (`sentiment` ∈ `negative\|neutral\|positive`; body optional) | see §9 | **built ✅** (FR-FBR-28) |
 | **Durable per-user solicitation state** (ask-cap / dismiss / opt-out) | see §10 | **built ✅** (FR-FBR-29 — `GET\|POST …/me/solicitation`) |
 | **Capability/version detection** | see §11 | **built ✅** (`GET /api/v1/capabilities`) |
+| **User-side delete / right-to-erasure** (`DELETE …/me/feedback/{id}`) | see §6.4 | **built ✅** (Phase A — `feedback.delete`) |
+| **Reply-state on list** (`updated_at` + `reply_count` + `?since=`) | see §6.1 | **built ✅** (Phase A — `feedback.reply_state`) |
+| **Data export** (`GET …/me/feedback/export`) | see §6.5 | **built ✅** (Phase A — `feedback.export`) |
+| **Attachments** upload + list + tenant-scoped download | see §6.6 | **built ✅** (Phase A — `feedback.attachments`) |
+| **First-class `severity`** on submit (`low\|medium\|high\|blocker`) | see §5.5 | **built ✅** (Phase A — `feedback.severity`) |
+| **Submit `Idempotency-Key`** dedupe on retry | see §5.5 | **built ✅** (Phase A — `feedback.idempotency`) |
 
 > **⚠️ Deploy gate for §9–§11**: these three capabilities ship in feedbackmonk **v0.2.0** but the live
 > GitCellar instance (`feedback.gitcellar.com`) must be **redeployed at ≥ v0.2.0 + migration `00017`
@@ -43,6 +49,14 @@ GitCellar's adoption intake (`../GitCellar/docs/planning/intakes/20260602T104026
 > omit `feedback.sentiment` / `solicitation.v1` and the `…/me/solicitation` + `…/sentiment-trend`
 > routes 404 — which is exactly why the client should **feature-detect via §11**, not assume. No
 > launch-time pressure (GitCellar's side is gated behind its own "D-A" server-side-mint dependency).
+
+> **⚠️ Deploy gate for Phase A (§5.5 severity/idempotency, §6.1 reply-state, §6.4 delete, §6.5 export,
+> §6.6 attachment list/download)**: these ship in feedbackmonk **v0.3.0** and require the live instance
+> to be **redeployed at ≥ v0.3.0 with migrations `00020` (severity) + `00021` (submit idempotency)
+> applied**. Until then `GET /api/v1/capabilities` omits the six `feedback.delete|reply_state|export|
+> severity|idempotency|attachments` strings and the new routes 404 — again, **feature-detect via §11**.
+> This is THE gate for GitCellar's feedback consolidation (its Phases B/C do not start deleting the
+> internal backend until these are live + verified on `feedback.gitcellar.com`).
 
 ---
 
@@ -240,17 +254,28 @@ is `crates/feedbackmonk-jwt` (Contract C2) and is **strict**:
 POST https://api.feedbackmonk.com/api/v1/projects/<PROJECT_ID>/feedback
 Authorization: Bearer <jwt>
 Content-Type: application/json
-{ "body": "...", "kind": "bug", "sentiment": "positive" }   # kind ∈ bug|feature|question|other (default other)
+Idempotency-Key: <opaque-string>            # OPTIONAL — dedupe on retry (Phase A, see below)
+{ "body": "...", "kind": "bug", "sentiment": "positive", "severity": "high" }   # kind ∈ bug|feature|question|other (default other)
 → 200 { "feedback_id": "FB-XXXXXX", "accepted_at": "...",
-        "echo": { "body": "...", "sentiment": "positive", "kind": "bug" } }
+        "echo": { "body": "...", "sentiment": "positive", "severity": "high", "kind": "bug" } }
 ```
 - **`sentiment`** (optional, FR-FBR-28): `negative | neutral | positive`, or omit. See §9.
 - **`body` is OPTIONAL** when `sentiment` is present (a sentiment-only one-tap submission is valid).
   A submission with neither a body nor a sentiment → **400**. See §9.
+- **`severity`** (optional, Phase A — capability `feedback.severity`): `low | medium | high | blocker`,
+  or omit. A first-class field (replaces the old `external_metadata.severity` side-channel), valid in
+  BOTH auth and anonymous modes, echoed back in `echo.severity` and surfaced on the me/feedback reads
+  (§6). An unrecognized value → **400** `{"error":"severity must be one of low|medium|high|blocker; got …"}`.
+- **`Idempotency-Key`** request header (optional, Phase A — capability `feedback.idempotency`): any
+  non-empty opaque string. A retry carrying the **same** key on the **same project** returns `200` with
+  the **original** `feedback_id` and creates **no new row** (first-write-wins — the stored fields are the
+  first submit's). Scope is per `(project_id, key)`; there is no cross-project dedupe. Erasing the
+  feedback (§12) frees the key. Absent/empty header ⇒ pre-Phase-A behavior (a new row each call). Browser
+  note: the credentialed CORS layer allowlists `Idempotency-Key` on preflight.
 JWT failures return **401** with `{ "error": "<variant>" }` where variant ∈
 `BadSignature | Expired | NotYetValid | WrongAudience | AlgorithmNotAllowed | MissingRequiredClaim
 | ExternalMetadataTooLarge | MalformedToken` — Desktop can disambiguate (e.g. re-mint on `Expired`).
-Body cap 16384 chars (413 if exceeded). Invalid `sentiment` value → 400. Tier cap → 402.
+Body cap 16384 chars (413 if exceeded). Invalid `sentiment`/`severity` value → 400. Tier cap → 402.
 
 ### 5.6 Crash-event linking + crash-link banner (parity gap #2 — BUILT)
 
@@ -317,7 +342,7 @@ verified `sub` is the only identity used; every query is scoped to it.
 ### 6.1 List my feedback
 
 ```
-GET /api/v1/projects/<PROJECT_ID>/me/feedback?limit=<1..100>&offset=<n>
+GET /api/v1/projects/<PROJECT_ID>/me/feedback?limit=<1..100>&offset=<n>&since=<rfc3339>
 Authorization: Bearer <jwt>
 → 200 {
     "items": [
@@ -327,10 +352,13 @@ Authorization: Bearer <jwt>
         "status": "submitted" | "triaged" | "in-progress" | "shipped" | "wont-fix" | "duplicate",
         "body": "...",                                  // "" for a sentiment-only submission
         "sentiment": "negative" | "neutral" | "positive" | null,   // FR-FBR-28
-        "submitted_at": "2026-06-02T15:00:00Z"
+        "severity": "low" | "medium" | "high" | "blocker" | null,  // Phase A (feedback.severity)
+        "submitted_at": "2026-06-02T15:00:00Z",
+        "updated_at": "2026-06-02T16:30:00Z",           // Phase A (feedback.reply_state)
+        "reply_count": 2                                 // Phase A — PUBLIC replies only
       }, …
     ],
-    "total": 12,        // total rows for this sub (not the page size)
+    "total": 12,        // total rows for this sub (not the page size); reflects the `since` filter
     "limit": 20,        // echoed; default 20, capped at 100
     "offset": 0
   }
@@ -338,6 +366,13 @@ Authorization: Bearer <jwt>
 - Returns ONLY rows where `end_user_sub == jwt.sub` (caller's own), newest-first. Another user's
   feedback and **anonymous** submissions are never returned.
 - `limit` default 20, max 100 (values above 100 are clamped). `offset` default 0.
+- **Phase A reply-state** (capability `feedback.reply_state`): each item carries
+  `updated_at` = `greatest(submitted_at, latest PUBLIC reply created_at, latest status-transition time)`
+  and `reply_count` = count of **PUBLIC** replies (internal triage notes never move either — privacy).
+  This is how Desktop detects an unseen admin reply / drives the "awaiting me" bucket + tray notifications.
+- **`since=<rfc3339>`** (optional, Phase A): returns only rows with `updated_at > since` (strict), still
+  newest-first; `total` reflects the filtered count. Absent ⇒ the full paginated list. This is the cheap
+  polling primitive — poll with `since` = the last-seen high-water mark to fetch only what changed.
 
 ### 6.2 Feedback thread (status + public replies)
 
@@ -350,7 +385,10 @@ Authorization: Bearer <jwt>
     "status": "in-progress",
     "body": "...",
     "sentiment": "negative" | "neutral" | "positive" | null,   // FR-FBR-28
+    "severity": "low" | "medium" | "high" | "blocker" | null,  // Phase A (feedback.severity)
     "submitted_at": "2026-06-02T15:00:00Z",
+    "updated_at": "2026-06-02T16:30:00Z",           // Phase A (feedback.reply_state)
+    "reply_count": 2,                                // Phase A — PUBLIC replies only
     "replies": [
       { "reply_id": "<uuid>", "body": "...", "created_at": "2026-06-02T16:00:00Z" }, …
     ]
@@ -369,8 +407,85 @@ Authorization: Bearer <jwt>
 | `<FB-ID>` not owned by the caller's `sub` (or anonymous, or another tenant/project) | `404` | `{"error":"not found"}` |
 | Unknown `<PROJECT_ID>` | `404` | `{"error":"not found"}` |
 
-> **Polling note**: Desktop's tray `poll_for_updates` should call §6.1 (cheap, paginated) and open a
-> thread (§6.2) on demand. Mint a fresh short-TTL JWT per poll (§5.4) rather than caching tokens.
+> **Polling note**: Desktop's tray `poll_for_updates` should call §6.1 with `since=<last-seen>` (cheap,
+> returns only changed rows) and open a thread (§6.2) on demand. Mint a fresh short-TTL JWT per poll
+> (§5.4) rather than caching tokens. `updated_at` + `reply_count` (§6.1) are the unseen-reply signal.
+
+### 6.4 Delete my feedback (right-to-erasure) — Phase A
+
+```
+DELETE /api/v1/projects/<PROJECT_ID>/me/feedback/<FB-ID>
+Authorization: Bearer <jwt>
+→ 204 No Content
+```
+- Capability `feedback.delete`. **Hard erasure** (D-A1): removes the feedback row and — via FK cascade —
+  its replies, status history, moderation record, and board votes; **and** purges the attachment OBJECT
+  BYTES from storage (the app deletes the objects, not just the metadata rows). A roadmap item promoted
+  from the feedback survives with its origin link nulled (it already carries the body verbatim, no FB
+  reference — Q24). This is a genuine GDPR erasure, not a soft-delete.
+- Scoped to the caller's `sub`: a feedback id that is not the caller's own (another user's, anonymous, or
+  another project) returns **404** — never an existence oracle, never a cross-user delete.
+- Idempotent from the client's view: deleting an already-erased id returns **404** (the row is gone).
+- Errors: `401` (missing/invalid Bearer, same variants as §6.3); `404` (not owned / unknown / already
+  erased / unknown project).
+
+### 6.5 Export my feedback (portability) — Phase A
+
+```
+GET /api/v1/projects/<PROJECT_ID>/me/feedback/export
+Authorization: Bearer <jwt>
+→ 200 {
+    "project_id": "<uuid>",
+    "exported_at": "<rfc3339>",
+    "feedback": [
+      {
+        "feedback_id": "FB-XXXXXX", "kind": "bug", "status": "in-progress",
+        "body": "...", "sentiment": "positive" | null, "severity": "high" | null,
+        "submitted_at": "<rfc3339>", "updated_at": "<rfc3339>", "reply_count": 2,
+        "replies":     [ { "reply_id": "<uuid>", "body": "...", "created_at": "<rfc3339>" }, … ],
+        "attachments": [ { "attachment_id": "<uuid>", "kind": "image|service_log|console_log",
+                           "url": "...", "content_type": "...", "byte_size": <int>,
+                           "created_at": "<rfc3339>" }, … ]
+      }, …
+    ]
+  }
+```
+- Capability `feedback.export`. The GDPR **portability** companion to §6.4 erasure: the caller's COMPLETE
+  own feedback in one document (no pagination). Own-`sub` rows only; **PUBLIC** replies only; `storage_key`
+  is never exposed. Errors as §6.3 (`401` unauthenticated, `404` unknown project).
+
+### 6.6 Attachments — upload / list / download
+
+Attachments hang off a feedback row (screenshots + PII-scrubbed service/console logs). These endpoints use
+the **public** `open_for_submission` project scope (same as the submit endpoint), NOT the JWT-`sub` scope —
+`<FB-ID>` is the `FB-XXXXXX` short code returned by submit. Capability `feedback.attachments`.
+
+**Upload** (pre-existing; documented here for completeness):
+```
+POST /api/v1/projects/<PROJECT_ID>/feedback/<FB-ID>/attachments      (multipart/form-data)
+  files[]        — repeatable image part, ≤4 per feedback, ≤5 MB each, png|jpeg|webp (magic-byte checked)
+  service_log    — optional text part (PII-scrubbed before storage)
+  console_log    — optional text part (PII-scrubbed before storage)
+→ 200 [ { "attachment_id": "<uuid>", "kind": "image|service_log|console_log", "url": "..." }, … ]
+  413 a file >5 MB or >4 images · 415 disallowed/forged image type · 400 malformed/empty · 404 unknown feedback
+```
+
+**List** (Phase A):
+```
+GET /api/v1/projects/<PROJECT_ID>/feedback/<FB-ID>/attachments
+→ 200 [ { "attachment_id": "<uuid>", "kind": "image|service_log|console_log", "url": "...",
+          "content_type": "...", "byte_size": <int>, "created_at": "<rfc3339>" }, … ]   // created_at asc
+```
+`storage_key` is never serialized. `404` unknown/out-of-scope project or feedback.
+
+**Download** (Phase A — tenant-scoped, app-mediated):
+```
+GET /api/v1/projects/<PROJECT_ID>/feedback/<FB-ID>/attachments/<ATTACHMENT_ID>
+→ 200  <raw object bytes>   Content-Type: <stored>   Content-Disposition: inline; filename="<id>.<ext>"
+```
+Prefer this over the stored `url` for private-S3 deployments (the app mediates the tenant boundary). A
+cross-project or cross-feedback `<ATTACHMENT_ID>` returns **404** (never serves another scope's bytes); a
+missing backing object returns **500** (the metadata row exists — a storage fault, not a not-found).
 
 ---
 
@@ -389,7 +504,7 @@ canonical embed.** Tracked as a discovery to fix on the feedbackmonk side (small
 
 | # | Parity item | Verified state | Action |
 |---|---|---|---|
-| 1 | Attachments (≤4 screenshots ≤5MB, canvas redaction, service-log capture w/ PII scrub, console-log) | **MISSING** — no attachment table/columns, no multipart handling | build |
+| 1 | Attachments (≤4 screenshots ≤5MB, canvas redaction, service-log capture w/ PII scrub, console-log) | **BUILT** ✅ — upload (multipart, size/type limits, PII-scrub) + Phase A list + tenant-scoped download (§6.6); capability `feedback.attachments` | done |
 | 2 | Crash-event correlation (`crash_event_id` ↔ Glitchtip + worker) | **BUILT** — `crash_event_id` column (migration 00010) + auth-mode submit accept + pull-mode `crash_correlation` worker (see §5.6). Live Glitchtip wiring pending deploy env (PF-DEPLOY-01) | done (deploy env pending) |
 | 3 | Admin full-text search across feedback | **MISSING** — no search route, no tsvector/index | build |
 | 4 | End-user JWT my-feedback list + reply-thread read API | **BUILT** ✅ — `GET …/me/feedback` + `…/me/feedback/<FB>/thread`, JWT-`sub`-scoped (see §6) | done |
@@ -529,14 +644,24 @@ hard-coding a version:
 ```
 GET /api/v1/capabilities                      (no auth, no project scope)
 → 200 {
-    "version": "0.2.0",                        // informational only — do NOT gate on this
+    "version": "0.3.0",                        // informational only — do NOT gate on this
     "capabilities": [
       "feedback.sentiment", "feedback.body-optional", "feedback.sentiment-trend",
-      "solicitation.v1", "feedback.my-feedback"
+      "solicitation.v1", "feedback.my-feedback",
+      "feedback.delete", "feedback.reply_state", "feedback.export",   // Phase A
+      "feedback.severity", "feedback.idempotency", "feedback.attachments"
     ],
-    "feedback": { "sentiment": { "field":"sentiment",
-                                 "values":["negative","neutral","positive"],
-                                 "body_optional": true } },
+    "feedback": {
+      "sentiment":   { "field":"sentiment", "values":["negative","neutral","positive"], "body_optional": true },
+      "severity":    { "field":"severity", "values":["low","medium","high","blocker"] },
+      "idempotency": { "header":"Idempotency-Key" },
+      "attachments": { "max_images":4, "max_image_bytes":5242880,
+                       "image_types":["image/png","image/jpeg","image/webp"],
+                       "log_kinds":["service_log","console_log"] },
+      "reply_state": { "fields":["updated_at","reply_count"], "since_param":"since" },
+      "delete": true,
+      "export": true
+    },
     "solicitation": { "events":["prompted","dismissed","gave_feedback","opted_out"],
                       "states":["eligible","prompted","dismissed","gave_feedback","opted_out"],
                       "cooldown_days_default": 182 }
@@ -544,7 +669,9 @@ GET /api/v1/capabilities                      (no auth, no project scope)
 ```
 
 **Detection contract**: treat the **presence of a string in `capabilities`** as authoritative —
-`"feedback.sentiment"` for §9, `"solicitation.v1"` for §10. Do NOT parse the semver `version`; it is
+`"feedback.sentiment"` for §9, `"solicitation.v1"` for §10, and the Phase A strings for their surfaces
+(`"feedback.delete"` §6.4, `"feedback.export"` §6.5, `"feedback.reply_state"` §6.1, `"feedback.attachments"`
+§6.6, `"feedback.severity"`/`"feedback.idempotency"` §5.5). Do NOT parse the semver `version`; it is
 informational and the capability array is the stable, additive negotiation surface. An older
 deployment that predates these features simply omits the strings (and 404s the new routes), so a
 client that checks the array degrades gracefully.
@@ -552,6 +679,17 @@ client that checks the array degrades gracefully.
 ---
 
 ## Change log
+- 2026-07-01 (Phase A — GitCellar feedback-consolidation contract build-out) — Added the end-user
+  capabilities GitCellar's consolidation depends on, all ADDITIVE to the frozen contract + advertised via
+  §11: §6.4 `DELETE …/me/feedback/{id}` right-to-erasure (hard-delete + FK cascade + attachment object-byte
+  purge; `feedback.delete`), §6.5 `GET …/me/feedback/export` portability (`feedback.export`), §6.1
+  `updated_at`+`reply_count`+`?since=` reply-state (`feedback.reply_state`), §6.6 attachment list +
+  tenant-scoped download (`feedback.attachments`; upload pre-existed), §5.5 first-class `severity`
+  (`low|medium|high|blocker`; `feedback.severity`) replacing the `external_metadata.severity` side-channel,
+  and §5.5 `Idempotency-Key` submit dedupe (`feedback.idempotency`). Migrations `00020` (severity) + `00021`
+  (submit idempotency); crate version → 0.3.0. New Verification Oracle `feedback-erasure-completeness`
+  (byte-purge-before-row-delete + cascade completeness + sub-scoped delete). Deploy gate: redeploy
+  `feedback.gitcellar.com` at ≥ v0.3.0 + migrations applied, then verify `GET /api/v1/capabilities`.
 - 2026-06-19 (FR-FBR-28 / FR-FBR-29) — Added §9 (structured sentiment + sentiment-only submissions +
   `…/admin/feedback/sentiment-trend`), §10 (durable per-user solicitation state, `GET|POST
   …/me/solicitation`, first-class state machine + 182-day default cooldown), §11 (capability

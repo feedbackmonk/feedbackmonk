@@ -48,7 +48,7 @@ pub use error::{RepoError, Result};
 pub use feedback::{
     AdminTranslationView, BoardItem, EndUserFeedback, FeedbackListItem, FeedbackRepo,
     ModerationQueueItem, PendingTranslation, SentimentTrendBucket, SqlxFeedbackRepo,
-    StatusHistoryRow, TranslationFlag, TrendBucket,
+    StatusHistoryRow, SubmitOutcome, TranslationFlag, TrendBucket,
 };
 pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};

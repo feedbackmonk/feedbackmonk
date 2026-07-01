@@ -129,6 +129,32 @@ pub trait AttachmentRepo: Send + Sync {
         scope: &ProjectScope,
         feedback_uuid: Uuid,
     ) -> Result<Vec<AttachmentRow>>;
+
+    /// List the object-store `storage_key`s of ALL attachments for a feedback
+    /// row (scoped). Phase A A1 (P0 erasure): the delete handler purges each
+    /// key via `ObjectStore::delete` BEFORE the feedback row delete, so a
+    /// mid-failure leaves retryable DB rows rather than orphaned object bytes.
+    async fn list_storage_keys_for_feedback(
+        &self,
+        scope: &ProjectScope,
+        feedback_uuid: Uuid,
+    ) -> Result<Vec<String>>;
+
+    /// Fetch ONE attachment's full row (including `storage_key`) scoped by
+    /// the complete chain `(tenant, project, feedback, attachment id)`.
+    /// Phase A A2 (tenant-scoped download): the download handler resolves the
+    /// object-store key through this method — never from client input — so a
+    /// cross-tenant / cross-project / cross-feedback `attachment_id` can never
+    /// address another scope's bytes. `RepoError::NotFound` if the attachment
+    /// does not exist under exactly that chain (the handler maps it to 404).
+    /// The `storage_key` in the returned row is for the handler's internal
+    /// `ObjectStore::get` only and MUST NOT be serialized to clients.
+    async fn get_meta(
+        &self,
+        scope: &ProjectScope,
+        feedback_uuid: Uuid,
+        attachment_id: Uuid,
+    ) -> Result<AttachmentRow>;
 }
 
 #[derive(Clone)]
@@ -243,6 +269,59 @@ impl AttachmentRepo for SqlxAttachmentRepo {
                 created_at: r.created_at,
             })
             .collect())
+    }
+
+    async fn list_storage_keys_for_feedback(
+        &self,
+        scope: &ProjectScope,
+        feedback_uuid: Uuid,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT storage_key
+            FROM attachments
+            WHERE tenant_id = $1 AND project_id = $2 AND feedback_id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_uuid,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| r.storage_key).collect())
+    }
+
+    async fn get_meta(
+        &self,
+        scope: &ProjectScope,
+        feedback_uuid: Uuid,
+        attachment_id: Uuid,
+    ) -> Result<AttachmentRow> {
+        let r = sqlx::query!(
+            r#"
+            SELECT id, feedback_id, kind, storage_key, url, content_type, byte_size, created_at
+            FROM attachments
+            WHERE tenant_id = $1 AND project_id = $2 AND feedback_id = $3 AND id = $4
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_uuid,
+            attachment_id,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+
+        Ok(AttachmentRow {
+            id: r.id,
+            feedback_id: r.feedback_id,
+            kind: AttachmentKind::from_db_str(&r.kind),
+            storage_key: r.storage_key,
+            url: r.url,
+            content_type: r.content_type,
+            byte_size: r.byte_size,
+            created_at: r.created_at,
+        })
     }
 }
 
@@ -365,5 +444,45 @@ mod tests {
 
         // s2's own feedback has none.
         assert!(repo.list_for_feedback(&s2, fb2).await.unwrap().is_empty());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn get_meta_returns_row_in_scope(pool: PgPool) {
+        let (scope, fb) = seed_scope_and_feedback(&pool, "meta@example.com").await;
+        let repo = SqlxAttachmentRepo::new(pool.clone());
+        let id = repo.insert(&scope, fb, &new_image("k/meta.png")).await.unwrap();
+
+        let row = repo.get_meta(&scope, fb, id).await.unwrap();
+        assert_eq!(row.id, id);
+        assert_eq!(row.feedback_id, fb);
+        assert_eq!(row.kind, AttachmentKind::Image);
+        assert_eq!(row.storage_key, "k/meta.png");
+        assert_eq!(row.content_type, "image/png");
+        assert_eq!(row.byte_size, 1234);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn get_meta_is_scope_and_feedback_isolated(pool: PgPool) {
+        let (s1, fb1) = seed_scope_and_feedback(&pool, "gmiso1@example.com").await;
+        let (s2, fb2) = seed_scope_and_feedback(&pool, "gmiso2@example.com").await;
+        let repo = SqlxAttachmentRepo::new(pool.clone());
+        let id = repo.insert(&s1, fb1, &new_image("s1/meta.png")).await.unwrap();
+
+        // Cross-tenant: s2 must never resolve s1's attachment, even with the
+        // real feedback uuid + attachment id.
+        let err = repo.get_meta(&s2, fb1, id).await.unwrap_err();
+        assert!(matches!(err, crate::error::RepoError::NotFound));
+        let err = repo.get_meta(&s2, fb2, id).await.unwrap_err();
+        assert!(matches!(err, crate::error::RepoError::NotFound));
+
+        // Cross-feedback within the OWNING scope: the id must be bound to its
+        // own feedback row (a valid id under the wrong feedback is NotFound).
+        let other_fb = fb2; // any uuid that is not fb1
+        let err = repo.get_meta(&s1, other_fb, id).await.unwrap_err();
+        assert!(matches!(err, crate::error::RepoError::NotFound));
+
+        // Unknown attachment id → NotFound.
+        let err = repo.get_meta(&s1, fb1, Uuid::new_v4()).await.unwrap_err();
+        assert!(matches!(err, crate::error::RepoError::NotFound));
     }
 }

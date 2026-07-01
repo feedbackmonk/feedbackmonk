@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use feedbackmonk_core::{
     event_type_for_target, Feedback, FeedbackId, FeedbackKind, FeedbackStatus, ModerationStatus,
-    Sentiment,
+    Sentiment, Severity,
 };
 
 use crate::error::Result;
@@ -87,7 +87,19 @@ pub struct AdminTranslationView {
 
 #[async_trait]
 pub trait FeedbackRepo: Send + Sync {
-    async fn submit_authenticated(
+    /// Full-fat auth-mode submit (Phase A A4). The ONLY required auth-mode
+    /// submit method — [`FeedbackRepo::submit_authenticated`] is a provided
+    /// convenience wrapper that delegates here with `severity = None` and
+    /// `idempotency_key = None`.
+    ///
+    /// The feedback INSERT and the optional `submit_idempotency` claim run in
+    /// ONE transaction (A4b). When `idempotency_key` is `Some` and the
+    /// `(project_id, idempotency_key)` PK already exists, the WHOLE
+    /// transaction rolls back (the duplicate feedback row is never committed)
+    /// and the ORIGINAL submission's id is returned with `deduped = true` —
+    /// exactly-once on flaky-network retry, zero cleanup.
+    #[allow(clippy::too_many_arguments)]
+    async fn submit_authenticated_full(
         &self,
         scope: &ProjectScope,
         end_user_sub: &str,
@@ -107,9 +119,69 @@ pub trait FeedbackRepo: Send + Sync {
         // backstop).
         body: &str,
         sentiment: Option<Sentiment>,
+        // `severity` — optional 4-point impact signal (Phase A A4a, migration
+        // 00020). First-class column, valid in BOTH submit modes. `None` ⇒ NULL.
+        severity: Option<Severity>,
         kind: FeedbackKind,
-    ) -> Result<FeedbackId>;
+        // `idempotency_key` — client-supplied `Idempotency-Key` header value
+        // (A4b, migration 00021). `None` ⇒ byte-identical to pre-A4 behavior.
+        idempotency_key: Option<&str>,
+    ) -> Result<SubmitOutcome>;
 
+    /// Full-fat anonymous-mode submit (Phase A A4). See
+    /// [`FeedbackRepo::submit_authenticated_full`] for the `severity` /
+    /// `idempotency_key` / transactional-dedupe semantics — identical here.
+    /// [`FeedbackRepo::submit_anonymous`] is the provided delegating wrapper.
+    #[allow(clippy::too_many_arguments)]
+    async fn submit_anonymous_full(
+        &self,
+        scope: &ProjectScope,
+        anon_token_hash: &[u8; 32],
+        optional_email: Option<&str>,
+        body: &str,
+        sentiment: Option<Sentiment>,
+        severity: Option<Severity>,
+        kind: FeedbackKind,
+        idempotency_key: Option<&str>,
+    ) -> Result<SubmitOutcome>;
+
+    /// Convenience wrapper (provided): auth-mode submit with no severity and
+    /// no idempotency key. Kept so the many pre-Phase-A call sites (test
+    /// seeding across the workspace) stay signature-stable — the zero-ripple
+    /// posture DEC-FBR-IMPL-24 established for submit-path extensions.
+    #[allow(clippy::too_many_arguments)]
+    async fn submit_authenticated(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        end_user_email: Option<&str>,
+        end_user_name: Option<&str>,
+        external_metadata: Option<&JsonValue>,
+        crash_event_id: Option<&str>,
+        body: &str,
+        sentiment: Option<Sentiment>,
+        kind: FeedbackKind,
+    ) -> Result<FeedbackId> {
+        Ok(self
+            .submit_authenticated_full(
+                scope,
+                end_user_sub,
+                end_user_email,
+                end_user_name,
+                external_metadata,
+                crash_event_id,
+                body,
+                sentiment,
+                None,
+                kind,
+                None,
+            )
+            .await?
+            .feedback_id)
+    }
+
+    /// Convenience wrapper (provided): anonymous-mode submit with no severity
+    /// and no idempotency key. See [`FeedbackRepo::submit_authenticated`].
     async fn submit_anonymous(
         &self,
         scope: &ProjectScope,
@@ -118,7 +190,12 @@ pub trait FeedbackRepo: Send + Sync {
         body: &str,
         sentiment: Option<Sentiment>,
         kind: FeedbackKind,
-    ) -> Result<FeedbackId>;
+    ) -> Result<FeedbackId> {
+        Ok(self
+            .submit_anonymous_full(scope, anon_token_hash, optional_email, body, sentiment, None, kind, None)
+            .await?
+            .feedback_id)
+    }
 
     async fn list_recent(&self, scope: &ProjectScope, limit: i64) -> Result<Vec<Feedback>>;
 
@@ -336,13 +413,20 @@ pub trait FeedbackRepo: Send + Sync {
     /// `(tenant, project, end_user_sub)`. Anonymous rows (`end_user_sub IS
     /// NULL`) are structurally excluded by the `end_user_sub = $sub`
     /// predicate. Returns `(page, total_matching)`; `total` counts all of the
-    /// caller's rows, not the page slice.
+    /// caller's rows matching the optional `since` filter, not the page slice.
+    ///
+    /// Phase A A3: each row carries a derived `updated_at` =
+    /// `greatest(accepted_at, max(PUBLIC reply created_at),
+    /// max(status_history transitioned_at))` and a PUBLIC-only `reply_count`
+    /// (internal replies never influence either — privacy). `since`, when
+    /// `Some`, restricts to rows with `updated_at > since` (delta polling).
     async fn list_for_end_user(
         &self,
         scope: &ProjectScope,
         end_user_sub: &str,
         limit: u32,
         offset: u32,
+        since: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<(Vec<EndUserFeedback>, u32)>;
 
     /// Fetch ONE feedback row that belongs to the caller. Scoped by
@@ -356,6 +440,27 @@ pub trait FeedbackRepo: Send + Sync {
         end_user_sub: &str,
         feedback_id: &FeedbackId,
     ) -> Result<EndUserFeedback>;
+
+    /// Phase A A1 (P0 erasure): hard-DELETE ONE feedback row that belongs to
+    /// the caller. Scoped by `(tenant, project, short_code, end_user_sub)` —
+    /// exactly the [`get_for_end_user`] ownership predicate, so another sub's
+    /// (or an anonymous / cross-scope) row can never be erased through this
+    /// surface. Returns `true` iff a row was deleted (`false` ⇒ already gone /
+    /// never owned → the handler maps to 404).
+    ///
+    /// The schema's FK cascade removes attachment rows, replies,
+    /// status-history, moderation events, board votes and the
+    /// submit-idempotency record; `roadmap_items.origin_feedback_id` and
+    /// `status_history.duplicate_of_feedback_id` are set NULL. The caller MUST
+    /// purge attachment object-store bytes BEFORE invoking this (byte purge
+    /// before row delete: a mid-failure leaves retryable rows, never orphaned
+    /// bytes).
+    async fn delete_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        feedback_id: &FeedbackId,
+    ) -> Result<bool>;
 
     // ==== Public Feedback Board + Moderation Gate (C28/C29) ==================
 
@@ -533,6 +638,16 @@ pub struct BoardItem {
     pub accepted_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Outcome of a submit (Phase A A4b). `deduped = true` means an
+/// `Idempotency-Key` retry matched an existing submission: `feedback_id` is
+/// the ORIGINAL row's id and NO new row was committed — the caller MUST skip
+/// new-row side effects (clustering-on-submit, notification hooks).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubmitOutcome {
+    pub feedback_id: FeedbackId,
+    pub deduped: bool,
+}
+
 /// Narrow projection of a feedback row for the end-user (JWT) read surface
 /// (Gap #4). Deliberately omits every internal/other-party column — the
 /// end-user only ever sees their own submission's public-facing fields.
@@ -545,7 +660,17 @@ pub struct EndUserFeedback {
     pub body: String,
     /// The submitter's own sentiment, if they gave one (FR-FBR-28).
     pub sentiment: Option<Sentiment>,
+    /// Optional 4-point impact signal (Phase A A4, migration 00020). `None`
+    /// when the submission carried no severity.
+    pub severity: Option<Severity>,
     pub submitted_at: chrono::DateTime<chrono::Utc>,
+    /// Count of PUBLIC replies only (Phase A A3). Internal replies are never
+    /// counted — the count must not leak triage activity.
+    pub reply_count: i64,
+    /// Derived in SQL (Phase A A3): `greatest(accepted_at, max(PUBLIC reply
+    /// created_at), max(status_history transitioned_at))`. Internal replies
+    /// deliberately excluded so triage notes don't move the timestamp.
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Trimmed list item — the columns the admin list page renders, plus the
@@ -595,16 +720,100 @@ pub struct SqlxFeedbackRepo {
     pool: PgPool,
 }
 
+/// Result of attempting to claim an `Idempotency-Key` inside a submit
+/// transaction. `Claimed` hands the (still-open) transaction back to the
+/// caller to finish + commit; `Duplicate` means the transaction was ROLLED
+/// BACK (the fresh feedback row discarded) and carries the ORIGINAL
+/// submission's id.
+enum IdempotencyClaim<'t> {
+    Claimed(sqlx::Transaction<'t, sqlx::Postgres>),
+    Duplicate(FeedbackId),
+}
+
+/// True iff `e` is the `submit_idempotency` PK unique-violation — i.e. this
+/// `(project_id, idempotency_key)` was already claimed by an earlier submit.
+/// Matched via sqlx's typed error kind + the constraint NAME (never loose
+/// string matching on the message).
+fn is_submit_idempotency_conflict(e: &sqlx::Error) -> bool {
+    matches!(
+        e,
+        sqlx::Error::Database(db)
+            if db.is_unique_violation() && db.constraint() == Some("submit_idempotency_pkey")
+    )
+}
+
 impl SqlxFeedbackRepo {
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
+
+    /// A4b dedupe core. Within the caller's open submit transaction, INSERT
+    /// the `submit_idempotency` claim row for the JUST-INSERTED feedback row.
+    ///
+    /// - No conflict → returns [`IdempotencyClaim::Claimed`] with the still-open
+    ///   transaction; the caller finishes its writes and commits.
+    /// - PK conflict (`(project_id, idempotency_key)` already claimed) → ROLLS
+    ///   BACK the whole transaction, so the duplicate feedback row is NEVER
+    ///   committed, then resolves the EXISTING submission's `short_code`
+    ///   (scoped by tenant + project, DEC-FBR-03) and returns
+    ///   [`IdempotencyClaim::Duplicate`]. Exactly one feedback row per key,
+    ///   zero cleanup — the txn+conflict path is the correctness backstop.
+    async fn claim_idempotency_key<'t>(
+        &self,
+        scope: &ProjectScope,
+        mut tx: sqlx::Transaction<'t, sqlx::Postgres>,
+        idempotency_key: &str,
+        feedback_row_id: Uuid,
+    ) -> Result<IdempotencyClaim<'t>> {
+        let inserted = sqlx::query!(
+            r#"
+            INSERT INTO submit_idempotency (project_id, tenant_id, idempotency_key, feedback_id)
+            VALUES ($1, $2, $3, $4)
+            "#,
+            scope.project_id(),
+            scope.tenant_id(),
+            idempotency_key,
+            feedback_row_id,
+        )
+        .execute(&mut *tx)
+        .await;
+
+        match inserted {
+            Ok(_) => Ok(IdempotencyClaim::Claimed(tx)),
+            Err(e) if is_submit_idempotency_conflict(&e) => {
+                // Duplicate submit for this key: discard the fresh feedback
+                // row by rolling back the WHOLE transaction, then return the
+                // original submission's id.
+                tx.rollback().await?;
+                let existing = sqlx::query_scalar!(
+                    r#"
+                    SELECT f.short_code AS "short_code!"
+                    FROM submit_idempotency si
+                    JOIN feedback f ON f.id = si.feedback_id
+                    WHERE si.project_id = $1 AND si.tenant_id = $2 AND si.idempotency_key = $3
+                    "#,
+                    scope.project_id(),
+                    scope.tenant_id(),
+                    idempotency_key,
+                )
+                .fetch_optional(&self.pool)
+                .await?
+                // Only reachable if the original row was ERASED between the
+                // conflict and this read (the 00021 FK cascade then removed
+                // the claim row). Vanishingly rare; Conflict → 409 tells the
+                // client to retry, and the retry will claim the key fresh.
+                .ok_or(crate::error::RepoError::Conflict)?;
+                Ok(IdempotencyClaim::Duplicate(FeedbackId::from(existing)))
+            }
+            Err(e) => Err(e.into()),
+        }
+    }
 }
 
 #[async_trait]
 impl FeedbackRepo for SqlxFeedbackRepo {
-    async fn submit_authenticated(
+    async fn submit_authenticated_full(
         &self,
         scope: &ProjectScope,
         end_user_sub: &str,
@@ -614,29 +823,40 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         crash_event_id: Option<&str>,
         body: &str,
         sentiment: Option<Sentiment>,
+        severity: Option<Severity>,
         kind: FeedbackKind,
-    ) -> Result<FeedbackId> {
+        idempotency_key: Option<&str>,
+    ) -> Result<SubmitOutcome> {
         let short_code = FeedbackId::generate();
         let kind_str = kind.as_str();
         // Empty body => SQL NULL (sentiment-only submission, FR-FBR-28). The
         // DB CHECK `feedback_body_or_sentiment_check` is the backstop.
         let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
         let sentiment_str: Option<&str> = sentiment.map(Sentiment::as_db_str);
+        // Phase A A4a: optional 4-point impact signal, first-class column
+        // (migration 00020). `None` ⇒ NULL; the CHECK constraint is the backstop.
+        let severity_str: Option<&str> = severity.map(Severity::as_db_str);
         // FR-FBR-30: stamp `pending` for the translate-after-accept worker ONLY
         // when translation is enabled AND the row carries body text. Else NULL
         // (lazy backfill: untouched). Computed here, off the public submit path's
         // critical work — no provider call ever happens synchronously.
         let translation_status: Option<&str> =
             (TranslationFlag::enabled() && body_opt.is_some()).then_some("pending");
-        sqlx::query!(
+
+        // A4b: the feedback INSERT + the idempotency claim are ONE transaction
+        // — on a key conflict the whole txn rolls back and the duplicate row is
+        // never committed (see `claim_idempotency_key`).
+        let mut tx = self.pool.begin().await?;
+        let feedback_row_id = sqlx::query_scalar!(
             r#"
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
                 end_user_sub, end_user_email, end_user_name,
-                external_metadata, crash_event_id, body, sentiment, kind,
+                external_metadata, crash_event_id, body, sentiment, severity, kind,
                 translation_status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            RETURNING id AS "id!"
             "#,
             short_code.as_str(),
             scope.project_id(),
@@ -648,40 +868,74 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             crash_event_id,
             body_opt,
             sentiment_str,
+            severity_str,
             kind_str,
             translation_status,
         )
-        .execute(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
-        Ok(short_code)
+
+        let tx = if let Some(key) = idempotency_key {
+            match self
+                .claim_idempotency_key(scope, tx, key, feedback_row_id)
+                .await?
+            {
+                IdempotencyClaim::Claimed(tx) => tx,
+                IdempotencyClaim::Duplicate(existing) => {
+                    return Ok(SubmitOutcome {
+                        feedback_id: existing,
+                        deduped: true,
+                    })
+                }
+            }
+        } else {
+            tx
+        };
+        tx.commit().await?;
+
+        Ok(SubmitOutcome {
+            feedback_id: short_code,
+            deduped: false,
+        })
     }
 
-    async fn submit_anonymous(
+    async fn submit_anonymous_full(
         &self,
         scope: &ProjectScope,
         anon_token_hash: &[u8; 32],
         optional_email: Option<&str>,
         body: &str,
         sentiment: Option<Sentiment>,
+        severity: Option<Severity>,
         kind: FeedbackKind,
-    ) -> Result<FeedbackId> {
+        idempotency_key: Option<&str>,
+    ) -> Result<SubmitOutcome> {
         let short_code = FeedbackId::generate();
         let kind_str = kind.as_str();
         let token: &[u8] = anon_token_hash.as_slice();
         let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
         let sentiment_str: Option<&str> = sentiment.map(Sentiment::as_db_str);
-        // FR-FBR-30: see submit_authenticated — stamp `pending` only when
+        // Phase A A4a: severity is tenant-generic — valid in the anonymous
+        // mode too (unlike crash_event_id, which is auth-only).
+        let severity_str: Option<&str> = severity.map(Severity::as_db_str);
+        // FR-FBR-30: see submit_authenticated_full — stamp `pending` only when
         // translation is enabled AND the row carries body text.
         let translation_status: Option<&str> =
             (TranslationFlag::enabled() && body_opt.is_some()).then_some("pending");
-        sqlx::query!(
+
+        // A4b: one transaction for feedback INSERT + idempotency claim + anon
+        // counter. A deduped retry rolls back BEFORE the counter upsert, so a
+        // retry never double-counts a submission (FR-FBR-06 dedup stays honest).
+        let mut tx = self.pool.begin().await?;
+        let feedback_row_id = sqlx::query_scalar!(
             r#"
             INSERT INTO feedback (
                 short_code, project_id, tenant_id,
-                end_user_email, anon_token_hash, body, sentiment, kind,
+                end_user_email, anon_token_hash, body, sentiment, severity, kind,
                 translation_status
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id AS "id!"
             "#,
             short_code.as_str(),
             scope.project_id(),
@@ -690,13 +944,32 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             token,
             body_opt,
             sentiment_str,
+            severity_str,
             kind_str,
             translation_status,
         )
-        .execute(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
 
-        // Upsert the anon_submissions counter (dedup tracking; FR-FBR-06).
+        let mut tx = if let Some(key) = idempotency_key {
+            match self
+                .claim_idempotency_key(scope, tx, key, feedback_row_id)
+                .await?
+            {
+                IdempotencyClaim::Claimed(tx) => tx,
+                IdempotencyClaim::Duplicate(existing) => {
+                    return Ok(SubmitOutcome {
+                        feedback_id: existing,
+                        deduped: true,
+                    })
+                }
+            }
+        } else {
+            tx
+        };
+
+        // Upsert the anon_submissions counter (dedup tracking; FR-FBR-06) —
+        // same txn, so it commits/rolls back with the feedback row.
         sqlx::query!(
             r#"
             INSERT INTO anon_submissions (anon_token_hash, project_id)
@@ -708,10 +981,14 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             token,
             scope.project_id(),
         )
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
-        Ok(short_code)
+        Ok(SubmitOutcome {
+            feedback_id: short_code,
+            deduped: false,
+        })
     }
 
     async fn list_recent(&self, scope: &ProjectScope, limit: i64) -> Result<Vec<Feedback>> {
@@ -1318,21 +1595,51 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         end_user_sub: &str,
         limit: u32,
         offset: u32,
+        since: Option<chrono::DateTime<chrono::Utc>>,
     ) -> Result<(Vec<EndUserFeedback>, u32)> {
         // `end_user_sub = $3` is the isolation predicate: a caller sees ONLY
         // their own rows, and anonymous rows (end_user_sub IS NULL) never
         // match. No internal columns are selected.
+        //
+        // Phase A A3: `updated_at` + `reply_count` are DERIVED in-query (no
+        // materialized column, no write-path bumps). Both scalar subqueries
+        // hard-filter `visibility = 'public'` — internal replies never move
+        // the timestamp nor the count (privacy). The inner-SELECT wrapper lets
+        // the optional `$4 since` filter reference the derived `updated_at`.
         let rows = sqlx::query!(
             r#"
-            SELECT short_code, kind, status, body, sentiment, accepted_at
-            FROM feedback
-            WHERE tenant_id = $1 AND project_id = $2 AND end_user_sub = $3
+            SELECT short_code AS "short_code!",
+                   kind AS "kind!",
+                   status AS "status!",
+                   body,
+                   sentiment,
+                   severity,
+                   accepted_at AS "accepted_at!",
+                   reply_count AS "reply_count!",
+                   updated_at AS "updated_at!"
+            FROM (
+                SELECT f.short_code, f.kind, f.status, f.body, f.sentiment,
+                       f.severity, f.accepted_at,
+                       (SELECT count(*) FROM feedback_replies r
+                         WHERE r.feedback_id = f.id AND r.visibility = 'public') AS reply_count,
+                       GREATEST(
+                           f.accepted_at,
+                           (SELECT max(r.created_at) FROM feedback_replies r
+                             WHERE r.feedback_id = f.id AND r.visibility = 'public'),
+                           (SELECT max(h.transitioned_at) FROM feedback_status_history h
+                             WHERE h.feedback_id = f.id)
+                       ) AS updated_at
+                FROM feedback AS f
+                WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.end_user_sub = $3
+            ) AS t
+            WHERE ($4::timestamptz IS NULL OR updated_at > $4)
             ORDER BY accepted_at DESC
-            LIMIT $4 OFFSET $5
+            LIMIT $5 OFFSET $6
             "#,
             scope.tenant_id(),
             scope.project_id(),
             end_user_sub,
+            since,
             i64::from(limit),
             i64::from(offset),
         )
@@ -1342,12 +1649,23 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         let total_row = sqlx::query!(
             r#"
             SELECT count(*) AS "count!"
-            FROM feedback
-            WHERE tenant_id = $1 AND project_id = $2 AND end_user_sub = $3
+            FROM (
+                SELECT GREATEST(
+                           f.accepted_at,
+                           (SELECT max(r.created_at) FROM feedback_replies r
+                             WHERE r.feedback_id = f.id AND r.visibility = 'public'),
+                           (SELECT max(h.transitioned_at) FROM feedback_status_history h
+                             WHERE h.feedback_id = f.id)
+                       ) AS updated_at
+                FROM feedback AS f
+                WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.end_user_sub = $3
+            ) AS t
+            WHERE ($4::timestamptz IS NULL OR updated_at > $4)
             "#,
             scope.tenant_id(),
             scope.project_id(),
             end_user_sub,
+            since,
         )
         .fetch_one(&self.pool)
         .await?;
@@ -1361,7 +1679,10 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 status: FeedbackStatus::from_db_str(&r.status),
                 body: r.body.unwrap_or_default(),
                 sentiment: r.sentiment.as_deref().and_then(Sentiment::parse),
+                severity: r.severity.as_deref().and_then(Severity::parse),
                 submitted_at: r.accepted_at,
+                reply_count: r.reply_count,
+                updated_at: r.updated_at,
             })
             .collect();
 
@@ -1377,12 +1698,24 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // The `AND end_user_sub = $4` clause is the load-bearing isolation
         // check: a short_code belonging to a DIFFERENT sub (or anonymous, or
         // another tenant/project) returns NotFound, never another user's row.
+        // Phase A A3: same derived `updated_at` + PUBLIC-only `reply_count`
+        // expressions as `list_for_end_user` (see that method's comment).
         let row = sqlx::query!(
             r#"
-            SELECT short_code, kind, status, body, sentiment, accepted_at
-            FROM feedback
-            WHERE tenant_id = $1 AND project_id = $2
-              AND short_code = $3 AND end_user_sub = $4
+            SELECT f.short_code, f.kind, f.status, f.body, f.sentiment,
+                   f.severity, f.accepted_at,
+                   (SELECT count(*) FROM feedback_replies r
+                     WHERE r.feedback_id = f.id AND r.visibility = 'public') AS "reply_count!",
+                   GREATEST(
+                       f.accepted_at,
+                       (SELECT max(r.created_at) FROM feedback_replies r
+                         WHERE r.feedback_id = f.id AND r.visibility = 'public'),
+                       (SELECT max(h.transitioned_at) FROM feedback_status_history h
+                         WHERE h.feedback_id = f.id)
+                   ) AS "updated_at!"
+            FROM feedback AS f
+            WHERE f.tenant_id = $1 AND f.project_id = $2
+              AND f.short_code = $3 AND f.end_user_sub = $4
             "#,
             scope.tenant_id(),
             scope.project_id(),
@@ -1399,8 +1732,39 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             status: FeedbackStatus::from_db_str(&row.status),
             body: row.body.unwrap_or_default(),
             sentiment: row.sentiment.as_deref().and_then(Sentiment::parse),
+            severity: row.severity.as_deref().and_then(Severity::parse),
             submitted_at: row.accepted_at,
+            reply_count: row.reply_count,
+            updated_at: row.updated_at,
         })
+    }
+
+    async fn delete_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+        feedback_id: &FeedbackId,
+    ) -> Result<bool> {
+        // Phase A A1 (P0 erasure). The WHERE clause is exactly the
+        // `get_for_end_user` ownership predicate — a short_code belonging to a
+        // different sub / anonymous / another tenant-project matches nothing
+        // (rows_affected == 0 → the handler 404s, never an existence oracle).
+        // FK cascades remove all child rows (see the trait doc); attachment
+        // object bytes MUST already be purged by the caller.
+        let result = sqlx::query!(
+            r#"
+            DELETE FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2
+              AND short_code = $3 AND end_user_sub = $4
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_id.as_str(),
+            end_user_sub,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     // ==== Public Feedback Board + Moderation Gate (C28/C29) impl =============
@@ -1874,6 +2238,195 @@ mod tests {
         assert_eq!(recent.len(), 2);
         assert!(recent.iter().all(|f| f.end_user_sub.is_none()));
         assert!(recent.iter().all(|f| f.anon_token_hash.as_deref() == Some(token.as_slice())));
+    }
+
+    // ---- Phase A A4a — first-class severity on submit ----
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn submit_full_persists_severity_both_modes(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "severity@example.com").await;
+
+        let auth = repo
+            .submit_authenticated_full(
+                &scope,
+                "auth0|sev-sub",
+                Some("s@example.com"),
+                None,
+                None,
+                None,
+                "auth body",
+                None,
+                Some(Severity::High),
+                FeedbackKind::Bug,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(!auth.deduped);
+        let anon = repo
+            .submit_anonymous_full(
+                &scope,
+                &[1u8; 32],
+                None,
+                "anon body",
+                None,
+                Some(Severity::Blocker),
+                FeedbackKind::Other,
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(!anon.deduped);
+
+        // Auth-mode read surface (EndUserFeedback carries severity, Stream 1).
+        let (items, total) = repo
+            .list_for_end_user(&scope, "auth0|sev-sub", 10, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(items[0].severity, Some(Severity::High));
+
+        // Anonymous rows have no end-user read surface — assert the stored
+        // column directly (in-crate scoped SQL; this crate IS the query path).
+        let rows = sqlx::query!(
+            r#"SELECT short_code, severity FROM feedback
+               WHERE tenant_id = $1 AND project_id = $2"#,
+            scope.tenant_id(),
+            scope.project_id(),
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        let sev_of = |code: &FeedbackId| {
+            rows.iter()
+                .find(|r| r.short_code == code.as_str())
+                .and_then(|r| r.severity.clone())
+        };
+        assert_eq!(sev_of(&auth.feedback_id).as_deref(), Some("high"));
+        assert_eq!(sev_of(&anon.feedback_id).as_deref(), Some("blocker"));
+    }
+
+    // ---- Phase A A4b — Idempotency-Key transactional dedupe ----
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn submit_idempotency_same_key_dedupes_to_single_row(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "idem@example.com").await;
+
+        let first = repo
+            .submit_anonymous_full(
+                &scope,
+                &[2u8; 32],
+                None,
+                "first body",
+                None,
+                None,
+                FeedbackKind::Other,
+                Some("key-1"),
+            )
+            .await
+            .unwrap();
+        assert!(!first.deduped);
+
+        // Retry with the SAME key and a DIFFERENT body: first-write-wins — the
+        // original id comes back and the duplicate row is never committed.
+        let second = repo
+            .submit_anonymous_full(
+                &scope,
+                &[2u8; 32],
+                None,
+                "retry body (different)",
+                None,
+                None,
+                FeedbackKind::Other,
+                Some("key-1"),
+            )
+            .await
+            .unwrap();
+        assert!(second.deduped);
+        assert_eq!(first.feedback_id, second.feedback_id);
+
+        let recent = repo.list_recent(&scope, 10).await.unwrap();
+        assert_eq!(recent.len(), 1, "the rolled-back duplicate must not exist");
+        assert_eq!(recent[0].body, "first body", "first write wins");
+
+        // The rollback must also cover the anon dedup counter (FR-FBR-06):
+        // one committed submission ⇒ count 1, despite two calls.
+        let token_arr = [2u8; 32];
+        let token: &[u8] = token_arr.as_slice();
+        let counter = sqlx::query!(
+            r#"SELECT submission_count FROM anon_submissions
+               WHERE project_id = $1 AND anon_token_hash = $2"#,
+            scope.project_id(),
+            token,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(counter.submission_count, 1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn submit_idempotency_auth_mode_dedupes(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "idem-auth@example.com").await;
+
+        let submit = |key: &'static str| {
+            let repo = repo.clone();
+            async move {
+                repo.submit_authenticated_full(
+                    &scope,
+                    "auth0|retry-sub",
+                    Some("r@example.com"),
+                    None,
+                    None,
+                    None,
+                    "auth retry body",
+                    None,
+                    Some(Severity::Low),
+                    FeedbackKind::Bug,
+                    Some(key),
+                )
+                .await
+                .unwrap()
+            }
+        };
+        let first = submit("auth-key").await;
+        let second = submit("auth-key").await;
+        assert!(!first.deduped);
+        assert!(second.deduped);
+        assert_eq!(first.feedback_id, second.feedback_id);
+        assert_eq!(repo.list_recent(&scope, 10).await.unwrap().len(), 1);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn submit_idempotency_distinct_keys_and_projects_do_not_dedupe(pool: PgPool) {
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let s1 = seed_project_scope(&pool, "idem-p1@example.com").await;
+        let s2 = seed_project_scope(&pool, "idem-p2@example.com").await;
+
+        // Different keys in the same project → two rows.
+        let a = repo
+            .submit_anonymous_full(&s1, &[3u8; 32], None, "a", None, None, FeedbackKind::Other, Some("k-a"))
+            .await
+            .unwrap();
+        let b = repo
+            .submit_anonymous_full(&s1, &[3u8; 32], None, "b", None, None, FeedbackKind::Other, Some("k-b"))
+            .await
+            .unwrap();
+        assert!(!a.deduped && !b.deduped);
+        assert_ne!(a.feedback_id, b.feedback_id);
+        assert_eq!(repo.list_recent(&s1, 10).await.unwrap().len(), 2);
+
+        // The SAME key in a DIFFERENT project → no cross-project dedupe (the
+        // PK is (project_id, idempotency_key)).
+        let c = repo
+            .submit_anonymous_full(&s2, &[4u8; 32], None, "c", None, None, FeedbackKind::Other, Some("k-a"))
+            .await
+            .unwrap();
+        assert!(!c.deduped);
+        assert_eq!(repo.list_recent(&s2, 10).await.unwrap().len(), 1);
     }
 
     #[sqlx::test(migrations = "../../migrations")]

@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT storage_key\n            FROM attachments\n            WHERE tenant_id = $1 AND project_id = $2 AND feedback_id = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "storage_key",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6b88f71c6ce8fb7bb3eb1b8d2e01269082449acfc8591e6bf76a60d502c0c101"
+}

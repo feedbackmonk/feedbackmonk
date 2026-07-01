@@ -5,9 +5,9 @@
 //!     directory (a docker volume in the self-host compose stack). This is the
 //!     default backend and needs no external service. (Recommended for the
 //!     GitCellar customer-#1 self-host path, PF-DEPLOY-01.)
-//!   - **`SaaS` / `MinIO`**: `S3Storage` — PUTs objects to any S3-compatible
-//!     endpoint via AWS `SigV4`. Works against AWS S3 and `MinIO` alike (set
-//!     `FEEDBACKMONK_S3_ENDPOINT` + path-style for `MinIO`).
+//!   - **`SaaS` / `MinIO`**: `S3Storage` — PUT/DELETE/GETs objects against any
+//!     S3-compatible endpoint via AWS `SigV4`. Works against AWS S3 and `MinIO`
+//!     alike (set `FEEDBACKMONK_S3_ENDPOINT` + path-style for `MinIO`).
 //!
 //! Backend selection + configuration is env-driven (`from_env`); every var is
 //! catalogued in `docs/operations/SELFHOST_ENV.md` (Contract C21).
@@ -15,12 +15,14 @@
 //! ## Why a hand-rolled `SigV4` (not `aws-sdk-s3`)
 //!
 //! The AWS SDK pulls ~50 crates and meaningfully slows the workspace build.
-//! Attachments need exactly one S3 verb (PUT object). The `SigV4` signer here is
-//! ~80 lines and is unit-tested against AWS's published GET test vector
-//! (`sigv4_matches_aws_documented_example`), so the signing chain
-//! (canonical request → string-to-sign → derived key → signature) is verified
-//! deterministically with no live endpoint. The thin reqwest PUT wiring on top
-//! is the only part not exercised offline.
+//! Attachments need three S3 verbs: PUT object (upload), DELETE object
+//! (erasure, Phase A A1), and GET object (tenant-scoped download, Phase A A2).
+//! The `SigV4` signer here is ~80 lines and is unit-tested against AWS's
+//! published GET test vector (`sigv4_matches_aws_documented_example`), so the
+//! signing chain (canonical request → string-to-sign → derived key → signature)
+//! is verified deterministically with no live endpoint — all three verbs share
+//! that one signer. The thin reqwest wiring on top is the only part not
+//! exercised offline.
 //!
 //! ## Isolation oracle
 //!
@@ -61,6 +63,15 @@ pub trait ObjectStore: Send + Sync {
         content_type: &str,
         bytes: &[u8],
     ) -> Result<String, StorageError>;
+
+    /// Delete the object at `key`. Idempotent: deleting an absent key is
+    /// `Ok(())` (erasure, Phase A A1 — a retry after partial failure must not
+    /// error).
+    async fn delete(&self, key: &str) -> Result<(), StorageError>;
+
+    /// Fetch the raw bytes of the object at `key` (tenant-scoped download,
+    /// Phase A A2 — the handler enforces scoping; the store is key-addressed).
+    async fn get(&self, key: &str) -> Result<Vec<u8>, StorageError>;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,6 +127,16 @@ impl LocalFsStorage {
             url_base: url_base.into(),
         }
     }
+
+    /// Resolve `key` under the storage root, rejecting path-traversal keys
+    /// (defense in depth; the handler mints keys from UUIDs, but never trust
+    /// it implicitly).
+    fn safe_path(&self, key: &str) -> Result<PathBuf, StorageError> {
+        if key.contains("..") || Path::new(key).is_absolute() {
+            return Err(StorageError::Config(format!("unsafe storage key: {key:?}")));
+        }
+        Ok(self.root.join(key))
+    }
 }
 
 #[async_trait]
@@ -126,12 +147,7 @@ impl ObjectStore for LocalFsStorage {
         _content_type: &str,
         bytes: &[u8],
     ) -> Result<String, StorageError> {
-        // Reject path-traversal in the key (defense in depth; the handler mints
-        // keys from UUIDs, but never trust it implicitly).
-        if key.contains("..") || Path::new(key).is_absolute() {
-            return Err(StorageError::Config(format!("unsafe storage key: {key:?}")));
-        }
-        let dest = self.root.join(key);
+        let dest = self.safe_path(key)?;
         if let Some(parent) = dest.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
@@ -141,6 +157,23 @@ impl ObjectStore for LocalFsStorage {
             .await
             .map_err(|e| StorageError::Io(e.to_string()))?;
         Ok(format!("{}/{}", self.url_base.trim_end_matches('/'), key))
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), StorageError> {
+        let dest = self.safe_path(key)?;
+        match tokio::fs::remove_file(&dest).await {
+            Ok(()) => Ok(()),
+            // Idempotent erasure: an already-absent object is a success.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(StorageError::Io(e.to_string())),
+        }
+    }
+
+    async fn get(&self, key: &str) -> Result<Vec<u8>, StorageError> {
+        let src = self.safe_path(key)?;
+        tokio::fs::read(&src)
+            .await
+            .map_err(|e| StorageError::Io(e.to_string()))
     }
 }
 
@@ -238,6 +271,48 @@ impl S3Storage {
             format!("{}/{}", self.endpoint_origin, key)
         }
     }
+
+    /// Build a `SigV4`-signed body-less request (DELETE / GET object). Shares
+    /// the exact signer + canonical-path chain the PUT path uses; the payload
+    /// hash is the well-known SHA-256 of the empty byte string.
+    fn signed_bodyless_request(&self, method: &str, key: &str) -> reqwest::RequestBuilder {
+        let payload_hash = sha256_hex(b"");
+        let (amz_date, datestamp) = amz_timestamps();
+        let canonical_uri = uri_encode_path(&self.canonical_path(key));
+
+        // Signed headers (lowercase names), sorted lexically in the signer.
+        let headers = vec![
+            ("host".to_string(), self.host.clone()),
+            ("x-amz-content-sha256".to_string(), payload_hash.clone()),
+            ("x-amz-date".to_string(), amz_date.clone()),
+        ];
+
+        let signer = SigV4 {
+            access_key: &self.cfg.access_key_id,
+            secret_key: &self.cfg.secret_access_key,
+            region: &self.cfg.region,
+            service: "s3",
+        };
+        let authorization = signer.authorization_header(
+            method,
+            &canonical_uri,
+            "",
+            &headers,
+            &payload_hash,
+            &amz_date,
+            &datestamp,
+        );
+
+        let url = format!("{}{}", self.endpoint_origin, canonical_uri);
+        let builder = match method {
+            "DELETE" => self.client.delete(&url),
+            _ => self.client.get(&url),
+        };
+        builder
+            .header("x-amz-content-sha256", payload_hash)
+            .header("x-amz-date", amz_date)
+            .header("authorization", authorization)
+    }
 }
 
 #[async_trait]
@@ -297,6 +372,46 @@ impl ObjectStore for S3Storage {
             )));
         }
         Ok(self.object_url(key))
+    }
+
+    async fn delete(&self, key: &str) -> Result<(), StorageError> {
+        let resp = self
+            .signed_bodyless_request("DELETE", key)
+            .send()
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+
+        let status = resp.status();
+        // Idempotent erasure: an already-absent object (404) is a success.
+        // (S3 itself answers 204 for missing keys; some S3-compatibles 404.)
+        if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        let body = resp.text().await.unwrap_or_default();
+        Err(StorageError::Backend(format!(
+            "S3 DELETE {key} → {status}: {body}"
+        )))
+    }
+
+    async fn get(&self, key: &str) -> Result<Vec<u8>, StorageError> {
+        let resp = self
+            .signed_bodyless_request("GET", key)
+            .send()
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(StorageError::Backend(format!(
+                "S3 GET {key} → {status}: {body}"
+            )));
+        }
+        let bytes = resp
+            .bytes()
+            .await
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        Ok(bytes.to_vec())
     }
 }
 
@@ -520,6 +635,55 @@ mod tests {
     async fn local_fs_rejects_traversal_keys() {
         let store = LocalFsStorage::new(".", "http://x");
         let err = store.put("../escape.png", "image/png", b"x").await.unwrap_err();
+        assert!(matches!(err, StorageError::Config(_)));
+    }
+
+    #[tokio::test]
+    async fn local_fs_put_get_round_trip_returns_bytes() {
+        let tmp = std::env::temp_dir().join(format!("fbm-store-get-{}", std::process::id()));
+        let store = LocalFsStorage::new(&tmp, "http://localhost:14304/attachments");
+        store
+            .put("p1/fb1/get.png", "image/png", b"GETDATA")
+            .await
+            .unwrap();
+        let bytes = store.get("p1/fb1/get.png").await.unwrap();
+        assert_eq!(bytes, b"GETDATA");
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
+    }
+
+    #[tokio::test]
+    async fn local_fs_delete_removes_object_and_is_idempotent() {
+        let tmp = std::env::temp_dir().join(format!("fbm-store-del-{}", std::process::id()));
+        let store = LocalFsStorage::new(&tmp, "http://localhost:14304/attachments");
+        store
+            .put("p1/fb1/del.png", "image/png", b"DELDATA")
+            .await
+            .unwrap();
+
+        // Delete removes the object: a subsequent get errors.
+        store.delete("p1/fb1/del.png").await.unwrap();
+        let err = store.get("p1/fb1/del.png").await.unwrap_err();
+        assert!(matches!(err, StorageError::Io(_)));
+
+        // Idempotent erasure: deleting an already-absent key is Ok.
+        store.delete("p1/fb1/del.png").await.unwrap();
+        store.delete("never/existed.png").await.unwrap();
+        let _ = tokio::fs::remove_dir_all(&tmp).await;
+    }
+
+    #[tokio::test]
+    async fn local_fs_get_and_delete_reject_traversal_keys() {
+        let store = LocalFsStorage::new(".", "http://x");
+        let err = store.get("../escape.png").await.unwrap_err();
+        assert!(matches!(err, StorageError::Config(_)));
+        let err = store.delete("../escape.png").await.unwrap_err();
+        assert!(matches!(err, StorageError::Config(_)));
+        // A platform-absolute key (temp_dir is absolute on every platform;
+        // a bare "/x" is NOT absolute on Windows, which lacks a drive prefix).
+        let abs_key = std::env::temp_dir().join("abs.png").to_string_lossy().to_string();
+        let err = store.get(&abs_key).await.unwrap_err();
+        assert!(matches!(err, StorageError::Config(_)));
+        let err = store.delete(&abs_key).await.unwrap_err();
         assert!(matches!(err, StorageError::Config(_)));
     }
 }

@@ -45,12 +45,13 @@ use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::translation::{DeepLTranslator, LibreTranslateTranslator, TranslationProvider};
 use feedbackmonk_api::{
     admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
-    board_router, capabilities_router, cluster_admin_router, me_feedback_router, moderation_router,
-    ops_router, parse_origins, promote_router, public_cors_layer, recommendation_admin_router,
-    roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
-    spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
-    work_order_admin_router, work_order_runner_router, AttachmentState, VotingCache,
-    DEFAULT_TRANSLATION_POLL_SECS, DEFAULT_TRANSLATION_TARGET_LANG,
+    board_router, capabilities_router, cluster_admin_router, me_feedback_data_router,
+    me_feedback_router, moderation_router, ops_router, parse_origins, promote_router,
+    public_cors_layer, recommendation_admin_router, roadmap_router, runner_tokens_admin_router,
+    solicitation_router, spawn_translation_worker, spawn_voting_cache_refresh, submission_router,
+    sweep_admin_router, widget_config_router, work_order_admin_router, work_order_runner_router,
+    AttachmentState, MeFeedbackDataState, VotingCache, DEFAULT_TRANSLATION_POLL_SECS,
+    DEFAULT_TRANSLATION_TARGET_LANG,
 };
 
 #[tokio::main]
@@ -86,6 +87,20 @@ async fn main() -> Result<()> {
         attachments: Arc::new(SqlxAttachmentRepo::new(state.pool.clone())),
         storage: feedbackmonk_api::storage::from_env()
             .context("failed to configure attachment object store")?,
+    };
+
+    // Phase A A1/A5: me_feedback erasure + export sub-router state. Its own
+    // state type (NOT AppState) for the same reason as AttachmentState — the
+    // attachment repo + object store must not ripple through every
+    // `AppState { … }` construction site. Shares the attachment_state handles.
+    let me_feedback_data_state = MeFeedbackDataState {
+        projects: Arc::clone(&state.projects),
+        signing_keys: Arc::clone(&state.signing_keys),
+        feedback: Arc::clone(&state.feedback),
+        feedback_replies: Arc::clone(&state.feedback_replies),
+        attachments: Arc::clone(&attachment_state.attachments),
+        storage: Arc::clone(&attachment_state.storage),
+        jwt_iat_leeway_seconds: state.jwt_iat_leeway_seconds,
     };
 
     // P2: spawn the 60s roadmap voting-cache refresh tick. JoinHandle is
@@ -143,7 +158,7 @@ async fn main() -> Result<()> {
         tracing::info!(origins = ?cors_origins, "CORS allowlist for public widget endpoints");
     }
 
-    let app = build_app(state, attachment_state, &cors_origins);
+    let app = build_app(state, attachment_state, me_feedback_data_state, &cors_origins);
 
     let addr: SocketAddr = (bind_addr, port).into();
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -433,7 +448,12 @@ fn load_session_secret() -> Result<[u8; 32]> {
     Ok(out)
 }
 
-fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &[String]) -> Router {
+fn build_app(
+    state: AppState,
+    attachment_state: AttachmentState,
+    me_feedback_data_state: MeFeedbackDataState,
+    cors_origins: &[String],
+) -> Router {
     // FR-FBR-18: every request is wrapped in a span carrying a `request_id`
     // (UUIDv4) populated from `x-request-id` if the client supplied one, else
     // freshly generated. The TraceLayer emits structured INFO logs at request
@@ -463,6 +483,10 @@ fn build_app(state: AppState, attachment_state: AttachmentState, cors_origins: &
         // guarded by the OpsAuth bearer token (404 when token unset).
         .merge(ops_router(state.clone()))
         .merge(me_feedback_router(state.clone()))
+        // Phase A A1/A5: erasure + export on the me_feedback path — merged
+        // WITHOUT CORS, same posture as the read subtree above (JWT end-user
+        // surface driven by the consumer's own client, not a browser embed).
+        .merge(me_feedback_data_router(me_feedback_data_state))
         // GitCellar in-app solicitation (FR-FBR-28/27): durable per-user
         // solicitation state (JWT end-user surface; merged WITHOUT CORS, like
         // me_feedback — driven by the consumer's own client) + public

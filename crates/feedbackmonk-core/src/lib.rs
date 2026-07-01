@@ -14,6 +14,7 @@ pub mod models;
 pub mod moderation;
 pub mod roadmap;
 pub mod sentiment;
+pub mod severity;
 pub mod solicitation;
 pub mod status;
 pub mod tier;
@@ -30,6 +31,7 @@ pub use moderation::{
 };
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use sentiment::Sentiment;
+pub use severity::Severity;
 pub use solicitation::{
     apply_event as apply_solicitation_event, SolicitationError, SolicitationEvent,
     SolicitationStatus,

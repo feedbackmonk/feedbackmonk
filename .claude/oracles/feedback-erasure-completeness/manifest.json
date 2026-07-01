@@ -1,0 +1,44 @@
+{
+  "name": "feedback-erasure-completeness",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Does the Phase A A1 right-to-erasure path (DELETE …/me/feedback/{id}) actually erase ALL of a submission with no residual PII? Probe A proves from the handler that the attachment OBJECT BYTES are purged (ObjectStore::delete over list_storage_keys_for_feedback) BEFORE the feedback ROW delete — DB FK cascade removes attachment metadata ROWS but never the object-store bytes, so a dropped/mis-ordered byte purge would leave screenshots/logs in the bucket after 'erasure'. Probe B proves every table that REFERENCES feedback(id) is ON DELETE CASCADE or SET NULL (never NO ACTION, which would BLOCK erasure or ORPHAN child rows) — a new feedback-child table with a plain FK is the regression it catches. Probe C proves the erasure DELETE (delete_for_end_user) scopes its WHERE by end_user_sub AND tenant_id AND project_id, so a caller can only erase their OWN row (DEC-FBR-04 / DEC-FBR-03). --full runs tests/me_feedback_delete.rs (behavioral drift: byte purge + cascade + cross-sub survival).",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/oracles/feedback-erasure-completeness/oracle.sh",
+    "windows": ".claude/oracles/feedback-erasure-completeness/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe --full reports PENDING (not failure) until tests/me_feedback_delete.rs is present."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/handlers/me_feedback.rs",
+      "crates/feedbackmonk-repository/src/feedback.rs",
+      "crates/feedbackmonk-repository/src/attachments.rs",
+      "crates/feedbackmonk-api/src/storage.rs",
+      "crates/feedbackmonk-api/tests/me_feedback_delete.rs",
+      "migrations",
+      ".claude/oracles/feedback-erasure-completeness/oracle.py"
+    ],
+    "compute_cost_ms": 45
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the me_feedback delete path, the attachment/erasure repo methods, the ObjectStore trait, or any migration adding a feedback-child table",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "feedbackmonk: the Phase A A1 implementer + every reviewer touching the erasure handler, the delete_for_end_user query, the attachment storage-key purge, or any new table referencing feedback(id). A green oracle (A+B+C clean, --full clean-or-pending) is the A1 privacy gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-07-01T00:00:00Z"
+  },
+  "fallback": "Probe A: read crates/feedbackmonk-api/src/handlers/me_feedback.rs `delete_my_feedback` and confirm it calls list_storage_keys_for_feedback + ObjectStore::delete (`.delete(`) BEFORE delete_for_end_user. Probe B: grep migrations for `REFERENCES feedback(id)` and confirm each carries ON DELETE CASCADE or SET NULL. Probe C: read delete_for_end_user in crates/feedbackmonk-repository/src/feedback.rs and confirm the DELETE WHERE includes end_user_sub AND tenant_id AND project_id. Probe --full: cargo test -p feedbackmonk-api --test me_feedback_delete.",
+  "provenance": {
+    "authored_by": "Phase A A1 (the verifiability surface for the P0 right-to-erasure invariant; plan S0.2, deferred from Stream 1 to Wave 2 so it asserts against the shipped handler).",
+    "created": "2026-07-01T00:00:00Z",
+    "rationale": "Testability Gate Flag (A1, composite 16/25, Q2 fidelity risk 4): a happy-path test confirms 'the row is gone from the list', but cannot prove the ABSENCE of surviving attachment OBJECT BYTES (cascade removes only metadata rows), nor that a future feedback-child migration can't add a NO-ACTION FK that orphans data, nor that a refactor can't drop end_user_sub from the erasure WHERE (cross-user erasure hole). Detection-from-code (handler byte-purge ordering + per-FK cascade mode + DELETE scope columns), the anti-reward-hacking leg — it cannot be satisfied by a self-reported flag. Mirrors translation-egress-q24-isolation / public-board-moderation-gate."
+  }
+}

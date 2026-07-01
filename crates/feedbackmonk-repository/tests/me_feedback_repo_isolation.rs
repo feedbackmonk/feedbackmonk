@@ -43,7 +43,7 @@ async fn list_for_end_user_returns_only_own_sub_and_excludes_anon(pool: PgPool) 
     repo.submit_authenticated(&scope, "sub-B", Some("b@x.com"), None, None, None, "B-1", None, FeedbackKind::Bug).await.unwrap();
     repo.submit_anonymous(&scope, &[1u8; 32], None, "anon-1", None, FeedbackKind::Other).await.unwrap();
 
-    let (items, total) = repo.list_for_end_user(&scope, "sub-A", 50, 0).await.unwrap();
+    let (items, total) = repo.list_for_end_user(&scope, "sub-A", 50, 0, None).await.unwrap();
     assert_eq!(total, 2, "only A's two rows counted (B + anon excluded)");
     assert_eq!(items.len(), 2);
     let bodies: Vec<&str> = items.iter().map(|i| i.body.as_str()).collect();
@@ -76,7 +76,7 @@ async fn list_for_end_user_cross_tenant_returns_empty(pool: PgPool) {
     let s2 = seed_project_scope(&pool, "me-ct2@example.com").await;
     repo.submit_authenticated(&s1, "shared-sub", Some("a@x.com"), None, None, None, "t1-row", None, FeedbackKind::Bug).await.unwrap();
 
-    let (items, total) = repo.list_for_end_user(&s2, "shared-sub", 50, 0).await.unwrap();
+    let (items, total) = repo.list_for_end_user(&s2, "shared-sub", 50, 0, None).await.unwrap();
     assert!(items.is_empty());
     assert_eq!(total, 0, "cross-tenant sub collision must not leak rows");
 }

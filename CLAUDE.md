@@ -111,6 +111,21 @@ Verification Oracles built so far + scheduled:
 
 <!-- /0-uldf-schedule writes here -->
 
+### PF-PHASEA-01: GitCellar feedback-consolidation contract build-out ("Phase A") — CODE DONE; DEPLOY (A6) is the remaining GATE
+
+**Status (2026-07-01): all five Phase-A contract surfaces BUILT + verified locally (CI-parity green); crate → v0.3.0. The only remaining item is the deploy+verify GATE (A6), which is GitCellar-Railway ops, not this repo.** Phase A adds the end-user capabilities GitCellar's feedback consolidation depends on (its Phases B/C — delete the internal Cloud-API feedback backend, unify the two feedback screens — do NOT start until these are live + capability-verified on `feedback.gitcellar.com`). Source program: `../GitCellar/docs/planning/plans/20260701-feedback-consolidation-onto-feedbackmonk.md`. This repo's intake+plan: `docs/planning/intakes/20260701T160735-*.md` + `docs/planning/plans/20260701T161200-*.md`.
+
+Delivered (all ADDITIVE to the frozen contract; each advertised via `GET /api/v1/capabilities`; contract doc `docs/integrations/gitcellar-adoption.md` updated §0/§5.5/§6.1/§6.2/§6.4/§6.5/§6.6/§8/§11 + change log):
+- **A1 (P0) `DELETE …/me/feedback/{id}`** — hard-delete + FK cascade + **object-store attachment-byte purge** (byte purge BEFORE row delete); sub-scoped (404 cross-user). Capability `feedback.delete`. New Verification Oracle `feedback-erasure-completeness` (A/B/C GREEN).
+- **A2 (P1) attachment list + tenant-scoped download** (upload pre-existed). `feedback.attachments`.
+- **A3 (P1) `updated_at` + `reply_count` (+ `?since=`)** on the me/feedback list (public replies only). `feedback.reply_state`.
+- **A4 first-class optional `severity`** (`low|medium|high|blocker`, migration `00020`) replacing the `external_metadata.severity` side-channel + **`Idempotency-Key`** submit dedupe (transactional exactly-once, migration `00021`). `feedback.severity` + `feedback.idempotency`.
+- **A5 `GET …/me/feedback/export`** GDPR portability. `feedback.export`.
+
+Decisions confirmed (were AFK-adopted, then user-confirmed): D-A1 hard-delete+byte-purge; D-A4 severity `low|medium|high|blocker` optional; D-A5 export included. Built at autopilot; implementation streams executed on the Fable model, coordinated/reviewed on Opus 4.8.
+
+**Remaining — A6 deploy GATE (NOT this repo's code):** redeploy `feedback.gitcellar.com` at ≥ v0.3.0 with migrations `00020`+`00021` applied (GitCellar Railway — `docs/operations/RAILWAY_GITCELLAR.md`), then verify `GET https://feedback.gitcellar.com/api/v1/capabilities` advertises `feedback.delete|reply_state|export|severity|idempotency|attachments` and smoke each new route. That verification unblocks GitCellar Phases B/C. Cannot be performed from this repo/session (needs Railway access).
+
 ### ~~PF-BOARD-VOTING-01: Public-board voting (`feedback_board_votes`)~~ — DONE
 
 **Status: DONE (2026-06-19, Contract C30).** Public-board voting is now fully wired, replacing the Stage 1 `vote_count = 0` placeholder. Implemented exactly per the pre-decided design (DEC-FBR-IMPL-21):

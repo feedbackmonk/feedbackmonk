@@ -1,5 +1,14 @@
-//! `POST /api/v1/projects/{project_id}/feedback/{feedback_id}/attachments`
-//! — multipart attachment upload (Gap #1, GUIDE §6 frozen contract).
+//! Feedback attachments — upload, list, and tenant-scoped download.
+//!
+//! - `POST /api/v1/projects/{project_id}/feedback/{feedback_id}/attachments`
+//!   — multipart attachment upload (Gap #1, GUIDE §6 frozen contract).
+//! - `GET  /api/v1/projects/{project_id}/feedback/{feedback_id}/attachments`
+//!   — list attachment metadata (Phase A A2a).
+//! - `GET  /api/v1/projects/{project_id}/feedback/{feedback_id}/attachments/{attachment_id}`
+//!   — tenant-scoped byte download (Phase A A2b). The PREFERRED fetch path
+//!   over the stored public `url`: for a private S3 bucket the raw URL is not
+//!   directly fetchable, and app-mediated download keeps the tenant boundary
+//!   enforced by the repository scope chain rather than URL secrecy.
 //!
 //! ## Contract (ratified ALPHA1 ↔ ALPHA2 in collab-20260602-123000)
 //!
@@ -239,6 +248,107 @@ pub async fn upload(
     Ok((StatusCode::OK, Json(out)).into_response())
 }
 
+/// `GET …/feedback/{feedback_id}/attachments` — list attachment metadata
+/// (Phase A A2a).
+///
+/// Same public `open_for_submission` scope as the upload route (see the
+/// module-level "Auth model"). Response `200`: bare JSON array ordered
+/// oldest-first (the `attachments_feedback_idx` order):
+/// `[{"attachment_id","kind","url","content_type","byte_size","created_at"}, …]`.
+/// The object-store `storage_key` is intentionally NEVER serialized — the
+/// wire shape is built field-by-field here, and the download route below is
+/// the sanctioned byte-fetch path.
+pub async fn list_attachments(
+    State(state): State<AttachmentState>,
+    Path((project_id, feedback_id)): Path<(Uuid, String)>,
+) -> Result<Response, ApiError> {
+    let scope = state.projects.open_for_submission(project_id).await?;
+    let feedback_uuid = state
+        .attachments
+        .resolve_feedback_uuid(&scope, &feedback_id)
+        .await?; // RepoError::NotFound → 404
+    let rows = state.attachments.list_for_feedback(&scope, feedback_uuid).await?;
+
+    let out: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| {
+            json!({
+                "attachment_id": r.id.to_string(),
+                "kind": r.kind.as_str(),
+                "url": r.url,
+                "content_type": r.content_type,
+                "byte_size": r.byte_size,
+                "created_at": r.created_at.to_rfc3339(),
+            })
+        })
+        .collect();
+    Ok((StatusCode::OK, Json(out)).into_response())
+}
+
+/// `GET …/feedback/{feedback_id}/attachments/{attachment_id}` — tenant-scoped
+/// byte download (Phase A A2b).
+///
+/// Same public `open_for_submission` scope as upload/list. The attachment is
+/// resolved through `AttachmentRepo::get_meta`, which binds the id to the FULL
+/// `(tenant, project, feedback)` chain — a cross-tenant / cross-project /
+/// cross-feedback `attachment_id` is `404`, never another scope's bytes.
+///
+/// Responds `200` with the raw object bytes, `Content-Type` from the stored
+/// metadata, and `Content-Disposition: inline; filename="…"`.
+///
+/// ## Object-missing status choice: `500`
+///
+/// A storage `get` failure maps to `500`, not `404`: the metadata row exists
+/// (the client's identifier WAS valid and in scope), and the upload handler
+/// persists bytes BEFORE inserting the row — so a missing object means
+/// storage-layer inconsistency or backend failure, a server fault. Answering
+/// `404` would contradict the list endpoint (which still shows the row) and
+/// mask data loss. `StorageError` also cannot distinguish absent-vs-transport
+/// without widening the Wave-0 `ObjectStore` contract, which this stream does
+/// not own.
+pub async fn download_attachment(
+    State(state): State<AttachmentState>,
+    Path((project_id, feedback_id, attachment_id)): Path<(Uuid, String, Uuid)>,
+) -> Result<Response, ApiError> {
+    let scope = state.projects.open_for_submission(project_id).await?;
+    let feedback_uuid = state
+        .attachments
+        .resolve_feedback_uuid(&scope, &feedback_id)
+        .await?; // RepoError::NotFound → 404
+    let meta = state
+        .attachments
+        .get_meta(&scope, feedback_uuid, attachment_id)
+        .await?; // RepoError::NotFound → 404 (out-of-scope OR wrong feedback)
+
+    let bytes = state
+        .storage
+        .get(&meta.storage_key)
+        .await
+        .map_err(|e| ApiError::Internal(format!("attachment object fetch failed: {e}")))?;
+
+    let filename = format!("{attachment_id}.{}", extension_for(&meta.content_type));
+    let headers = [
+        (axum::http::header::CONTENT_TYPE, meta.content_type.clone()),
+        (
+            axum::http::header::CONTENT_DISPOSITION,
+            format!("inline; filename=\"{filename}\""),
+        ),
+    ];
+    Ok((StatusCode::OK, headers, bytes).into_response())
+}
+
+/// File extension for a stored attachment `content_type` (upload allowlists
+/// these exact types; `bin` is an unreachable defensive fallback).
+fn extension_for(content_type: &str) -> &'static str {
+    match content_type {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/webp" => "webp",
+        "text/plain" => "txt",
+        _ => "bin",
+    }
+}
+
 /// Read a log text field with a defensive size cap.
 async fn read_log_field(field: axum::extract::multipart::Field<'_>) -> Result<String, ApiError> {
     let text = field
@@ -294,13 +404,18 @@ fn unsupported_media_type(msg: &str) -> Response {
     (StatusCode::UNSUPPORTED_MEDIA_TYPE, Json(json!({ "error": msg }))).into_response()
 }
 
-/// Attachment upload subtree. Merged into the main router by `main.rs`.
+/// Attachment subtree (upload + list + tenant-scoped download). Merged into
+/// the main router by `main.rs`.
 /// Raises the body limit to `MAX_UPLOAD_BYTES` so 4×5 MB images fit.
 pub fn attachments_router(state: AttachmentState) -> axum::Router {
     axum::Router::new()
         .route(
             "/api/v1/projects/:project_id/feedback/:feedback_id/attachments",
-            axum::routing::post(upload),
+            axum::routing::post(upload).get(list_attachments),
+        )
+        .route(
+            "/api/v1/projects/:project_id/feedback/:feedback_id/attachments/:attachment_id",
+            axum::routing::get(download_attachment),
         )
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
         .with_state(state)
@@ -346,6 +461,15 @@ mod tests {
         let not_png = b"\xFF\xD8\xFFnotpng".to_vec();
         let resp = validate_image("image/png", &not_png).unwrap_err();
         assert_eq!(resp.status(), StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    }
+
+    #[test]
+    fn extension_for_maps_allowlisted_types() {
+        assert_eq!(extension_for("image/png"), "png");
+        assert_eq!(extension_for("image/jpeg"), "jpg");
+        assert_eq!(extension_for("image/webp"), "webp");
+        assert_eq!(extension_for("text/plain"), "txt");
+        assert_eq!(extension_for("application/x-other"), "bin");
     }
 
     #[test]

@@ -28,9 +28,19 @@
 //! {
 //!   "feedback_id": "FB-XXXXXX",
 //!   "accepted_at": "2026-05-13T21:00:00Z",
-//!   "echo": { "body": "...", "kind": "..." }
+//!   "echo": { "body": "...", "sentiment": null, "severity": null, "kind": "..." }
 //! }
 //! ```
+//!
+//! ## Phase A A4 — severity + Idempotency-Key
+//!
+//! - `severity` (optional body field, BOTH modes): `low|medium|high|blocker`;
+//!   unrecognized ⇒ 400; echoed back (Phase A A4a, D-A4).
+//! - `Idempotency-Key` (optional request header, BOTH modes): a retry carrying
+//!   the same key returns `200` with the ORIGINAL `feedback_id` and creates NO
+//!   new row (first-write-wins; dedupe is transactional in the repository —
+//!   Phase A A4b, migration 00021). The clustering-on-submit hook is skipped
+//!   on a dedupe hit (no new row to cluster).
 
 use std::net::SocketAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -46,7 +56,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Sentiment, Tier};
+use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Sentiment, Severity, Tier};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -107,6 +117,12 @@ pub struct FeedbackRequest {
     /// `crash_correlation`); storing the link never blocks or fails a submit.
     #[serde(default)]
     pub crash_event_id: Option<String>,
+    /// Optional 4-point impact signal: `low | medium | high | blocker`
+    /// (Phase A A4a, D-A4). Tenant-generic and valid in BOTH auth and anon
+    /// modes (unlike `crash_event_id`, which is auth-only). Absent ⇒ no
+    /// severity. An unrecognized value ⇒ `400`.
+    #[serde(default)]
+    pub severity: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -121,8 +137,15 @@ pub struct FeedbackEcho {
     pub body: String,
     /// Echoes the stored sentiment, or `null` when none was given (FR-FBR-28).
     pub sentiment: Option<Sentiment>,
+    /// Echoes the stored severity, or `null` when none was given (Phase A A4a).
+    pub severity: Option<Severity>,
     pub kind: &'static str,
 }
+
+/// Request header carrying the client's submit-dedupe key (Phase A A4b).
+/// Any non-empty value is honored verbatim; absent/empty ⇒ no dedupe. A retry
+/// with the same key returns the ORIGINAL `feedback_id` with no new row.
+pub const IDEMPOTENCY_KEY_HEADER: &str = "idempotency-key";
 
 // ---------------------------------------------------------------------------
 // Handler
@@ -141,11 +164,16 @@ pub async fn submit(
     headers: HeaderMap,
     Json(req): Json<FeedbackRequest>,
 ) -> Result<Response, ApiError> {
-    // ----- 1. Body + sentiment validation (Contract C3 / FR-FBR-28) --------
+    // ----- 1. Body + sentiment + severity validation (Contract C3 /
+    //          FR-FBR-28 / Phase A A4a) --------------------------------------
     let kind = parse_kind(req.kind.as_deref())?;
     let sentiment = parse_sentiment(req.sentiment.as_deref())?;
+    let severity = parse_severity(req.severity.as_deref())?;
     let body = req.body.as_deref().unwrap_or("");
     validate_submission(body, sentiment)?;
+
+    // Phase A A4b: optional client dedupe key (exactly-once on retry).
+    let idempotency_key = extract_idempotency_key(&headers);
 
     // ----- 2. Project scope (DEC-PODS-001) ---------------------------------
     let project_scope = state.projects.open_for_submission(project_id).await?;
@@ -178,7 +206,9 @@ pub async fn submit(
             req.crash_event_id.as_deref(),
             body,
             sentiment,
+            severity,
             kind,
+            idempotency_key.as_deref(),
         )
         .await
     } else {
@@ -192,7 +222,9 @@ pub async fn submit(
             req.email.as_deref(),
             body,
             sentiment,
+            severity,
             kind,
+            idempotency_key.as_deref(),
         )
         .await
     }
@@ -211,7 +243,9 @@ async fn submit_authenticated_path(
     crash_event_id: Option<&str>,
     body: &str,
     sentiment: Option<Sentiment>,
+    severity: Option<Severity>,
     kind: FeedbackKind,
+    idempotency_key: Option<&str>,
 ) -> Result<Response, ApiError> {
     // P5b (C25): end-user JWT verification selects ONLY identity-class keys — a
     // runner-class key can never authenticate a submitter (privilege separation).
@@ -232,9 +266,9 @@ async fn submit_authenticated_path(
         Err(e) => return Ok(jwt_error_response(&e)),
     };
 
-    let feedback_id = state
+    let outcome = state
         .feedback
-        .submit_authenticated(
+        .submit_authenticated_full(
             project_scope,
             &claims.sub,
             claims.email.as_deref(),
@@ -243,13 +277,27 @@ async fn submit_authenticated_path(
             crash_event_id,
             body,
             sentiment,
+            severity,
             kind,
+            idempotency_key,
         )
         .await?;
 
-    cluster_on_submit_best_effort(state, project_scope, &feedback_id, body, kind).await;
+    // A4b: a dedupe hit created NO new row — the clustering-on-submit hook
+    // must not run for it (there is nothing new to cluster).
+    if !outcome.deduped {
+        cluster_on_submit_best_effort(state, project_scope, &outcome.feedback_id, body, kind)
+            .await;
+    }
 
-    Ok(success_response(feedback_id.as_str(), body, sentiment, kind, None))
+    Ok(success_response(
+        outcome.feedback_id.as_str(),
+        body,
+        sentiment,
+        severity,
+        kind,
+        None,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -266,7 +314,9 @@ async fn submit_anonymous_path(
     optional_email: Option<&str>,
     body: &str,
     sentiment: Option<Sentiment>,
+    severity: Option<Severity>,
     kind: FeedbackKind,
+    idempotency_key: Option<&str>,
 ) -> Result<Response, ApiError> {
     let (cookie_value, set_cookie_header) = resolve_anon_cookie(headers);
     let token_hash = AnonGate::token_hash(client_ip, &cookie_value, project_id);
@@ -278,17 +328,31 @@ async fn submit_anonymous_path(
         }) => return Ok(rate_limited_response(retry_after_seconds)),
     }
 
-    let feedback_id = state
+    let outcome = state
         .feedback
-        .submit_anonymous(project_scope, &token_hash, optional_email, body, sentiment, kind)
+        .submit_anonymous_full(
+            project_scope,
+            &token_hash,
+            optional_email,
+            body,
+            sentiment,
+            severity,
+            kind,
+            idempotency_key,
+        )
         .await?;
 
-    cluster_on_submit_best_effort(state, project_scope, &feedback_id, body, kind).await;
+    // A4b: a dedupe hit created NO new row — skip the clustering hook.
+    if !outcome.deduped {
+        cluster_on_submit_best_effort(state, project_scope, &outcome.feedback_id, body, kind)
+            .await;
+    }
 
     Ok(success_response(
-        feedback_id.as_str(),
+        outcome.feedback_id.as_str(),
         body,
         sentiment,
+        severity,
         kind,
         set_cookie_header,
     ))
@@ -354,6 +418,30 @@ fn parse_sentiment(s: Option<&str>) -> Result<Option<Sentiment>, ApiError> {
             ))
         }),
     }
+}
+
+/// Parse the optional `severity` field (Phase A A4a). Absent / empty ⇒
+/// `None`. An unrecognized value ⇒ `400`. Mirrors [`parse_sentiment`].
+fn parse_severity(s: Option<&str>) -> Result<Option<Severity>, ApiError> {
+    match s {
+        None | Some("") => Ok(None),
+        Some(v) => Severity::parse(v).map(Some).ok_or_else(|| {
+            ApiError::BadRequest(format!(
+                "severity must be one of low|medium|high|blocker; got {v:?}"
+            ))
+        }),
+    }
+}
+
+/// Read the optional `Idempotency-Key` request header (Phase A A4b). The value
+/// is honored VERBATIM (no trimming — the key is an opaque client token);
+/// absent, non-UTF-8, or empty ⇒ `None` (no dedupe, today's behavior).
+fn extract_idempotency_key(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(IDEMPOTENCY_KEY_HEADER)?.to_str().ok()?;
+    if value.is_empty() {
+        return None;
+    }
+    Some(value.to_string())
 }
 
 /// Validate the (body, sentiment) pair (Contract C3 / FR-FBR-28):
@@ -433,6 +521,7 @@ fn success_response(
     feedback_id: &str,
     body: &str,
     sentiment: Option<Sentiment>,
+    severity: Option<Severity>,
     kind: FeedbackKind,
     set_cookie: Option<HeaderValue>,
 ) -> Response {
@@ -442,6 +531,7 @@ fn success_response(
         echo: FeedbackEcho {
             body: body.to_string(),
             sentiment,
+            severity,
             kind: kind.as_str(),
         },
     };
@@ -559,6 +649,39 @@ mod tests {
         assert_eq!(parse_sentiment(Some("negative")).unwrap(), Some(Sentiment::Negative));
         assert_eq!(parse_sentiment(Some("neutral")).unwrap(), Some(Sentiment::Neutral));
         assert!(matches!(parse_sentiment(Some("happy")), Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn parse_severity_known_and_unknown() {
+        assert_eq!(parse_severity(None).unwrap(), None);
+        assert_eq!(parse_severity(Some("")).unwrap(), None);
+        assert_eq!(parse_severity(Some("low")).unwrap(), Some(Severity::Low));
+        assert_eq!(parse_severity(Some("medium")).unwrap(), Some(Severity::Medium));
+        assert_eq!(parse_severity(Some("high")).unwrap(), Some(Severity::High));
+        assert_eq!(parse_severity(Some("blocker")).unwrap(), Some(Severity::Blocker));
+        // D-A4 chose `blocker`, not `critical`; case-sensitive like sentiment.
+        assert!(matches!(parse_severity(Some("critical")), Err(ApiError::BadRequest(_))));
+        assert!(matches!(parse_severity(Some("HIGH")), Err(ApiError::BadRequest(_))));
+    }
+
+    #[test]
+    fn extract_idempotency_key_present_verbatim() {
+        let h = hdr("Idempotency-Key", "retry-abc-123");
+        assert_eq!(extract_idempotency_key(&h).as_deref(), Some("retry-abc-123"));
+        // Header-name lookup is case-insensitive.
+        let h2 = hdr("idempotency-key", " padded ");
+        assert_eq!(
+            extract_idempotency_key(&h2).as_deref(),
+            Some(" padded "),
+            "value is honored verbatim, never trimmed"
+        );
+    }
+
+    #[test]
+    fn extract_idempotency_key_absent_or_empty_is_none() {
+        assert_eq!(extract_idempotency_key(&HeaderMap::new()), None);
+        let h = hdr("Idempotency-Key", "");
+        assert_eq!(extract_idempotency_key(&h), None);
     }
 
     #[test]

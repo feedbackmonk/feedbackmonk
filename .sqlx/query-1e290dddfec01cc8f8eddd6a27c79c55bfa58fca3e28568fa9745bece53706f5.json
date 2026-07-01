@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT f.short_code AS \"short_code!\"\n                    FROM submit_idempotency si\n                    JOIN feedback f ON f.id = si.feedback_id\n                    WHERE si.project_id = $1 AND si.tenant_id = $2 AND si.idempotency_key = $3\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code!",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1e290dddfec01cc8f8eddd6a27c79c55bfa58fca3e28568fa9745bece53706f5"
+}

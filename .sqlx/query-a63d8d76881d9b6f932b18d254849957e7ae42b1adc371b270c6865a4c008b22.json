@@ -1,0 +1,73 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT f.short_code, f.kind, f.status, f.body, f.sentiment,\n                   f.severity, f.accepted_at,\n                   (SELECT count(*) FROM feedback_replies r\n                     WHERE r.feedback_id = f.id AND r.visibility = 'public') AS \"reply_count!\",\n                   GREATEST(\n                       f.accepted_at,\n                       (SELECT max(r.created_at) FROM feedback_replies r\n                         WHERE r.feedback_id = f.id AND r.visibility = 'public'),\n                       (SELECT max(h.transitioned_at) FROM feedback_status_history h\n                         WHERE h.feedback_id = f.id)\n                   ) AS \"updated_at!\"\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2\n              AND f.short_code = $3 AND f.end_user_sub = $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "sentiment",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "severity",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 6,
+        "name": "accepted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "reply_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 8,
+        "name": "updated_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "a63d8d76881d9b6f932b18d254849957e7ae42b1adc371b270c6865a4c008b22"
+}

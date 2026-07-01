@@ -44,9 +44,15 @@
 
 use std::time::Duration;
 
-use axum::http::header::{AUTHORIZATION, CONTENT_TYPE};
+use axum::http::header::{HeaderName, AUTHORIZATION, CONTENT_TYPE};
 use axum::http::{HeaderValue, Method};
 use tower_http::cors::{AllowOrigin, CorsLayer};
+
+/// `Idempotency-Key` request header (Phase A A4b submit dedupe). Not a CORS
+/// safelisted header, so the widget's cross-origin submit can only carry it if
+/// the preflight allows it here. Mirrors
+/// [`crate::handlers::feedback::IDEMPOTENCY_KEY_HEADER`].
+const IDEMPOTENCY_KEY: HeaderName = HeaderName::from_static("idempotency-key");
 
 /// Preflight cache lifetime advertised via `Access-Control-Max-Age` (10 min).
 // `from_secs(600)` is intentional — the value is a CORS max-age in *seconds*;
@@ -72,7 +78,8 @@ pub fn parse_origins(raw: &str) -> Vec<String> {
 /// - Allowed origins: exactly `allowed_origins` (echoed back per-request; never
 ///   `*`). Entries that are not valid header values are skipped.
 /// - Allowed methods: `POST`, `OPTIONS`.
-/// - Allowed request headers: `content-type`, `authorization`.
+/// - Allowed request headers: `content-type`, `authorization`,
+///   `idempotency-key` (Phase A A4b submit dedupe).
 /// - Credentials: allowed (`Access-Control-Allow-Credentials: true`).
 ///
 /// An empty `allowed_origins` yields a layer that allows no cross-origin origin
@@ -86,7 +93,7 @@ pub fn public_cors_layer(allowed_origins: &[String]) -> CorsLayer {
     CorsLayer::new()
         .allow_origin(AllowOrigin::list(origins))
         .allow_methods([Method::POST, Method::OPTIONS])
-        .allow_headers([CONTENT_TYPE, AUTHORIZATION])
+        .allow_headers([CONTENT_TYPE, AUTHORIZATION, IDEMPOTENCY_KEY])
         .allow_credentials(true)
         .max_age(PREFLIGHT_MAX_AGE)
 }
