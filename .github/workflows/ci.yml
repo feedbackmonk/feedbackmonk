@@ -25,16 +25,26 @@ env:
 
 jobs:
   # -------------------------------------------------------------------------
-  # Verification Oracle - Task Zero of P0; must run on every commit.
+  # Verification-oracle suite — the anti-reward-hacking STATIC probes.
+  # Runs the WHOLE project verification-oracle suite on every commit (not just
+  # multi-tenant-isolation-check). Scrutiny 2026-07-01 P0-5: running one of 13
+  # left the other twelve detection-from-code legs ungated, so drift
+  # accumulated silently. The suite + its list live in
+  # scripts/run-verification-oracles.sh (single source of truth, shared with
+  # scripts/ci-local.sh). The `--full` behavioral probes duplicate cargo test
+  # and belong in a nightly job, not here.
   # -------------------------------------------------------------------------
-  multi-tenant-isolation-check:
-    name: Oracle - multi-tenant-isolation-check
+  verification-oracles:
+    name: Verification-oracle suite (static probes)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run multi-tenant-isolation-check oracle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Run the verification-oracle suite
         shell: bash
-        run: bash .claude/oracles/multi-tenant-isolation-check/oracle.sh
+        run: bash scripts/run-verification-oracles.sh
 
   # -------------------------------------------------------------------------
   # Build / test / lint matrix.

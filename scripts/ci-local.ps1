@@ -30,8 +30,8 @@ if ($All) { $Tests = $true; $Deny = $true }
 $fail = 0
 function Step($m) { Write-Host "`n=== $m ===" }
 
-Step "Oracle: multi-tenant-isolation-check (CI job 1)"
-bash .claude/oracles/multi-tenant-isolation-check/oracle.sh
+Step "Verification-oracle suite (CI job 1 — all static probes)"
+bash scripts/run-verification-oracles.sh
 if ($LASTEXITCODE -ne 0) { $fail = 1 }
 
 Step "clippy --workspace --all-targets -- -D warnings  [offline]  (CI build+clippy)"

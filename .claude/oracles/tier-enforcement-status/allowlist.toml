@@ -79,3 +79,8 @@ rationale = "Admin roadmap-item edits update an existing row; no new chargeable 
 module = "admin_ops"
 function = "patch_tenant"
 rationale = "Operator (ops-token-guarded) tier + widget-brand-override mutation (DEC-FBR-IMPL-11). It is the INVERSE of a cap-checked write: it SETS the tenant's tier (the very value check_tier_quota reads) and writes brand-override columns. Neither produces a chargeable resource per Contract C19 (only project count + monthly feedback volume are capped). Gating it on check_tier_quota would be nonsensical — an operator raising a tenant's tier must not be blocked by that tenant's current cap. Reachable only with FEEDBACKMONK_OPS_TOKEN, never tenant-self-serve."
+
+[[handlers]]
+module = "admin_ops"
+function = "backfill_translations"
+rationale = "Operator (ops-token-guarded, FR-FBR-30 lazy-backfill escape hatch #5) that stamps EXISTING body-bearing feedback rows as translation_status='pending' so the translate-after-accept worker picks them up. It creates NO new chargeable resource — the feedback rows already cleared the FeedbackInRollingMonth cap at submission time; this only sets a translation-status column on them. Translation is universal (all tiers + self-host, not tier-gated per FR-FBR-30). Reachable only with FEEDBACKMONK_OPS_TOKEN, never tenant-self-serve. (Allowlist gap surfaced by the scrutiny's P0-5 finding: the ops backfill endpoint post-dated the allowlist and CI wasn't running this oracle to catch the drift.)"

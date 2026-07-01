@@ -140,19 +140,42 @@ Invocation: `bash .claude/oracles/selfhost-compose-smoke/oracle.sh` (Unix; `--fu
 
 ---
 
+## CI wiring (the whole verification-oracle suite runs on every commit)
+
+Since 2026-07-01 (scrutiny finding P0-5), **CI runs the entire project
+verification-oracle suite**, not just `multi-tenant-isolation-check`. The suite
++ its canonical list live in `scripts/run-verification-oracles.sh` (single
+source of truth), invoked by the `verification-oracles` job in
+`.github/workflows/ci.yml` and by `scripts/ci-local.sh` / `ci-local.ps1`. So the
+"every commit; CI gate" claims on the verification-oracle rows above are now
+true. Only the cheap **static** probes run in CI; the `--full` behavioral probes
+duplicate `cargo test` and belong in a nightly/pre-release job. Adding a
+verification oracle means adding it to `scripts/run-verification-oracles.sh`
+(a reviewable one-line edit) as well as this INDEX.
+
+> `feedback-parity-status` is intentionally **excluded** from the CI suite — it
+> is a converged one-time cutover checklist (all four gaps CLOSED by
+> construction), not a live invariant guard; kept for ad-hoc reference only.
+
 ## Invocation Quick Reference
 
-### Unix
+### Project verification oracles (Python-based)
 
 ```bash
-bash .claude/oracles/<oracle-name>/run.sh
+python .claude/oracles/<oracle-name>/oracle.py [--full]     # cross-platform
+bash   .claude/oracles/<oracle-name>/oracle.sh [--full]     # Unix shim
 ```
 
-### Windows
+### Universal starter-pack oracles (shell-based)
 
-```powershell
-powershell -NoProfile -File .claude/oracles/<oracle-name>/run.ps1
+```bash
+bash .claude/oracles/<oracle-name>/run.sh                   # Unix
+powershell -NoProfile -File .claude/oracles/<oracle-name>/run.ps1   # Windows
 ```
+
+> Note: the project-specific verification oracles ship `oracle.py`/`oracle.sh`/
+> `oracle.ps1` (NOT `run.sh`); only the universal starter-pack oracles use
+> `run.sh`/`run.ps1`.
 
 ### Full oracle details
 

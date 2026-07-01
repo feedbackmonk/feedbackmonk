@@ -44,8 +44,8 @@ done
 fail=0
 step() { printf '\n=== %s ===\n' "$*"; }
 
-step "Oracle: multi-tenant-isolation-check (CI job 1)"
-bash .claude/oracles/multi-tenant-isolation-check/oracle.sh || fail=1
+step "Verification-oracle suite (CI job 1 — all static probes)"
+bash scripts/run-verification-oracles.sh || fail=1
 
 step "clippy --workspace --all-targets -- -D warnings  [offline]  (CI build+clippy)"
 echo "(compiles EVERY target offline — the gate that catches missing test-target .sqlx + all warnings)"
