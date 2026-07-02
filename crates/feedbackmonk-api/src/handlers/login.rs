@@ -92,8 +92,18 @@ pub async fn login(
     let email = req.email.trim().to_ascii_lowercase();
 
     // (1) Throttle BEFORE any argon2 work -- brute-force + CPU-DoS guard.
+    //   (1a) per-(client-IP, email): single-source brute-force.
     let key = LoginGate::key_hash(&addr.ip().to_string(), &email);
     if let Err(RateLimitError::Exceeded { retry_after_seconds }) = state.login_gate.check(&key) {
+        return Ok(rate_limited_response(retry_after_seconds));
+    }
+    //   (1b) per-account (email-only, IP-independent): caps DISTRIBUTED
+    //        password-spray — many IPs vs one account (scrutiny P2-19) — which
+    //        (1a) alone lets through (a fresh per-IP budget each).
+    let account_key = LoginGate::account_key_hash(&email);
+    if let Err(RateLimitError::Exceeded { retry_after_seconds }) =
+        state.login_gate.check(&account_key)
+    {
         return Ok(rate_limited_response(retry_after_seconds));
     }
 

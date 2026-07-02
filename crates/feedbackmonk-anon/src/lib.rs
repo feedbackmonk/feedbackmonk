@@ -227,6 +227,22 @@ impl LoginGate {
         *hasher.finalize().as_bytes()
     }
 
+    /// Compute the ACCOUNT-level (email-only, IP-independent) bucket key
+    /// (scrutiny P2-19). The per-(ip,email) key above throttles single-source
+    /// brute-force; this second bucket caps DISTRIBUTED password-spray — many
+    /// IPs against ONE account — which would otherwise get a fresh per-IP budget
+    /// each. Domain-separated from `key_hash` so the two buckets never collide.
+    /// Same quota (per-minute) as the (ip,email) bucket: generous for a human
+    /// (1-2 attempts) while capping total cross-IP guesses at one account.
+    #[must_use]
+    pub fn account_key_hash(normalized_email: &str) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(LOGIN_HASH_DOMAIN_PREFIX);
+        hasher.update(b"account\0"); // domain-separate from the (ip,email) layout
+        hasher.update(normalized_email.as_bytes());
+        *hasher.finalize().as_bytes()
+    }
+
     /// Check + decrement the attempt budget for `key`. On exceedance,
     /// `retry_after_seconds` indicates the soonest the caller may retry.
     pub fn check(&self, key: &[u8; 32]) -> Result<(), RateLimitError> {
@@ -519,6 +535,33 @@ mod tests {
                 assert!(retry_after_seconds >= 1);
             }
         }
+    }
+
+    #[test]
+    fn account_key_is_ip_independent_and_domain_separated() {
+        // Same account from two different IPs → SAME account bucket (so
+        // distributed spray is capped), and disjoint from the (ip,email) bucket.
+        let a = LoginGate::account_key_hash("victim@example.com");
+        let b = LoginGate::account_key_hash("victim@example.com");
+        assert_eq!(a, b, "account bucket is IP-independent");
+        assert_ne!(a, LoginGate::account_key_hash("other@example.com"));
+        assert_ne!(
+            a,
+            LoginGate::key_hash("1.2.3.4", "victim@example.com"),
+            "account bucket must not collide with any (ip,email) bucket"
+        );
+    }
+
+    #[test]
+    fn account_bucket_caps_distributed_spray() {
+        // A burst of 10 against one account trips it regardless of source IP
+        // (the caller keys on account_key_hash, not the client IP).
+        let gate = LoginGate::with_default_quota();
+        let acct = LoginGate::account_key_hash("victim@example.com");
+        for i in 0..10 {
+            gate.check(&acct).unwrap_or_else(|e| panic!("attempt {i} should pass: {e:?}"));
+        }
+        assert!(gate.check(&acct).is_err(), "11th cross-IP attempt on the account is throttled");
     }
 
     #[test]
