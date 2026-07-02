@@ -455,6 +455,18 @@ pub trait FeedbackRepo: Send + Sync {
     /// purge attachment object-store bytes BEFORE invoking this (byte purge
     /// before row delete: a mid-failure leaves retryable rows, never orphaned
     /// bytes).
+    ///
+    /// **Derived-text completeness (scrutiny P0-1).** FK cascade does NOT reach
+    /// the P5 analysis corpus (`feedback_clusters` / `recommendations` /
+    /// `work_orders` / `analysis_sweeps` reference the CLUSTER, not the
+    /// feedback). So this method ALSO scrubs, in the same transaction, every
+    /// free-text field of the erased feedback's cluster (cluster `summary` /
+    /// `label` / `priority_rationale`, recommendation `body` / `rationale` /
+    /// `title` / `source_refs`, work-order `title` / `instructions` /
+    /// `owner_overrides`, and referencing sweep `digest_summary`) and marks the
+    /// cluster stale for re-derivation — so no verbatim/paraphrased submitter
+    /// text survives in admin-readable prose. The append-only `work_order_events`
+    /// ledger is NOT scrubbed (immutable; holds references, not verbatim — C27).
     async fn delete_for_end_user(
         &self,
         scope: &ProjectScope,
@@ -1745,25 +1757,134 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         end_user_sub: &str,
         feedback_id: &FeedbackId,
     ) -> Result<bool> {
-        // Phase A A1 (P0 erasure). The WHERE clause is exactly the
-        // `get_for_end_user` ownership predicate — a short_code belonging to a
-        // different sub / anonymous / another tenant-project matches nothing
-        // (rows_affected == 0 → the handler 404s, never an existence oracle).
-        // FK cascades remove all child rows (see the trait doc); attachment
-        // object bytes MUST already be purged by the caller.
-        let result = sqlx::query!(
+        // Phase A A1 (P0 erasure) + scrutiny P0-1 (derived-text completeness).
+        //
+        // FK cascade only reaches rows that `REFERENCES feedback(id)`. The P5
+        // analysis corpus does NOT — `feedback_clusters` / `recommendations` /
+        // `work_orders` / `analysis_sweeps` reference the CLUSTER, not the
+        // feedback (`feedback.cluster_id` points AT the cluster; D1). So a bare
+        // `DELETE FROM feedback` leaves the erased submitter's verbatim /
+        // paraphrased text alive in admin-readable prose (cluster.summary,
+        // recommendation.body, sweep.digest_summary). For a privacy-branded sole
+        // backend that is a real Art.17 erasure hole.
+        //
+        // Fix: in ONE transaction, before the row delete, scrub every free-text
+        // field of the erased feedback's cluster (and its recommendations,
+        // work-orders, and referencing sweep digests) and mark the cluster
+        // stale so the next sweep re-derives it from the REMAINING members. This
+        // over-approximates within the one cluster (it also clears text derived
+        // from co-members) — the safe direction (re-derivation, not retention).
+        //
+        // The append-only `work_order_events` ledger is intentionally NOT
+        // scrubbed: it is immutable (the approval-gate oracle trusts it) and, by
+        // the C27 references-not-dumps invariant, holds IDs/state — not verbatim
+        // feedback text. The `feedback-erasure-completeness` oracle asserts the
+        // scrub covers exactly these tables.
+        let mut tx = self.pool.begin().await?;
+
+        // Resolve the target row + its cluster under the ownership predicate. A
+        // short_code belonging to a different sub / anonymous / another
+        // tenant-project matches nothing → the handler 404s (never an existence
+        // oracle). `FOR UPDATE` serializes a concurrent re-sweep of the cluster.
+        let Some(row) = sqlx::query!(
             r#"
-            DELETE FROM feedback
+            SELECT id, cluster_id
+            FROM feedback
             WHERE tenant_id = $1 AND project_id = $2
               AND short_code = $3 AND end_user_sub = $4
+            FOR UPDATE
             "#,
             scope.tenant_id(),
             scope.project_id(),
             feedback_id.as_str(),
             end_user_sub,
         )
-        .execute(&self.pool)
+        .fetch_optional(&mut *tx)
+        .await?
+        else {
+            tx.rollback().await?;
+            return Ok(false);
+        };
+
+        if let Some(cluster_id) = row.cluster_id {
+            // Null referencing sweep digests FIRST (they read via recommendations
+            // which we scrub next).
+            sqlx::query!(
+                r#"
+                UPDATE analysis_sweeps
+                SET digest_summary = NULL
+                WHERE tenant_id = $1 AND project_id = $2
+                  AND id IN (
+                    SELECT sweep_id FROM recommendations
+                    WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3
+                      AND sweep_id IS NOT NULL
+                  )
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                cluster_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Scrub work-order derived text (title/instructions NOT NULL → a
+            // non-PII sentinel; owner_overrides jsonb → NULL).
+            sqlx::query!(
+                r#"
+                UPDATE work_orders
+                SET title = '[erased]', instructions = '', owner_overrides = NULL,
+                    updated_at = now()
+                WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                cluster_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Scrub recommendation derived text; supersede so it is not surfaced.
+            sqlx::query!(
+                r#"
+                UPDATE recommendations
+                SET title = '[erased]', body = '', rationale = NULL,
+                    source_refs = '[]'::jsonb, status = 'superseded'
+                WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                cluster_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+
+            // Scrub the cluster prose + mark it stale for re-derivation.
+            sqlx::query!(
+                r#"
+                UPDATE feedback_clusters
+                SET label = '[erased]', summary = NULL, priority_rationale = NULL,
+                    status = 'open', last_swept_at = NULL, updated_at = now()
+                WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                cluster_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        // Delete the feedback row; FK cascade removes replies / status history /
+        // moderation events / board votes / attachments metadata / idempotency.
+        // Attachment object BYTES MUST already be purged by the caller.
+        let result = sqlx::query!(
+            r#"DELETE FROM feedback WHERE id = $1"#,
+            row.id,
+        )
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
         Ok(result.rows_affected() > 0)
     }
 

@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT id, cluster_id\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2\n              AND short_code = $3 AND end_user_sub = $4\n            FOR UPDATE\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "cluster_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "51f9ebf6d2c3a8cb3526f4fb2423a7b29387b9e2bfc5c007375536fa7611dc8a"
+}

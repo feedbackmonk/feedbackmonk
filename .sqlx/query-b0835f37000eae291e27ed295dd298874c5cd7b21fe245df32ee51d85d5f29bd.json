@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE analysis_sweeps\n                SET digest_summary = NULL\n                WHERE tenant_id = $1 AND project_id = $2\n                  AND id IN (\n                    SELECT sweep_id FROM recommendations\n                    WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3\n                      AND sweep_id IS NOT NULL\n                  )\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b0835f37000eae291e27ed295dd298874c5cd7b21fe245df32ee51d85d5f29bd"
+}

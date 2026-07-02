@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                UPDATE feedback_clusters\n                SET label = '[erased]', summary = NULL, priority_rationale = NULL,\n                    status = 'open', last_swept_at = NULL, updated_at = now()\n                WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "9be0ca2098c90ff1d42e995f4aebde073624c7bf6bb3e173cd45fa44b0e064ae"
+}

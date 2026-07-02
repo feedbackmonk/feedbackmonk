@@ -421,3 +421,8 @@ async fn delete_unknown_id_404(pool: PgPool) {
         .unwrap();
     assert!(!deleted);
 }
+// NOTE: the behavioral proof that erasure SCRUBS the P5-derived text (scrutiny
+// P0-1) lives in the repository crate — `crates/feedbackmonk-repository/tests/
+// erasure_derived_scrub.rs` — where raw-SQL seeding of the analysis corpus is
+// permitted (the multi-tenant-isolation-check oracle forbids raw SQL outside the
+// repository crate; the derived tables have no scope-layer create-with-text API).

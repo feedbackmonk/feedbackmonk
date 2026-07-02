@@ -3,7 +3,7 @@
 
 The anti-reward-hacking leg for Phase A A1 — the P0 right-to-erasure endpoint
 `DELETE /api/v1/projects/{project}/me/feedback/{id}` (D-A1). It proves — FROM
-CODE, not a self-reported flag — three load-bearing properties of the erasure
+CODE, not a self-reported flag — FOUR load-bearing properties of the erasure
 path, so a future refactor cannot silently leave residual PII (the failure a
 happy-path "row is gone" test does NOT catch):
 
@@ -29,6 +29,13 @@ happy-path "row is gone" test does NOT catch):
      another user's / another tenant's row (DEC-FBR-04 / DEC-FBR-03). A DELETE
      that dropped `end_user_sub` from the WHERE would be a cross-user erasure
      hole.
+
+  D) DERIVED-TEXT COMPLETENESS (static, repository; scrutiny P0-1): the erasure
+     ALSO UPDATE-scrubs the P5 analysis corpus (feedback_clusters /
+     recommendations / work_orders / analysis_sweeps) for the erased feedback's
+     cluster. Those tables reference the CLUSTER, not feedback, so FK cascade
+     never reaches them; without the scrub the submitter's verbatim/paraphrased
+     text survives in admin-readable prose.
 
   --full) BEHAVIOR: runs tests/me_feedback_delete.rs against the real DB
      (drift-detection leg — byte purge + cascade + cross-sub survival), so the
@@ -214,6 +221,43 @@ def probe_c() -> List[str]:
     return offenders
 
 
+def probe_d() -> List[str]:
+    """Derived-text completeness (scrutiny P0-1): `delete_for_end_user` must
+    scrub the P5 analysis corpus, which has NO FK to feedback (it references the
+    CLUSTER) and so is UNREACHED by the DELETE's cascade. Without this scrub, a
+    'forget me' leaves the erased submitter's verbatim/paraphrased text alive in
+    admin-readable prose (cluster.summary, recommendation.body, sweep digest)."""
+    if not REPO_FEEDBACK_RS.exists():
+        return [f"{rel(REPO_FEEDBACK_RS)} does not exist — cannot verify the erasure scrub"]
+    text = REPO_FEEDBACK_RS.read_text(encoding="utf-8")
+    body = _fn_body(text, ROW_DELETE_FN)
+    if body is None:
+        return [f"{rel(REPO_FEEDBACK_RS)}: `fn {ROW_DELETE_FN}` (impl) missing."]
+    body_nc = _strip_comments(body)
+    offenders: List[str] = []
+    # Each derived table must be scrubbed (an UPDATE that nulls/clears its
+    # free-text) inside the erasure fn. Detection-from-code: dropping any one
+    # re-opens a residual-PII path.
+    required = [
+        ("feedback_clusters", r"UPDATE\s+feedback_clusters\b", r"summary\s*=\s*NULL"),
+        ("recommendations", r"UPDATE\s+recommendations\b", r"body\s*=\s*''"),
+        ("work_orders", r"UPDATE\s+work_orders\b", r"instructions\s*=\s*''"),
+        ("analysis_sweeps", r"UPDATE\s+analysis_sweeps\b", r"digest_summary\s*=\s*NULL"),
+    ]
+    for table, upd_re, scrub_re in required:
+        if not re.search(upd_re, body_nc, re.IGNORECASE):
+            offenders.append(
+                f"{rel(REPO_FEEDBACK_RS)}::{ROW_DELETE_FN}: no `UPDATE {table}` — the erased "
+                f"feedback's derived text in `{table}` survives (no FK cascade reaches it)."
+            )
+        elif not re.search(scrub_re, body_nc, re.IGNORECASE):
+            offenders.append(
+                f"{rel(REPO_FEEDBACK_RS)}::{ROW_DELETE_FN}: `UPDATE {table}` present but does not "
+                f"scrub its free-text (expected `{scrub_re}`)."
+            )
+    return offenders
+
+
 def probe_full(full: bool) -> Tuple[Optional[bool], str]:
     if not full:
         return None, "skipped (pass --full to run tests/me_feedback_delete.rs)"
@@ -244,15 +288,17 @@ def main() -> int:
     a = probe_a()
     b = probe_b()
     c = probe_c()
+    d = probe_d()
     full_passed, full_msg = probe_full(args.full)
 
-    fails = sum(1 for x in (a, b, c) if x) + (1 if full_passed is False else 0)
+    fails = sum(1 for x in (a, b, c, d) if x) + (1 if full_passed is False else 0)
 
     if fails == 0:
         print("PASS feedback-erasure-completeness")
         print(f"  Probe A (byte purge BEFORE row delete): clean ({rel(ME_FEEDBACK_RS)}::{DELETE_HANDLER_FN})")
         print("  Probe B (every REFERENCES feedback(id) is CASCADE/SET NULL): clean")
         print(f"  Probe C (erasure DELETE scoped by sub+tenant+project): clean ({ROW_DELETE_FN})")
+        print("  Probe D (P5 derived-text scrubbed: clusters/recommendations/work_orders/sweeps): clean")
         print(f"  Probe --full (behavioral drift): {full_msg}")
         return 0
 
@@ -264,6 +310,8 @@ def main() -> int:
          "every table referencing feedback(id) must be ON DELETE CASCADE or SET NULL."),
         ("C (sub-scoped delete)", c,
          "the erasure DELETE WHERE must include end_user_sub AND tenant_id AND project_id."),
+        ("D (derived-text scrub)", d,
+         "delete_for_end_user must UPDATE-scrub feedback_clusters/recommendations/work_orders/analysis_sweeps for the erased feedback's cluster (P0-1)."),
     ):
         if offs:
             print()
