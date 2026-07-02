@@ -116,7 +116,22 @@ recreates the api container).
 
 ## 4. Backup and Restore
 
-### Daily backup (gzipped pg_dump → file)
+feedbackmonk has **two** durable stores, and a complete backup covers
+**both**:
+
+1. **Postgres** — all tenants/projects/feedback/roadmap/board rows.
+2. **Attachment objects** — feedback screenshots + scrubbed logs. These
+   live in the configured object store (the `attachments` docker volume for
+   the `local` backend, or an S3 bucket), **NOT in Postgres**. The
+   `attachments` table only stores metadata + a `storage_key`.
+
+⚠️ **A database-only backup is not a complete backup.** Restoring the DB
+without the objects resurrects rows that point at objects that no longer
+exist — dangling attachment references (broken screenshot / log links). For
+a sole, no-fallback backend this is a data-loss incident, so `backup.sh`
+archives **both** halves by default.
+
+### Daily backup (database + attachments)
 
 ```bash
 cd deploy/docker
@@ -124,16 +139,46 @@ mkdir -p backups
 ./backup.sh > backups/feedbackmonk-$(date +%Y%m%d-%H%M%S).sql.gz
 ```
 
-This invokes `docker compose --profile backup run --rm backup` under
-the hood, which spawns a one-shot `postgres:16-alpine` container that
-runs `pg_dump --clean --if-exists | gzip -9` and pipes the result
-to stdout.
+`backup.sh` does two things:
+
+- **Database**: invokes `docker compose --profile backup run --rm backup`,
+  which spawns a one-shot `postgres:16-alpine` container that runs
+  `pg_dump --clean --if-exists | gzip -9` and pipes the result to **stdout**
+  (redirect it to a `.sql.gz` file, as above).
+- **Attachment objects**: detects `FEEDBACKMONK_STORAGE_BACKEND` from `.env`.
+  - `local` (default) → tars the storage directory / `attachments` docker
+    volume to a timestamped `feedbackmonk-attachments-<TS>.tar.gz` **file**
+    under `./backups` (override with `--attachments-dir DIR`). Progress is
+    printed to stderr so it never contaminates the SQL stdout stream.
+  - `s3` → prints durability guidance (objects are NOT dumped locally;
+    enable bucket versioning + cross-region replication instead — see below).
+
+Use `--skip-attachments` for a deliberate DB-only dump (discouraged for a
+sole backend). Run `./backup.sh --help` for the full flag list.
+
+So a daily backup produces **two files** in `./backups`:
+`feedbackmonk-<TS>.sql.gz` (the SQL dump you redirected) and
+`feedbackmonk-attachments-<TS>.tar.gz` (the objects). Keep them together —
+they are restored as a pair.
+
+### S3 backend: object durability
+
+When `FEEDBACKMONK_STORAGE_BACKEND=s3`, attachment bytes are not archived
+locally; the bucket is the durability boundary. Configure, at the provider:
+
+- **Versioning** — recover from accidental overwrite/delete.
+- **Cross-region replication (CRR)** — survive a region loss (DR).
+- **Lifecycle rules** — match your data-retention policy (below).
+
+You still back up Postgres with `./backup.sh` (the attachment leg self-skips
+and prints this reminder).
 
 ### Scheduled backup (cron)
 
 ```cron
 # /etc/cron.d/feedbackmonk-backup — daily at 03:15 UTC
-15 3 * * *  root  cd /opt/feedbackmonk/deploy/docker && ./backup.sh > /var/backups/feedbackmonk/$(date -u +\%Y\%m\%d).sql.gz 2>>/var/log/feedbackmonk-backup.log
+# --attachments-dir co-locates the attachment tar with the SQL dump offsite.
+15 3 * * *  root  cd /opt/feedbackmonk/deploy/docker && ./backup.sh --attachments-dir /var/backups/feedbackmonk > /var/backups/feedbackmonk/$(date -u +\%Y\%m\%d).sql.gz 2>>/var/log/feedbackmonk-backup.log
 ```
 
 ### Scheduled backup (systemd-timer)
@@ -148,7 +193,7 @@ After=docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=/opt/feedbackmonk/deploy/docker
-ExecStart=/bin/sh -c './backup.sh > /var/backups/feedbackmonk/$(date -u +%Y%m%d).sql.gz'
+ExecStart=/bin/sh -c './backup.sh --attachments-dir /var/backups/feedbackmonk > /var/backups/feedbackmonk/$(date -u +%Y%m%d).sql.gz'
 ```
 
 `/etc/systemd/system/feedbackmonk-backup.timer`:
@@ -175,22 +220,38 @@ sudo systemctl enable --now feedbackmonk-backup.timer
 ### Restore (destructive)
 
 The dump is `--clean --if-exists` — restoring will **DROP and recreate**
-every object in the live database. The `restore.sh` script requires an
-interactive confirmation OR `--force` for non-TTY invocation:
+every object in the live database. `restore.sh` also (optionally) **replaces**
+the attachment object store. It requires an interactive confirmation OR
+`--force` for non-TTY invocation.
+
+**Full restore (database + attachments) — the recommended path:**
 
 ```bash
 cd deploy/docker
-gunzip -c backups/feedbackmonk-20260514.sql.gz | ./restore.sh
+gunzip -c backups/feedbackmonk-20260514.sql.gz | \
+    ./restore.sh --attachments backups/feedbackmonk-attachments-20260514.tar.gz
 # (interactive): type 'yes' at the confirmation prompt.
 
 # Non-interactive (e.g., DR drill from a script):
+gunzip -c backups/feedbackmonk-20260514.sql.gz | \
+    ./restore.sh --force --attachments backups/feedbackmonk-attachments-20260514.tar.gz
+```
+
+**Database only** (⚠️ leaves dangling attachment references — use only if you
+restore objects some other way, e.g. S3 versioning):
+
+```bash
 gunzip -c backups/feedbackmonk-20260514.sql.gz | ./restore.sh --force
 ```
 
-Restore runs inside the live `db` service container via
+The database restore runs inside the live `db` service container via
 `docker compose exec -T db psql --single-transaction`. The
-`--single-transaction` flag means the entire restore is atomic — on
-any failure, the database is left in its pre-restore state.
+`--single-transaction` flag means the DB restore is atomic — on any failure
+the database is left in its pre-restore state. The attachment leg (local
+backend) untars into the `attachments` volume / storage dir, replacing its
+contents; for the `s3` backend it self-skips and points you at bucket
+versioning / CRR failback. Restore order does not matter (the api reads
+objects lazily), but **skipping either half does** — restore both.
 
 ### Volume-level alternative
 
@@ -207,6 +268,60 @@ docker run --rm \
 Volume snapshots are faster to take but require stopping the db service
 for a consistent snapshot (or accept a fuzzy snapshot). `pg_dump` is
 the recommended path for online backups.
+
+### Disaster-recovery (DR) drill
+
+Backups you have never restored are not backups. Run this drill on a
+throwaway instance (or a staging copy) at least quarterly, and after any
+change to the storage backend:
+
+```bash
+cd deploy/docker
+
+# 1. Take a fresh pair of backups from the source instance.
+./backup.sh > backups/dr-$(date +%Y%m%d).sql.gz
+#    (this also writes backups/feedbackmonk-attachments-<TS>.tar.gz)
+
+# 2. On the target/throwaway instance, bring the stack up clean.
+docker compose down -v && docker compose up -d
+
+# 3. Restore BOTH halves.
+gunzip -c backups/dr-YYYYMMDD.sql.gz | \
+    ./restore.sh --force --attachments backups/feedbackmonk-attachments-<TS>.tar.gz
+
+# 4. Verify health.
+curl -fsS http://localhost:14304/health/ready        # expect HTTP 200
+
+# 5. Round-trip ONE attachment end-to-end — the part a DB-only restore
+#    silently breaks. Pick a feedback item known to have an attachment,
+#    then fetch the object URL the admin API returns for it:
+#      - open the admin-ui, find a feedback item with a screenshot, OR
+#      - GET the me/feedback (or admin feedback) endpoint and read an
+#        attachment `url`, then:
+curl -fsS -o /dev/null -w '%{http_code}\n' "<attachment-url-from-the-API>"
+#    Expect 200 with the object bytes. A 404 here means the objects were
+#    NOT restored (dangling reference) — fix the attachment leg before
+#    trusting the backup.
+```
+
+A green step 5 is the proof that matters: it exercises the exact seam
+(row → `storage_key` → object bytes) that a database-only restore leaves
+broken.
+
+### Data retention
+
+- **Backups**: prune old dumps + attachment tars on a schedule that matches
+  your retention policy (e.g. keep 30 daily + 12 monthly). Both files share
+  the same `<TS>` — prune them as a pair so a surviving SQL dump never
+  outlives its attachment archive.
+- **Live data**: hard-deleting a feedback item cascades to its `attachments`
+  rows (FK `ON DELETE CASCADE`) and the app purges the object bytes before
+  deleting the row (Phase A A1 erasure). GDPR erasure of an end user's data
+  is `DELETE …/me/feedback/{id}` (capability `feedback.delete`); GDPR
+  portability is `GET …/me/feedback/export` (capability `feedback.export`).
+- **S3 lifecycle**: if on the `s3` backend, keep bucket lifecycle/expiry
+  rules consistent with the above so versioned/replicated objects are not
+  retained past policy.
 
 ## 5. Troubleshooting
 

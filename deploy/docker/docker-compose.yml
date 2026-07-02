@@ -88,6 +88,15 @@ services:
       FEEDBACKMONK_JWT_LEEWAY_SECONDS: ${FEEDBACKMONK_JWT_LEEWAY_SECONDS:-5}
       FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR: ${FEEDBACKMONK_ANON_RATE_LIMIT_PER_HOUR:-10}
       FEEDBACKMONK_CORS_ORIGINS: ${FEEDBACKMONK_CORS_ORIGINS:-}
+      # Attachment object storage. `local` (default) persists feedback
+      # screenshots + scrubbed logs to the named `attachments` volume below —
+      # WITHOUT it, attachment bytes live on the container's ephemeral layer
+      # and are LOST on every recreate/redeploy (scrutiny P0-4). The storage
+      # dir MUST equal the volume mount target (both keyed off the same var).
+      # Set FEEDBACKMONK_STORAGE_BACKEND=s3 (+ the S3 vars in .env.example) for
+      # an external, independently-durable object store.
+      FEEDBACKMONK_STORAGE_BACKEND: ${FEEDBACKMONK_STORAGE_BACKEND:-local}
+      FEEDBACKMONK_STORAGE_LOCAL_DIR: ${FEEDBACKMONK_STORAGE_LOCAL_DIR:-/data/attachments}
       FEEDBACKMONK_MAILER: ${FEEDBACKMONK_MAILER:-mailpit}
       FEEDBACKMONK_SMTP_FROM: ${FEEDBACKMONK_SMTP_FROM:-no-reply@feedbackmonk.local}
       FEEDBACKMONK_MAILPIT_HOST: ${FEEDBACKMONK_MAILPIT_HOST:-mailpit}
@@ -97,6 +106,12 @@ services:
       FEEDBACKMONK_SMTP_USER: ${FEEDBACKMONK_SMTP_USER:-}
       FEEDBACKMONK_SMTP_PASS: ${FEEDBACKMONK_SMTP_PASS:-}
       FEEDBACKMONK_SMTP_STARTTLS: ${FEEDBACKMONK_SMTP_STARTTLS:-true}
+    volumes:
+      # Persist local-backend attachment objects across `docker compose up`
+      # recreates. Mount target MUST match FEEDBACKMONK_STORAGE_LOCAL_DIR above.
+      # Only used by the `local` storage backend; harmless (empty) under `s3`.
+      # Backed up by deploy/docker/backup.sh (volume name: feedbackmonk_attachments).
+      - attachments:${FEEDBACKMONK_STORAGE_LOCAL_DIR:-/data/attachments}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:${FEEDBACKMONK_PORT:-14304}/health/ready > /dev/null || exit 1"]
       interval: 10s
@@ -162,3 +177,7 @@ services:
 
 volumes:
   pgdata:
+  # Local-backend feedback attachment objects (screenshots + scrubbed logs).
+  # Persistent across recreates; backed up by backup.sh. Not used under the
+  # s3 backend (objects live in the bucket).
+  attachments:
