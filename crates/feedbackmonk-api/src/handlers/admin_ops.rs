@@ -160,6 +160,11 @@ pub async fn patch_tenant(
     // authorized the caller.
     let scope = state.tenants.scope_for(tenant_id).await?;
 
+    // Capture what the operator is changing for the audit record (P1-12) before
+    // the Options are consumed below.
+    let tier_set = tier.map(|t| t.as_db_str().to_string());
+    let branding_set = req.branding.is_some();
+
     if let Some(tier) = tier {
         state.tenants.set_tier(&scope, tier).await?;
     }
@@ -177,6 +182,24 @@ pub async fn patch_tenant(
     let current_tier = state.tenants.get_tier(&scope).await?;
     let brand_override = state.tenants.get_widget_brand_override(&scope).await?;
     let resolved_widget_brand = state.tenants.get_widget_brand(&scope).await?;
+
+    // P1-12: forensic audit of this operator (ops-token) mutation, scoped to the
+    // target tenant. Append-only; the shared ops token carries no operator
+    // identity, but the action + before/after detail is the load-bearing record.
+    if tier_set.is_some() || branding_set {
+        state
+            .tenants
+            .record_ops_audit(
+                &scope,
+                "patch_tenant",
+                serde_json::json!({
+                    "tier_set": tier_set,
+                    "branding_set": branding_set,
+                    "resolved_tier": current_tier.as_db_str(),
+                }),
+            )
+            .await?;
+    }
 
     Ok(Json(OpsTenantResponse {
         tenant_id,
@@ -416,6 +439,9 @@ mod tests {
         assert!(body["resolved_widget_brand"]["footer_text"].is_null());
         assert_eq!(body["resolved_widget_brand"]["theme"], "auto");
         assert_eq!(body["brand_override"]["footer_text_override"], "");
+        // P1-12: the mutation writes a forensic ops_audit_log row — proven at the
+        // repository layer in feedbackmonk-repository (record_ops_audit round-trip),
+        // where raw-SQL reads are permitted by the isolation oracle.
     }
 
     #[sqlx::test(migrations = "../../migrations")]

@@ -119,6 +119,14 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
     ) -> Result<(), RepoError> {
         unimplemented!()
     }
+    async fn record_ops_audit(
+        &self,
+        _scope: &TenantScope,
+        _action: &str,
+        _detail: serde_json::Value,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
     async fn set_tier(
         &self,
         _scope: &TenantScope,

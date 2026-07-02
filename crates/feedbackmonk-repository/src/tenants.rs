@@ -97,6 +97,18 @@ pub trait TenantRepo: Send + Sync {
         over: &WidgetBrandOverride,
     ) -> Result<()>;
 
+    /// Append an operator-mutation audit row for the target tenant `scope`
+    /// (scrutiny P1-12). `action` names the ops action (e.g. `"patch_tenant"`)
+    /// and `detail` carries the before/after JSON. Scope-bound so the
+    /// `multi-tenant-isolation-check` oracle stays satisfied; the append-only
+    /// `ops_audit_log` (migration 00027) is the operator forensic record.
+    async fn record_ops_audit(
+        &self,
+        scope: &TenantScope,
+        action: &str,
+        detail: serde_json::Value,
+    ) -> Result<()>;
+
     /// Production tier writer (DEC-FBR-IMPL-11). Sets `tenants.tier` for
     /// `scope`. Scope-bound (multi-tenant-isolation compliant) — the ops
     /// handler mints the scope via `scope_for` after validating the ops token.
@@ -507,6 +519,26 @@ impl TenantRepo for SqlxTenantRepo {
         Ok(())
     }
 
+    async fn record_ops_audit(
+        &self,
+        scope: &TenantScope,
+        action: &str,
+        detail: serde_json::Value,
+    ) -> Result<()> {
+        sqlx::query!(
+            r#"
+            INSERT INTO ops_audit_log (tenant_id, action, detail)
+            VALUES ($1, $2, $3)
+            "#,
+            scope.tenant_id(),
+            action,
+            detail,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     async fn set_tier(&self, scope: &TenantScope, tier: Tier) -> Result<()> {
         sqlx::query!(
             "UPDATE tenants SET tier = $2, updated_at = now() WHERE id = $1",
@@ -602,6 +634,27 @@ mod tests {
         let repo = SqlxTenantRepo::new(pool);
         let err = repo.scope_for(uuid::Uuid::new_v4()).await.unwrap_err();
         assert!(matches!(err, RepoError::NotFound));
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn record_ops_audit_appends_scoped_row(pool: PgPool) {
+        // P1-12: an operator mutation leaves an append-only, tenant-scoped
+        // forensic row (action + before/after detail).
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("ops@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+        repo.record_ops_audit(&scope, "patch_tenant", serde_json::json!({"tier_set": "pro"}))
+            .await
+            .unwrap();
+        let row = sqlx::query!(
+            r#"SELECT action, detail FROM ops_audit_log WHERE tenant_id = $1"#,
+            t.id,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(row.action, "patch_tenant");
+        assert_eq!(row.detail["tier_set"], serde_json::json!("pro"));
     }
 
     #[sqlx::test(migrations = "../../migrations")]
