@@ -97,3 +97,88 @@ async fn erasure_scrubs_p5_derived_text(pool: PgPool) {
             .bind(sweep_id).fetch_one(&pool).await.unwrap();
     assert_eq!(sweep_digest, None, "sweep digest must be scrubbed");
 }
+
+/// P1-16 / M1 — user-level "forget me": `erase_all_for_end_user` deletes ALL of
+/// the sub's feedback (+ derived-text scrub + `member_count` decrement) AND the
+/// USER-keyed rows the feedback FK cascade never reaches (solicitation state +
+/// the sub's votes), while leaving OTHER users' data intact.
+#[sqlx::test(migrations = "../../migrations")]
+async fn bulk_erase_forgets_the_whole_user(pool: PgPool) {
+    let trepo = SqlxTenantRepo::new(pool.clone());
+    let prepo = SqlxProjectRepo::new(pool.clone());
+    let frepo = SqlxFeedbackRepo::new(pool.clone());
+
+    let t = trepo.create("forget@example.com", "hash").await.unwrap();
+    let tscope = trepo.scope_for(t.id).await.unwrap();
+    let p = prepo.create(&tscope, "Proj", "p-forget").await.unwrap();
+    let pscope = prepo.open(&tscope, p.id).await.unwrap();
+    let (tid, pid) = (pscope.tenant_id(), pscope.project_id());
+
+    // user-A: TWO feedback, both in one cluster (summary quotes the body).
+    for body in ["a-one", "a-two"] {
+        frepo
+            .submit_authenticated(&pscope, "user-A", Some("a@x.com"), None, None, None, body, None, FeedbackKind::Bug)
+            .await
+            .unwrap();
+    }
+    let cluster_id: Uuid = sqlx::query_scalar(
+        "INSERT INTO feedback_clusters (tenant_id, project_id, label, summary, member_count) \
+         VALUES ($1,$2,'c',$3,2) RETURNING id",
+    )
+    .bind(tid).bind(pid).bind(PII)
+    .fetch_one(&pool).await.unwrap();
+    sqlx::query("UPDATE feedback SET cluster_id=$1 WHERE tenant_id=$2 AND project_id=$3 AND end_user_sub='user-A'")
+        .bind(cluster_id).bind(tid).bind(pid).execute(&pool).await.unwrap();
+
+    // user-A solicitation state (keyed on (project, sub) — no FK to feedback).
+    sqlx::query(
+        "INSERT INTO feedback_solicitations (tenant_id, project_id, end_user_sub, status) \
+         VALUES ($1,$2,'user-A','prompted')",
+    )
+    .bind(tid).bind(pid).execute(&pool).await.unwrap();
+
+    // user-B: one feedback that SURVIVES; user-A casts a board vote ON it (the
+    // vote is keyed on voter_id=sub, not on user-A's own feedback).
+    let fb_b = frepo
+        .submit_authenticated(&pscope, "user-B", Some("b@x.com"), None, None, None, "b-keep", None, FeedbackKind::Bug)
+        .await
+        .unwrap();
+    let fb_b_uuid: Uuid = sqlx::query_scalar(
+        "SELECT id FROM feedback WHERE tenant_id=$1 AND project_id=$2 AND short_code=$3",
+    )
+    .bind(tid).bind(pid).bind(fb_b.as_str()).fetch_one(&pool).await.unwrap();
+    sqlx::query(
+        "INSERT INTO feedback_board_votes (tenant_id, project_id, feedback_id, voter_id, voter_mode) \
+         VALUES ($1,$2,$3,'user-A','jwt')",
+    )
+    .bind(tid).bind(pid).bind(fb_b_uuid).execute(&pool).await.unwrap();
+
+    // Forget user-A.
+    let erased = frepo.erase_all_for_end_user(&pscope, "user-A").await.unwrap();
+    assert_eq!(erased, 2, "both of user-A's feedback rows are erased");
+
+    let count = |sql: &'static str, bind: String| {
+        let pool = pool.clone();
+        async move { sqlx::query_scalar::<_, i64>(sql).bind(bind).fetch_one(&pool).await.unwrap() }
+    };
+    // user-A's feedback gone; user-B's survives.
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM feedback WHERE project_id=$1 AND end_user_sub='user-A'")
+            .bind(pid).fetch_one(&pool).await.unwrap(),
+        0, "user-A feedback erased"
+    );
+    assert_eq!(
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM feedback WHERE project_id=$1 AND end_user_sub='user-B'")
+            .bind(pid).fetch_one(&pool).await.unwrap(),
+        1, "user-B feedback untouched"
+    );
+    // derived text scrubbed + member_count decremented (2 → 0).
+    let (summary, mc): (Option<String>, i32) =
+        sqlx::query_as("SELECT summary, member_count FROM feedback_clusters WHERE id=$1")
+            .bind(cluster_id).fetch_one(&pool).await.unwrap();
+    assert_eq!(summary, None, "cluster summary scrubbed");
+    assert_eq!(mc, 0, "member_count decremented by the 2 erased members");
+    // user-keyed rows (no FK to feedback) erased.
+    assert_eq!(count("SELECT count(*) FROM feedback_solicitations WHERE end_user_sub=$1", "user-A".into()).await, 0, "solicitation forgotten");
+    assert_eq!(count("SELECT count(*) FROM feedback_board_votes WHERE voter_id=$1", "user-A".into()).await, 0, "user-A's votes forgotten");
+}

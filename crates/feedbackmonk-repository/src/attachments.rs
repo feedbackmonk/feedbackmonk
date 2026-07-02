@@ -151,6 +151,19 @@ pub trait AttachmentRepo: Send + Sync {
         feedback_uuid: Uuid,
     ) -> Result<Vec<String>>;
 
+    /// List the object-store `storage_key`s of EVERY attachment belonging to the
+    /// end-user's feedback (scoped by `(tenant, project, end_user_sub)`). Backs
+    /// the user-level "forget me" erasure (`DELETE …/me`, P1-16 / M1): the
+    /// handler purges each key via `ObjectStore::delete` BEFORE
+    /// `FeedbackRepo::erase_all_for_end_user`, so a mid-failure leaves retryable
+    /// DB rows rather than orphaned object bytes. Anonymous rows
+    /// (`end_user_sub IS NULL`) are structurally excluded by the join predicate.
+    async fn list_storage_keys_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+    ) -> Result<Vec<String>>;
+
     /// Fetch ONE attachment's full row (including `storage_key`) scoped by
     /// the complete chain `(tenant, project, feedback, attachment id)`.
     /// Phase A A2 (tenant-scoped download): the download handler resolves the
@@ -317,6 +330,29 @@ impl AttachmentRepo for SqlxAttachmentRepo {
             scope.tenant_id(),
             scope.project_id(),
             feedback_uuid,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|r| r.storage_key).collect())
+    }
+
+    async fn list_storage_keys_for_end_user(
+        &self,
+        scope: &ProjectScope,
+        end_user_sub: &str,
+    ) -> Result<Vec<String>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT a.storage_key
+            FROM attachments a
+            JOIN feedback f ON f.id = a.feedback_id
+            WHERE a.tenant_id = $1 AND a.project_id = $2
+              AND f.tenant_id = $1 AND f.project_id = $2
+              AND f.end_user_sub = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            end_user_sub,
         )
         .fetch_all(&self.pool)
         .await?;

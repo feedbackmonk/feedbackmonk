@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE work_orders\n            SET title = '[erased]', instructions = '', owner_overrides = NULL,\n                updated_at = now()\n            WHERE tenant_id = $1 AND project_id = $2 AND cluster_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bc4a0070b2fb97b5c862b0be7a5fd07fdde25b51e26b738fc901eea690cfc5e0"
+}

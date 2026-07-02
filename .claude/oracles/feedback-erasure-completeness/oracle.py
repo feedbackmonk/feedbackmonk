@@ -72,6 +72,12 @@ DELETE_TEST_RS = CRATES_DIR / "feedbackmonk-api" / "tests" / "me_feedback_delete
 
 DELETE_HANDLER_FN = "delete_my_feedback"
 ROW_DELETE_FN = "delete_for_end_user"
+# P1-16 / M1: the derived-text scrub was factored into ONE shared helper so both
+# the per-item and the user-level ("forget me") erasure paths use a single
+# implementation. Probe D verifies the 4-table scrub lives in the helper AND that
+# both erasure fns reach it (no path silently skips the scrub).
+SCRUB_HELPER_FN = "scrub_cluster_derived_text"
+BULK_ERASE_FN = "erase_all_for_end_user"
 
 
 def rel(p: Path) -> str:
@@ -230,13 +236,21 @@ def probe_d() -> List[str]:
     if not REPO_FEEDBACK_RS.exists():
         return [f"{rel(REPO_FEEDBACK_RS)} does not exist — cannot verify the erasure scrub"]
     text = REPO_FEEDBACK_RS.read_text(encoding="utf-8")
-    body = _fn_body(text, ROW_DELETE_FN)
-    if body is None:
-        return [f"{rel(REPO_FEEDBACK_RS)}: `fn {ROW_DELETE_FN}` (impl) missing."]
-    body_nc = _strip_comments(body)
     offenders: List[str] = []
+
+    # P1-16 / M1: the 4-table scrub lives in the shared `scrub_cluster_derived_text`
+    # helper (used by BOTH erasure paths). Prefer it; fall back to the per-item fn
+    # for older layouts where the SQL was still inlined there.
+    scrub_body = _fn_body(text, SCRUB_HELPER_FN) or _fn_body(text, ROW_DELETE_FN)
+    scrub_where = SCRUB_HELPER_FN if _fn_body(text, SCRUB_HELPER_FN) else ROW_DELETE_FN
+    if scrub_body is None:
+        return [
+            f"{rel(REPO_FEEDBACK_RS)}: neither `fn {SCRUB_HELPER_FN}` (shared scrub helper) nor "
+            f"`fn {ROW_DELETE_FN}` (impl) found — the derived-text scrub is gone."
+        ]
+    body_nc = _strip_comments(scrub_body)
     # Each derived table must be scrubbed (an UPDATE that nulls/clears its
-    # free-text) inside the erasure fn. Detection-from-code: dropping any one
+    # free-text) inside the scrub fn. Detection-from-code: dropping any one
     # re-opens a residual-PII path.
     required = [
         ("feedback_clusters", r"UPDATE\s+feedback_clusters\b", r"summary\s*=\s*NULL"),
@@ -247,14 +261,32 @@ def probe_d() -> List[str]:
     for table, upd_re, scrub_re in required:
         if not re.search(upd_re, body_nc, re.IGNORECASE):
             offenders.append(
-                f"{rel(REPO_FEEDBACK_RS)}::{ROW_DELETE_FN}: no `UPDATE {table}` — the erased "
+                f"{rel(REPO_FEEDBACK_RS)}::{scrub_where}: no `UPDATE {table}` — the erased "
                 f"feedback's derived text in `{table}` survives (no FK cascade reaches it)."
             )
         elif not re.search(scrub_re, body_nc, re.IGNORECASE):
             offenders.append(
-                f"{rel(REPO_FEEDBACK_RS)}::{ROW_DELETE_FN}: `UPDATE {table}` present but does not "
+                f"{rel(REPO_FEEDBACK_RS)}::{scrub_where}: `UPDATE {table}` present but does not "
                 f"scrub its free-text (expected `{scrub_re}`)."
             )
+
+    # If the scrub was factored into the helper, EVERY erasure path must actually
+    # call it — otherwise a path could silently skip the scrub. Both the per-item
+    # (`delete_for_end_user`) and the user-level (`erase_all_for_end_user`)
+    # erasures must reach the helper.
+    if scrub_where == SCRUB_HELPER_FN:
+        for caller in (ROW_DELETE_FN, BULK_ERASE_FN):
+            caller_body = _fn_body(text, caller)
+            if caller_body is None:
+                offenders.append(
+                    f"{rel(REPO_FEEDBACK_RS)}: erasure fn `{caller}` missing — a required erasure "
+                    "path is gone."
+                )
+            elif SCRUB_HELPER_FN not in _strip_comments(caller_body):
+                offenders.append(
+                    f"{rel(REPO_FEEDBACK_RS)}::{caller}: does not call `{SCRUB_HELPER_FN}` — this "
+                    "erasure path skips the P5 derived-text scrub (residual-PII hole)."
+                )
     return offenders
 
 

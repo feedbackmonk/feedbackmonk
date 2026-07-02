@@ -43,6 +43,9 @@ pub const CAPABILITIES: &[&str] = &[
     "feedback.severity",     // A4a: first-class `severity` submit field (low|medium|high|blocker).
     "feedback.idempotency",  // A4b: `Idempotency-Key` header dedupe on submit.
     "feedback.attachments",  // A2: attachment list + tenant-scoped download (upload pre-existed).
+    // P1-16 / M1: user-level "forget me" — DELETE …/me erases the caller's ENTIRE
+    // footprint (all feedback + solicitation state + roadmap/board votes).
+    "feedback.erase_all",
 ];
 
 pub async fn capabilities() -> Json<Value> {
@@ -82,6 +85,8 @@ pub async fn capabilities() -> Json<Value> {
             // A1/A5: erasure + export on the end-user surface.
             "delete": true,
             "export": true,
+            // P1-16 / M1: DELETE …/me user-level "forget me" (full footprint).
+            "erase_all": true,
         },
         "solicitation": {
             "events": ["prompted", "dismissed", "gave_feedback", "opted_out"],
@@ -126,6 +131,7 @@ mod tests {
             "feedback.severity",
             "feedback.idempotency",
             "feedback.attachments",
+            "feedback.erase_all",
         ];
         assert_eq!(
             CAPABILITIES.len(),
@@ -145,5 +151,6 @@ mod tests {
         assert!(fb["reply_state"]["fields"].as_array().is_some_and(|v| v.len() == 2));
         assert_eq!(fb["delete"], true);
         assert_eq!(fb["export"], true);
+        assert_eq!(fb["erase_all"], true);
     }
 }

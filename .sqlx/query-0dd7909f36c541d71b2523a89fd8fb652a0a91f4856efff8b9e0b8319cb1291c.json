@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM feedback_board_votes\n            WHERE tenant_id = $1 AND project_id = $2 AND voter_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0dd7909f36c541d71b2523a89fd8fb652a0a91f4856efff8b9e0b8319cb1291c"
+}

@@ -388,6 +388,62 @@ pub async fn delete_my_feedback(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+/// `DELETE /api/v1/projects/{project_id}/me` — P1-16 / M1 user-level
+/// "forget me" (GDPR right-to-erasure COMPLETENESS). Erases the caller's
+/// ENTIRE footprint for this project: every feedback row they submitted (with
+/// the same cascade + P5 derived-text scrub as the per-item `DELETE
+/// …/me/feedback/{id}`) PLUS the user-keyed rows no per-item path reaches —
+/// their solicitation state and their roadmap/board votes.
+///
+/// Erasure order mirrors the per-item handler:
+///   1. resolve identity (`claims.sub`),
+///   2. fetch ALL of the sub's attachment `storage_key`s,
+///   3. purge each object's BYTES via `ObjectStore::delete` (idempotent),
+///   4. THEN the transactional bulk-erase (`erase_all_for_end_user`).
+///
+/// Bytes-before-rows: a mid-failure leaves retryable DB rows rather than
+/// orphaned object bytes. Always `204 No Content` — erasing a user with no
+/// footprint is a successful no-op (never an existence oracle).
+pub async fn erase_all_my_feedback(
+    State(state): State<MeFeedbackDataState>,
+    Path(project_id): Path<Uuid>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    let (scope, claims) = match authenticate_parts(
+        state.projects.as_ref(),
+        state.signing_keys.as_ref(),
+        state.jwt_iat_leeway_seconds,
+        project_id,
+        &headers,
+    )
+    .await
+    {
+        Ok(v) => v,
+        Err(resp) => return Ok(resp),
+    };
+
+    // Byte purge BEFORE the bulk row delete. `ObjectStore::delete` is
+    // idempotent, so a retry after a partial failure re-deletes cleanly.
+    let keys = state
+        .attachments
+        .list_storage_keys_for_end_user(&scope, &claims.sub)
+        .await?;
+    for key in &keys {
+        state.storage.delete(key).await.map_err(|e| {
+            ApiError::Internal(format!("attachment byte purge failed for {key}: {e}"))
+        })?;
+    }
+
+    // Transactional full erasure (feedback rows + solicitation + votes; the P5
+    // derived-text scrub + member_count decrement happen in the same txn).
+    state
+        .feedback
+        .erase_all_for_end_user(&scope, &claims.sub)
+        .await?;
+
+    Ok(StatusCode::NO_CONTENT.into_response())
+}
+
 /// `GET /api/v1/projects/{project_id}/me/feedback/export` — GDPR data
 /// portability (Phase A A5, D-A5). Returns the caller's COMPLETE feedback as
 /// one JSON document: every owned row with its public replies and attachment
@@ -610,6 +666,9 @@ pub fn me_feedback_data_router(state: MeFeedbackDataState) -> Router {
             "/api/v1/projects/:project_id/me/feedback/:feedback_id",
             delete(delete_my_feedback),
         )
+        // P1-16 / M1: user-level "forget me" — erases the caller's ENTIRE
+        // footprint for the project (feedback + solicitation + votes).
+        .route("/api/v1/projects/:project_id/me", delete(erase_all_my_feedback))
         .with_state(state)
 }
 

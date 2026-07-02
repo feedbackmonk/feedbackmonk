@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM roadmap_votes\n            WHERE tenant_id = $1 AND project_id = $2 AND voter_id = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "1de160543005678aadea4e35b6f42a68dccad4c4a5e291d71123864017dca0ab"
+}

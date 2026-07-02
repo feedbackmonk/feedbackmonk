@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT a.storage_key\n            FROM attachments a\n            JOIN feedback f ON f.id = a.feedback_id\n            WHERE a.tenant_id = $1 AND a.project_id = $2\n              AND f.tenant_id = $1 AND f.project_id = $2\n              AND f.end_user_sub = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "storage_key",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "bddcd9217c69748cd529603e36039ec777e67093e58931de027dfaddb06a7cd0"
+}
