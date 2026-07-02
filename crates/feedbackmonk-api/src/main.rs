@@ -88,6 +88,8 @@ async fn main() -> Result<()> {
         attachments: Arc::new(SqlxAttachmentRepo::new(state.pool.clone())),
         storage: feedbackmonk_api::storage::from_env()
             .context("failed to configure attachment object store")?,
+        signing_keys: Arc::clone(&state.signing_keys),
+        jwt_iat_leeway_seconds: state.jwt_iat_leeway_seconds,
     };
 
     // Phase A A1/A5: me_feedback erasure + export sub-router state. Its own

@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT end_user_sub, anon_token_hash\n            FROM feedback\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "end_user_sub",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "anon_token_hash",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true,
+      true
+    ]
+  },
+  "hash": "bc6845fc8a0ce4c99cc43eea050abb5a3658a2c24246bf1710356427c034e813"
+}

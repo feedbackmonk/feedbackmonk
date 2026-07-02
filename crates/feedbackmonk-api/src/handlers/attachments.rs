@@ -32,12 +32,18 @@
 //!
 //! ## Auth model
 //!
-//! Like the public submission endpoint (DEC-FBR-04 / DEC-PODS-001) this route is
-//! public and scoped by `(project_id, feedback short_code)` via
-//! `open_for_submission`. The widget calls it immediately after submission with
-//! the returned `feedback_id` (auth-mode Bearer or anonymous cookie). Binding
-//! the upload to the submitter's identity is a hardening follow-up tracked in
-//! the completion notes; v1 parity matches the frozen contract.
+//! **Upload** is public (write-only, no confidentiality risk) — scoped by
+//! `(project_id, feedback short_code)` via `open_for_submission`, as the widget
+//! calls it immediately after submission with the returned `feedback_id`.
+//!
+//! **List + download are bound to the SUBMITTER** (scrutiny P0-3): a public
+//! `FB-XXXXXX` short code is a reference, never a bearer capability, so a leaked
+//! short code cannot enumerate/exfiltrate another user's PII-dense screenshots
+//! and logs. `authorize_submitter` requires, per the feedback's stored identity:
+//! an identity-class JWT with matching `sub` (auth-mode), OR the submitting
+//! session's anon cookie (anonymous mode, the widget's in-session preview path).
+//! Any failure is `404` — never an existence oracle. (The `attachment_id` is
+//! itself a random `gen_random_uuid()`, so download also stays capability-hard.)
 //!
 //! ## Isolation oracle
 //!
@@ -45,16 +51,22 @@
 //! (`multi-tenant-isolation-check` Probe A clean by construction). Scope is
 //! minted by `open_for_submission` and threaded into every repo call.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
 
-use axum::extract::{DefaultBodyLimit, Multipart, Path, State};
-use axum::http::StatusCode;
+use axum::extract::{ConnectInfo, DefaultBodyLimit, Multipart, Path, State};
+use axum::http::header::AUTHORIZATION;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
+use feedbackmonk_core::KeyClass;
 use serde_json::json;
 use uuid::Uuid;
 
-use feedbackmonk_repository::{AttachmentKind, AttachmentRepo, NewAttachment, ProjectRepo};
+use feedbackmonk_repository::{
+    AttachmentKind, AttachmentRepo, NewAttachment, ProjectRepo, ProjectScope, SigningKeyRepo,
+};
 
 use crate::error::ApiError;
 use crate::storage::ObjectStore;
@@ -73,6 +85,11 @@ pub struct AttachmentState {
     pub attachments: Arc<dyn AttachmentRepo>,
     /// Object store for attachment bytes (local FS / S3-compatible).
     pub storage: Arc<dyn ObjectStore>,
+    /// Identity-class signing keys, for verifying the submitter's JWT on the
+    /// list/download read paths (scrutiny P0-3 submitter binding).
+    pub signing_keys: Arc<dyn SigningKeyRepo>,
+    /// JWT `iat` clock-skew tolerance (seconds); mirrors `AppState`.
+    pub jwt_iat_leeway_seconds: i64,
 }
 
 /// Max images per feedback (GUIDE §6).
@@ -258,8 +275,99 @@ pub async fn upload(
 /// The object-store `storage_key` is intentionally NEVER serialized — the
 /// wire shape is built field-by-field here, and the download route below is
 /// the sanctioned byte-fetch path.
+/// Read a non-empty `Authorization: Bearer <token>`.
+fn extract_bearer(headers: &HeaderMap) -> Option<String> {
+    let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
+    let stripped = value.strip_prefix("Bearer ")?;
+    (!stripped.is_empty()).then(|| stripped.to_string())
+}
+
+/// Authorize attachment READ (list/download) as the SUBMITTER of the feedback
+/// (scrutiny P0-3 — a public identifier is never an access token). Upload stays
+/// public (write-only, no confidentiality risk); reads must prove submitter
+/// identity so a leaked short code cannot enumerate/exfiltrate another user's
+/// PII-dense screenshots and logs.
+///
+/// - Auth-mode feedback (`end_user_sub` set): require a valid identity-class
+///   JWT whose `sub` equals the stored `end_user_sub`.
+/// - Anonymous feedback (`anon_token_hash` set): require the
+///   `X-Feedbackmonk-Anon-Cookie` whose `AnonGate::token_hash(peer_ip, cookie,
+///   project_id)` matches the stored hash — i.e. possession of the anon cookie
+///   from the submitting session (the widget's in-session preview path). The
+///   peer IP is used (not the trusted-proxy-resolved IP) to match exactly what
+///   the submit handler stored.
+///
+/// Any failure returns **404** (never 401/403) so the endpoint is not an
+/// existence oracle for short codes / attachment ids.
+async fn authorize_submitter(
+    state: &AttachmentState,
+    scope: &ProjectScope,
+    project_id: Uuid,
+    feedback_uuid: Uuid,
+    headers: &HeaderMap,
+    peer_ip: SocketAddr,
+) -> Result<(), Response> {
+    let not_found = || (StatusCode::NOT_FOUND, Json(json!({ "error": "not found" }))).into_response();
+
+    let (end_user_sub, anon_token_hash) = state
+        .attachments
+        .owner_of(scope, feedback_uuid)
+        .await
+        .map_err(|_| not_found())?;
+
+    if let Some(expected_sub) = end_user_sub {
+        // Auth-mode: verify the submitter's identity-class JWT.
+        let token = extract_bearer(headers).ok_or_else(not_found)?;
+        let active_keys = state
+            .signing_keys
+            .list_active_for_class(scope, KeyClass::Identity)
+            .await
+            .map_err(|_| not_found())?;
+        let now_unix = chrono::Utc::now().timestamp();
+        let claims = feedbackmonk_jwt::verify_with_leeway(
+            &token,
+            project_id,
+            &active_keys,
+            now_unix,
+            state.jwt_iat_leeway_seconds,
+        )
+        .map_err(|_| not_found())?;
+        if claims.sub == expected_sub {
+            Ok(())
+        } else {
+            Err(not_found())
+        }
+    } else if let Some(expected_hash) = anon_token_hash {
+        // Anonymous: possession of the submitting session's anon cookie.
+        let cookie = headers
+            .get(ANON_COOKIE_HEADER)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(not_found)?;
+        let computed = AnonGate::token_hash(&peer_ip.ip().to_string(), cookie, project_id);
+        if computed.as_slice() == expected_hash.as_slice() {
+            Ok(())
+        } else {
+            Err(not_found())
+        }
+    } else {
+        // Neither identity present — should not happen (submit sets exactly one).
+        Err(not_found())
+    }
+}
+
+/// Peer socket from an optional `ConnectInfo` (absent in `oneshot` tests),
+/// falling back to loopback so the anon hash is still recomputable.
+fn peer_or_loopback(connect: Option<ConnectInfo<SocketAddr>>) -> SocketAddr {
+    connect.map_or_else(
+        || SocketAddr::from(([127, 0, 0, 1], 0)),
+        |ConnectInfo(addr)| addr,
+    )
+}
+
 pub async fn list_attachments(
     State(state): State<AttachmentState>,
+    connect: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
     Path((project_id, feedback_id)): Path<(Uuid, String)>,
 ) -> Result<Response, ApiError> {
     let scope = state.projects.open_for_submission(project_id).await?;
@@ -267,6 +375,18 @@ pub async fn list_attachments(
         .attachments
         .resolve_feedback_uuid(&scope, &feedback_id)
         .await?; // RepoError::NotFound → 404
+    if let Err(resp) = authorize_submitter(
+        &state,
+        &scope,
+        project_id,
+        feedback_uuid,
+        &headers,
+        peer_or_loopback(connect),
+    )
+    .await
+    {
+        return Ok(resp);
+    }
     let rows = state.attachments.list_for_feedback(&scope, feedback_uuid).await?;
 
     let out: Vec<serde_json::Value> = rows
@@ -308,6 +428,8 @@ pub async fn list_attachments(
 /// not own.
 pub async fn download_attachment(
     State(state): State<AttachmentState>,
+    connect: Option<ConnectInfo<SocketAddr>>,
+    headers: HeaderMap,
     Path((project_id, feedback_id, attachment_id)): Path<(Uuid, String, Uuid)>,
 ) -> Result<Response, ApiError> {
     let scope = state.projects.open_for_submission(project_id).await?;
@@ -315,6 +437,18 @@ pub async fn download_attachment(
         .attachments
         .resolve_feedback_uuid(&scope, &feedback_id)
         .await?; // RepoError::NotFound → 404
+    if let Err(resp) = authorize_submitter(
+        &state,
+        &scope,
+        project_id,
+        feedback_uuid,
+        &headers,
+        peer_or_loopback(connect),
+    )
+    .await
+    {
+        return Ok(resp);
+    }
     let meta = state
         .attachments
         .get_meta(&scope, feedback_uuid, attachment_id)

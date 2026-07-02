@@ -111,6 +111,17 @@ pub trait AttachmentRepo: Send + Sync {
         short_code: &str,
     ) -> Result<Uuid>;
 
+    /// Fetch the SUBMITTER identity of a feedback row (scoped): its
+    /// `(end_user_sub, anon_token_hash)`. Exactly one is non-NULL. Used by the
+    /// attachment list/download handlers to bind read access to the submitter
+    /// (scrutiny P0-3 — a public identifier is never an access token).
+    /// `RepoError::NotFound` if the feedback is not in scope.
+    async fn owner_of(
+        &self,
+        scope: &ProjectScope,
+        feedback_uuid: Uuid,
+    ) -> Result<(Option<String>, Option<Vec<u8>>)>;
+
     /// Count existing `image` attachments for a feedback row (scoped). Used
     /// for the ≤4-images-per-feedback app-layer cap.
     async fn count_images(&self, scope: &ProjectScope, feedback_uuid: Uuid) -> Result<i64>;
@@ -190,6 +201,27 @@ impl AttachmentRepo for SqlxAttachmentRepo {
         .await?
         .ok_or(crate::error::RepoError::NotFound)?;
         Ok(row.id)
+    }
+
+    async fn owner_of(
+        &self,
+        scope: &ProjectScope,
+        feedback_uuid: Uuid,
+    ) -> Result<(Option<String>, Option<Vec<u8>>)> {
+        let row = sqlx::query!(
+            r#"
+            SELECT end_user_sub, anon_token_hash
+            FROM feedback
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            feedback_uuid,
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(crate::error::RepoError::NotFound)?;
+        Ok((row.end_user_sub, row.anon_token_hash))
     }
 
     async fn count_images(&self, scope: &ProjectScope, feedback_uuid: Uuid) -> Result<i64> {

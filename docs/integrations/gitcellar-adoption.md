@@ -456,9 +456,18 @@ Authorization: Bearer <jwt>
 
 ### 6.6 Attachments — upload / list / download
 
-Attachments hang off a feedback row (screenshots + PII-scrubbed service/console logs). These endpoints use
-the **public** `open_for_submission` project scope (same as the submit endpoint), NOT the JWT-`sub` scope —
+Attachments hang off a feedback row (screenshots + PII-scrubbed service/console logs).
 `<FB-ID>` is the `FB-XXXXXX` short code returned by submit. Capability `feedback.attachments`.
+
+> **Auth model (updated — submitter-bound reads).** **Upload** is public (write-only, `open_for_submission`
+> project scope), as the widget calls it right after submit. **List + download are bound to the SUBMITTER**:
+> a public `FB-XXXXXX` short code is a reference, never a bearer capability, so a leaked short code cannot
+> enumerate/exfiltrate another user's screenshots and logs. Send the SAME credential you submitted with:
+> for **auth-mode** feedback, the `Authorization: Bearer <EdDSA-JWT>` whose `sub` matches the submitter
+> (`aud` = `<PROJECT_ID>`); for **anonymous** feedback, the `X-Feedbackmonk-Anon-Cookie` from the submitting
+> session (the widget already sends it under `credentials: include`). A missing/wrong credential returns
+> **404** (never an existence oracle). GitCellar Desktop (auth-mode) MUST attach the Bearer JWT to the list
+> and download requests, exactly as it does for submit.
 
 **Upload** (pre-existing; documented here for completeness):
 ```
