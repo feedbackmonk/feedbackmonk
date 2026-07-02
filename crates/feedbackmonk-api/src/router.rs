@@ -6,7 +6,7 @@
 use axum::routing::{delete, get, post};
 use axum::Router;
 
-use crate::handlers::{health, login, projects, signing_keys, signup, verify_email};
+use crate::handlers::{account_recovery, health, login, projects, signing_keys, signup, verify_email};
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
@@ -17,6 +17,9 @@ pub fn router(state: AppState) -> Router {
         // session lapses (DEC-FBR-IMPL-10). ConnectInfo-dependent (rate-limit
         // bucket keys on client IP); served via into_make_service_with_connect_info.
         .route("/api/v1/login", post(login::login))
+        // Admin logout (scrutiny P1-1): AdminSession-gated; bumps the tenant's
+        // session_epoch (revokes every outstanding session) + clears the cookie.
+        .route("/api/v1/logout", post(account_recovery::logout))
         .route(
             "/api/v1/projects",
             post(projects::create).get(projects::list),

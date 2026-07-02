@@ -67,6 +67,16 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
     async fn mark_verified(&self, _scope: &TenantScope) -> Result<(), RepoError> {
         unimplemented!()
     }
+    async fn bump_session_epoch(&self, _scope: &TenantScope) -> Result<(), RepoError> {
+        unimplemented!()
+    }
+    async fn set_password(
+        &self,
+        _scope: &TenantScope,
+        _password_hash: &str,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
     async fn scope_for(&self, _id: uuid::Uuid) -> Result<TenantScope, RepoError> {
         unimplemented!()
     }

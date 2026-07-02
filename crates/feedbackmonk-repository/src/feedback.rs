@@ -2520,9 +2520,29 @@ mod tests {
             .unwrap();
         assert!(!first.deduped);
 
-        // Retry with the SAME key and a DIFFERENT body: first-write-wins — the
-        // original id comes back and the duplicate row is never committed.
+        // Retry with the SAME key and the SAME content (same submitter): the
+        // original id comes back deduped and the duplicate row is never
+        // committed (P1-3: same-identity, same-content retry is the legit dedupe).
         let second = repo
+            .submit_anonymous_full(
+                &scope,
+                &[2u8; 32],
+                None,
+                "first body",
+                None,
+                None,
+                FeedbackKind::Other,
+                Some("key-1"),
+            )
+            .await
+            .unwrap();
+        assert!(second.deduped);
+        assert_eq!(first.feedback_id, second.feedback_id);
+
+        // Reusing the SAME key with DIFFERENT content is rejected, not silently
+        // collapsed to the original (P1-3 / M6 — an undetectable client bug on a
+        // no-fallback backend otherwise silently discards real feedback).
+        let reuse = repo
             .submit_anonymous_full(
                 &scope,
                 &[2u8; 32],
@@ -2533,10 +2553,11 @@ mod tests {
                 FeedbackKind::Other,
                 Some("key-1"),
             )
-            .await
-            .unwrap();
-        assert!(second.deduped);
-        assert_eq!(first.feedback_id, second.feedback_id);
+            .await;
+        assert!(
+            matches!(reuse, Err(crate::error::RepoError::IdempotencyKeyReuse)),
+            "same key + different content must return IdempotencyKeyReuse, got {reuse:?}"
+        );
 
         let recent = repo.list_recent(&scope, 10).await.unwrap();
         assert_eq!(recent.len(), 1, "the rolled-back duplicate must not exist");

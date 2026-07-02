@@ -10,6 +10,11 @@ pub mod verify_email;
 // lapses (DEC-FBR-IMPL-10, post-v1 GitCellar admin-dashboard enabler).
 pub mod login;
 
+// Admin account recovery (scrutiny P1-1): logout + session revocation,
+// password reset (email token), verify-email resend, all built on the
+// per-tenant session_epoch (migration 00023).
+pub mod account_recovery;
+
 // Worker B's endpoint (public submission API, FR-FBR-03/05/06).
 pub mod feedback;
 

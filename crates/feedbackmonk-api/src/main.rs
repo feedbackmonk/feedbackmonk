@@ -33,7 +33,8 @@ use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
     SqlxAnalysisSweepRepo, SqlxAttachmentRepo, SqlxBoardVoteRepo, SqlxClusterRepo,
     SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
-    SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxProjectRepo, SqlxRecommendationRepo,
+    SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxPasswordResetRepo, SqlxProjectRepo,
+    SqlxRecommendationRepo,
     SqlxRoadmapItemRepo, SqlxRoadmapVoteRepo, SqlxRunnerTokenRepo, SqlxRunnerTokenRevocationRepo,
     SqlxSigningKeyRepo, SqlxTenantRepo, SqlxTierQuotaRepo, SqlxWorkOrderEventRepo, SqlxWorkOrderRepo,
 };
@@ -45,14 +46,16 @@ use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::translation::{DeepLTranslator, LibreTranslateTranslator, TranslationProvider};
 use feedbackmonk_api::{
-    admin_feedback_routes, admin_roadmap_router, admin_tier_router, apply_public_rate_limit,
-    attachments_router, board_router, capabilities_router, cluster_admin_router,
+    account_recovery_router, admin_feedback_routes, admin_roadmap_router, admin_tier_router,
+    apply_public_rate_limit, attachments_router, board_router, capabilities_router,
+    cluster_admin_router,
     me_feedback_data_router, me_feedback_router, moderation_router, ops_router, parse_origins,
     promote_router, public_cors_layer, recommendation_admin_router, roadmap_router,
     runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
     spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
-    work_order_admin_router, work_order_runner_router, AttachmentState, MeFeedbackDataState,
-    PublicRateLimit, VotingCache, DEFAULT_TRANSLATION_POLL_SECS, DEFAULT_TRANSLATION_TARGET_LANG,
+    work_order_admin_router, work_order_runner_router, AccountRecoveryState, AttachmentState,
+    MeFeedbackDataState, PublicRateLimit, VotingCache, DEFAULT_TRANSLATION_POLL_SECS,
+    DEFAULT_TRANSLATION_TARGET_LANG,
 };
 
 #[tokio::main]
@@ -104,6 +107,28 @@ async fn main() -> Result<()> {
         attachments: Arc::clone(&attachment_state.attachments),
         storage: Arc::clone(&attachment_state.storage),
         jwt_iat_leeway_seconds: state.jwt_iat_leeway_seconds,
+    };
+
+    // Scrutiny P1-1: admin account-recovery sub-router state (password reset +
+    // verify-email resend). Its own state type (NOT AppState) so the new
+    // password_resets repo + reset TTL don't ripple through every AppState
+    // construction site — same pattern as AttachmentState / MeFeedbackDataState.
+    // Logout runs on AppState (needs AdminSession) and is wired into the Worker
+    // A router directly.
+    let reset_ttl_hours: i64 = env::var("FEEDBACKMONK_RESET_TOKEN_TTL_HOURS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|h| *h >= 1)
+        .unwrap_or(1);
+    let account_recovery_state = AccountRecoveryState {
+        tenants: Arc::clone(&state.tenants),
+        password_resets: Arc::new(SqlxPasswordResetRepo::new(state.pool.clone())),
+        email_verifications: Arc::clone(&state.email_verifications),
+        mailer: Arc::clone(&state.mailer),
+        login_gate: state.login_gate.clone(),
+        public_url: Arc::clone(&state.public_url),
+        reset_token_ttl: Duration::hours(reset_ttl_hours),
+        verify_token_ttl: state.verify_token_ttl,
     };
 
     // P2: spawn the 60s roadmap voting-cache refresh tick. JoinHandle is
@@ -161,7 +186,13 @@ async fn main() -> Result<()> {
         tracing::info!(origins = ?cors_origins, "CORS allowlist for public widget endpoints");
     }
 
-    let app = build_app(state, attachment_state, me_feedback_data_state, &cors_origins);
+    let app = build_app(
+        state,
+        attachment_state,
+        me_feedback_data_state,
+        account_recovery_state,
+        &cors_origins,
+    );
 
     let addr: SocketAddr = (bind_addr, port).into();
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -476,6 +507,7 @@ fn build_app(
     state: AppState,
     attachment_state: AttachmentState,
     me_feedback_data_state: MeFeedbackDataState,
+    account_recovery_state: AccountRecoveryState,
     cors_origins: &[String],
 ) -> Router {
     // FR-FBR-18: every request is wrapped in a span carrying a `request_id`
@@ -501,6 +533,11 @@ fn build_app(
     let prl = PublicRateLimit::new(state.ip_gate.clone(), state.trusted_proxy_hops);
 
     let app = worker_a_router(state.clone())
+        // Scrutiny P1-1: password-reset request/confirm + verify-email resend.
+        // Public (unauthenticated) + email-triggering, so rate-limited via the
+        // shared LoginGate inside the handlers. No CORS (admin/tenant surface,
+        // same posture as login/signup in worker_a_router — not a widget embed).
+        .merge(account_recovery_router(account_recovery_state))
         .merge(apply_public_rate_limit(
             submission_router(state.clone()).layer(cors.clone()),
             prl.clone(),

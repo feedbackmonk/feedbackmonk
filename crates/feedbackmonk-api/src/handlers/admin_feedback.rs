@@ -855,6 +855,9 @@ mod tests {
         async fn send_verify_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
             Ok(())
         }
+        async fn send_password_reset_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
 
     fn build_test_state(pool: &PgPool) -> (AppState, Arc<RecordingEmailNotifier>) {

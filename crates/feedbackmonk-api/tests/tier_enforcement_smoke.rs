@@ -52,6 +52,9 @@ impl Mailer for StubMailer {
     async fn send_verify_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
         Ok(())
     }
+    async fn send_password_reset_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+        Ok(())
+    }
 }
 
 struct NoopEmailNotifier;
@@ -137,6 +140,7 @@ async fn seed_verified_session(state: &AppState, email: &str, tier: &str) -> (Uu
         .unwrap();
     let cookie = feedbackmonk_api::auth::issue_session_cookie(
         tenant.id,
+        i64::from(tenant.session_epoch),
         state.session_secret.as_ref(),
     );
     let cookie_str = cookie

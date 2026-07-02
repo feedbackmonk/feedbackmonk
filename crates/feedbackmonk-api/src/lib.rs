@@ -33,6 +33,8 @@ pub use crash_correlation::{
     CorrelationOutcome, CrashCorrelator, CrashEvent, GlitchtipCorrelator,
 };
 pub use error::ApiError;
+// Admin account recovery (scrutiny P1-1): logout + password reset + verify resend.
+pub use handlers::account_recovery::{account_recovery_router, AccountRecoveryState};
 pub use handlers::attachments::{attachments_router, scrub_log_for_storage, AttachmentState};
 pub use handlers::admin_feedback::routes as admin_feedback_routes;
 // Public Feedback Board + Moderation Gate (Contracts C28/C29).

@@ -25,6 +25,24 @@ pub trait TenantRepo: Send + Sync {
 
     async fn mark_verified(&self, scope: &TenantScope) -> Result<()>;
 
+    /// Bump the tenant's `session_epoch` (migration 00023, scrutiny P1-1).
+    ///
+    /// Increments the per-tenant epoch that the signed admin-session cookie
+    /// carries. Because the `AdminSession` extractor rejects any cookie whose
+    /// epoch != the tenant's current epoch, a single bump invalidates EVERY
+    /// outstanding session for the tenant — the logout + leaked-cookie
+    /// kill-switch. Scope-disciplined: only an authenticated caller (or the
+    /// pre-auth password-reset confirm, which mints a scope via `scope_for`
+    /// after validating the reset token) can bump.
+    async fn bump_session_epoch(&self, scope: &TenantScope) -> Result<()>;
+
+    /// Replace the tenant's argon2id password hash (scrutiny P1-1).
+    ///
+    /// Used by the password-reset confirm path AFTER the reset token is
+    /// validated. Scope-disciplined; the caller supplies an already-hashed
+    /// PHC string (hashing lives in the API layer's `auth::password`).
+    async fn set_password(&self, scope: &TenantScope, password_hash: &str) -> Result<()>;
+
     /// Mint a `TenantScope` for the tenant identified by `id`. This is the
     /// SOLE bridge from a raw `Uuid` to a `TenantScope`; callers must have
     /// already authenticated the bearer (e.g. validated a session cookie or
@@ -222,7 +240,7 @@ impl TenantRepo for SqlxTenantRepo {
                 brand_name, email_subject_prefix, support_email, footer_signature
             )
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, email, password_hash, verified_at, tier, created_at, updated_at
+            RETURNING id, email, password_hash, verified_at, tier, session_epoch, created_at, updated_at
             "#,
             email,
             password_hash,
@@ -244,6 +262,7 @@ impl TenantRepo for SqlxTenantRepo {
             password_hash: row.password_hash,
             verified_at: row.verified_at,
             tier: row.tier,
+            session_epoch: row.session_epoch,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -252,7 +271,7 @@ impl TenantRepo for SqlxTenantRepo {
     async fn find_by_email(&self, email: &str) -> Result<Option<Tenant>> {
         let row = sqlx::query!(
             r#"
-            SELECT id, email, password_hash, verified_at, tier, created_at, updated_at
+            SELECT id, email, password_hash, verified_at, tier, session_epoch, created_at, updated_at
             FROM tenants WHERE email = $1
             "#,
             email
@@ -266,6 +285,7 @@ impl TenantRepo for SqlxTenantRepo {
             password_hash: r.password_hash,
             verified_at: r.verified_at,
             tier: r.tier,
+            session_epoch: r.session_epoch,
             created_at: r.created_at,
             updated_at: r.updated_at,
         }))
@@ -274,7 +294,7 @@ impl TenantRepo for SqlxTenantRepo {
     async fn get(&self, scope: &TenantScope) -> Result<Tenant> {
         let row = sqlx::query!(
             r#"
-            SELECT id, email, password_hash, verified_at, tier, created_at, updated_at
+            SELECT id, email, password_hash, verified_at, tier, session_epoch, created_at, updated_at
             FROM tenants WHERE id = $1
             "#,
             scope.tenant_id()
@@ -289,6 +309,7 @@ impl TenantRepo for SqlxTenantRepo {
             password_hash: row.password_hash,
             verified_at: row.verified_at,
             tier: row.tier,
+            session_epoch: row.session_epoch,
             created_at: row.created_at,
             updated_at: row.updated_at,
         })
@@ -298,6 +319,27 @@ impl TenantRepo for SqlxTenantRepo {
         sqlx::query!(
             "UPDATE tenants SET verified_at = now(), updated_at = now() WHERE id = $1",
             scope.tenant_id()
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn bump_session_epoch(&self, scope: &TenantScope) -> Result<()> {
+        sqlx::query!(
+            "UPDATE tenants SET session_epoch = session_epoch + 1, updated_at = now() WHERE id = $1",
+            scope.tenant_id()
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn set_password(&self, scope: &TenantScope, password_hash: &str) -> Result<()> {
+        sqlx::query!(
+            "UPDATE tenants SET password_hash = $2, updated_at = now() WHERE id = $1",
+            scope.tenant_id(),
+            password_hash,
         )
         .execute(&self.pool)
         .await?;
@@ -626,6 +668,34 @@ mod tests {
         repo.mark_verified(&scope).await.unwrap();
         let after = repo.get(&scope).await.unwrap();
         assert!(after.verified_at.is_some());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn bump_session_epoch_increments_monotonically(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("epoch@example.com", "h").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+        assert_eq!(t.session_epoch, 0, "fresh tenant starts at epoch 0");
+
+        repo.bump_session_epoch(&scope).await.unwrap();
+        assert_eq!(repo.get(&scope).await.unwrap().session_epoch, 1);
+        repo.bump_session_epoch(&scope).await.unwrap();
+        assert_eq!(repo.get(&scope).await.unwrap().session_epoch, 2);
+
+        // Cross-tenant isolation: a sibling's epoch is independent.
+        let t2 = repo.create("epoch2@example.com", "h").await.unwrap();
+        let scope2 = repo.scope_for(t2.id).await.unwrap();
+        assert_eq!(repo.get(&scope2).await.unwrap().session_epoch, 0);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn set_password_replaces_hash(pool: PgPool) {
+        let repo = SqlxTenantRepo::new(pool.clone());
+        let t = repo.create("setpw@example.com", "old-hash").await.unwrap();
+        let scope = repo.scope_for(t.id).await.unwrap();
+
+        repo.set_password(&scope, "new-hash").await.unwrap();
+        assert_eq!(repo.get(&scope).await.unwrap().password_hash, "new-hash");
     }
 
     #[sqlx::test(migrations = "../../migrations")]

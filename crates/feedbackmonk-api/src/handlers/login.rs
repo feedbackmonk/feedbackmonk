@@ -115,8 +115,13 @@ pub async fn login(
         return Err(ApiError::Forbidden);
     }
 
-    // (5) Mint the same signed session cookie verify-email issues.
-    let jar = jar.add(issue_session_cookie(tenant.id, state.session_secret.as_ref()));
+    // (5) Mint the same signed session cookie verify-email issues, carrying the
+    //     tenant's current session_epoch (scrutiny P1-1 revocation).
+    let jar = jar.add(issue_session_cookie(
+        tenant.id,
+        i64::from(tenant.session_epoch),
+        state.session_secret.as_ref(),
+    ));
     Ok((
         jar,
         Json(LoginResponse {

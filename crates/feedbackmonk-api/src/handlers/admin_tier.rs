@@ -100,6 +100,9 @@ mod tests {
         async fn send_verify_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
             Ok(())
         }
+        async fn send_password_reset_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+            Ok(())
+        }
     }
     struct NoopEmailNotifier;
     #[async_trait::async_trait]
@@ -170,7 +173,11 @@ mod tests {
         set_tier_via_repo(&state.pool, t.id, tier_str).await;
         let scope = state.tenants.scope_for(t.id).await.unwrap();
         state.tenants.mark_verified(&scope).await.unwrap();
-        let cookie = issue_session_cookie(t.id, state.session_secret.as_ref());
+        let cookie = issue_session_cookie(
+            t.id,
+            i64::from(t.session_epoch),
+            state.session_secret.as_ref(),
+        );
         // Cookie::to_string() renders the full Set-Cookie form with
         // attributes; the request-header Cookie field wants just
         // `name=value`. Strip at the first `;`.

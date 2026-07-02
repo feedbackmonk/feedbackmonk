@@ -11,8 +11,18 @@
 //!    do anything with it until verify-email completes).
 //!
 //! The email send failure path is logged but does NOT roll back the tenant.
-//! Customers can request a re-send later (P1 work); for P0 we surface a generic
-//! 202 so we never reveal whether an email already exists in our system.
+//! Customers can request a re-send later (`POST /api/v1/verify-email/resend`,
+//! scrutiny P1-1); we surface a generic 202 so we never reveal whether an email
+//! already exists in our system.
+//!
+//! ## Enumeration resistance (scrutiny P2-1)
+//!
+//! A duplicate email (`RepoError::Conflict` on `create`) is swallowed to the
+//! SAME 202 the happy path returns — NOT a 409. A 409 would let an attacker
+//! probe which emails are registered, contradicting this module's own generic-
+//! 202 contract. The already-registered owner can recover via password reset /
+//! verify-email resend; we do not send an out-of-band "you already have an
+//! account" email in v1 (optional, not required).
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -87,7 +97,25 @@ pub async fn signup(
     validate_password(&req.password)?;
 
     let hash = hash_password(&req.password)?;
-    let tenant = state.tenants.create(&email, &hash).await?;
+
+    // Enumeration resistance (scrutiny P2-1): a duplicate email must NOT return
+    // 409 (that reveals the email is registered). Swallow the conflict to the
+    // same generic 202 the happy path returns. The already-registered owner
+    // recovers via password reset / verify-email resend (P1-1).
+    let tenant = match state.tenants.create(&email, &hash).await {
+        Ok(t) => t,
+        Err(feedbackmonk_repository::RepoError::Conflict) => {
+            tracing::info!("signup for already-registered email; returning generic 202 (no enumeration)");
+            return Ok((
+                StatusCode::ACCEPTED,
+                Json(SignupResponse {
+                    tenant_id: Uuid::nil(),
+                    message: "check your email to verify",
+                }),
+            ));
+        }
+        Err(e) => return Err(e.into()),
+    };
 
     // Mint scope for the freshly-created tenant -- needed by the verification
     // repo's scope-disciplined `create`.

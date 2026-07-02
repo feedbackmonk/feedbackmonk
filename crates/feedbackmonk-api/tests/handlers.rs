@@ -42,6 +42,11 @@ impl Mailer for RecordingMailer {
         self.sent.lock().unwrap().push((to.to_string(), link.to_string()));
         Ok(())
     }
+
+    async fn send_password_reset_email(&self, to: &str, link: &str) -> anyhow::Result<()> {
+        self.sent.lock().unwrap().push((to.to_string(), link.to_string()));
+        Ok(())
+    }
 }
 
 impl RecordingMailer {
@@ -190,7 +195,10 @@ async fn signup_happy_path_creates_tenant_and_sends_email(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn signup_duplicate_email_yields_409(pool: PgPool) {
+async fn signup_duplicate_email_yields_202_no_enumeration(pool: PgPool) {
+    // Scrutiny P2-1: a duplicate email must return the SAME generic 202 as a
+    // fresh signup — NOT 409 — so an attacker cannot probe which emails are
+    // registered.
     let mailer = Arc::new(RecordingMailer::default());
     let (state, _) = build_test_state(&pool, mailer);
     let app = router(state);
@@ -205,7 +213,11 @@ async fn signup_duplicate_email_yields_409(pool: PgPool) {
     let resp = app.clone().oneshot(make_req()).await.unwrap();
     assert_eq!(resp.status(), StatusCode::ACCEPTED);
     let resp = app.oneshot(make_req()).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        resp.status(),
+        StatusCode::ACCEPTED,
+        "duplicate email must not reveal existence via 409"
+    );
 }
 
 #[sqlx::test(migrations = "../../migrations")]

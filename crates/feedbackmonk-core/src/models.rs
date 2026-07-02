@@ -22,6 +22,11 @@ pub struct Tenant {
     pub password_hash: String,
     pub verified_at: Option<DateTime<Utc>>,
     pub tier: String,
+    /// Per-tenant session-revocation epoch (migration 00023, scrutiny P1-1).
+    /// Folded into the signed admin-session cookie's HMAC payload; a cookie is
+    /// rejected when its epoch != this value. Bumped by logout + password-reset
+    /// confirm to revoke every outstanding session for the tenant.
+    pub session_epoch: i32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

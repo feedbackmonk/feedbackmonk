@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE password_resets\n            SET used_at = now()\n            WHERE token_hash = $1 AND tenant_id = $2 AND used_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "ba9c709758102e9d6ff759703c63685b86852f0ad9d7a0164a357f593ad6247b"
+}

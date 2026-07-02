@@ -23,6 +23,7 @@ pub mod feedback;
 pub mod feedback_replies;
 pub mod feedback_status_history;
 pub mod health;
+pub mod password_resets;
 pub mod projects;
 pub mod recommendations;
 pub mod roadmap_items;
@@ -53,6 +54,7 @@ pub use feedback::{
 pub use feedback_replies::{FeedbackReply, FeedbackReplyRepo, ReplyVisibility, SqlxFeedbackReplyRepo};
 pub use feedback_status_history::{FeedbackStatusHistoryRepo, SqlxFeedbackStatusHistoryRepo};
 pub use health::SqlxHealthCheck;
+pub use password_resets::{PasswordReset, PasswordResetRepo, SqlxPasswordResetRepo};
 pub use projects::{BoardSettings, ProjectRepo, SqlxProjectRepo};
 pub use recommendations::{
     NewRecommendation, Recommendation, RecommendationRepo, SqlxRecommendationRepo,

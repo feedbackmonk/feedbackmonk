@@ -21,12 +21,15 @@ endpoint behind the `feedbackmonk_session` cookie (Contract C11):
 
 - Hash + verify tenant passwords (argon2id, OWASP P0 defaults).
 - Build + verify the signed-cookie admin session (HMAC-SHA256 over the
-  16-byte tenant UUID concatenated with the 8-byte big-endian Unix
-  issuance timestamp).
+  16-byte tenant UUID, the 8-byte big-endian Unix issuance timestamp,
+  and the 8-byte big-endian per-tenant `session_epoch`).
 - Provide the `AdminSession` axum extractor that:
   - rejects (401) on missing / malformed / HMAC-invalid / expired /
     future-dated cookies,
   - rejects (401) when the tenant row has been deleted,
+  - rejects (401) when the cookie's `session_epoch` != the tenant's
+    current epoch (session revocation, scrutiny P1-1 — a logout or
+    password-reset confirm bumps the epoch to kill outstanding cookies),
   - rejects (403) when the tenant is still in pending-verification
     state (`verified_at IS NULL`),
   - returns `AdminSession { scope: TenantScope }` on success — the
@@ -37,9 +40,9 @@ endpoint behind the `feedbackmonk_session` cookie (Contract C11):
 
 | File | One-line summary |
 |---|---|
-| `mod.rs` | Module surface — re-exports `ops::OpsAuth`, `password::*`, `session::{issue_session_cookie, AdminSession, SESSION_COOKIE_NAME}`. |
+| `mod.rs` | Module surface — re-exports `ops::OpsAuth`, `password::*`, `session::{issue_session_cookie, clear_session_cookie, AdminSession, SESSION_COOKIE_NAME}`. |
 | `password.rs` | argon2id `hash_password` + `verify_password` (constant-time-safe wrapper around `argon2::PasswordHasher`). |
-| `session.rs` | Cookie format, HMAC verification, `issue_session_cookie`, `AdminSession` `FromRequestParts` impl. Cookie value: `<b64(tenant_uuid_16)>.<b64(issued_unix_be_8)>.<b64(hmac_sha256_32)>`. |
+| `session.rs` | Cookie format, HMAC verification, `issue_session_cookie`, `clear_session_cookie` (logout), `AdminSession` `FromRequestParts` impl (incl. `session_epoch` revocation check). Cookie value: `<b64(tenant_uuid_16)>.<b64(issued_unix_be_8)>.<b64(session_epoch_be_8)>.<b64(hmac_sha256_32)>`. |
 | `ops.rs` | `OpsAuth` operator bearer-token guard for the ops mutation surface (DEC-FBR-IMPL-11). Deliberately separate from `AdminSession`: constant-time compares `Authorization: Bearer` against `FEEDBACKMONK_OPS_TOKEN`. Token unset ⇒ 404 (endpoint invisible); missing/wrong token ⇒ 401. Keeps a Free tenant's own admin session from flipping its tier or stripping the FR-FBR-14 badge. |
 | `README.md` | This file. |
 
@@ -52,8 +55,13 @@ use feedbackmonk_api::auth::{
 };
 
 // Sign up / verify-email handler — mint the cookie after a successful
-// password check or after redeeming a verify-email token.
-let cookie = issue_session_cookie(tenant.id, state.session_secret.as_ref());
+// password check or after redeeming a verify-email token. The cookie
+// carries the tenant's current session_epoch (revocation, P1-1).
+let cookie = issue_session_cookie(
+    tenant.id,
+    i64::from(tenant.session_epoch),
+    state.session_secret.as_ref(),
+);
 response.headers_mut().insert(SET_COOKIE, cookie.to_string().parse().unwrap());
 
 // Admin endpoint — extract the session via axum extractor.
@@ -76,7 +84,8 @@ Cookie attributes (Contract C11):
 | Secure | `true` (browsers tolerate `Secure` on localhost in dev) |
 | SameSite | `Lax` |
 | Path | `/` |
-| Issued by | `issue_session_cookie(tenant_id, &secret)` (call from signup/verify-email/login handlers) |
+| Issued by | `issue_session_cookie(tenant_id, session_epoch, &secret)` (call from signup/verify-email/login handlers) |
+| Cleared by | `clear_session_cookie()` (logout — empty value, Max-Age 0; the epoch bump is the authoritative revocation) |
 
 ## 4. Constraints & Business Rules
 
@@ -85,8 +94,9 @@ Cookie attributes (Contract C11):
    ships `feedbackmonk_session` (Contract C11 reconciles). Worker A + B +
    e2e scripts + tests all use `feedbackmonk_session` exactly.
 2. **HMAC input order is load-bearing.** `concat(tenant_uuid_16,
-   issued_unix_be_8)` — never the other way. Reordering or
-   re-encoding either half invalidates every cookie in flight.
+   issued_unix_be_8, session_epoch_be_8)` — never a different order.
+   Reordering or re-encoding any segment invalidates every cookie in
+   flight.
 3. **`subtle::ConstantTimeEq` for tag comparison.** Constant-time
    comparison protects against timing-based tag-discovery attacks.
    `==` byte comparison is forbidden; CI's clippy-pedantic config does
@@ -126,9 +136,20 @@ Cookie attributes (Contract C11):
 - **HMAC-SHA256, not stateful sessions.** Single signed-cookie keeps
   the admin path zero-DB-write on every request. Stateful sessions
   (DB-backed session-id table) would require eviction logic + cost a
-  query-per-request. The 7-day TTL + immediate-revocation-via-key-rotation
-  is acceptable for the P0 threat model.
-- **Cookie format: three `.`-separated b64url-no-pad segments.** Not
+  query-per-request. The 7-day TTL + per-tenant `session_epoch`
+  revocation (scrutiny P1-1) gives a real kill switch without a session
+  table — the `AdminSession` extractor already loads the tenant row (for
+  the `verified_at` check), so the epoch comparison is free.
+- **Session revocation via `session_epoch` (scrutiny P1-1).** The cookie
+  carries the tenant's epoch at issuance; the extractor rejects any
+  cookie whose epoch != the tenant's current epoch (migration 00023).
+  `POST /api/v1/logout` and password-reset confirm bump the epoch,
+  invalidating every outstanding cookie for that tenant — WITHOUT
+  rotating the global `FEEDBACKMONK_SESSION_SECRET` (which would log out
+  all tenants). Per-tenant granularity is correct for the single-admin
+  model. Cost: the cookie payload gained a 4th HMAC-covered segment, so
+  cookies minted before the deploy re-login once.
+- **Cookie format: four `.`-separated b64url-no-pad segments.** Not
   JWT (avoids carrying the `alg` header surface area + the
   algorithm-confusion attack surface that haunts JWT cookies). Custom
   format means custom parser, which means we DON'T accept any algorithm

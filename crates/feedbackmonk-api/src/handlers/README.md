@@ -40,9 +40,10 @@ and respects three load-bearing patterns:
 | File | Endpoint(s) | Notes |
 |---|---|---|
 | `mod.rs` | — | Module surface. `pub mod` for each handler. |
-| `signup.rs` | `POST /api/v1/signup` | Tenant signup (FR-FBR-02). 202 + tenant_id; mailer queues verify-email; 409 on duplicate email. |
+| `signup.rs` | `POST /api/v1/signup` | Tenant signup (FR-FBR-02). 202 + tenant_id; mailer queues verify-email. Duplicate email → the SAME generic 202 (scrutiny P2-1, no enumeration — NOT 409). |
 | `verify_email.rs` | `POST /api/v1/verify-email` | Redeem verify-email token; on success, mark tenant verified + issue `feedbackmonk_session` cookie (Contract C11). |
 | `login.rs` | `POST /api/v1/login` | Admin password login (DEC-FBR-IMPL-10). email+password → same `feedbackmonk_session` cookie. Pre-argon2 `LoginGate` throttle (429), enumeration-resistant generic 401 (unknown email = wrong password, with dummy-verify timing equalization), 403 for correct-password-but-unverified. Re-auth path after the verify-email session lapses. |
+| `account_recovery.rs` | `POST /api/v1/logout`, `…/password-reset/request`, `…/password-reset/confirm`, `…/verify-email/resend` | Admin account recovery (scrutiny P1-1). Logout (AdminSession) bumps the tenant `session_epoch` (revokes all sessions) + clears the cookie. Password reset is an email-token flow (sha256-at-rest, short TTL): request → always 202; confirm → set new argon2 hash + single-use token + epoch bump (revoke old sessions). Verify-email resend → always 202, re-mints a verify token for a PENDING tenant (fixes the SMTP-brick). request/resend are `LoginGate`-throttled (IP+email). |
 | `projects.rs` | `POST /api/v1/projects` + `GET /api/v1/projects` | Admin-gated CRUD over tenant's projects; emits the embed-snippet for the widget. |
 | `signing_keys.rs` | `POST /api/v1/projects/:id/signing-keys` + `DELETE /api/v1/projects/:id/signing-keys/:key_id` | Ed25519 public-key registration / deactivation (FR-FBR-05, Contract C4). Admin-gated, scope-bound. |
 | `feedback.rs` | `POST /api/v1/projects/:id/feedback` | Public submission endpoint (Contract C3). Auth-mode JWT dispatch + anonymous-mode rate-limit + cookie dedup. |

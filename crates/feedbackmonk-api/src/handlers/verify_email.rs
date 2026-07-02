@@ -92,8 +92,11 @@ pub async fn verify(
             state.tenants.mark_verified(&scope).await?;
             state.email_verifications.mark_used(&scope, token).await?;
 
-            // Cookie-jar add returns a new jar with the cookie attached.
-            let cookie = issue_session_cookie(redemption.tenant_id, state.session_secret.as_ref());
+            // Cookie-jar add returns a new jar with the cookie attached. Carry
+            // the tenant's current session_epoch (scrutiny P1-1 revocation).
+            let epoch = i64::from(state.tenants.get(&scope).await?.session_epoch);
+            let cookie =
+                issue_session_cookie(redemption.tenant_id, epoch, state.session_secret.as_ref());
             // Yield to keep argon2-bound work fair on tokio's blocking pool.
             tokio::time::sleep(StdDuration::ZERO).await;
             let jar = jar.add(cookie);
@@ -108,7 +111,10 @@ pub async fn verify(
         Outcome::Replay => {
             // Already-verified tenant, but within the replay window -- re-mint the
             // session cookie so a slow client can still complete the flow.
-            let cookie = issue_session_cookie(redemption.tenant_id, state.session_secret.as_ref());
+            let scope = state.tenants.scope_for(redemption.tenant_id).await?;
+            let epoch = i64::from(state.tenants.get(&scope).await?.session_epoch);
+            let cookie =
+                issue_session_cookie(redemption.tenant_id, epoch, state.session_secret.as_ref());
             let jar = jar.add(cookie);
             Ok((
                 jar,

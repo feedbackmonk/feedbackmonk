@@ -33,4 +33,10 @@ pub trait Mailer: Send + Sync {
     /// Send the verify-email message. `to` is the tenant's email. `link` is
     /// the fully-formed `${PUBLIC_URL}/verify-email?token=...` URL.
     async fn send_verify_email(&self, to: &str, link: &str) -> anyhow::Result<()>;
+
+    /// Send the password-reset message (scrutiny P1-1). `to` is the tenant's
+    /// email. `link` is the fully-formed
+    /// `${PUBLIC_URL}/reset-password?token=...` URL. Short-lived by design
+    /// (the token TTL is `FEEDBACKMONK_RESET_TOKEN_TTL_HOURS`, default 1h).
+    async fn send_password_reset_email(&self, to: &str, link: &str) -> anyhow::Result<()>;
 }
