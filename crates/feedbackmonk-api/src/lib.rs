@@ -17,6 +17,7 @@
 pub mod auth;
 pub mod cors;
 pub mod crash_correlation;
+pub mod egress_guard;
 pub mod email;
 pub mod error;
 pub mod handlers;

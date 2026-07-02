@@ -44,11 +44,8 @@ use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError};
 use feedbackmonk_repository::ProjectScope;
 
 use crate::error::ApiError;
+use crate::handlers::anon_cookie;
 use crate::state::AppState;
-
-/// Cookie attributes for the anon cookie when minted by a vote request.
-/// Same Max-Age / SameSite / HttpOnly as the submission endpoint.
-const ANON_COOKIE_MAX_AGE_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 /// Failure modes of voter resolution. Each maps to a distinct HTTP response
 /// (the handlers translate these via the response builders below).
@@ -162,10 +159,12 @@ pub(crate) fn resolve_anon_cookie(headers: &HeaderMap) -> (String, Option<Header
         }
     }
     let minted = AnonGate::mint_cookie();
-    let set_cookie = format!(
-        "{ANON_COOKIE_HEADER}={minted}; Path=/api/v1; Max-Age={ANON_COOKIE_MAX_AGE_SECONDS}; HttpOnly; SameSite=Lax"
-    );
-    let header_value = HeaderValue::from_str(&set_cookie).ok();
+    // Scrutiny P2-3: the vote path is CORS-credentialed (cross-site). Mint with
+    // `SameSite=None; Secure` via the SHARED helper so it MATCHES the submit
+    // path exactly. A `SameSite=Lax` cookie is dropped cross-site → a fresh
+    // cookie/voter_id per request → the uniqueness guard is defeated
+    // (ballot-stuffing). One source of truth prevents the two paths drifting.
+    let header_value = anon_cookie::set_cookie_header(&minted);
     (minted, header_value)
 }
 
@@ -233,6 +232,28 @@ mod tests {
         assert_eq!(s.len(), 64);
         assert!(s.chars().all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()));
         assert_eq!(&s[..4], "abab");
+    }
+
+    #[test]
+    fn resolve_anon_cookie_mints_cross_site_cookie() {
+        // Scrutiny P2-3: a minted vote cookie must be SameSite=None; Secure to
+        // match the submit path — a Lax cookie would enable ballot-stuffing.
+        let (cookie, set) = resolve_anon_cookie(&HeaderMap::new());
+        assert!(!cookie.is_empty());
+        let set_value = set.expect("Set-Cookie must be emitted").to_str().unwrap().to_string();
+        assert!(set_value.contains("SameSite=None"));
+        assert!(set_value.contains("Secure"));
+        assert!(set_value.contains("HttpOnly"));
+        assert!(!set_value.contains("SameSite=Lax"));
+    }
+
+    #[test]
+    fn resolve_anon_cookie_reuses_existing() {
+        let mut h = HeaderMap::new();
+        h.insert(ANON_COOKIE_HEADER, HeaderValue::from_static("existing-xyz"));
+        let (cookie, set) = resolve_anon_cookie(&h);
+        assert_eq!(cookie, "existing-xyz");
+        assert!(set.is_none(), "no Set-Cookie when the cookie is already present");
     }
 
     #[test]

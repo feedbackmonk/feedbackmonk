@@ -6,7 +6,9 @@
 //! 1. Free-tier tenant creates 2nd project → 409 with structured
 //!    `tier_cap_exceeded` body.
 //! 2. Free-tier tenant submits 51st feedback in rolling 30-day window
-//!    → 402 with same body shape.
+//!    → 402 with a BARE body (`{"error":"tier_cap_exceeded"}` only). The
+//!    public submit endpoint must not leak tenant volume/tier/limit to an
+//!    anonymous submitter (scrutiny P2-5); the structured body is admin-only.
 //! 3. `GET /api/v1/projects/{id}/widget-config` for Free tenant
 //!    returns `footer_text: Some("powered by feedbackmonk")`; for Pro
 //!    tenant returns `footer_text: null`.
@@ -263,17 +265,17 @@ async fn smoke_free_tenant_51st_feedback_yields_402_tier_cap_exceeded(pool: PgPo
         "51st submission on Free tier must yield 402; got {}",
         resp.status()
     );
+    // Scrutiny P2-5: this is the PUBLIC, unauthenticated submit endpoint, so
+    // the 402 body is BARE — it carries only the machine-readable error code and
+    // MUST NOT leak the tenant's volume/tier/limit (that detail is reserved for
+    // the admin `GET /api/v1/admin/tier`).
     let body = body_to_json(resp.into_body()).await;
     assert_eq!(body["error"], "tier_cap_exceeded");
-    assert_eq!(body["tier"], "free");
-    assert_eq!(body["resource"], "feedback_in_rolling_month");
-    assert_eq!(body["current"], 50);
-    assert_eq!(body["limit"], 50);
-    assert!(
-        body["upgrade_hint"].as_str().unwrap().contains("Starter"),
-        "upgrade_hint must reference next tier; got {}",
-        body["upgrade_hint"]
-    );
+    assert!(body.get("tier").is_none(), "public 402 must not leak tier");
+    assert!(body.get("current").is_none(), "public 402 must not leak current volume");
+    assert!(body.get("limit").is_none(), "public 402 must not leak the cap");
+    assert!(body.get("resource").is_none(), "public 402 must not leak the resource");
+    assert!(body.get("upgrade_hint").is_none(), "public 402 must not leak upgrade copy");
 }
 
 // ----- Scenario 3: widget-config tier-aware footer flip -----------------------

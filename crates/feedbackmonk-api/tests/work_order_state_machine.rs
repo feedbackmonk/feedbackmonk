@@ -227,6 +227,32 @@ fn mint_token_jti(
     format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(sig.to_bytes()))
 }
 
+/// Mint a runner write-token with NO `jti` claim (scrutiny P2-10). Structurally
+/// valid + signed + carries the runner scope marker, but omits the revocation
+/// key — `verify_runner_token` must refuse it (401) since it would be
+/// unrevocable.
+fn mint_runner_token_without_jti(
+    signing: &DalekSigningKey,
+    project_id: Uuid,
+    sub: &str,
+) -> String {
+    let header = json!({ "alg": "EdDSA", "typ": "JWT" });
+    let now = Utc::now().timestamp();
+    let payload = json!({
+        "sub": sub,
+        "aud": project_id.to_string(),
+        "iat": now,
+        "exp": now + 300,
+        "scope": RUNNER_TOKEN_SCOPE,
+        // deliberately NO "jti"
+    });
+    let header_b64 = URL_SAFE_NO_PAD.encode(header.to_string());
+    let payload_b64 = URL_SAFE_NO_PAD.encode(payload.to_string());
+    let signing_input = format!("{header_b64}.{payload_b64}");
+    let sig = signing.sign(signing_input.as_bytes());
+    format!("{signing_input}.{}", URL_SAFE_NO_PAD.encode(sig.to_bytes()))
+}
+
 async fn make_draft(state: &AppState, s: &Seeded, rung: i32) -> Uuid {
     create_work_order(state, &s.scope, s.recommendation_id, rung, None)
         .await
@@ -528,6 +554,44 @@ async fn runner_token_seam_accepts_runner_rejects_end_user_and_anon(pool: PgPool
     let wo = state.work_orders.get(&s.scope, id).await.unwrap();
     assert_eq!(wo.state, WorkOrderState::Claimed);
     assert_eq!(wo.claimed_by_runner.as_deref(), Some("runner-7"));
+}
+
+// ============================================================================
+// 9b. Scrutiny P2-10 — a runner token with NO `jti` is rejected at the seam.
+//     A jti-less token would skip the revocation denylist entirely (unrevocable),
+//     so it must be refused BEFORE any transition.
+// ============================================================================
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn runner_token_without_jti_is_rejected(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let s = seed(&state, "wo-runner-nojti@example.com").await;
+    let signing = seed_signing_key(&state, &s.scope).await;
+
+    // Drive an order to `dispatched` so `claim` would be a legal edge if allowed.
+    let id = make_draft(&state, &s, 1).await;
+    admin_approve(&state, &s.scope, id).await;
+    transition_work_order(&state, &s.scope, id, "dispatch", &Actor::System, None,
+        WorkOrderStatePatch { dispatched_at: Some(Utc::now()), ..Default::default() }).await.unwrap();
+
+    let app = work_order_runner_router(state.clone());
+    let claim_url = format!("/api/v1/projects/{}/work-orders/{}/claim", s.project_id, id);
+    let token = mint_runner_token_without_jti(&signing, s.project_id, "runner-nojti");
+    let req = Request::post(&claim_url)
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(
+        resp.status(),
+        StatusCode::UNAUTHORIZED,
+        "a runner token with no jti must be rejected (unrevocable)"
+    );
+    // The order must NOT have transitioned.
+    let wo = state.work_orders.get(&s.scope, id).await.unwrap();
+    assert_eq!(wo.state, WorkOrderState::Dispatched);
 }
 
 // ============================================================================

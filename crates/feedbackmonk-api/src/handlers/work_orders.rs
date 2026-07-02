@@ -93,8 +93,8 @@ fn runner_scope_claim(token: &str) -> Option<String> {
 /// Read the signature-covered `jti` claim from a JWT payload (the revocation
 /// key — Contract C25). Same trust model as [`runner_scope_claim`]: callers
 /// MUST already have verified the signature over these bytes. `None` when the
-/// token carries no `jti` (such a token is unrevocable-by-jti but otherwise
-/// valid — revocation simply cannot target it).
+/// token carries no `jti`; [`verify_runner_token`] treats that as a hard
+/// rejection (scrutiny P2-10) since a jti-less token would be unrevocable.
 fn runner_jti_claim(token: &str) -> Option<String> {
     runner_string_claim(token, "jti")
 }
@@ -145,10 +145,11 @@ fn current_unix_timestamp() -> i64 {
 ///   3. **Class scope claim** — the signature-covered `scope` claim MUST equal
 ///      [`RUNNER_TOKEN_SCOPE`]. A valid end-user JWT (no such claim) is rejected
 ///      `403 Forbidden` — it authenticates a *person*, never the runner.
-///   4. **Revocation gate (P5b)** — the token's `jti` claim is checked against
-///      the per-project append-only denylist; a revoked `jti` → `401`. This is
-///      the owner's kill-switch for a leaked runner token before its short
-///      `exp`.
+///   4. **Revocation gate (P5b + scrutiny P2-10)** — `jti` is REQUIRED: a
+///      token with no `jti` → `401` (a jti-less token is unrevocable, so it is
+///      refused rather than trusted). A present `jti` is checked against the
+///      per-project append-only denylist; a revoked `jti` → `401`. This is the
+///      owner's kill-switch for a leaked runner token before its short `exp`.
 ///
 /// Returns the resolved [`ProjectScope`] (minted pre-auth from the path's
 /// `project_id`, like the public submission path — the token, not a session, is
@@ -190,17 +191,20 @@ pub(crate) async fn verify_runner_token(
         return Err(ApiError::Forbidden);
     }
 
-    // P5b gate 4 — revocation: a token whose jti is on the per-project denylist
-    // is dead, even before its exp. A token without a jti is unrevocable-by-jti
-    // (valid, but cannot be individually killed — short TTL is the backstop).
-    if let Some(jti) = runner_jti_claim(&token) {
-        if state
-            .runner_token_revocations
-            .is_revoked(&scope, &jti)
-            .await?
-        {
-            return Err(ApiError::Unauthorized);
-        }
+    // P5b gate 4 — revocation (scrutiny P2-10): `jti` is a REQUIRED claim. A
+    // validly-signed runner token with NO `jti` would otherwise skip the
+    // denylist check entirely, making it unrevocable — so we reject it (401)
+    // BEFORE consulting the denylist. The honest minter (`feedbackmonk-runner
+    // mint-token`) always sets `jti`, so this is zero friction for legitimate
+    // runners; it only closes the "unrevocable token" bypass. A token whose
+    // jti IS on the per-project denylist is dead even before its exp.
+    let jti = runner_jti_claim(&token).ok_or(ApiError::Unauthorized)?;
+    if state
+        .runner_token_revocations
+        .is_revoked(&scope, &jti)
+        .await?
+    {
+        return Err(ApiError::Unauthorized);
     }
 
     Ok((scope, RunnerIdentity { sub: claims.sub }))
@@ -984,6 +988,17 @@ pub async fn runner_transition(
         )));
     }
     let (scope, runner) = verify_runner_token(&state, project_id, &headers).await?;
+
+    // Scrutiny P2-9 — SERVER-side egress reject (defense-in-depth over the
+    // runner's own `sanitize_outbound`): a `result_ref` that structurally
+    // carries secret/source material (PEM, secret-named assignment, `.env`
+    // dump, or an oversize blob) is refused BEFORE it lands in
+    // `work_orders.result_ref` (owner-reachable context). A compromised runner
+    // or leaked write-token must not be able to plant secrets in the owner's
+    // admin UI even though the honest runner already scrubs on its side.
+    if let Some(result_ref) = req.result_ref.as_ref() {
+        crate::egress_guard::reject_secret_laden_result_ref(result_ref)?;
+    }
 
     let patch = WorkOrderStatePatch {
         result_ref: req.result_ref.as_ref(),

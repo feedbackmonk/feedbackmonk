@@ -1,5 +1,10 @@
 //! Request handlers.
 
+// Shared anon-cookie mint attributes for the public credentialed surfaces
+// (submission + voting). One source of truth for the `Set-Cookie` shape so the
+// submit + vote paths can never drift apart (scrutiny P2-3).
+pub mod anon_cookie;
+
 // Worker A's endpoints (signup, verify-email, projects, signing-keys).
 pub mod projects;
 pub mod signing_keys;

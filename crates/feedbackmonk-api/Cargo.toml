@@ -23,6 +23,7 @@ chrono = { workspace = true }
 hmac = { workspace = true }
 lettre = { workspace = true }
 rand = { workspace = true }
+regex = { workspace = true }
 # Shared runtime HTTP client (rustls). Two consumers: Gap #2 crash-event
 # correlation (`crash_correlation` — outbound pulls to a Glitchtip/Sentry
 # tracker) and Gap #1 attachments (S3 object-store backend). Same feature set

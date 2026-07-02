@@ -98,9 +98,10 @@ pub struct AppState {
     pub board_votes: Arc<dyn BoardVoteRepo>,
 
     // -- Stage 3: health + observability (FR-FBR-18) -----------------------
-    /// Wall-clock timestamp captured at binary startup. Used for the
-    /// `/health` endpoint's `uptime_seconds` + `started_at` fields per
-    /// Contract C5.
+    /// Wall-clock timestamp captured at binary startup. Retained for internal
+    /// uptime accounting and any future ops-token-gated build/health detail.
+    /// NOT exposed on the PUBLIC `/health` bodies (scrutiny P2-7: the public
+    /// probe carries only the liveness/readiness signal, never a fingerprint).
     pub started_at: DateTime<Utc>,
     /// Database health probe (runs `SELECT 1` via the repository crate so
     /// the `multi-tenant-isolation-check` oracle's raw-SQL ban remains

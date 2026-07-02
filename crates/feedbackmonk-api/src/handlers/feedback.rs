@@ -56,7 +56,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Sentiment, Severity, Tier};
+use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Sentiment, Severity};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -70,25 +70,15 @@ use crate::state::AppState;
 /// `feedback.body` (1..=16384). Exceeding -> 413.
 pub const MAX_BODY_CHARS: usize = 16384;
 
-/// Cookie attributes for the minted anon cookie.
-///
-/// `SameSite=None; Secure` — the widget embeds **cross-site** (customer origin →
-/// feedbackmonk API) and the anonymous path fetches with `credentials:
-/// "include"`, so the cookie must be `SameSite=None` (sent in a third-party
-/// context) and therefore `Secure` (the browser requires `Secure` with
-/// `SameSite=None`). A `SameSite=Lax` cookie would be silently dropped
-/// cross-site, disabling per-cookie dedup (FR-FBR-06) and leaving only IP-based
-/// dedup. `HttpOnly` keeps it unreadable to page JS (privacy; the widget never
-/// reads it). Path scoped to `/api/v1`; `Max-Age=30d`. See DEC-FBR-IMPL-09.
-///
-/// `Secure` requires a secure context: production/self-host run behind TLS, and
-/// browsers treat `http://localhost` as secure for dev. A self-host deployment
-/// served over plain HTTP on a non-localhost host would have the cookie dropped
-/// by the browser; anon dedup then degrades to IP-only (submission still
-/// succeeds). Browsers increasingly partition/expire third-party cookies; if
-/// that erodes dedup materially, the long-term path is a header-carried anon
-/// token instead of a cookie (deferred — see DEC-FBR-IMPL-09 alternatives).
-const ANON_COOKIE_MAX_AGE_SECONDS: i64 = 30 * 24 * 60 * 60;
+/// Max length of a client-supplied anon-mode email (scrutiny P2-6). RFC 5321
+/// caps an address at 254 chars; anything longer (or malformed) is rejected
+/// with a 400 rather than stored as attacker-chosen, unvalidated text.
+pub const MAX_ANON_EMAIL_CHARS: usize = 254;
+
+/// Max length of the external crash-event correlation key (scrutiny P2-6,
+/// Contract §5.6). A correlation id is a short opaque token; an unbounded value
+/// is rejected with a 400.
+pub const MAX_CRASH_EVENT_ID_CHARS: usize = 128;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct FeedbackRequest {
@@ -171,6 +161,9 @@ pub async fn submit(
     let severity = parse_severity(req.severity.as_deref())?;
     let body = req.body.as_deref().unwrap_or("");
     validate_submission(body, sentiment)?;
+    // Scrutiny P2-6: cap the external crash-event correlation key (auth-mode
+    // field, but validated here regardless — anon ignores it downstream).
+    validate_crash_event_id(req.crash_event_id.as_deref())?;
 
     // Phase A A4b: optional client dedupe key (exactly-once on retry).
     let idempotency_key = extract_idempotency_key(&headers);
@@ -187,13 +180,14 @@ pub async fn submit(
         .check_tier_quota(project_scope.tenant(), ResourceKind::FeedbackInRollingMonth)
         .await?;
     if !cap.allowed {
-        return Err(ApiError::TierCapExceeded {
-            tier: cap.tier,
-            resource: cap.resource,
-            current: cap.current,
-            limit: cap.limit.unwrap_or(0),
-            upgrade_hint: upgrade_hint_for_feedback(cap.tier),
-        });
+        // Scrutiny P2-5: this is the PUBLIC, unauthenticated submit endpoint.
+        // Return a BARE 402 that discloses nothing about the tenant — no
+        // `current` / `limit` / `tier` / upgrade copy (all of which leak the
+        // tenant's volume and plan to an anonymous submitter). The detailed,
+        // structured tier body (Contract C18) is reserved for the
+        // ADMIN-authenticated `GET /api/v1/admin/tier` endpoint.
+        let body = Json(json!({ "error": "tier_cap_exceeded" }));
+        return Ok((StatusCode::PAYMENT_REQUIRED, body).into_response());
     }
 
     // ----- 3. Auth-mode dispatch -------------------------------------------
@@ -318,6 +312,15 @@ async fn submit_anonymous_path(
     kind: FeedbackKind,
     idempotency_key: Option<&str>,
 ) -> Result<Response, ApiError> {
+    // Scrutiny P2-6: validate the client-supplied email shape before it is
+    // stored (attacker-chosen, unvalidated email = impersonation vector). Only
+    // a non-empty value is validated; an absent/empty email means "no email".
+    if let Some(email) = optional_email {
+        if !email.is_empty() {
+            validate_anon_email(email)?;
+        }
+    }
+
     let (cookie_value, set_cookie_header) = resolve_anon_cookie(headers);
     let token_hash = AnonGate::token_hash(client_ip, &cookie_value, project_id);
 
@@ -465,6 +468,46 @@ fn validate_submission(body: &str, sentiment: Option<Sentiment>) -> Result<(), A
     Ok(())
 }
 
+/// Validate a client-supplied anon-mode email (scrutiny P2-6). Basic RFC-ish
+/// shape check — NOT deliverability: bounded length, exactly one `@`, non-empty
+/// local + domain parts, a dotted domain, and no embedded whitespace. Invalid ⇒
+/// 400 (we reject rather than silently drop, so the submitter learns their
+/// address was malformed instead of a bad address being stored as a
+/// impersonation-grade attacker-chosen string). Only called for a non-empty,
+/// anon-mode email; auth-mode email comes from the verified JWT and is untouched.
+fn validate_anon_email(email: &str) -> Result<(), ApiError> {
+    let invalid = || ApiError::BadRequest("email is not a valid address".into());
+    if email.chars().count() > MAX_ANON_EMAIL_CHARS || email.chars().any(char::is_whitespace) {
+        return Err(invalid());
+    }
+    let mut parts = email.split('@');
+    let local = parts.next().unwrap_or("");
+    let domain = parts.next().unwrap_or("");
+    // Exactly one '@' (a third `parts.next()` means two or more).
+    if parts.next().is_some() || local.is_empty() || domain.is_empty() {
+        return Err(invalid());
+    }
+    // Domain must have a dot with non-empty first/last labels.
+    if !domain.contains('.') || domain.starts_with('.') || domain.ends_with('.') {
+        return Err(invalid());
+    }
+    Ok(())
+}
+
+/// Cap the external crash-event correlation key length (scrutiny P2-6). Absent
+/// ⇒ ok; over [`MAX_CRASH_EVENT_ID_CHARS`] ⇒ 400. Legitimate correlation ids
+/// (e.g. a Glitchtip event id) are well under the cap, so this is zero friction.
+fn validate_crash_event_id(crash_event_id: Option<&str>) -> Result<(), ApiError> {
+    if let Some(id) = crash_event_id {
+        if id.chars().count() > MAX_CRASH_EVENT_ID_CHARS {
+            return Err(ApiError::BadRequest(format!(
+                "crash_event_id exceeds {MAX_CRASH_EVENT_ID_CHARS} characters"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn extract_bearer(headers: &HeaderMap) -> Option<String> {
     let value = headers.get(AUTHORIZATION)?.to_str().ok()?;
     let stripped = value.strip_prefix("Bearer ")?;
@@ -476,7 +519,11 @@ fn extract_bearer(headers: &HeaderMap) -> Option<String> {
 
 /// Read the anon cookie from `X-Feedbackmonk-Anon-Cookie` request header. If
 /// absent, mint a fresh cookie value and return a `Set-Cookie` header for
-/// the response.
+/// the response. The `Set-Cookie` attributes come from the SHARED
+/// [`crate::handlers::anon_cookie`] helper so the submit + vote paths cannot
+/// drift apart (scrutiny P2-3): `SameSite=None; Secure; HttpOnly` — the widget
+/// embeds cross-site and fetches credentialed, so a `SameSite=Lax` cookie would
+/// be dropped, degrading per-cookie dedup (FR-FBR-06). See DEC-FBR-IMPL-09.
 fn resolve_anon_cookie(headers: &HeaderMap) -> (String, Option<HeaderValue>) {
     if let Some(existing) = headers.get(ANON_COOKIE_HEADER).and_then(|v| v.to_str().ok()) {
         if !existing.is_empty() {
@@ -484,25 +531,8 @@ fn resolve_anon_cookie(headers: &HeaderMap) -> (String, Option<HeaderValue>) {
         }
     }
     let minted = AnonGate::mint_cookie();
-    let set_cookie = format!(
-        "{ANON_COOKIE_HEADER}={minted}; Path=/api/v1; Max-Age={ANON_COOKIE_MAX_AGE_SECONDS}; HttpOnly; Secure; SameSite=None"
-    );
-    let header_value = HeaderValue::from_str(&set_cookie).ok();
+    let header_value = crate::handlers::anon_cookie::set_cookie_header(&minted);
     (minted, header_value)
-}
-
-/// User-facing upgrade hint when the feedback rolling-window cap fires.
-/// Free/Starter/Pro carry distinct copy; `SelfHost` is unreachable
-/// (None cap) but kept exhaustive.
-fn upgrade_hint_for_feedback(tier: Tier) -> String {
-    match tier {
-        Tier::Free => "Upgrade to Starter for 500 feedback per month.".into(),
-        Tier::Starter => "Upgrade to Pro for 10,000 feedback per month.".into(),
-        Tier::Pro => "Contact support — you've hit the Pro monthly cap.".into(),
-        Tier::SelfHost => {
-            "Contact support — SelfHost should not have a monthly cap.".into()
-        }
-    }
 }
 
 fn current_unix_timestamp() -> i64 {
@@ -685,6 +715,42 @@ mod tests {
     }
 
     #[test]
+    fn validate_anon_email_accepts_reasonable_addresses() {
+        validate_anon_email("user@example.com").unwrap();
+        validate_anon_email("first.last+tag@sub.example.co.uk").unwrap();
+    }
+
+    #[test]
+    fn validate_anon_email_rejects_malformed() {
+        assert!(validate_anon_email("no-at-sign").is_err());
+        assert!(validate_anon_email("two@@example.com").is_err());
+        assert!(validate_anon_email("a@b@example.com").is_err());
+        assert!(validate_anon_email("@example.com").is_err());
+        assert!(validate_anon_email("user@").is_err());
+        assert!(validate_anon_email("user@nodot").is_err());
+        assert!(validate_anon_email("user@.com").is_err());
+        assert!(validate_anon_email("user@example.").is_err());
+        assert!(validate_anon_email("user name@example.com").is_err());
+    }
+
+    #[test]
+    fn validate_anon_email_rejects_oversize() {
+        let long = format!("{}@example.com", "x".repeat(MAX_ANON_EMAIL_CHARS));
+        assert!(validate_anon_email(&long).is_err());
+    }
+
+    #[test]
+    fn validate_crash_event_id_caps_length() {
+        validate_crash_event_id(None).unwrap();
+        validate_crash_event_id(Some("evt-abc-123")).unwrap();
+        validate_crash_event_id(Some(&"x".repeat(MAX_CRASH_EVENT_ID_CHARS))).unwrap();
+        assert!(matches!(
+            validate_crash_event_id(Some(&"x".repeat(MAX_CRASH_EVENT_ID_CHARS + 1))),
+            Err(ApiError::BadRequest(_))
+        ));
+    }
+
+    #[test]
     fn extract_bearer_present() {
         let h = hdr("Authorization", "Bearer abc.def.ghi");
         assert_eq!(extract_bearer(&h).as_deref(), Some("abc.def.ghi"));
@@ -728,7 +794,10 @@ mod tests {
         assert!(set_value.contains("SameSite=None"));
         assert!(set_value.contains("Secure"));
         assert!(!set_value.contains("SameSite=Lax"));
-        assert!(set_value.contains(&format!("Max-Age={ANON_COOKIE_MAX_AGE_SECONDS}")));
+        assert!(set_value.contains(&format!(
+            "Max-Age={}",
+            crate::handlers::anon_cookie::ANON_COOKIE_MAX_AGE_SECONDS
+        )));
         assert!(set_value.contains(&cookie));
     }
 
