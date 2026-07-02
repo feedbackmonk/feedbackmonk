@@ -23,6 +23,7 @@ use feedbackmonk_core::{ActionType, WorkOrderState};
 
 use crate::error::{RepoError, Result};
 use crate::scope::ProjectScope;
+use crate::work_order_events::NewWorkOrderEvent;
 
 /// A work order — the contract between an APPROVED decision and a DISPATCHED
 /// job (FR-FBR-22). `owner_overrides` carries the Q17 "tweak before approve"
@@ -106,18 +107,49 @@ pub trait WorkOrderRepo: Send + Sync {
         cluster_id: Option<Uuid>,
     ) -> Result<Vec<WorkOrder>>;
 
+    /// **The combined state+ledger transition primitive (C22 inv. 3).** On a
+    /// caller-supplied connection/transaction, performs BOTH the
+    /// `work_orders.state` UPDATE (to `event.to_state`, + optional column
+    /// `patch`) AND the `work_order_events` ledger INSERT — so the state change
+    /// and its audit row can NEVER drift apart. This is the ONE method
+    /// production transition handlers call: same-transaction parity is
+    /// guaranteed by construction, not by the caller remembering to pair two
+    /// separate setters (scrutiny P1-4). Mirrors
+    /// `FeedbackRepo::moderate_in_executor`'s shape.
+    ///
+    /// The state target and the ledgered `work_order_id` are taken from
+    /// `event` (single source of truth — the caller cannot pass a `to_state`
+    /// that disagrees with the audit row). Returns the inserted ledger row id.
+    ///
+    /// This primitive does NOT validate transition legality or actor authz —
+    /// that is the handler's responsibility (it checks `legal_transitions_from`
+    /// + the C22 authz matrix + `has_approved_event` BEFORE calling this). The
+    /// repository only enforces tenant/project scope: `NotFound` if the work
+    /// order is absent or out of scope (the UPDATE's scope predicate is the
+    /// guard — a zero-row UPDATE short-circuits before the ledger append).
+    async fn transition_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        patch: WorkOrderStatePatch<'_>,
+        event: NewWorkOrderEvent<'_>,
+    ) -> Result<Uuid>;
+
     /// Set `state = to_state` (+ optional column patch) on a caller-supplied
-    /// connection/transaction. Worker A calls this AND
-    /// `WorkOrderEventRepo::append_in_executor` inside one `pool.begin()` txn so
-    /// the `work_orders.state` update and the `work_order_events` row land
-    /// atomically (C22 inv. 3).
+    /// connection/transaction WITHOUT writing a ledger row.
     ///
-    /// This primitive does NOT validate the transition legality or actor authz
-    /// — that is Worker A's handler responsibility (it checks
-    /// `legal_transitions_from` + the C22 authz matrix + `has_approved_event`
-    /// BEFORE calling this). The repository only enforces tenant/project scope.
+    /// **Prefer [`WorkOrderRepo::transition_in_executor`] for every production
+    /// transition** — it writes the state and the `work_order_events` audit row
+    /// in the same executor, so audit can never drift from state (C22 inv. 3).
+    /// This unpaired setter exists only for legitimate ASYMMETRIC composition:
+    /// the bypass-resistance corpus (`tests/work_order_state_machine.rs`)
+    /// deliberately forges a state-column value with NO matching approve event
+    /// to prove the ledger-authoritative approval gate still refuses. Do NOT
+    /// call it from a handler.
     ///
-    /// `NotFound` if the work order is absent or out of scope.
+    /// This primitive validates neither transition legality nor actor authz;
+    /// the repository only enforces tenant/project scope. `NotFound` if the
+    /// work order is absent or out of scope.
     async fn update_state_in_executor(
         &self,
         scope: &ProjectScope,
@@ -293,6 +325,79 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
         Ok(rows.into_iter().map(map_work_order).collect())
     }
 
+    async fn transition_in_executor(
+        &self,
+        scope: &ProjectScope,
+        conn: &mut sqlx::PgConnection,
+        patch: WorkOrderStatePatch<'_>,
+        event: NewWorkOrderEvent<'_>,
+    ) -> Result<Uuid> {
+        // 1. Advance the state column (+ monotonic column patch). The scope
+        // predicate is the tenant/project guard: a zero-row UPDATE means the
+        // work order is absent or out of scope, and we short-circuit BEFORE
+        // appending a ledger row (so a cross-tenant id can never orphan an
+        // audit row). `event.to_state` is the single source of truth for the
+        // target — the ledger row below records the same value by construction.
+        let result = sqlx::query!(
+            r#"
+            UPDATE work_orders
+            SET state = $4,
+                approved_by = COALESCE($5, approved_by),
+                approved_at = COALESCE($6, approved_at),
+                dispatched_at = COALESCE($7, dispatched_at),
+                claimed_by_runner = COALESCE($8, claimed_by_runner),
+                result_ref = COALESCE($9, result_ref),
+                failure_reason = COALESCE($10, failure_reason),
+                owner_overrides = COALESCE($11, owner_overrides),
+                updated_at = now()
+            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            event.work_order_id,
+            event.to_state.as_db_str(),
+            patch.approved_by,
+            patch.approved_at,
+            patch.dispatched_at,
+            patch.claimed_by_runner,
+            patch.result_ref,
+            patch.failure_reason,
+            patch.owner_overrides,
+        )
+        .execute(&mut *conn)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepoError::NotFound);
+        }
+
+        // 2. Append the immutable ledger row in the SAME executor (C22 inv. 3).
+        // The work order is already proven in-scope by the UPDATE above, so no
+        // redundant scope-resolution SELECT is needed here.
+        let inserted = sqlx::query!(
+            r#"
+            INSERT INTO work_order_events
+                (tenant_id, project_id, work_order_id, from_state, to_state,
+                 event_type, actor, actor_id, detail)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            RETURNING id
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            event.work_order_id,
+            event.from_state.map(WorkOrderState::as_db_str),
+            event.to_state.as_db_str(),
+            event.event_type,
+            event.actor,
+            event.actor_id,
+            event.detail,
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+
+        Ok(inserted.id)
+    }
+
     async fn update_state_in_executor(
         &self,
         scope: &ProjectScope,
@@ -455,6 +560,119 @@ mod tests {
         assert_eq!(got.state, WorkOrderState::Approved);
         assert_eq!(got.approved_by, Some(approver));
         assert!(got.approved_at.is_some());
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn transition_in_executor_writes_state_and_ledger_atomically(pool: PgPool) {
+        use crate::work_order_events::{SqlxWorkOrderEventRepo, WorkOrderEventRepo};
+
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let events = SqlxWorkOrderEventRepo::new(pool.clone());
+        let s = seed(&pool, "wo-transition@example.com").await;
+        let wo = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: s.recommendation_id,
+                    cluster_id: s.cluster_id,
+                    action_type: ActionType::BugFix,
+                    title: "Fix",
+                    instructions: "Do",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                },
+            )
+            .await
+            .unwrap();
+
+        let approver = Uuid::new_v4();
+        let mut tx = pool.begin().await.unwrap();
+        let audit_id = repo
+            .transition_in_executor(
+                &s.scope,
+                &mut tx,
+                WorkOrderStatePatch {
+                    approved_by: Some(approver),
+                    approved_at: Some(Utc::now()),
+                    ..Default::default()
+                },
+                NewWorkOrderEvent {
+                    work_order_id: wo.id,
+                    from_state: Some(WorkOrderState::Draft),
+                    to_state: WorkOrderState::Approved,
+                    event_type: "approve",
+                    actor: "admin",
+                    actor_id: Some("owner-1"),
+                    detail: None,
+                },
+            )
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+
+        // State advanced + patch applied.
+        let got = repo.get(&s.scope, wo.id).await.unwrap();
+        assert_eq!(got.state, WorkOrderState::Approved);
+        assert_eq!(got.approved_by, Some(approver));
+
+        // ...and the ledger holds exactly the paired row (same audit id).
+        let ledger = events.list_for_work_order(&s.scope, wo.id).await.unwrap();
+        assert_eq!(ledger.len(), 1);
+        assert_eq!(ledger[0].id, audit_id);
+        assert_eq!(ledger[0].to_state, WorkOrderState::Approved);
+        assert_eq!(ledger[0].event_type, "approve");
+        assert_eq!(ledger[0].actor, "admin");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn transition_in_executor_cross_tenant_writes_nothing(pool: PgPool) {
+        use crate::work_order_events::{SqlxWorkOrderEventRepo, WorkOrderEventRepo};
+
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let events = SqlxWorkOrderEventRepo::new(pool.clone());
+        let s1 = seed(&pool, "wo-tx-owner1@example.com").await;
+        let s2 = seed(&pool, "wo-tx-owner2@example.com").await;
+        let wo = repo
+            .create(
+                &s1.scope,
+                NewWorkOrder {
+                    recommendation_id: s1.recommendation_id,
+                    cluster_id: s1.cluster_id,
+                    action_type: ActionType::BugFix,
+                    title: "Fix",
+                    instructions: "Do",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                },
+            )
+            .await
+            .unwrap();
+
+        // s2 cannot transition s1's work order: the scoped UPDATE matches no
+        // row → NotFound, and NO orphan ledger row is appended.
+        let mut tx = pool.begin().await.unwrap();
+        let err = repo
+            .transition_in_executor(
+                &s2.scope,
+                &mut tx,
+                WorkOrderStatePatch::default(),
+                NewWorkOrderEvent {
+                    work_order_id: wo.id,
+                    from_state: Some(WorkOrderState::Draft),
+                    to_state: WorkOrderState::Approved,
+                    event_type: "approve",
+                    actor: "admin",
+                    actor_id: None,
+                    detail: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RepoError::NotFound));
+        tx.rollback().await.unwrap();
+
+        assert!(events.list_for_work_order(&s1.scope, wo.id).await.unwrap().is_empty());
+        assert_eq!(repo.get(&s1.scope, wo.id).await.unwrap().state, WorkOrderState::Draft);
     }
 
     #[sqlx::test(migrations = "../../migrations")]

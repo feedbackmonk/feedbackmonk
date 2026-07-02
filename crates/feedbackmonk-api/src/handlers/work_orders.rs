@@ -456,17 +456,17 @@ pub async fn transition_work_order(
         ));
     }
 
-    // 7. Same-txn parity (inv. 3): state update + ledger row, atomic.
+    // 7. Same-txn parity (inv. 3): the ONE combined primitive writes the state
+    // column and the ledger row in a single executor, so audit can never drift
+    // from state by construction (scrutiny P1-4 — no handler needs to remember
+    // to pair two separate setters).
     let mut tx = state.pool.begin().await?;
-    state
-        .work_orders
-        .update_state_in_executor(scope, &mut tx, work_order_id, to, patch)
-        .await?;
     let audit_id = state
-        .work_order_events
-        .append_in_executor(
+        .work_orders
+        .transition_in_executor(
             scope,
             &mut tx,
+            patch,
             NewWorkOrderEvent {
                 work_order_id,
                 from_state: Some(from),

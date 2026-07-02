@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
-use sqlx::PgPool;
+use sqlx::{Acquire, PgPool};
 use uuid::Uuid;
 
 use feedbackmonk_core::{
@@ -744,6 +744,30 @@ enum IdempotencyClaim<'t> {
     Duplicate(FeedbackId),
 }
 
+/// Max attempts to place a freshly-generated `short_code` before surfacing the
+/// collision as an error (security scrutiny P1-5). With the per-project UNIQUE
+/// constraint (migration 00025) a single-attempt collision needs an enormous
+/// per-project row count to become non-negligible; five INDEPENDENT
+/// regenerations make a user-visible 500 effectively impossible while keeping
+/// the loop strictly bounded (a pathological run terminates with a clean error,
+/// never an infinite loop).
+const MAX_SHORT_CODE_ATTEMPTS: u32 = 5;
+
+/// True iff `e` is the `feedback.short_code` unique-violation — the per-project
+/// UNIQUE constraint `feedback_project_short_code_key` (migration 00025). Matched
+/// via sqlx's typed error kind + the constraint NAME so it can NEVER be confused
+/// with the `submit_idempotency` conflict (a different constraint, handled by
+/// [`is_submit_idempotency_conflict`]): distinguishing them by name is what keeps
+/// the `short_code` retry from swallowing an idempotency-key conflict.
+fn is_short_code_conflict(e: &sqlx::Error) -> bool {
+    matches!(
+        e,
+        sqlx::Error::Database(db)
+            if db.is_unique_violation()
+                && db.constraint() == Some("feedback_project_short_code_key")
+    )
+}
+
 /// True iff `e` is the `submit_idempotency` PK unique-violation — i.e. this
 /// `(project_id, submitter_id, idempotency_key)` was already claimed by an
 /// earlier submit from the SAME submitter (scrutiny P1-3 widened the PK to
@@ -900,7 +924,6 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
     ) -> Result<SubmitOutcome> {
-        let short_code = FeedbackId::generate();
         let kind_str = kind.as_str();
         // Empty body => SQL NULL (sentiment-only submission, FR-FBR-28). The
         // DB CHECK `feedback_body_or_sentiment_check` is the backstop.
@@ -920,33 +943,56 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // — on a key conflict the whole txn rolls back and the duplicate row is
         // never committed (see `claim_idempotency_key`).
         let mut tx = self.pool.begin().await?;
-        let feedback_row_id = sqlx::query_scalar!(
-            r#"
-            INSERT INTO feedback (
-                short_code, project_id, tenant_id,
-                end_user_sub, end_user_email, end_user_name,
-                external_metadata, crash_event_id, body, sentiment, severity, kind,
-                translation_status
+        // P1-5: collision-safe `short_code`. The INSERT is the txn's FIRST write,
+        // so a raw retry would hit an aborted transaction — each attempt runs in
+        // its own SAVEPOINT (nested tx). On the (vanishingly rare, per-project)
+        // unique violation we regenerate the code and retry, bounded by
+        // MAX_SHORT_CODE_ATTEMPTS. is_short_code_conflict matches by constraint
+        // NAME, so this never swallows the later idempotency-key conflict.
+        let mut short_code = FeedbackId::generate();
+        let mut attempts: u32 = 0;
+        let feedback_row_id = loop {
+            attempts += 1;
+            let mut sp = tx.begin().await?;
+            let res = sqlx::query_scalar!(
+                r#"
+                INSERT INTO feedback (
+                    short_code, project_id, tenant_id,
+                    end_user_sub, end_user_email, end_user_name,
+                    external_metadata, crash_event_id, body, sentiment, severity, kind,
+                    translation_status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                RETURNING id AS "id!"
+                "#,
+                short_code.as_str(),
+                scope.project_id(),
+                scope.tenant_id(),
+                end_user_sub,
+                end_user_email,
+                end_user_name,
+                external_metadata,
+                crash_event_id,
+                body_opt,
+                sentiment_str,
+                severity_str,
+                kind_str,
+                translation_status,
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-            RETURNING id AS "id!"
-            "#,
-            short_code.as_str(),
-            scope.project_id(),
-            scope.tenant_id(),
-            end_user_sub,
-            end_user_email,
-            end_user_name,
-            external_metadata,
-            crash_event_id,
-            body_opt,
-            sentiment_str,
-            severity_str,
-            kind_str,
-            translation_status,
-        )
-        .fetch_one(&mut *tx)
-        .await?;
+            .fetch_one(&mut *sp)
+            .await;
+            match res {
+                Ok(id) => {
+                    sp.commit().await?;
+                    break id;
+                }
+                Err(e) if is_short_code_conflict(&e) && attempts < MAX_SHORT_CODE_ATTEMPTS => {
+                    sp.rollback().await?;
+                    short_code = FeedbackId::generate();
+                }
+                Err(e) => return Err(e.into()),
+            }
+        };
 
         let tx = if let Some(key) = idempotency_key {
             // Dedupe is scoped per submitter (P1-3): auth-mode submitter is the
@@ -987,7 +1033,6 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
     ) -> Result<SubmitOutcome> {
-        let short_code = FeedbackId::generate();
         let kind_str = kind.as_str();
         let token: &[u8] = anon_token_hash.as_slice();
         let body_opt: Option<&str> = (!body.is_empty()).then_some(body);
@@ -1004,29 +1049,48 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // counter. A deduped retry rolls back BEFORE the counter upsert, so a
         // retry never double-counts a submission (FR-FBR-06 dedup stays honest).
         let mut tx = self.pool.begin().await?;
-        let feedback_row_id = sqlx::query_scalar!(
-            r#"
-            INSERT INTO feedback (
-                short_code, project_id, tenant_id,
-                end_user_email, anon_token_hash, body, sentiment, severity, kind,
-                translation_status
+        // P1-5: collision-safe `short_code` via bounded SAVEPOINT retry — see
+        // submit_authenticated_full for the rationale.
+        let mut short_code = FeedbackId::generate();
+        let mut attempts: u32 = 0;
+        let feedback_row_id = loop {
+            attempts += 1;
+            let mut sp = tx.begin().await?;
+            let res = sqlx::query_scalar!(
+                r#"
+                INSERT INTO feedback (
+                    short_code, project_id, tenant_id,
+                    end_user_email, anon_token_hash, body, sentiment, severity, kind,
+                    translation_status
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                RETURNING id AS "id!"
+                "#,
+                short_code.as_str(),
+                scope.project_id(),
+                scope.tenant_id(),
+                optional_email,
+                token,
+                body_opt,
+                sentiment_str,
+                severity_str,
+                kind_str,
+                translation_status,
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id AS "id!"
-            "#,
-            short_code.as_str(),
-            scope.project_id(),
-            scope.tenant_id(),
-            optional_email,
-            token,
-            body_opt,
-            sentiment_str,
-            severity_str,
-            kind_str,
-            translation_status,
-        )
-        .fetch_one(&mut *tx)
-        .await?;
+            .fetch_one(&mut *sp)
+            .await;
+            match res {
+                Ok(id) => {
+                    sp.commit().await?;
+                    break id;
+                }
+                Err(e) if is_short_code_conflict(&e) && attempts < MAX_SHORT_CODE_ATTEMPTS => {
+                    sp.rollback().await?;
+                    short_code = FeedbackId::generate();
+                }
+                Err(e) => return Err(e.into()),
+            }
+        };
 
         let mut tx = if let Some(key) = idempotency_key {
             // Dedupe is scoped per submitter (P1-3): anon-mode submitter is the
@@ -2337,6 +2401,66 @@ mod tests {
         let scope = trepo.scope_for(t.id).await.unwrap();
         let p = prepo.create(&scope, "Proj", "proj").await.unwrap();
         prepo.open(&scope, p.id).await.unwrap()
+    }
+
+    /// Raw INSERT of a feedback row with a CALLER-CHOSEN `short_code` (test-only;
+    /// the submit path always generates a random one). Lets the per-project
+    /// uniqueness test force a specific code into a specific project. Returns the
+    /// raw `sqlx::Error` so the caller can assert against `is_short_code_conflict`.
+    async fn insert_fixed_short_code(
+        pool: &PgPool,
+        scope: &ProjectScope,
+        code: &str,
+    ) -> std::result::Result<(), sqlx::Error> {
+        sqlx::query!(
+            r#"
+            INSERT INTO feedback (short_code, project_id, tenant_id, anon_token_hash, body, kind)
+            VALUES ($1, $2, $3, $4, 'x', 'other')
+            "#,
+            code,
+            scope.project_id(),
+            scope.tenant_id(),
+            &[7u8; 32][..],
+        )
+        .execute(pool)
+        .await
+        .map(|_| ())
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn short_code_unique_per_project_not_globally(pool: PgPool) {
+        // P1-5: `short_code` uniqueness is per-project (migration 00025), so two
+        // DIFFERENT projects can hold the same code — while a duplicate WITHIN one
+        // project is still rejected, and that rejection is exactly the conflict
+        // the submit-path retry loop detects via `is_short_code_conflict`.
+        let repo = SqlxFeedbackRepo::new(pool.clone());
+        let scope_a = seed_project_scope(&pool, "sc-a@example.com").await;
+        let scope_b = seed_project_scope(&pool, "sc-b@example.com").await;
+
+        // Real submission in project A → its (random) short_code.
+        let code = repo
+            .submit_anonymous(&scope_a, &[1u8; 32], None, "hello", None, FeedbackKind::Other)
+            .await
+            .unwrap();
+
+        // The SAME short_code in a DIFFERENT project is allowed — a global UNIQUE
+        // constraint would have rejected this.
+        insert_fixed_short_code(&pool, &scope_b, code.as_str())
+            .await
+            .expect("same short_code in a different project must be allowed");
+
+        // The SAME short_code AGAIN in project A is rejected, and the rejection
+        // matches the detector the retry loop keys on (so a real collision is
+        // retried, never surfaced as a 500).
+        let err = insert_fixed_short_code(&pool, &scope_a, code.as_str())
+            .await
+            .expect_err("duplicate short_code within one project must be rejected");
+        assert!(
+            is_short_code_conflict(&err),
+            "in-project duplicate must match the short_code unique-violation detector; got {err:?}"
+        );
+        // ...and it must NOT be mistaken for the idempotency conflict.
+        assert!(!is_submit_idempotency_conflict(&err));
     }
 
     #[sqlx::test(migrations = "../../migrations")]

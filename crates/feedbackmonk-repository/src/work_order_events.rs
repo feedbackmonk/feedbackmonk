@@ -63,9 +63,14 @@ pub trait WorkOrderEventRepo: Send + Sync {
     /// the inserted row id.
     async fn append(&self, scope: &ProjectScope, event: NewWorkOrderEvent<'_>) -> Result<Uuid>;
 
-    /// Same-transaction variant of [`append`]. Worker A's handler calls this
-    /// AND `WorkOrderRepo::update_state_in_executor` inside one `pool.begin()`
-    /// txn (C22 inv. 3 — state + audit land atomically).
+    /// Same-transaction variant of [`append`] — appends a ledger row on a
+    /// caller-supplied executor without touching `work_orders.state`.
+    ///
+    /// **Production transitions use [`crate::WorkOrderRepo::transition_in_executor`]
+    /// instead** — it writes the state column AND this ledger row in one
+    /// executor, so audit can never drift from state (C22 inv. 3, scrutiny
+    /// P1-4). This standalone append remains for genesis/asymmetric ledger
+    /// writes that are not paired with a state change.
     async fn append_in_executor(
         &self,
         scope: &ProjectScope,
