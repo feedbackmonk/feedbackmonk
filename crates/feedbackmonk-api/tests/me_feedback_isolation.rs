@@ -99,6 +99,8 @@ fn build_test_state(pool: &PgPool) -> AppState {
         verify_token_ttl: Duration::hours(24),
         anon_gate: AnonGate::new(NonZeroU32::new(10).unwrap()),
         login_gate: feedbackmonk_anon::LoginGate::with_default_quota(),
+        ip_gate: feedbackmonk_anon::IpGate::with_default_quota(),
+        trusted_proxy_hops: 0,
         ops_token: None,
         clusters: Arc::new(feedbackmonk_repository::SqlxClusterRepo::new(pool.clone())),
         recommendations: Arc::new(feedbackmonk_repository::SqlxRecommendationRepo::new(pool.clone())),

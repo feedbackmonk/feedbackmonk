@@ -26,7 +26,8 @@ use tower_http::trace::{DefaultMakeSpan, DefaultOnRequest, DefaultOnResponse, Tr
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 
 use feedbackmonk_anon::{
-    AnonGate, LoginGate, DEFAULT_LOGIN_RATE_LIMIT_PER_MIN, DEFAULT_RATE_LIMIT_PER_HOUR,
+    AnonGate, IpGate, LoginGate, DEFAULT_LOGIN_RATE_LIMIT_PER_MIN, DEFAULT_PUBLIC_RATE_LIMIT_PER_MIN,
+    DEFAULT_RATE_LIMIT_PER_HOUR,
 };
 use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
@@ -44,14 +45,14 @@ use feedbackmonk_api::router::router as worker_a_router;
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::translation::{DeepLTranslator, LibreTranslateTranslator, TranslationProvider};
 use feedbackmonk_api::{
-    admin_feedback_routes, admin_roadmap_router, admin_tier_router, attachments_router,
-    board_router, capabilities_router, cluster_admin_router, me_feedback_data_router,
-    me_feedback_router, moderation_router, ops_router, parse_origins, promote_router,
-    public_cors_layer, recommendation_admin_router, roadmap_router, runner_tokens_admin_router,
-    solicitation_router, spawn_translation_worker, spawn_voting_cache_refresh, submission_router,
-    sweep_admin_router, widget_config_router, work_order_admin_router, work_order_runner_router,
-    AttachmentState, MeFeedbackDataState, VotingCache, DEFAULT_TRANSLATION_POLL_SECS,
-    DEFAULT_TRANSLATION_TARGET_LANG,
+    admin_feedback_routes, admin_roadmap_router, admin_tier_router, apply_public_rate_limit,
+    attachments_router, board_router, capabilities_router, cluster_admin_router,
+    me_feedback_data_router, me_feedback_router, moderation_router, ops_router, parse_origins,
+    promote_router, public_cors_layer, recommendation_admin_router, roadmap_router,
+    runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
+    spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
+    work_order_admin_router, work_order_runner_router, AttachmentState, MeFeedbackDataState,
+    PublicRateLimit, VotingCache, DEFAULT_TRANSLATION_POLL_SECS, DEFAULT_TRANSLATION_TARGET_LANG,
 };
 
 #[tokio::main]
@@ -213,6 +214,9 @@ async fn connect_pg() -> Result<PgPool> {
     Ok(pool)
 }
 
+// A flat repo-wiring + env-parsing constructor, not complex logic — the
+// `too_many_lines` heuristic does not fit an `AppState` assembly function.
+#[allow(clippy::too_many_lines)]
 fn build_state(pool: PgPool) -> Result<AppState> {
     let tenants = Arc::new(SqlxTenantRepo::new(pool.clone()));
     let projects = Arc::new(SqlxProjectRepo::new(pool.clone()));
@@ -265,6 +269,22 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         .context("FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN must be > 0")?;
     let login_gate = LoginGate::new(login_quota);
 
+    // Class-level per-IP DoS ceiling for every public route (P0-2).
+    let public_quota: u32 = env::var("FEEDBACKMONK_PUBLIC_RATE_LIMIT_PER_MIN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(DEFAULT_PUBLIC_RATE_LIMIT_PER_MIN);
+    let public_quota = NonZeroU32::new(public_quota)
+        .context("FEEDBACKMONK_PUBLIC_RATE_LIMIT_PER_MIN must be > 0")?;
+    let ip_gate = IpGate::new(public_quota);
+
+    // Trusted reverse-proxy hops for client-IP resolution (P1-2). Default 0 =
+    // trust no X-Forwarded-For (secure default); set 1 behind a single LB.
+    let trusted_proxy_hops: usize = env::var("FEEDBACKMONK_TRUSTED_PROXY_HOPS")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+
     let jwt_iat_leeway_seconds: i64 = env::var("FEEDBACKMONK_JWT_LEEWAY_SECONDS")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -297,6 +317,8 @@ fn build_state(pool: PgPool) -> Result<AppState> {
         verify_token_ttl: Duration::hours(ttl_hours),
         anon_gate,
         login_gate,
+        ip_gate,
+        trusted_proxy_hops,
         jwt_iat_leeway_seconds,
         roadmap_items,
         roadmap_votes,
@@ -471,11 +493,22 @@ fn build_app(
     // metadata only). See `cors.rs` + DEC-FBR-04 / DEC-FBR-IMPL-09.
     let cors = public_cors_layer(cors_origins);
 
+    // Class-level per-IP DoS ceiling (P0-2). EVERY public router below is
+    // wrapped by `apply_public_rate_limit` — the `public-route-ceiling` oracle
+    // enforces this so a future public route cannot silently skip the floor.
+    let prl = PublicRateLimit::new(state.ip_gate.clone(), state.trusted_proxy_hops);
+
     let app = worker_a_router(state.clone())
-        .merge(submission_router(state.clone()).layer(cors.clone()))
+        .merge(apply_public_rate_limit(
+            submission_router(state.clone()).layer(cors.clone()),
+            prl.clone(),
+        ))
         .merge(admin_feedback_routes(state.clone()))
         .merge(widget_config_router(state.clone()))
-        .merge(roadmap_router(state.clone()))
+        .merge(apply_public_rate_limit(
+            roadmap_router(state.clone()),
+            prl.clone(),
+        ))
         .merge(admin_roadmap_router(state.clone()))
         .merge(admin_tier_router(state.clone()))
         // Operator-only tier + brand-override mutation (DEC-FBR-IMPL-11). No
@@ -493,7 +526,10 @@ fn build_app(
         // capability discovery (`GET /api/v1/capabilities`, metadata-only).
         .merge(solicitation_router(state.clone()))
         .merge(capabilities_router(state.clone()))
-        .merge(attachments_router(attachment_state).layer(cors.clone()))
+        .merge(apply_public_rate_limit(
+            attachments_router(attachment_state).layer(cors.clone()),
+            prl.clone(),
+        ))
         // P5a (Contract C22, Worker A): work-order API + approval state machine.
         // Admin routes behind AdminSession; runner routes behind the runner
         // write-token seam (Q14). BOTH merge WITHOUT `.layer(cors)` — these are
@@ -523,7 +559,10 @@ fn build_app(
         //   moderate + queue + board-settings surface — merged WITHOUT CORS
         //   (AdminSession, never a browser embed; Ripple Analysis flags
         //   accidental CORS-exposure of admin endpoints).
-        .merge(board_router(state.clone()).layer(cors.clone()))
+        .merge(apply_public_rate_limit(
+            board_router(state.clone()).layer(cors.clone()),
+            prl.clone(),
+        ))
         .merge(moderation_router(state.clone()))
         .merge(promote_router(state));
     app.layer(PropagateRequestIdLayer::x_request_id())

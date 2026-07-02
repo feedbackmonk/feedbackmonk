@@ -12,7 +12,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, Utc};
 use sqlx::PgPool;
 
-use feedbackmonk_anon::{AnonGate, LoginGate};
+use feedbackmonk_anon::{AnonGate, IpGate, LoginGate};
 use feedbackmonk_repository::{
     AnalysisSweepRepo, BoardVoteRepo, ClusterRepo, EmailVerificationRepo, FeedbackReplyRepo,
     FeedbackRepo, FeedbackStatusHistoryRepo, ProjectRepo, RecommendationRepo, RoadmapItemRepo,
@@ -64,6 +64,18 @@ pub struct AppState {
     /// `feedbackmonk_anon::DEFAULT_LOGIN_RATE_LIMIT_PER_MIN = 10`; override via
     /// `FEEDBACKMONK_LOGIN_RATE_LIMIT_PER_MIN`.
     pub login_gate: LoginGate,
+    /// Class-level per-IP `DoS` ceiling for EVERY public route (submission,
+    /// attachments, board, roadmap). Applied as router middleware, keyed on the
+    /// resolved client IP alone — the hard floor the cookie-keyed `anon_gate`
+    /// sits on top of (scrutiny P0-2). Default
+    /// `feedbackmonk_anon::DEFAULT_PUBLIC_RATE_LIMIT_PER_MIN = 120`; override via
+    /// `FEEDBACKMONK_PUBLIC_RATE_LIMIT_PER_MIN`.
+    pub ip_gate: IpGate,
+    /// Number of trusted reverse proxies in front of the app
+    /// (`FEEDBACKMONK_TRUSTED_PROXY_HOPS`; 0 = none/secure default, 1 for a
+    /// single LB such as Railway). Controls how many `X-Forwarded-For` entries
+    /// the IP resolver trusts (P1-2); 0 never trusts the spoofable header.
+    pub trusted_proxy_hops: usize,
     /// `iat` clock-skew tolerance for the JWT verifier, in seconds. Read from
     /// `FEEDBACKMONK_JWT_LEEWAY_SECONDS` at startup; default 5s. Only `iat` is
     /// leeway-tolerant — `exp` is strict per Contract C2 invariant 5.

@@ -20,6 +20,7 @@ pub mod crash_correlation;
 pub mod email;
 pub mod error;
 pub mod handlers;
+pub mod rate_limit;
 pub mod roadmap_voting_cache;
 pub mod router;
 pub mod state;
@@ -27,6 +28,7 @@ pub mod storage;
 pub mod translation;
 
 pub use cors::{parse_origins, public_cors_layer};
+pub use rate_limit::{apply_public_rate_limit, PublicRateLimit};
 pub use crash_correlation::{
     CorrelationOutcome, CrashCorrelator, CrashEvent, GlitchtipCorrelator,
 };

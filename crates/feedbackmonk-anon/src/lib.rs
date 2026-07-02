@@ -21,6 +21,7 @@
 
 #![deny(unsafe_code)]
 
+use std::net::IpAddr;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
@@ -242,6 +243,126 @@ impl LoginGate {
     }
 }
 
+// ---------------------------------------------------------------------------
+// IpGate -- class-level per-IP DoS ceiling for EVERY public route
+// (submission, attachments, board, roadmap). Sibling of AnonGate/LoginGate:
+// same governor substrate, keyed on the resolved client IP ALONE (no cookie,
+// no email) and applied as a router-level middleware, not per-handler.
+//
+// WHY (scrutiny 2026-07-01, P0-2): the fine-grained AnonGate keys on a
+// client-CONTROLLED cookie, so rotating the cookie mints unlimited budgets,
+// and the authenticated (Bearer-present) path had NO limiter at all. IpGate is
+// the hard floor the cookie gate sits on top of: an attacker can vary the
+// cookie freely, but every request from one IP still shares one coarse ceiling.
+// The IP is resolved via `resolve_client_ip` (trusted-proxy aware) so it is not
+// the raw TCP peer that collapses to the load balancer behind Railway (P1-2).
+// ---------------------------------------------------------------------------
+
+/// Domain-separation prefix for `IpGate` bucket keys. Disjoint from the anon +
+/// login prefixes so an IP bucket can never collide with either.
+pub const IP_HASH_DOMAIN_PREFIX: &[u8] = b"feedbackmonk-ip-v1";
+
+/// Default per-IP requests per minute across ALL public routes. Coarse by
+/// design: a legitimate human browsing the board + voting + submitting stays
+/// far below it; it exists to cap floods, not to shape normal traffic.
+/// Overridable via `FEEDBACKMONK_PUBLIC_RATE_LIMIT_PER_MIN`.
+pub const DEFAULT_PUBLIC_RATE_LIMIT_PER_MIN: u32 = 120;
+
+type IpKey = [u8; 32];
+
+/// In-memory keyed per-IP rate limiter. `Arc`-backed so it clones cheaply into
+/// the middleware state like `AnonGate`.
+#[derive(Clone)]
+pub struct IpGate {
+    limiter: Arc<RateLimiter<IpKey, DefaultKeyedStateStore<IpKey>, DefaultClock>>,
+    clock: DefaultClock,
+    quota_per_min: NonZeroU32,
+}
+
+impl IpGate {
+    /// Build a gate with the given per-IP per-minute request quota.
+    #[must_use]
+    pub fn new(requests_per_min: NonZeroU32) -> Self {
+        let quota = Quota::per_minute(requests_per_min);
+        Self {
+            limiter: Arc::new(RateLimiter::keyed(quota)),
+            clock: DefaultClock::default(),
+            quota_per_min: requests_per_min,
+        }
+    }
+
+    /// Build a gate at the documented default (120/min).
+    #[must_use]
+    pub fn with_default_quota() -> Self {
+        // SAFETY: 120 != 0 statically.
+        Self::new(NonZeroU32::new(DEFAULT_PUBLIC_RATE_LIMIT_PER_MIN).expect("non-zero default"))
+    }
+
+    /// The configured quota; exposed for telemetry / debug.
+    #[must_use]
+    pub fn quota_per_min(&self) -> NonZeroU32 {
+        self.quota_per_min
+    }
+
+    /// Bucket key for a client IP: BLAKE3 of the domain prefix + the IP's
+    /// canonical string form. Hashing (rather than keying on the raw IP) keeps
+    /// the bucket domain-separated and fixed-width.
+    #[must_use]
+    pub fn key_hash(ip: IpAddr) -> [u8; 32] {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(IP_HASH_DOMAIN_PREFIX);
+        hasher.update(ip.to_string().as_bytes());
+        *hasher.finalize().as_bytes()
+    }
+
+    /// Check + decrement the per-IP budget. On exceedance, `retry_after_seconds`
+    /// indicates the soonest the caller may retry.
+    pub fn check(&self, ip: IpAddr) -> Result<(), RateLimitError> {
+        let key = Self::key_hash(ip);
+        match self.limiter.check_key(&key) {
+            Ok(()) => Ok(()),
+            Err(not_until) => {
+                let wait = not_until.wait_time_from(self.clock.now());
+                let retry_after_seconds = wait.as_secs().max(1);
+                Err(RateLimitError::Exceeded { retry_after_seconds })
+            }
+        }
+    }
+}
+
+/// Resolve the real client IP for rate limiting, trusted-proxy aware (P1-2).
+///
+/// `trusted_hops` is the number of trusted reverse proxies in front of the app
+/// (`FEEDBACKMONK_TRUSTED_PROXY_HOPS`; 0 = none, the secure default; 1 for a
+/// single LB such as Railway). Only that many entries are trusted from the
+/// RIGHT of `X-Forwarded-For` (proxies append; the rightmost is the nearest
+/// proxy). We strip `trusted_hops` trusted entries and take the next one as the
+/// client. `X-Forwarded-For` is NEVER trusted when `trusted_hops == 0` (it is
+/// client-spoofable), and any shortfall falls back to the TCP `peer`.
+#[must_use]
+pub fn resolve_client_ip(xff: Option<&str>, peer: IpAddr, trusted_hops: usize) -> IpAddr {
+    if trusted_hops == 0 {
+        return peer; // never trust a spoofable header without a known proxy
+    }
+    let Some(raw) = xff else { return peer };
+    let entries: Vec<IpAddr> = raw
+        .split(',')
+        .filter_map(|s| s.trim().parse::<IpAddr>().ok())
+        .collect();
+    if entries.is_empty() {
+        return peer;
+    }
+    // Strip `trusted_hops` entries from the right; the entry before them is the
+    // client as seen by the outermost trusted proxy. If the chain is shorter
+    // than we trust (a client that forged fewer entries than the real proxy
+    // count would append), fall back to the peer rather than trusting a forged
+    // leftmost value.
+    match entries.len().checked_sub(trusted_hops + 1) {
+        Some(idx) => entries[idx],
+        None => peer,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -411,5 +532,67 @@ mod tests {
         }
         assert!(gate.check(&victim).is_err());
         gate.check(&other).expect("a different account's budget is independent");
+    }
+
+    // ----- IpGate (P0-2, class-level per-IP ceiling) -----
+
+    use std::net::{IpAddr, Ipv4Addr};
+    fn ip(a: u8, b: u8, c: u8, d: u8) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(a, b, c, d))
+    }
+
+    #[test]
+    fn ip_gate_trips_after_quota_and_is_per_ip() {
+        // A small gate: 3/min. First 3 pass, 4th throttled; a DIFFERENT IP is
+        // unaffected (so one flooding host can't starve everyone).
+        let gate = IpGate::new(NonZeroU32::new(3).unwrap());
+        let attacker = ip(1, 2, 3, 4);
+        let bystander = ip(9, 9, 9, 9);
+        for i in 0..3 {
+            gate.check(attacker).unwrap_or_else(|e| panic!("call {i} should pass: {e:?}"));
+        }
+        assert!(gate.check(attacker).is_err(), "4th from the same IP is throttled");
+        gate.check(bystander).expect("a different IP has its own budget");
+    }
+
+    #[test]
+    fn ip_gate_key_is_domain_separated_from_anon_and_login() {
+        // The same textual value must land in disjoint buckets across gates.
+        let k_ip = IpGate::key_hash(ip(10, 0, 0, 1));
+        let k_login = LoginGate::key_hash("10.0.0.1", "");
+        assert_ne!(k_ip, k_login, "ip and login domains must not collide");
+    }
+
+    #[test]
+    fn resolve_client_ip_ignores_xff_when_no_trusted_proxy() {
+        // hops=0: XFF is spoofable and MUST be ignored — always the peer.
+        let peer = ip(203, 0, 113, 7);
+        let got = resolve_client_ip(Some("1.1.1.1, 2.2.2.2"), peer, 0);
+        assert_eq!(got, peer);
+    }
+
+    #[test]
+    fn resolve_client_ip_strips_one_trusted_proxy() {
+        // hops=1 (e.g. Railway's single LB): XFF = "client, lb". Strip the
+        // rightmost (the LB) → the client.
+        let peer = ip(10, 0, 0, 1); // the LB's address as the TCP peer
+        let got = resolve_client_ip(Some("198.51.100.9, 10.0.0.1"), peer, 1);
+        assert_eq!(got, ip(198, 51, 100, 9));
+    }
+
+    #[test]
+    fn resolve_client_ip_falls_back_when_chain_too_short() {
+        // hops=2 but only one XFF entry: a client can't forge fewer entries
+        // than the real proxy count into trust — fall back to the peer.
+        let peer = ip(10, 0, 0, 1);
+        let got = resolve_client_ip(Some("198.51.100.9"), peer, 2);
+        assert_eq!(got, peer, "shortfall must not trust the leftmost forged value");
+    }
+
+    #[test]
+    fn resolve_client_ip_falls_back_on_missing_or_garbage_xff() {
+        let peer = ip(10, 0, 0, 1);
+        assert_eq!(resolve_client_ip(None, peer, 1), peer);
+        assert_eq!(resolve_client_ip(Some("not-an-ip"), peer, 1), peer);
     }
 }
