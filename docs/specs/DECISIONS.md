@@ -91,6 +91,12 @@ feedbackmonk's spec is a separate artifact from GitCellar's `docs/specs/feedback
 - ✅ Sponsorship angle (Plausible-style: indie podcasts, GitHub Sponsors, conf sponsorships)
 - ✅ Widget as viral artifact — free tier carries "powered by feedbackmonk" link; paid tiers opt-out. Low-key distribution.
 
+> **Scrutiny 2026-07-01 note (positioning drift) — RECOMMENDATION for owner ratification; NOT an applied change to the decision above.**
+> The scrutiny of the FeedbackMonk ⇄ GitCellar seam (`docs/planning/scrutiny-feedbackmonk-gitcellar-seam-20260701/`, §8.1 M1 verdict) reviewed this decision's mandates. Two findings:
+> 1. **The "no third-party trackers, ever" promise STANDS verbatim and is intact.** No tracker shipped (widget-bundle-size oracle enforces it), and processor egress like DeepL cloud translation is **categorically different** from a tracking pixel (a disclosed, owner-chosen, default-off data-processor, not covert cross-site surveillance). Nothing about that clause needs to change.
+> 2. **The "What this rules out → ❌ AI-powered feedback insights / sentiment analysis / LLM auto-categorization in v1" clause is now STALE.** The product subsequently shipped the P5 agentic resolution loop (FR-FBR-19..25), FR-FBR-28 structured sentiment, and FR-FBR-30 cloud translation. The clause was scoped to v1 ("in v1"), so it is not a broken promise — but leaving it unqualified misrepresents the current product and reads as positioning drift.
+> **Recommendation (owner to ratify):** restate the positioning as *"privacy-first defaults; no cross-site trackers; AI features are opt-in, self-hostable, and egress-gated; any cloud egress is default-off, disclosed, and reversible."* This preserves the differentiator truthfully while acknowledging the shipped AI surface. Until the owner ratifies, the decision text above is unchanged and remains the record; this note flags the drift, it does not resolve it.
+
 ---
 
 ### DEC-FBR-03: Multi-tenancy architecture — Shared PostgreSQL, `tenant_id` + `project_id`, row-level filtering, multi-product-per-tenant mandatory

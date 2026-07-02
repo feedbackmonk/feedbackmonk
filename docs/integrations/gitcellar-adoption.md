@@ -249,6 +249,18 @@ is `crates/feedbackmonk-jwt` (Contract C2) and is **strict**:
   customer-side minting convention (the verifier enforces whatever `exp` you set, strictly).
   Desktop should mint a fresh token per submission/poll rather than caching long-lived tokens.
 
+> **Machine-consumer token profile (finding P1-11 — for server-to-server / native callers).** The
+> "mint fresh per submission/poll" guidance above is **browser-shaped**. A native/server caller (e.g.
+> GitCellar Desktop's tray poller) with no fallback should NOT re-mint on every call — a re-mint-per-op
+> pattern makes the GitCellar signing service a single point of failure: if the mint is briefly down
+> while feedbackmonk is healthy, every authenticated op fails. Instead a machine caller SHOULD **cache
+> the minted JWT in-process and reuse it until ~30s before `exp`, re-minting only on that near-expiry
+> threshold or on a `401 {"error":"Expired"}`**. Because the verifier enforces whatever `exp` you set
+> (§5.2), a **longer machine-token TTL (e.g. 15 min)** is a pure consumer-side choice with no server
+> change — it simply widens the caching window. The verifier also allows **`iat` clock-skew leeway** via
+> `FEEDBACKMONK_JWT_LEEWAY_SECONDS` (±5s default), so mild clock drift between the mint and the API host
+> does not reject a fresh token; note `exp` stays **strict** (no leeway — Contract C2, §5.2).
+
 ### 5.5 Submit with the token
 ```
 POST https://api.feedbackmonk.com/api/v1/projects/<PROJECT_ID>/feedback
@@ -515,7 +527,7 @@ canonical embed.** Tracked as a discovery to fix on the feedbackmonk side (small
 |---|---|---|---|
 | 1 | Attachments (≤4 screenshots ≤5MB, canvas redaction, service-log capture w/ PII scrub, console-log) | **BUILT** ✅ — upload (multipart, size/type limits, PII-scrub) + Phase A list + tenant-scoped download (§6.6); capability `feedback.attachments` | done |
 | 2 | Crash-event correlation (`crash_event_id` ↔ Glitchtip + worker) | **BUILT** — `crash_event_id` column (migration 00010) + auth-mode submit accept + pull-mode `crash_correlation` worker (see §5.6). Live Glitchtip wiring pending deploy env (PF-DEPLOY-01) | done (deploy env pending) |
-| 3 | Admin full-text search across feedback | **MISSING** — no search route, no tsvector/index | build |
+| 3 | Admin full-text search across feedback | **BUILT** ✅ (FR-FBR-PARITY-03) — `GET /api/v1/admin/feedback/search` (`crates/feedbackmonk-api/src/handlers/admin_feedback.rs`) backed by a `tsvector` column + GIN index (migration `00011_feedback_fts.sql`) | done |
 | 4 | End-user JWT my-feedback list + reply-thread read API | **BUILT** ✅ — `GET …/me/feedback` + `…/me/feedback/<FB>/thread`, JWT-`sub`-scoped (see §6) | done |
 | 5 | Forge issue bridge | N/A — GitCellar is DROPPING it (DEC-FBR-06 already drops Forge) | none |
 
@@ -688,6 +700,10 @@ client that checks the array degrades gracefully.
 ---
 
 ## Change log
+- 2026-07-01 (scrutiny doc-honesty pass) — Corrected §8 parity-gap row #3 (admin full-text search):
+  flipped from "**MISSING** — no search route, no tsvector/index" to **BUILT** ✅ (FR-FBR-PARITY-03 —
+  `GET /api/v1/admin/feedback/search` + `00011_feedback_fts.sql` tsvector+GIN), action `build` → `done`.
+  The row had gone stale after the search endpoint shipped.
 - 2026-07-01 (Phase A — GitCellar feedback-consolidation contract build-out) — Added the end-user
   capabilities GitCellar's consolidation depends on, all ADDITIVE to the frozen contract + advertised via
   §11: §6.4 `DELETE …/me/feedback/{id}` right-to-erasure (hard-delete + FK cascade + attachment object-byte
