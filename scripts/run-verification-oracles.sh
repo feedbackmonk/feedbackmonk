@@ -50,6 +50,9 @@ ORACLES=(
   widget-bundle-size
   selfhost-compose-smoke
   feedback-as-data-audit
+  public-route-ceiling
+  public-id-as-capability
+  submission-idempotency
 )
 
 fail=0
