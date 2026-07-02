@@ -138,6 +138,9 @@ impl From<RepoError> for ApiError {
         match e {
             RepoError::NotFound => Self::NotFound,
             RepoError::Conflict => Self::Conflict("uniqueness or state violation".into()),
+            // Security scrutiny P1-3 / M6: a key reused with different content
+            // → 409 with a stable machine-readable body `{"error":"IdempotencyKeyReuse"}`.
+            RepoError::IdempotencyKeyReuse => Self::Conflict("IdempotencyKeyReuse".into()),
             RepoError::TenantProjectMismatch => Self::Forbidden,
             RepoError::Sqlx(err) => Self::Internal(format!("database error: {err}")),
         }

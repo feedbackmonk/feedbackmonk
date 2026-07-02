@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n                    SELECT f.short_code AS \"short_code!\", si.content_hash\n                    FROM submit_idempotency si\n                    JOIN feedback f ON f.id = si.feedback_id\n                    WHERE si.project_id = $1 AND si.tenant_id = $2\n                      AND si.submitter_id = $3 AND si.idempotency_key = $4\n                    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "content_hash",
+        "type_info": "Bytea"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      true
+    ]
+  },
+  "hash": "fd2e5a7a6b2427058f605ebba96ab0416eb9d6dc0f2d4f636f6cbbc40543e965"
+}

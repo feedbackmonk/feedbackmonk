@@ -14,6 +14,14 @@ pub enum RepoError {
     #[error("conflict (uniqueness or state violation)")]
     Conflict,
 
+    /// A submit reused an `Idempotency-Key` (same
+    /// `(project_id, submitter, key)`) with DIFFERENT content than the original
+    /// submission. Distinct from a legit retry (identical content → the
+    /// original submission's id is returned). Maps to HTTP 409. Security
+    /// scrutiny P1-3 / M6.
+    #[error("idempotency key reused with different content")]
+    IdempotencyKeyReuse,
+
     /// `ProjectRepo::open` was called with a `project_id` that does not
     /// belong to the tenant in the supplied `TenantScope`. This is a
     /// hard authorization boundary -- treat as 403, log at WARN, and

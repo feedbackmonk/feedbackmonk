@@ -10,6 +10,8 @@ authors.workspace = true
 feedbackmonk-core = { path = "../feedbackmonk-core" }
 sqlx = { workspace = true }
 async-trait = { workspace = true }
+# Content-hash of a submit (idempotency-key reuse detection, scrutiny P1-3/M6).
+blake3 = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }

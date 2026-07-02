@@ -211,6 +211,33 @@ async fn submit(
     (status, body_to_json(resp.into_body()).await)
 }
 
+/// POST an ANONYMOUS submission carrying a STABLE anon cookie, so both requests
+/// resolve to the same anon `submitter_id` (P1-3 scoped dedupe requires the same
+/// submitter identity — otherwise each request would mint a fresh cookie and be
+/// a distinct submitter). Returns `(status, response_json)`.
+async fn submit_anon_stable(
+    app: &axum::Router,
+    project_id: Uuid,
+    body_json: Value,
+    idempotency_key: Option<&str>,
+    anon_cookie: &str,
+) -> (StatusCode, Value) {
+    let mut builder = Request::post(format!("/api/v1/projects/{project_id}/feedback"))
+        .header("content-type", "application/json")
+        .header(feedbackmonk_anon::ANON_COOKIE_HEADER, anon_cookie);
+    if let Some(key) = idempotency_key {
+        builder = builder.header("Idempotency-Key", key);
+    }
+    let mut req = builder
+        .body(Body::from(serde_json::to_vec(&body_json).unwrap()))
+        .unwrap();
+    req.extensions_mut()
+        .insert(ConnectInfo::<SocketAddr>("127.0.0.1:54321".parse().unwrap()));
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    (status, body_to_json(resp.into_body()).await)
+}
+
 /// Count the project's committed feedback rows via the repository read path.
 async fn row_count(state: &AppState, pscope: &ProjectScope) -> usize {
     state.feedback.list_recent(pscope, 100).await.unwrap().len()
@@ -323,8 +350,12 @@ async fn same_idempotency_key_returns_same_id_and_one_row(pool: PgPool) {
     let app = build_router(state.clone());
 
     let payload = json!({"body": "flaky network retry", "kind": "bug"});
-    let (s1, b1) = submit(&app, project_id, payload.clone(), None, Some("retry-key-1")).await;
-    let (s2, b2) = submit(&app, project_id, payload, None, Some("retry-key-1")).await;
+    // Stable cookie ⇒ same anon submitter across both requests (P1-3 dedupe is
+    // scoped per submitter).
+    let (s1, b1) =
+        submit_anon_stable(&app, project_id, payload.clone(), Some("retry-key-1"), "anon-1").await;
+    let (s2, b2) =
+        submit_anon_stable(&app, project_id, payload, Some("retry-key-1"), "anon-1").await;
     assert_eq!(s1, StatusCode::OK);
     assert_eq!(s2, StatusCode::OK, "a dedupe hit is a SUCCESS (200), not an error");
     assert_eq!(
@@ -365,33 +396,118 @@ async fn absent_idempotency_header_keeps_current_behavior(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../../migrations")]
-async fn same_key_different_body_is_first_write_wins(pool: PgPool) {
+async fn same_key_different_content_returns_409(pool: PgPool) {
+    // NEW semantics (scrutiny M6, replacing the old silent first-write-wins):
+    // the SAME submitter reusing a key with DIFFERENT content is a hard 409
+    // `IdempotencyKeyReuse`, not a silent return of the original. Stable cookie
+    // keeps the anon submitter identity constant so the PK conflict fires.
     let state = build_test_state(&pool);
     let (pscope, project_id) = seed_project(&state, "idem-fww@example.com").await;
     let app = build_router(state.clone());
 
-    let (_, b1) = submit(
+    let (_, b1) = submit_anon_stable(
         &app,
         project_id,
         json!({"body": "the FIRST body", "kind": "bug"}),
-        None,
         Some("fww-key"),
+        "anon-fww",
+    )
+    .await;
+    let (s2, b2) = submit_anon_stable(
+        &app,
+        project_id,
+        json!({"body": "a DIFFERENT retry body", "kind": "bug"}),
+        Some("fww-key"),
+        "anon-fww",
+    )
+    .await;
+    assert_eq!(s2, StatusCode::CONFLICT, "key reuse with different content → 409");
+    assert_eq!(
+        b2["error"], "IdempotencyKeyReuse",
+        "409 body must name the reuse error"
+    );
+
+    // Only the first submission was committed; the conflicting retry rolled back.
+    let rows = state.feedback.list_recent(&pscope, 10).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].body, "the FIRST body", "the stored body is the first write");
+    assert!(!b1["feedback_id"].as_str().unwrap().is_empty());
+}
+
+// ----- P1-3: cross-submitter isolation + content-aware reuse (auth mode) ---------
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn different_submitters_same_key_get_distinct_rows(pool: PgPool) {
+    // THE core P1-3 assertion: two DIFFERENT end-users choosing the SAME key
+    // must NOT collide — no silent data loss, no cross-user short_code leak.
+    let state = build_test_state(&pool);
+    let (pscope, project_id) = seed_project(&state, "idem-xuser@example.com").await;
+    let signing = seed_signing_key(&state, &pscope).await;
+    let app = build_router(state.clone());
+
+    let jwt_a = mint_jwt(&signing, project_id, "alice");
+    let jwt_b = mint_jwt(&signing, project_id, "bob");
+    let payload = json!({"body": "same key, different users", "kind": "bug"});
+
+    let (sa, ba) = submit(&app, project_id, payload.clone(), Some(&jwt_a), Some("shared-key")).await;
+    let (sb, bb) = submit(&app, project_id, payload, Some(&jwt_b), Some("shared-key")).await;
+    assert_eq!(sa, StatusCode::OK);
+    assert_eq!(
+        sb,
+        StatusCode::OK,
+        "second user's submit must succeed, not collide with the first user's key"
+    );
+    assert_ne!(
+        ba["feedback_id"], bb["feedback_id"],
+        "P1-3: distinct submitters must get distinct feedback ids"
+    );
+    assert_eq!(row_count(&state, &pscope).await, 2);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn same_submitter_same_key_same_content_returns_original(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let (pscope, project_id) = seed_project(&state, "idem-retry@example.com").await;
+    let signing = seed_signing_key(&state, &pscope).await;
+    let app = build_router(state.clone());
+
+    let jwt = mint_jwt(&signing, project_id, "carol");
+    let payload = json!({"body": "identical retry", "kind": "bug", "severity": "low"});
+    let (s1, b1) = submit(&app, project_id, payload.clone(), Some(&jwt), Some("retry-k")).await;
+    let (s2, b2) = submit(&app, project_id, payload, Some(&jwt), Some("retry-k")).await;
+    assert_eq!(s1, StatusCode::OK);
+    assert_eq!(s2, StatusCode::OK, "identical retry is a 200 dedupe hit");
+    assert_eq!(b1["feedback_id"], b2["feedback_id"], "returns the ORIGINAL id");
+    assert_eq!(row_count(&state, &pscope).await, 1);
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn same_submitter_same_key_different_content_returns_409(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let (pscope, project_id) = seed_project(&state, "idem-reuse@example.com").await;
+    let signing = seed_signing_key(&state, &pscope).await;
+    let app = build_router(state.clone());
+
+    let jwt = mint_jwt(&signing, project_id, "dave");
+    let (_, _b1) = submit(
+        &app,
+        project_id,
+        json!({"body": "original content", "kind": "bug"}),
+        Some(&jwt),
+        Some("reuse-k"),
     )
     .await;
     let (s2, b2) = submit(
         &app,
         project_id,
-        json!({"body": "a DIFFERENT retry body", "kind": "bug"}),
-        None,
-        Some("fww-key"),
+        json!({"body": "changed content", "kind": "bug"}),
+        Some(&jwt),
+        Some("reuse-k"),
     )
     .await;
-    assert_eq!(s2, StatusCode::OK);
-    assert_eq!(b1["feedback_id"], b2["feedback_id"]);
-
-    let rows = state.feedback.list_recent(&pscope, 10).await.unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].body, "the FIRST body", "the stored body is the first write");
+    assert_eq!(s2, StatusCode::CONFLICT);
+    assert_eq!(b2["error"], "IdempotencyKeyReuse");
+    assert_eq!(row_count(&state, &pscope).await, 1, "only the first write committed");
 }
 
 #[sqlx::test(migrations = "../../migrations")]

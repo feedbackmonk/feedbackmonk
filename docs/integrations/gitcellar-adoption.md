@@ -281,9 +281,14 @@ Idempotency-Key: <opaque-string>            # OPTIONAL — dedupe on retry (Phas
 - **`Idempotency-Key`** request header (optional, Phase A — capability `feedback.idempotency`): any
   non-empty opaque string. A retry carrying the **same** key on the **same project** returns `200` with
   the **original** `feedback_id` and creates **no new row** (first-write-wins — the stored fields are the
-  first submit's). Scope is per `(project_id, key)`; there is no cross-project dedupe. Erasing the
-  feedback (§12) frees the key. Absent/empty header ⇒ pre-Phase-A behavior (a new row each call). Browser
-  note: the credentialed CORS layer allowlists `Idempotency-Key` on preflight.
+  first submit's). Scope is per `(project_id, submitter, key)` — the dedupe now carries the submitter
+  identity (JWT `sub` in auth mode, the anon token in anonymous mode), so two different users may reuse
+  the same key without colliding (a security fix; previously a shared key across users silently returned
+  the first user's feedback id). Reusing a key with *different* content now returns **409**
+  `{"error":"IdempotencyKeyReuse"}` instead of silently returning the original; an identical retry still
+  returns `200` with the original id. Keys are bounded to 1..=255 chars. There is no cross-project dedupe.
+  Erasing the feedback (§12) frees the key. Absent/empty header ⇒ pre-Phase-A behavior (a new row each call).
+  Browser note: the credentialed CORS layer allowlists `Idempotency-Key` on preflight.
 JWT failures return **401** with `{ "error": "<variant>" }` where variant ∈
 `BadSignature | Expired | NotYetValid | WrongAudience | AlgorithmNotAllowed | MissingRequiredClaim
 | ExternalMetadataTooLarge | MalformedToken` — Desktop can disambiguate (e.g. re-mint on `Expired`).

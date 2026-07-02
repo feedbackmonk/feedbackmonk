@@ -94,10 +94,12 @@ pub trait FeedbackRepo: Send + Sync {
     ///
     /// The feedback INSERT and the optional `submit_idempotency` claim run in
     /// ONE transaction (A4b). When `idempotency_key` is `Some` and the
-    /// `(project_id, idempotency_key)` PK already exists, the WHOLE
-    /// transaction rolls back (the duplicate feedback row is never committed)
-    /// and the ORIGINAL submission's id is returned with `deduped = true` —
-    /// exactly-once on flaky-network retry, zero cleanup.
+    /// `(project_id, submitter_id, idempotency_key)` PK already exists for THIS
+    /// submitter (scrutiny P1-3 added the submitter dimension), the WHOLE
+    /// transaction rolls back (the duplicate feedback row is never committed).
+    /// A byte-identical retry then returns the ORIGINAL submission's id with
+    /// `deduped = true`; a key reused with DIFFERENT content returns
+    /// [`crate::error::RepoError::IdempotencyKeyReuse`] (→ 409; scrutiny M6).
     #[allow(clippy::too_many_arguments)]
     async fn submit_authenticated_full(
         &self,
@@ -743,15 +745,52 @@ enum IdempotencyClaim<'t> {
 }
 
 /// True iff `e` is the `submit_idempotency` PK unique-violation — i.e. this
-/// `(project_id, idempotency_key)` was already claimed by an earlier submit.
-/// Matched via sqlx's typed error kind + the constraint NAME (never loose
-/// string matching on the message).
+/// `(project_id, submitter_id, idempotency_key)` was already claimed by an
+/// earlier submit from the SAME submitter (scrutiny P1-3 widened the PK to
+/// carry `submitter_id`; the constraint NAME is unchanged). Matched via sqlx's
+/// typed error kind + the constraint NAME (never loose string matching on the
+/// message).
 fn is_submit_idempotency_conflict(e: &sqlx::Error) -> bool {
     matches!(
         e,
         sqlx::Error::Database(db)
             if db.is_unique_violation() && db.constraint() == Some("submit_idempotency_pkey")
     )
+}
+
+/// Stable content fingerprint of a submission for idempotency-key reuse
+/// detection (scrutiny M6/P2-17). The four semantic submit fields are joined by
+/// the ASCII Unit Separator (`0x1F`, which cannot appear in these values) in the
+/// FIXED order `body | sentiment | severity | kind` — an absent optional is the
+/// empty string — and BLAKE3-256 is taken over the UTF-8 bytes. A retry with
+/// byte-identical content produces the same hash (→ legit dedupe); any semantic
+/// difference produces a different hash (→ 409 `IdempotencyKeyReuse`).
+fn submit_content_hash(
+    body: &str,
+    sentiment_str: Option<&str>,
+    severity_str: Option<&str>,
+    kind_str: &str,
+) -> [u8; 32] {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(body.as_bytes());
+    hasher.update(&[0x1F]);
+    hasher.update(sentiment_str.unwrap_or("").as_bytes());
+    hasher.update(&[0x1F]);
+    hasher.update(severity_str.unwrap_or("").as_bytes());
+    hasher.update(&[0x1F]);
+    hasher.update(kind_str.as_bytes());
+    *hasher.finalize().as_bytes()
+}
+
+/// Lowercase hex of a byte slice — the anon-mode `submitter_id` (the hex of the
+/// anon token hash). Auth-mode uses the JWT `sub` verbatim.
+fn hex_lower(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for b in bytes {
+        let _ = write!(s, "{b:02x}");
+    }
+    s
 }
 
 impl SqlxFeedbackRepo {
@@ -765,27 +804,36 @@ impl SqlxFeedbackRepo {
     ///
     /// - No conflict → returns [`IdempotencyClaim::Claimed`] with the still-open
     ///   transaction; the caller finishes its writes and commits.
-    /// - PK conflict (`(project_id, idempotency_key)` already claimed) → ROLLS
-    ///   BACK the whole transaction, so the duplicate feedback row is NEVER
-    ///   committed, then resolves the EXISTING submission's `short_code`
-    ///   (scoped by tenant + project, DEC-FBR-03) and returns
-    ///   [`IdempotencyClaim::Duplicate`]. Exactly one feedback row per key,
-    ///   zero cleanup — the txn+conflict path is the correctness backstop.
+    /// - PK conflict (`(project_id, submitter_id, idempotency_key)` already
+    ///   claimed by THIS submitter) → ROLLS BACK the whole transaction, so the
+    ///   duplicate feedback row is NEVER committed, then resolves the EXISTING
+    ///   submission's `short_code` AND its stored `content_hash` (scoped by
+    ///   tenant + project + submitter, DEC-FBR-03). If the stored hash equals
+    ///   the new submission's `content_hash` → [`IdempotencyClaim::Duplicate`]
+    ///   (a legit retry). If it DIFFERS → [`crate::error::RepoError::IdempotencyKeyReuse`]
+    ///   (the client reused a key with different content; scrutiny M6). The
+    ///   `submitter_id` dimension closes the P1-3 cross-user collision — a key
+    ///   only ever dedupes within one submitter's own retries.
     async fn claim_idempotency_key<'t>(
         &self,
         scope: &ProjectScope,
         mut tx: sqlx::Transaction<'t, sqlx::Postgres>,
         idempotency_key: &str,
+        submitter_id: &str,
+        content_hash: &[u8],
         feedback_row_id: Uuid,
     ) -> Result<IdempotencyClaim<'t>> {
         let inserted = sqlx::query!(
             r#"
-            INSERT INTO submit_idempotency (project_id, tenant_id, idempotency_key, feedback_id)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO submit_idempotency
+                (project_id, tenant_id, submitter_id, idempotency_key, content_hash, feedback_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
             scope.project_id(),
             scope.tenant_id(),
+            submitter_id,
             idempotency_key,
+            content_hash,
             feedback_row_id,
         )
         .execute(&mut *tx)
@@ -794,19 +842,21 @@ impl SqlxFeedbackRepo {
         match inserted {
             Ok(_) => Ok(IdempotencyClaim::Claimed(tx)),
             Err(e) if is_submit_idempotency_conflict(&e) => {
-                // Duplicate submit for this key: discard the fresh feedback
-                // row by rolling back the WHOLE transaction, then return the
-                // original submission's id.
+                // Duplicate submit for this (submitter, key): discard the fresh
+                // feedback row by rolling back the WHOLE transaction, then
+                // resolve the original submission's id + stored content hash.
                 tx.rollback().await?;
-                let existing = sqlx::query_scalar!(
+                let existing = sqlx::query!(
                     r#"
-                    SELECT f.short_code AS "short_code!"
+                    SELECT f.short_code AS "short_code!", si.content_hash
                     FROM submit_idempotency si
                     JOIN feedback f ON f.id = si.feedback_id
-                    WHERE si.project_id = $1 AND si.tenant_id = $2 AND si.idempotency_key = $3
+                    WHERE si.project_id = $1 AND si.tenant_id = $2
+                      AND si.submitter_id = $3 AND si.idempotency_key = $4
                     "#,
                     scope.project_id(),
                     scope.tenant_id(),
+                    submitter_id,
                     idempotency_key,
                 )
                 .fetch_optional(&self.pool)
@@ -816,7 +866,18 @@ impl SqlxFeedbackRepo {
                 // the claim row). Vanishingly rare; Conflict → 409 tells the
                 // client to retry, and the retry will claim the key fresh.
                 .ok_or(crate::error::RepoError::Conflict)?;
-                Ok(IdempotencyClaim::Duplicate(FeedbackId::from(existing)))
+
+                // Same key + same content → legit retry (return the original
+                // id). Same key + DIFFERENT content → reuse abuse/mistake:
+                // a hard 409 rather than 00021's silent "return the original"
+                // (scrutiny M6). A NULL stored hash is a pre-migration row and
+                // is unreachable here (those carry the `''` submitter_id).
+                match existing.content_hash.as_deref() {
+                    Some(stored) if stored == content_hash => {
+                        Ok(IdempotencyClaim::Duplicate(FeedbackId::from(existing.short_code)))
+                    }
+                    _ => Err(crate::error::RepoError::IdempotencyKeyReuse),
+                }
             }
             Err(e) => Err(e.into()),
         }
@@ -888,8 +949,12 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         .await?;
 
         let tx = if let Some(key) = idempotency_key {
+            // Dedupe is scoped per submitter (P1-3): auth-mode submitter is the
+            // JWT `sub`. content_hash guards against same-key/different-content
+            // reuse (M6).
+            let content_hash = submit_content_hash(body, sentiment_str, severity_str, kind_str);
             match self
-                .claim_idempotency_key(scope, tx, key, feedback_row_id)
+                .claim_idempotency_key(scope, tx, key, end_user_sub, &content_hash, feedback_row_id)
                 .await?
             {
                 IdempotencyClaim::Claimed(tx) => tx,
@@ -964,8 +1029,13 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         .await?;
 
         let mut tx = if let Some(key) = idempotency_key {
+            // Dedupe is scoped per submitter (P1-3): anon-mode submitter is the
+            // hex of the anon token hash (the same identity the row is
+            // attributed to). content_hash guards against reuse (M6).
+            let submitter_id = hex_lower(token);
+            let content_hash = submit_content_hash(body, sentiment_str, severity_str, kind_str);
             match self
-                .claim_idempotency_key(scope, tx, key, feedback_row_id)
+                .claim_idempotency_key(scope, tx, key, &submitter_id, &content_hash, feedback_row_id)
                 .await?
             {
                 IdempotencyClaim::Claimed(tx) => tx,
