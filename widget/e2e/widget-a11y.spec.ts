@@ -340,3 +340,77 @@ test.describe("feedbackmonk widget log capture", () => {
     expect(attachBody!).toContain("diagnostic-marker-42");
   });
 });
+
+// P2-2: tenant-supplied brand values (footer_url / logo_url → href/src,
+// primary_color → CSS var) must be scheme/value-checked so a `javascript:`
+// URL can't reach an href and CSS can't be smuggled into the color property.
+test.describe("feedbackmonk widget config-value hardening (P2-2)", () => {
+  async function routeBrand(page: Page, brand: Record<string, unknown>) {
+    await page.route("**/widget-config", async (route: Route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...MOCK_CONFIG,
+          brand: { ...MOCK_CONFIG.brand, ...brand },
+        }),
+      });
+    });
+  }
+
+  test("drops javascript: URLs and a non-color primary_color", async ({ page }) => {
+    await routeBrand(page, {
+      footer_text: "powered by feedbackmonk",
+      footer_url: "javascript:alert(document.domain)",
+      logo_url: "javascript:alert(1)",
+      primary_color: "red; } html { background: url(https://evil.example/x)",
+    });
+    await page.goto("/e2e/fixture.html");
+    await page.getByRole("button", { name: /Open feedback form/i }).click();
+    await expect(page.getByRole("dialog", { name: /Send feedback/i })).toBeVisible();
+
+    const probe = await page.evaluate(() => {
+      const footer = document.querySelector<HTMLAnchorElement>(".fbm-footer a");
+      const root = document.querySelector<HTMLElement>("[data-fbm-root]");
+      return {
+        footerHref: footer?.href ?? null,
+        logoCount: document.querySelectorAll("img.fbm-logo").length,
+        primary: root?.style.getPropertyValue("--fbm-primary") ?? "",
+      };
+    });
+
+    // A javascript: URL never reaches the href — it falls back to the badge default.
+    expect(probe.footerHref).toBe("https://feedbackmonk.com/");
+    // A javascript: logo_url renders no <img> at all.
+    expect(probe.logoCount).toBe(0);
+    // A non-color primary_color is ignored — the widget keeps its stylesheet default.
+    expect(probe.primary).toBe("");
+  });
+
+  test("honors valid http(s) URLs and a plain color token", async ({ page }) => {
+    await routeBrand(page, {
+      footer_text: "powered by feedbackmonk",
+      footer_url: "https://acme.example/feedback",
+      logo_url: "https://acme.example/logo.png",
+      primary_color: "#123456",
+    });
+    await page.goto("/e2e/fixture.html");
+    await page.getByRole("button", { name: /Open feedback form/i }).click();
+    await expect(page.getByRole("dialog", { name: /Send feedback/i })).toBeVisible();
+
+    const probe = await page.evaluate(() => {
+      const footer = document.querySelector<HTMLAnchorElement>(".fbm-footer a");
+      const logo = document.querySelector<HTMLImageElement>("img.fbm-logo");
+      const root = document.querySelector<HTMLElement>("[data-fbm-root]");
+      return {
+        footerHref: footer?.href ?? null,
+        logoSrc: logo?.src ?? null,
+        primary: root?.style.getPropertyValue("--fbm-primary") ?? "",
+      };
+    });
+
+    expect(probe.footerHref).toBe("https://acme.example/feedback");
+    expect(probe.logoSrc).toBe("https://acme.example/logo.png");
+    expect(probe.primary).toBe("#123456");
+  });
+});

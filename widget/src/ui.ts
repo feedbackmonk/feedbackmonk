@@ -49,6 +49,36 @@ export function createElement<K extends keyof HTMLElementTagNameMap>(
   return el;
 }
 
+// Scheme allowlist for tenant-supplied URLs (P2-2). Config values like
+// `footer_url`/`logo_url` are tenant-controlled and land on an `href`/`src`;
+// a `javascript:` / `data:` / `vbscript:` value there is an injection vector.
+// Returns the browser-canonical URL only when it resolves to http(s);
+// otherwise null so the caller can fall back or skip the element.
+export function safeHttpUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(value, window.location.href);
+  } catch {
+    return null;
+  }
+  return parsed.protocol === "http:" || parsed.protocol === "https:"
+    ? parsed.href
+    : null;
+}
+
+// Value guard for `primary_color` (P2-2). It is injected as a CSS custom-
+// property value; reject anything that isn't a plain color token so a value
+// can't smuggle in `url(...)` or other CSS. Allows #hex (3/4/6/8),
+// rgb/rgba/hsl/hsla(), and CSS named colors. null → caller keeps the default.
+const CSS_COLOR_RE =
+  /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$|^(rgb|rgba|hsl|hsla)\([0-9.,%\s/]+\)$|^[a-zA-Z]+$/;
+export function safeCssColor(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  return CSS_COLOR_RE.test(v) ? v : null;
+}
+
 // Live focusable query for a container — robust to dynamically added controls
 // (attachment buttons, redaction overlay) that a static array would miss.
 const FOCUSABLE_SELECTOR =
@@ -117,10 +147,12 @@ export function createModal(
   closeBtn.addEventListener("click", onClose);
 
   // Optional per-tenant logo (DEC-FBR-IMPL-12) — rendered in the modal header.
+  // Scheme-checked (P2-2): a non-http(s) logo_url is dropped, not rendered.
   let logoEl: HTMLImageElement | null = null;
-  if (config.brand.logo_url) {
+  const logoSrc = safeHttpUrl(config.brand.logo_url);
+  if (logoSrc) {
     logoEl = createElement("img", "fbm-logo");
-    logoEl.src = config.brand.logo_url;
+    logoEl.src = logoSrc;
     logoEl.alt = config.display_name + " logo";
     logoEl.decoding = "async";
     logoEl.loading = "lazy";
@@ -251,7 +283,9 @@ export function createModal(
     const link = createElement("a", undefined, config.brand.footer_text);
     // Configurable badge href (DEC-FBR-IMPL-11); defaults to the marketing
     // site when the tenant has no override.
-    link.href = config.brand.footer_url || "https://feedbackmonk.com";
+    // Scheme-checked (P2-2): a non-http(s) footer_url falls back to the
+    // marketing site rather than reaching the href.
+    link.href = safeHttpUrl(config.brand.footer_url) || "https://feedbackmonk.com";
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     footer.appendChild(link);
@@ -301,8 +335,10 @@ export function applyTheme(
   theme: WidgetTheme,
 ): void {
   root.setAttribute("data-fbm-theme", theme);
-  if (config.brand.primary_color) {
-    root.style.setProperty("--fbm-primary", config.brand.primary_color);
+  // Value-guarded (P2-2): only a plain color token reaches the CSS var.
+  const primary = safeCssColor(config.brand.primary_color);
+  if (primary) {
+    root.style.setProperty("--fbm-primary", primary);
   }
 }
 
