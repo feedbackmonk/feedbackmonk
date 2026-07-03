@@ -178,6 +178,16 @@ scripts loaded at runtime.
 - **No npm workspace integration**. The widget has its own lockfile so
   admin-ui's React deps cannot accidentally leak into the embedder's
   bundle.
+- **Build**: `npm run build` = `vite build` (rollup under the hood) + terser
+  minify → `dist/`. **Windows gotcha**: if the build dies with *"Cannot find
+  module @rollup/rollup-win32-x64-msvc … npm has a bug related to optional
+  dependencies"*, it is **not** npm bug 4828 — the culprit is a machine-global
+  `~/.npmrc` `os=linux`, which makes npm skip the Windows-native rollup binary
+  on every install (including a clean `npm ci`). Fix on this machine:
+  `npm install --os=win32` (CLI overrides `~/.npmrc`), then `npm run build`.
+  Linux CI is unaffected. `dist/` is a **vendored artifact** — rebuild it in
+  the same commit as any `src/` change so `widget-bundle-size` doesn't pass on
+  a stale bundle.
 
 ## Decision Log
 
