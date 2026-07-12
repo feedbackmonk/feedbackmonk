@@ -306,13 +306,14 @@ mod tests {
             .create(
                 &scope,
                 NewWorkOrder {
-                    recommendation_id: rec.id,
-                    cluster_id: cluster.id,
+                    recommendation_id: Some(rec.id),
+                    cluster_id: Some(cluster.id),
                     action_type: ActionType::BugFix,
                     title: "Fix",
                     instructions: "Do",
                     owner_overrides: None,
                     autonomy_rung: 1,
+                    routing_label: None,
                 },
             )
             .await

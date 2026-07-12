@@ -292,7 +292,10 @@ mod tests {
         let orders = c.poll_dispatched().await.unwrap();
         assert_eq!(orders.len(), 1);
         assert_eq!(orders[0].work_order_id, wo);
-        assert_eq!(orders[0].recommendation.cluster_summary, "crash cluster");
+        assert_eq!(
+            orders[0].recommendation.as_ref().unwrap().cluster_summary,
+            "crash cluster"
+        );
     }
 
     #[tokio::test]

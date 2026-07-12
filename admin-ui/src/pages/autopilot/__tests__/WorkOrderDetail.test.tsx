@@ -46,6 +46,7 @@ function wo(state: WorkOrderState): WorkOrderDetail {
     claimed_by_runner: null,
     result_ref: null,
     failure_reason: null,
+    routing_label: null,
     events: [
       {
         id: "ev-1",

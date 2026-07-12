@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,\n                   action_type, title, instructions, owner_overrides,\n                   autonomy_rung, state, approved_by, approved_at,\n                   dispatched_at, claimed_by_runner, result_ref,\n                   failure_reason, created_at, updated_at\n            FROM work_orders\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            ",
+  "query": "\n            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,\n                   action_type, title, instructions, owner_overrides,\n                   autonomy_rung, state, approved_by, approved_at,\n                   dispatched_at, claimed_by_runner, result_ref,\n                   failure_reason, routing_label, created_at, updated_at\n            FROM work_orders\n            WHERE tenant_id = $1 AND project_id = $2 AND id = $3\n            ",
   "describe": {
     "columns": [
       {
@@ -90,11 +90,16 @@
       },
       {
         "ordinal": 17,
+        "name": "routing_label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -110,14 +115,15 @@
       false,
       false,
       false,
-      false,
-      false,
+      true,
+      true,
       false,
       false,
       false,
       true,
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -128,5 +134,5 @@
       false
     ]
   },
-  "hash": "b573391d1f6dc650d6ff230cb976aae766c14755f442310b3cdc22425ea2eb9f"
+  "hash": "9cba8cca94d5437663d6f3f8bad2f516fd98504d38206da4a5de33d34c42a09b"
 }

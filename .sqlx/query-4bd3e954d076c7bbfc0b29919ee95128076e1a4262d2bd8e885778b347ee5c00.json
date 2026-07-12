@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,\n                   action_type, title, instructions, owner_overrides,\n                   autonomy_rung, state, approved_by, approved_at,\n                   dispatched_at, claimed_by_runner, result_ref,\n                   failure_reason, created_at, updated_at\n            FROM work_orders\n            WHERE tenant_id = $1 AND project_id = $2\n              AND ($3::text IS NULL OR state = $3)\n              AND ($4::uuid IS NULL OR cluster_id = $4)\n            ORDER BY created_at DESC\n            ",
+  "query": "\n            INSERT INTO work_orders\n                (tenant_id, project_id, recommendation_id, cluster_id,\n                 action_type, title, instructions, owner_overrides, autonomy_rung,\n                 routing_label)\n            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)\n            RETURNING id, tenant_id, project_id, recommendation_id, cluster_id,\n                      action_type, title, instructions, owner_overrides,\n                      autonomy_rung, state, approved_by, approved_at,\n                      dispatched_at, claimed_by_runner, result_ref,\n                      failure_reason, routing_label, created_at, updated_at\n            ",
   "describe": {
     "columns": [
       {
@@ -90,11 +90,16 @@
       },
       {
         "ordinal": 17,
+        "name": "routing_label",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 18,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 18,
+        "ordinal": 19,
         "name": "updated_at",
         "type_info": "Timestamptz"
       }
@@ -103,22 +108,29 @@
       "Left": [
         "Uuid",
         "Uuid",
+        "Uuid",
+        "Uuid",
         "Text",
-        "Uuid"
+        "Text",
+        "Text",
+        "Jsonb",
+        "Int4",
+        "Text"
       ]
     },
     "nullable": [
       false,
       false,
       false,
-      false,
-      false,
+      true,
+      true,
       false,
       false,
       false,
       true,
       false,
       false,
+      true,
       true,
       true,
       true,
@@ -129,5 +141,5 @@
       false
     ]
   },
-  "hash": "df3762c8a1f65c2a789d91c96fba4eb509fdebb03d20a4a25947dc085230d710"
+  "hash": "4bd3e954d076c7bbfc0b29919ee95128076e1a4262d2bd8e885778b347ee5c00"
 }

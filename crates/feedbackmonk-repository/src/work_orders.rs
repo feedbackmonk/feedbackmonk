@@ -28,13 +28,19 @@ use crate::work_order_events::NewWorkOrderEvent;
 /// A work order — the contract between an APPROVED decision and a DISPATCHED
 /// job (FR-FBR-22). `owner_overrides` carries the Q17 "tweak before approve"
 /// edits (authoritative; overrides win at dispatch).
+///
+/// Provenance is optional since C31 (P6): `recommendation_id IS NULL` ⇔ the
+/// order was owner-authored (no feedback grounding). The two FKs are always
+/// both-`Some` or both-`None` (migration 00028 `work_orders_provenance_pair`).
+/// `routing_label` targets the order at one runner identity (token `sub`);
+/// `None` = first-claim-wins.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WorkOrder {
     pub id: Uuid,
     pub tenant_id: Uuid,
     pub project_id: Uuid,
-    pub recommendation_id: Uuid,
-    pub cluster_id: Uuid,
+    pub recommendation_id: Option<Uuid>,
+    pub cluster_id: Option<Uuid>,
     pub action_type: ActionType,
     pub title: String,
     pub instructions: String,
@@ -47,20 +53,25 @@ pub struct WorkOrder {
     pub claimed_by_runner: Option<String>,
     pub result_ref: Option<JsonValue>,
     pub failure_reason: Option<String>,
+    pub routing_label: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-/// Fields for [`WorkOrderRepo::create`].
+/// Fields for [`WorkOrderRepo::create`]. Provenance (`recommendation_id` +
+/// `cluster_id`) is both-`Some` (recommendation-derived) or both-`None`
+/// (owner-authored, C31); a mixed pair is rejected with `Conflict` before the
+/// DB CHECK would.
 #[derive(Debug, Clone)]
 pub struct NewWorkOrder<'a> {
-    pub recommendation_id: Uuid,
-    pub cluster_id: Uuid,
+    pub recommendation_id: Option<Uuid>,
+    pub cluster_id: Option<Uuid>,
     pub action_type: ActionType,
     pub title: &'a str,
     pub instructions: &'a str,
     pub owner_overrides: Option<&'a JsonValue>,
     pub autonomy_rung: i32,
+    pub routing_label: Option<&'a str>,
 }
 
 /// Optional column updates applied alongside a state change. Each `Some` field
@@ -178,8 +189,8 @@ struct WorkOrderRow {
     id: Uuid,
     tenant_id: Uuid,
     project_id: Uuid,
-    recommendation_id: Uuid,
-    cluster_id: Uuid,
+    recommendation_id: Option<Uuid>,
+    cluster_id: Option<Uuid>,
     action_type: String,
     title: String,
     instructions: String,
@@ -192,6 +203,7 @@ struct WorkOrderRow {
     claimed_by_runner: Option<String>,
     result_ref: Option<JsonValue>,
     failure_reason: Option<String>,
+    routing_label: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -215,6 +227,7 @@ fn map_work_order(row: WorkOrderRow) -> WorkOrder {
         claimed_by_runner: row.claimed_by_runner,
         result_ref: row.result_ref,
         failure_reason: row.failure_reason,
+        routing_label: row.routing_label,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -223,26 +236,35 @@ fn map_work_order(row: WorkOrderRow) -> WorkOrder {
 #[async_trait]
 impl WorkOrderRepo for SqlxWorkOrderRepo {
     async fn create(&self, scope: &ProjectScope, wo: NewWorkOrder<'_>) -> Result<WorkOrder> {
-        // Resolve the recommendation WITHIN scope (it carries the cluster_id
-        // linkage; a cross-tenant recommendation_id cannot anchor a work order
-        // under a sibling tenant).
-        let rec = sqlx::query!(
-            r#"
-            SELECT cluster_id FROM recommendations
-            WHERE tenant_id = $1 AND project_id = $2 AND id = $3
-            "#,
-            scope.tenant_id(),
-            scope.project_id(),
-            wo.recommendation_id,
-        )
-        .fetch_optional(&self.pool)
-        .await?
-        .ok_or(RepoError::NotFound)?;
+        match (wo.recommendation_id, wo.cluster_id) {
+            // Recommendation-derived: resolve the recommendation WITHIN scope
+            // (it carries the cluster_id linkage; a cross-tenant
+            // recommendation_id cannot anchor a work order under a sibling
+            // tenant), and the supplied cluster_id must match its cluster
+            // (defense against a mismatched cross-cluster work order).
+            (Some(rec_id), Some(cluster_id)) => {
+                let rec = sqlx::query!(
+                    r#"
+                    SELECT cluster_id FROM recommendations
+                    WHERE tenant_id = $1 AND project_id = $2 AND id = $3
+                    "#,
+                    scope.tenant_id(),
+                    scope.project_id(),
+                    rec_id,
+                )
+                .fetch_optional(&self.pool)
+                .await?
+                .ok_or(RepoError::NotFound)?;
 
-        // The supplied cluster_id must match the recommendation's cluster
-        // (defense against a mismatched cross-cluster work order).
-        if rec.cluster_id != wo.cluster_id {
-            return Err(RepoError::Conflict);
+                if rec.cluster_id != cluster_id {
+                    return Err(RepoError::Conflict);
+                }
+            }
+            // Owner-authored: no provenance to resolve (C31 / D-P6-2).
+            (None, None) => {}
+            // Half-null provenance is unrepresentable (migration 00028 CHECK);
+            // reject before the DB would.
+            _ => return Err(RepoError::Conflict),
         }
 
         let row = sqlx::query_as!(
@@ -250,13 +272,14 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
             r#"
             INSERT INTO work_orders
                 (tenant_id, project_id, recommendation_id, cluster_id,
-                 action_type, title, instructions, owner_overrides, autonomy_rung)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 action_type, title, instructions, owner_overrides, autonomy_rung,
+                 routing_label)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id, tenant_id, project_id, recommendation_id, cluster_id,
                       action_type, title, instructions, owner_overrides,
                       autonomy_rung, state, approved_by, approved_at,
                       dispatched_at, claimed_by_runner, result_ref,
-                      failure_reason, created_at, updated_at
+                      failure_reason, routing_label, created_at, updated_at
             "#,
             scope.tenant_id(),
             scope.project_id(),
@@ -267,6 +290,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
             wo.instructions,
             wo.owner_overrides,
             wo.autonomy_rung,
+            wo.routing_label,
         )
         .fetch_one(&self.pool)
         .await?;
@@ -281,7 +305,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
                    action_type, title, instructions, owner_overrides,
                    autonomy_rung, state, approved_by, approved_at,
                    dispatched_at, claimed_by_runner, result_ref,
-                   failure_reason, created_at, updated_at
+                   failure_reason, routing_label, created_at, updated_at
             FROM work_orders
             WHERE tenant_id = $1 AND project_id = $2 AND id = $3
             "#,
@@ -308,7 +332,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
                    action_type, title, instructions, owner_overrides,
                    autonomy_rung, state, approved_by, approved_at,
                    dispatched_at, claimed_by_runner, result_ref,
-                   failure_reason, created_at, updated_at
+                   failure_reason, routing_label, created_at, updated_at
             FROM work_orders
             WHERE tenant_id = $1 AND project_id = $2
               AND ($3::text IS NULL OR state = $3)
@@ -500,13 +524,14 @@ mod tests {
             .create(
                 &s.scope,
                 NewWorkOrder {
-                    recommendation_id: s.recommendation_id,
-                    cluster_id: s.cluster_id,
+                    recommendation_id: Some(s.recommendation_id),
+                    cluster_id: Some(s.cluster_id),
                     action_type: ActionType::BugFix,
                     title: "Fix the bug",
                     instructions: "Do the thing",
                     owner_overrides: None,
                     autonomy_rung: 1,
+                    routing_label: None,
                 },
             )
             .await
@@ -527,13 +552,14 @@ mod tests {
             .create(
                 &s.scope,
                 NewWorkOrder {
-                    recommendation_id: s.recommendation_id,
-                    cluster_id: s.cluster_id,
+                    recommendation_id: Some(s.recommendation_id),
+                    cluster_id: Some(s.cluster_id),
                     action_type: ActionType::BugFix,
                     title: "Fix",
                     instructions: "Do",
                     owner_overrides: None,
                     autonomy_rung: 1,
+                    routing_label: None,
                 },
             )
             .await
@@ -573,13 +599,14 @@ mod tests {
             .create(
                 &s.scope,
                 NewWorkOrder {
-                    recommendation_id: s.recommendation_id,
-                    cluster_id: s.cluster_id,
+                    recommendation_id: Some(s.recommendation_id),
+                    cluster_id: Some(s.cluster_id),
                     action_type: ActionType::BugFix,
                     title: "Fix",
                     instructions: "Do",
                     owner_overrides: None,
                     autonomy_rung: 1,
+                    routing_label: None,
                 },
             )
             .await
@@ -636,13 +663,14 @@ mod tests {
             .create(
                 &s1.scope,
                 NewWorkOrder {
-                    recommendation_id: s1.recommendation_id,
-                    cluster_id: s1.cluster_id,
+                    recommendation_id: Some(s1.recommendation_id),
+                    cluster_id: Some(s1.cluster_id),
                     action_type: ActionType::BugFix,
                     title: "Fix",
                     instructions: "Do",
                     owner_overrides: None,
                     autonomy_rung: 1,
+                    routing_label: None,
                 },
             )
             .await
@@ -685,13 +713,14 @@ mod tests {
             .create(
                 &s1.scope,
                 NewWorkOrder {
-                    recommendation_id: s1.recommendation_id,
-                    cluster_id: s1.cluster_id,
+                    recommendation_id: Some(s1.recommendation_id),
+                    cluster_id: Some(s1.cluster_id),
                     action_type: ActionType::BugFix,
                     title: "Fix",
                     instructions: "Do",
                     owner_overrides: None,
                     autonomy_rung: 1,
+                    routing_label: None,
                 },
             )
             .await
@@ -705,13 +734,14 @@ mod tests {
             .create(
                 &s2.scope,
                 NewWorkOrder {
-                    recommendation_id: s1.recommendation_id,
-                    cluster_id: s1.cluster_id,
+                    recommendation_id: Some(s1.recommendation_id),
+                    cluster_id: Some(s1.cluster_id),
                     action_type: ActionType::BugFix,
                     title: "x",
                     instructions: "y",
                     owner_overrides: None,
                     autonomy_rung: 0,
+                    routing_label: None,
                 },
             )
             .await

@@ -528,13 +528,14 @@ pub async fn create_work_order(
         .create(
             scope,
             NewWorkOrder {
-                recommendation_id: rec.id,
-                cluster_id: rec.cluster_id,
+                recommendation_id: Some(rec.id),
+                cluster_id: Some(rec.cluster_id),
                 action_type: rec.action_type,
                 title: &rec.title,
                 instructions: &rec.body,
                 owner_overrides,
                 autonomy_rung,
+                routing_label: None,
             },
         )
         .await?;
@@ -552,8 +553,8 @@ pub async fn create_work_order(
 #[derive(Debug, Clone, Serialize)]
 pub struct WorkOrderView {
     pub id: Uuid,
-    pub recommendation_id: Uuid,
-    pub cluster_id: Uuid,
+    pub recommendation_id: Option<Uuid>,
+    pub cluster_id: Option<Uuid>,
     pub action_type: ActionType,
     pub title: String,
     pub instructions: String,
@@ -566,6 +567,7 @@ pub struct WorkOrderView {
     pub claimed_by_runner: Option<String>,
     pub result_ref: Option<JsonValue>,
     pub failure_reason: Option<String>,
+    pub routing_label: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -588,6 +590,7 @@ impl From<WorkOrder> for WorkOrderView {
             claimed_by_runner: w.claimed_by_runner,
             result_ref: w.result_ref,
             failure_reason: w.failure_reason,
+            routing_label: w.routing_label,
             created_at: w.created_at,
             updated_at: w.updated_at,
         }
@@ -822,19 +825,22 @@ pub async fn approve(
     // Post-commit, best-effort: project the recommendation status. The
     // work-order ledger is authoritative; this denormalized projection lagging
     // never fails an approval (mirrors the email-after-commit pattern).
-    let rec_status = if tweaked { "tweaked_approved" } else { "approved" };
-    if let Err(e) = state
-        .recommendations
-        .set_status(&scope, wo.recommendation_id, rec_status)
-        .await
-    {
-        tracing::warn!(
-            target: "work_order",
-            %work_order_id,
-            recommendation_id = %wo.recommendation_id,
-            error = ?e,
-            "recommendation status projection failed (approval still committed)"
-        );
+    // Owner-authored orders (C31) have no recommendation to project.
+    if let Some(recommendation_id) = wo.recommendation_id {
+        let rec_status = if tweaked { "tweaked_approved" } else { "approved" };
+        if let Err(e) = state
+            .recommendations
+            .set_status(&scope, recommendation_id, rec_status)
+            .await
+        {
+            tracing::warn!(
+                target: "work_order",
+                %work_order_id,
+                %recommendation_id,
+                error = ?e,
+                "recommendation status projection failed (approval still committed)"
+            );
+        }
     }
 
     // Dispatch-on-approve (Contract C26, FR-FBR-22 — the dispatch half P5a
@@ -1080,14 +1086,29 @@ async fn assemble_claimed_order(
     scope: &ProjectScope,
     wo: WorkOrder,
 ) -> Result<JsonValue, ApiError> {
-    let rec = state.recommendations.get(scope, wo.recommendation_id).await?;
-    let cluster = state.clusters.get(scope, wo.cluster_id).await?;
-    let member_bodies = state
-        .feedback
-        .list_member_bodies_for_cluster(scope, wo.cluster_id, MAX_CLAIMED_ORDER_MEMBER_BODIES)
-        .await?;
-    // cluster_summary: the analyst-written summary, else the always-present label.
-    let cluster_summary = cluster.summary.unwrap_or(cluster.label);
+    // Owner-authored orders (C31 / D-P6-1) carry NO feedback grounding: the
+    // `recommendation` block is `null` and the runner assembles a prompt with
+    // no untrusted envelope at all (the whole order is owner-authored, trusted).
+    let recommendation = match (wo.recommendation_id, wo.cluster_id) {
+        (Some(recommendation_id), Some(cluster_id)) => {
+            let rec = state.recommendations.get(scope, recommendation_id).await?;
+            let cluster = state.clusters.get(scope, cluster_id).await?;
+            let member_bodies = state
+                .feedback
+                .list_member_bodies_for_cluster(scope, cluster_id, MAX_CLAIMED_ORDER_MEMBER_BODIES)
+                .await?;
+            // cluster_summary: the analyst-written summary, else the always-present label.
+            let cluster_summary = cluster.summary.unwrap_or(cluster.label);
+            json!({
+                "body": rec.body,
+                "rationale": rec.rationale,
+                "cluster_summary": cluster_summary,
+                "member_bodies": member_bodies,
+                "source_refs": rec.source_refs,
+            })
+        }
+        _ => JsonValue::Null,
+    };
     Ok(json!({
         "work_order_id": wo.id,
         "project_id": wo.project_id,
@@ -1095,13 +1116,7 @@ async fn assemble_claimed_order(
         "title": wo.title,
         "instructions": wo.instructions,
         "owner_overrides": wo.owner_overrides,
-        "recommendation": {
-            "body": rec.body,
-            "rationale": rec.rationale,
-            "cluster_summary": cluster_summary,
-            "member_bodies": member_bodies,
-            "source_refs": rec.source_refs,
-        }
+        "recommendation": recommendation,
     }))
 }
 

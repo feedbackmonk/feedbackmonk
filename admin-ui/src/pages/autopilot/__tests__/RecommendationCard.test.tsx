@@ -66,6 +66,7 @@ function draftWorkOrder(): WorkOrderDetail {
     claimed_by_runner: null,
     result_ref: null,
     failure_reason: null,
+    routing_label: null,
     events: [],
   };
 }
@@ -135,7 +136,10 @@ describe("RecommendationCard — approval is the security boundary", () => {
     );
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
-    const callArgs = mockedCreate.mock.calls[0][1];
+    // The card always creates the recommendation-DERIVED variant of the C31
+    // create union (owner-authored creation lives on the New-story form).
+    const callArgs = mockedCreate.mock
+      .calls[0][1] as import("../../../shared/types.gen").CreateDerivedWorkOrderRequest;
     expect(callArgs.recommendation_id).toBe("rec-1");
     expect(callArgs.owner_overrides?.title).toBe("Fix Safari login");
   });

@@ -69,13 +69,13 @@ mod tests {
             title: "Fix login".into(),
             instructions: "Fix the reported login bug.".into(),
             owner_overrides: None,
-            recommendation: RecommendationContext {
+            recommendation: Some(RecommendationContext {
                 body: "Login fails".into(),
                 rationale: None,
                 cluster_summary: "Login".into(),
                 member_bodies: vec!["it breaks".into()],
                 source_refs: serde_json::json!([]),
-            },
+            }),
         }
     }
 

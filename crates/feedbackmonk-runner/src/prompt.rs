@@ -88,8 +88,12 @@ pub fn assemble(order: &ClaimedOrder) -> AssembledPrompt {
     }
 
     // ---- Untrusted data layer (ALL feedback-derived text, ONE chokepoint) --
-    let untrusted_block = render_untrusted_block(&order.recommendation);
-    let untrusted_envelope = wrap_untrusted(&untrusted_block);
+    // Owner-authored orders (C31) carry NO feedback-derived text: no context,
+    // no envelope — the rendered prompt is the trusted layer alone.
+    let untrusted_envelope = match &order.recommendation {
+        Some(rec) => wrap_untrusted(&render_untrusted_block(rec)),
+        None => String::new(),
+    };
 
     AssembledPrompt { instructions, untrusted_envelope }
 }
@@ -162,13 +166,13 @@ mod tests {
             title: "Fix the reported login regression".into(),
             instructions: instructions.into(),
             owner_overrides: None,
-            recommendation: RecommendationContext {
+            recommendation: Some(RecommendationContext {
                 body: feedback.into(),
                 rationale: Some("rationale derived from feedback".into()),
                 cluster_summary: "Login cluster".into(),
                 member_bodies: vec![feedback.into(), "secondary report".into()],
                 source_refs: serde_json::json!([{"path": "src/auth.rs", "lines": "10-20"}]),
-            },
+            }),
         }
     }
 

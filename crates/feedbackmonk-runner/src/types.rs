@@ -30,7 +30,11 @@ pub struct ClaimedOrder {
     /// **Untrusted** feedback-derived context. EVERYTHING in here is
     /// public-internet input and MUST enter the prompt only via
     /// `prompt::wrap_untrusted` (C27 25b single chokepoint).
-    pub recommendation: RecommendationContext,
+    ///
+    /// `None` since C31 (P6): an OWNER-AUTHORED work order has no feedback
+    /// grounding at all — prompt assembly then emits NO untrusted envelope
+    /// (the entire prompt is the owner-approved trusted layer).
+    pub recommendation: Option<RecommendationContext>,
 }
 
 /// The untrusted, feedback-derived grounding for a work order. Every field is
@@ -67,9 +71,15 @@ pub struct AssembledPrompt {
 impl AssembledPrompt {
     /// Render the two layers into the final prompt text handed to the agent.
     /// Trusted layer first, then the clearly-delimited untrusted envelope.
+    /// An empty envelope (owner-authored order, C31) renders nothing — no
+    /// stray delimiter-less trailing block.
     #[must_use]
     pub fn render(&self) -> String {
-        format!("{}\n\n{}", self.instructions, self.untrusted_envelope)
+        if self.untrusted_envelope.is_empty() {
+            self.instructions.clone()
+        } else {
+            format!("{}\n\n{}", self.instructions, self.untrusted_envelope)
+        }
     }
 }
 

@@ -710,8 +710,11 @@ export interface WorkOrderEvent {
 // trimmed list item), and the detail response is this view flattened + `events`.
 export interface WorkOrder {
   id: string;
-  recommendation_id: string;
-  cluster_id: string;
+  // Nullable since C31 (P6): `recommendation_id === null` ⇔ owner-authored
+  // story (no feedback provenance). The pair is always both-null or both-set
+  // (migration 00028 CHECK).
+  recommendation_id: string | null;
+  cluster_id: string | null;
   action_type: ActionType;
   title: string;
   instructions: string;
@@ -724,6 +727,9 @@ export interface WorkOrder {
   claimed_by_runner: string | null;
   result_ref: Record<string, unknown> | null;
   failure_reason: string | null;
+  // C31 named-runner routing: target runner identity (token `sub`), or null
+  // for first-claim-wins. Coordination metadata, not a trust boundary.
+  routing_label: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -837,14 +843,31 @@ export const WORK_ORDER_EVENT_LABELS: Record<string, string> = {
   retry: "Retried",
 };
 
-export interface CreateWorkOrderRequest {
+// C31 (P6): a work order is created from EXACTLY ONE of the two variants —
+// derived from an analyst recommendation, or owner-authored ("New story", no
+// feedback provenance). The server rejects mixed/incomplete bodies with 400.
+export interface CreateDerivedWorkOrderRequest {
   recommendation_id: string;
   autonomy_rung: AutonomyRung;
   owner_overrides?: OwnerOverrides;
+  routing_label?: string; // C31 routing: target runner token `sub`
 }
+
+export interface CreateOwnerWorkOrderRequest {
+  title: string; // 1..512
+  instructions: string; // non-empty
+  action_type: ActionType;
+  autonomy_rung: AutonomyRung;
+  routing_label?: string;
+}
+
+export type CreateWorkOrderRequest =
+  | CreateDerivedWorkOrderRequest
+  | CreateOwnerWorkOrderRequest;
 
 export interface ApproveWorkOrderRequest {
   owner_overrides?: OwnerOverrides;
+  routing_label?: string; // C31: set/override the routing target at approve
 }
 
 export interface WorkOrderTransitionRequest {

@@ -314,16 +314,15 @@ async fn runner_e2e_dispatch_claim_build_report(pool: PgPool) {
     assert_eq!(order.action_type, ActionType::BugFix);
     assert_eq!(order.title, "Fix the auth check");
     assert_eq!(order.instructions, "Restore the missing guard");
-    // Untrusted, feedback-derived grounding assembled from the tenant-scoped repos.
-    assert_eq!(order.recommendation.body, "Restore the missing guard");
-    assert_eq!(order.recommendation.cluster_summary, "Users cannot log in");
-    assert_eq!(order.recommendation.member_bodies.len(), 2, "both cluster members");
-    assert!(order
-        .recommendation
-        .member_bodies
-        .iter()
-        .any(|b| b == "login crashes on submit"));
-    assert_eq!(order.recommendation.source_refs, json!([{ "path": "src/auth.rs", "lines": "10-20" }]));
+    // Untrusted, feedback-derived grounding assembled from the tenant-scoped
+    // repos (present on a recommendation-derived order; None only for C31
+    // owner-authored orders).
+    let grounding = order.recommendation.as_ref().expect("derived order carries grounding");
+    assert_eq!(grounding.body, "Restore the missing guard");
+    assert_eq!(grounding.cluster_summary, "Users cannot log in");
+    assert_eq!(grounding.member_bodies.len(), 2, "both cluster members");
+    assert!(grounding.member_bodies.iter().any(|b| b == "login crashes on submit"));
+    assert_eq!(grounding.source_refs, json!([{ "path": "src/auth.rs", "lines": "10-20" }]));
 
     // (b) Drive the REAL loop end-to-end: poll → claim → fetch detail → build →
     // verifying → reported (result_ref through the egress sanitizer).
