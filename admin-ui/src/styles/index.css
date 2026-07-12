@@ -1297,3 +1297,151 @@ a {
 .settings-toggle-text p {
   margin: 0;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Board — P6 read-only Kanban over the work-order state machine
+ * (C31 §7). All-additive `.ap-board-*` rules; colors reuse existing tokens
+ * (WCAG AA). The column strip scrolls horizontally so the page never breaks at
+ * narrow widths; meaning is never carried by color alone (labels + badges).
+ * ───────────────────────────────────────────────────────────────────────── */
+
+.ap-board-page {
+  /* The board wants more horizontal room than the default reading column. */
+  max-width: 90rem;
+}
+
+.ap-board-truncation-note {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+}
+
+.ap-board-scroll {
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  /* Keep the focus ring of a scrolled-to card visible. */
+  scroll-padding: 0.5rem;
+}
+
+.ap-board-columns {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(15rem, 1fr);
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: min-content;
+}
+
+.ap-board-column {
+  list-style: none;
+}
+
+.ap-board-column-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  height: 100%;
+}
+
+.ap-board-column-head {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.ap-board-column-empty {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.ap-board-card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ap-board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.6rem 0.7rem;
+}
+
+.ap-board-card-link {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.ap-board-card-link:hover .ap-board-card-title {
+  text-decoration: underline;
+}
+.ap-board-card-title {
+  /* Long/hostile titles wrap rather than overflow the column. */
+  overflow-wrap: anywhere;
+}
+
+.ap-board-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ap-board-card-rung,
+.ap-board-card-owner,
+.ap-board-card-routing,
+.ap-board-card-claimed {
+  display: inline-block;
+  font-size: 0.72rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.ap-board-card-owner {
+  border-style: dashed;
+}
+
+.ap-board-card-runner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.ap-board-card-routing {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ap-board-card-time {
+  font-size: 0.75rem;
+}
+
+.ap-board-column-more {
+  display: inline-block;
+  font-size: 0.8rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+.ap-board-column-more:hover {
+  text-decoration: underline;
+}
+
+/* Several nav links in one header (digest / list) wrap cleanly. */
+.ap-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}

@@ -144,6 +144,42 @@ describe("RecommendationCard — approval is the security boundary", () => {
     expect(callArgs.owner_overrides?.title).toBe("Fix Safari login");
   });
 
+  it("passes an optional routing_label through on approve (C31 §4)", async () => {
+    const user = userEvent.setup();
+    renderWithClient(<RecommendationCard rec={rec()} projectId={PROJECT} />);
+
+    await user.click(screen.getByRole("button", { name: /^Approve…$/ }));
+    await user.type(
+      screen.getByLabelText(/Routing label/i),
+      "  ci-runner  ",
+    );
+    await user.click(
+      screen.getByRole("button", { name: /Approve & create work order/i }),
+    );
+
+    await waitFor(() => expect(mockedApprove).toHaveBeenCalledTimes(1));
+    // Routing is set at approve (the §4 tweak surface), trimmed. The create
+    // body is unchanged (routing lives on the approve call, not create).
+    expect(mockedApprove).toHaveBeenCalledWith(PROJECT, "wo-1", {
+      owner_overrides: undefined,
+      routing_label: "ci-runner",
+    });
+  });
+
+  it("omits routing_label from the approve body when left blank", async () => {
+    const user = userEvent.setup();
+    renderWithClient(<RecommendationCard rec={rec()} projectId={PROJECT} />);
+
+    await user.click(screen.getByRole("button", { name: /^Approve…$/ }));
+    await user.click(
+      screen.getByRole("button", { name: /Approve & create work order/i }),
+    );
+
+    await waitFor(() => expect(mockedApprove).toHaveBeenCalledTimes(1));
+    const approveBody = mockedApprove.mock.calls[0][2];
+    expect(approveBody).not.toHaveProperty("routing_label");
+  });
+
   it("rejects a recommendation without creating a work order", async () => {
     const user = userEvent.setup();
     renderWithClient(<RecommendationCard rec={rec()} projectId={PROJECT} />);

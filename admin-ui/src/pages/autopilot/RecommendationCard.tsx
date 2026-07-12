@@ -146,6 +146,10 @@ function ApproveDialog({
   const [rung, setRung] = useState<AutonomyRung>(1);
   const [title, setTitle] = useState(rec.title);
   const [instructions, setInstructions] = useState(rec.body);
+  // C31 §4 — optional named-runner routing. Set/overridden at approve (the Q17
+  // tweak surface); empty means first-claim-wins (any runner). Coordination
+  // metadata, not a trust boundary — the approval signature is the security gate.
+  const [routingLabel, setRoutingLabel] = useState("");
   const [inlineError, setInlineError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -169,7 +173,13 @@ function ApproveDialog({
       });
       // Step 2: the owner-authored approval — the security gate. This is the
       // `approved` ledger event C22 inv. 1 requires before any execution state.
-      return approveWorkOrder(projectId, draft.id, { owner_overrides: overrides });
+      // C31 §4: the routing target is set at approve, sent only when the owner
+      // actually named one (empty stays first-claim-wins, body unchanged).
+      const label = routingLabel.trim();
+      return approveWorkOrder(projectId, draft.id, {
+        owner_overrides: overrides,
+        ...(label ? { routing_label: label } : {}),
+      });
     },
     onSuccess: () => {
       notify(
@@ -253,6 +263,21 @@ function ApproveDialog({
           disabled={mutation.isPending}
           idPrefix={dialogId}
         />
+
+        <label htmlFor={`${dialogId}-routing`}>Routing label (optional)</label>
+        <input
+          id={`${dialogId}-routing`}
+          type="text"
+          value={routingLabel}
+          onChange={(e) => setRoutingLabel(e.target.value)}
+          maxLength={128}
+          disabled={mutation.isPending}
+          aria-describedby={`${dialogId}-routing-help`}
+        />
+        <p id={`${dialogId}-routing-help`} className="muted">
+          Runner identity (token <code>sub</code>) that must execute this order.
+          Leave empty for any runner.
+        </p>
 
         {inlineError ? (
           <p role="alert" className="error">

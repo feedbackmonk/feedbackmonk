@@ -501,16 +501,35 @@ pub async fn transition_work_order(
     })
 }
 
+/// The DB CHECK bound on `routing_label` (migration 00028: 1..128). Validated
+/// handler-side for a clean 400 rather than letting the CHECK surface a 500.
+const ROUTING_LABEL_MAX: usize = 128;
+
+/// Validate an optional `routing_label` against the migration-00028 CHECK
+/// (1..128, non-blank). `None` passes (unlabeled = first-claim-wins).
+fn validate_routing_label(label: Option<&str>) -> Result<(), ApiError> {
+    if let Some(l) = label {
+        if l.is_empty() || l.len() > ROUTING_LABEL_MAX {
+            return Err(ApiError::BadRequest(format!(
+                "routing_label must be 1..{ROUTING_LABEL_MAX} characters"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Create a `draft` work order from a recommendation (inv. 4 rung-gate).
 /// `autonomy_rung` must be ≥ 1 (rung 0 never produces a work order) and ≤ 3.
 /// The recommendation (and its cluster) are resolved within scope by the repo;
-/// a cross-tenant `recommendation_id` → `NotFound`.
+/// a cross-tenant `recommendation_id` → `NotFound`. `routing_label` (C31 §5)
+/// optionally targets the order at one runner identity; `None` = first-claim-wins.
 pub async fn create_work_order(
     state: &AppState,
     scope: &ProjectScope,
     recommendation_id: Uuid,
     autonomy_rung: i32,
     owner_overrides: Option<&JsonValue>,
+    routing_label: Option<&str>,
 ) -> Result<WorkOrder, ApiError> {
     // inv. 4: rung 0 never produces a work order.
     if !(1..=3).contains(&autonomy_rung) {
@@ -518,6 +537,7 @@ pub async fn create_work_order(
             "autonomy_rung must be between 1 and 3 (rung 0 never produces a work order)".into(),
         ));
     }
+    validate_routing_label(routing_label)?;
 
     // Read the recommendation (scope-bound) to derive the order's fields. The
     // recommendation is provenance; the work order is the order (Q17).
@@ -535,7 +555,64 @@ pub async fn create_work_order(
                 instructions: &rec.body,
                 owner_overrides,
                 autonomy_rung,
-                routing_label: None,
+                routing_label,
+            },
+        )
+        .await?;
+    Ok(wo)
+}
+
+/// Create a `draft` OWNER-AUTHORED work order (C31 §3, D-P6-2) — no feedback
+/// grounding, so `recommendation_id`/`cluster_id` are both `None` (the order
+/// carries `recommendation: null` all the way to the runner, which then
+/// assembles a trusted-only prompt with no untrusted envelope).
+///
+/// The owner-supplied `title`/`instructions` are **TRUSTED-layer input** —
+/// owner-authored, like `owner_overrides` — and are NEVER wrapped in the
+/// untrusted feedback envelope (that chokepoint is fed only by feedback-derived
+/// text). `title` must be 1..512 and `instructions` non-empty; the same rung
+/// gate 1..=3 (inv. 4) applies; enters `draft` through the untouched state
+/// machine.
+pub async fn create_owner_work_order(
+    state: &AppState,
+    scope: &ProjectScope,
+    title: &str,
+    instructions: &str,
+    action_type: ActionType,
+    autonomy_rung: i32,
+    routing_label: Option<&str>,
+) -> Result<WorkOrder, ApiError> {
+    if !(1..=3).contains(&autonomy_rung) {
+        return Err(ApiError::BadRequest(
+            "autonomy_rung must be between 1 and 3 (rung 0 never produces a work order)".into(),
+        ));
+    }
+    let title = title.trim();
+    if title.is_empty() || title.chars().count() > 512 {
+        return Err(ApiError::BadRequest(
+            "title must be 1..512 characters".into(),
+        ));
+    }
+    if instructions.trim().is_empty() {
+        return Err(ApiError::BadRequest("instructions must be non-empty".into()));
+    }
+    validate_routing_label(routing_label)?;
+
+    let wo = state
+        .work_orders
+        .create(
+            scope,
+            NewWorkOrder {
+                recommendation_id: None,
+                cluster_id: None,
+                action_type,
+                title,
+                instructions,
+                // Owner-authored orders carry no separate overrides layer at
+                // create — the whole order IS owner-authored (C31 §3).
+                owner_overrides: None,
+                autonomy_rung,
+                routing_label,
             },
         )
         .await?;
@@ -662,18 +739,42 @@ pub struct TransitionResponse {
 // Request bodies
 // ===========================================================================
 
+/// Create-request body (C31 §3). Accepts EXACTLY ONE of two variants,
+/// disambiguated by XOR validation in [`create`] (deliberately manual `Option`
+/// fields + explicit XOR rather than an untagged enum, so a mixed/incomplete
+/// body yields a precise 400 rather than serde's opaque "did not match any
+/// variant"):
+///   - **Derived**: `{ recommendation_id, autonomy_rung, owner_overrides?, routing_label? }`
+///   - **Owner-authored**: `{ title, instructions, action_type, autonomy_rung, routing_label? }`
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateWorkOrderRequest {
-    pub recommendation_id: Uuid,
-    pub autonomy_rung: i32,
+    // ---- Derived variant --------------------------------------------------
+    #[serde(default)]
+    pub recommendation_id: Option<Uuid>,
     #[serde(default)]
     pub owner_overrides: Option<JsonValue>,
+    // ---- Owner-authored variant (C31 §3) ----------------------------------
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub instructions: Option<String>,
+    #[serde(default)]
+    pub action_type: Option<ActionType>,
+    // ---- Common -----------------------------------------------------------
+    pub autonomy_rung: i32,
+    /// C31 §5 named-runner routing target (token `sub`). `None` = first-claim-wins.
+    #[serde(default)]
+    pub routing_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApproveRequest {
     #[serde(default)]
     pub owner_overrides: Option<JsonValue>,
+    /// C31 §4: set/override the named-runner routing target at approve (the Q17
+    /// tweak surface). `None` keeps the create-time value (COALESCE set-forward).
+    #[serde(default)]
+    pub routing_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -726,6 +827,10 @@ async fn admin_scope(
 }
 
 /// `POST /api/v1/projects/:project_id/work-orders` — create a draft (admin).
+///
+/// C31 §3: the body is EXACTLY ONE of the derived variant (`recommendation_id`)
+/// or the owner-authored variant (`title` + `instructions` + `action_type`).
+/// `recommendation_id` XOR (owner fields); a mixed or incomplete body → 400.
 pub async fn create(
     State(state): State<AppState>,
     session: AdminSession,
@@ -733,14 +838,77 @@ pub async fn create(
     Json(req): Json<CreateWorkOrderRequest>,
 ) -> Result<Json<WorkOrderView>, ApiError> {
     let scope = admin_scope(&state, &session, project_id).await?;
-    let wo = create_work_order(
-        &state,
-        &scope,
-        req.recommendation_id,
-        req.autonomy_rung,
-        req.owner_overrides.as_ref(),
-    )
-    .await?;
+
+    // XOR discrimination (C31 §3). `has_owner_any` is true if the body carries
+    // ANY owner-authored field, so an incomplete owner body is caught as
+    // owner-authored (missing fields → precise 400) rather than misrouted.
+    let has_rec = req.recommendation_id.is_some();
+    let has_owner_any =
+        req.title.is_some() || req.instructions.is_some() || req.action_type.is_some();
+
+    let routing_label = req.routing_label.as_deref();
+
+    let wo = match (has_rec, has_owner_any) {
+        // Both variants present → ambiguous.
+        (true, true) => {
+            return Err(ApiError::BadRequest(
+                "provide EITHER recommendation_id (derived) OR title+instructions+action_type \
+                 (owner-authored), not both"
+                    .into(),
+            ));
+        }
+        // Neither variant present → nothing to create.
+        (false, false) => {
+            return Err(ApiError::BadRequest(
+                "must provide recommendation_id (derived) or title+instructions+action_type \
+                 (owner-authored)"
+                    .into(),
+            ));
+        }
+        // Derived path.
+        (true, false) => {
+            // owner_overrides is a legal derived-variant field; owner-authored
+            // fields are absent (checked above).
+            create_work_order(
+                &state,
+                &scope,
+                req.recommendation_id.expect("has_rec"),
+                req.autonomy_rung,
+                req.owner_overrides.as_ref(),
+                routing_label,
+            )
+            .await?
+        }
+        // Owner-authored path — require ALL three owner fields.
+        (false, true) => {
+            let (Some(title), Some(instructions), Some(action_type)) =
+                (&req.title, &req.instructions, req.action_type)
+            else {
+                return Err(ApiError::BadRequest(
+                    "owner-authored create requires all of title, instructions, action_type".into(),
+                ));
+            };
+            // A stray owner_overrides on an owner-authored body is meaningless
+            // (the whole order is owner-authored); reject it rather than
+            // silently drop it, so the 400 surface stays honest.
+            if req.owner_overrides.is_some() {
+                return Err(ApiError::BadRequest(
+                    "owner_overrides is a derived-variant field; omit it on owner-authored create"
+                        .into(),
+                ));
+            }
+            create_owner_work_order(
+                &state,
+                &scope,
+                title,
+                instructions,
+                action_type,
+                req.autonomy_rung,
+                routing_label,
+            )
+            .await?
+        }
+    };
     Ok(Json(WorkOrderView::from(wo)))
 }
 
@@ -802,11 +970,14 @@ pub async fn approve(
     let wo = state.work_orders.get(&scope, work_order_id).await?;
 
     let tweaked = req.owner_overrides.as_ref().is_some_and(|v| !v.is_null());
+    // C31 §4: an approve may set/override the routing target (set-forward).
+    validate_routing_label(req.routing_label.as_deref())?;
     let now = Utc::now();
     let patch = WorkOrderStatePatch {
         approved_by: Some(admin_id),
         approved_at: Some(now),
         owner_overrides: req.owner_overrides.as_ref(),
+        routing_label: req.routing_label.as_deref(),
         ..Default::default()
     };
 
@@ -950,6 +1121,25 @@ pub async fn claim(
     headers: HeaderMap,
 ) -> Result<Json<TransitionResponse>, ApiError> {
     let (scope, runner) = verify_runner_token(&state, project_id, &headers).await?;
+
+    // C31 §5 named-runner routing (D-P6-3): a LABELED order may be claimed only
+    // by the runner whose verified token `sub` matches the label; an unlabeled
+    // order stays first-claim-wins. Routing is COORDINATION, not a trust
+    // boundary — the whole enforcement is this 409 (a runner token still cannot
+    // author `approve`; C25). Enforced on the verified `sub`, never a
+    // client-supplied value. A cross-tenant/absent id resolves to `NotFound`
+    // inside `transition_work_order` below (this pre-read shares that 404).
+    let wo = state.work_orders.get(&scope, work_order_id).await?;
+    if wo
+        .routing_label
+        .as_deref()
+        .is_some_and(|label| label != runner.sub.as_str())
+    {
+        // `ApiError::Conflict(msg)` renders as `{"error": msg}` (error.rs), so
+        // the bare string yields the contract body `{"error":"routing_mismatch"}`.
+        return Err(ApiError::Conflict("routing_mismatch".into()));
+    }
+
     let patch = WorkOrderStatePatch {
         claimed_by_runner: Some(&runner.sub),
         ..Default::default()
@@ -1131,10 +1321,13 @@ pub async fn runner_list(
     Query(q): Query<ListQuery>,
     headers: HeaderMap,
 ) -> Result<Json<JsonValue>, ApiError> {
-    let (scope, _runner) = verify_runner_token(&state, project_id, &headers).await?;
+    let (scope, runner) = verify_runner_token(&state, project_id, &headers).await?;
+    // C31 §5 / D-P6-3: server-side poll filtering keyed on the VERIFIED token
+    // `sub` — a labeled order is visible only to its named runner, an unlabeled
+    // order to every runner (first-claim-wins). The admin `list` is untouched.
     let wos = state
         .work_orders
-        .list(&scope, q.state.as_deref(), q.cluster_id)
+        .list_for_runner(&scope, q.state.as_deref(), q.cluster_id, &runner.sub)
         .await?;
     let mut items = Vec::with_capacity(wos.len());
     for wo in wos {

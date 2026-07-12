@@ -50,6 +50,12 @@ function WorkOrderListInner({ projectId }: { projectId: string }) {
       <BackLink />
       <header className="page-header">
         <h1 id="ap-wo-list-title">Work orders</h1>
+        <Link to="/admin/autopilot/work-orders/new" className="ap-nav-link">
+          + New story
+        </Link>
+        <Link to="/admin/autopilot/board" className="ap-nav-link">
+          Board view →
+        </Link>
       </header>
 
       {query.isPending ? (

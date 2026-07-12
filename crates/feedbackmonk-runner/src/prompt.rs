@@ -218,6 +218,45 @@ mod tests {
     }
 
     #[test]
+    fn assemble_owner_authored_none_context_has_no_untrusted_envelope() {
+        // C31 / D-P6-1: an OWNER-AUTHORED order (recommendation: None) carries NO
+        // feedback grounding. `assemble` must emit NO untrusted envelope, and the
+        // trusted layer must still carry the DEC-84 preamble + owner instructions.
+        let order = ClaimedOrder {
+            work_order_id: Uuid::nil(),
+            project_id: Uuid::nil(),
+            action_type: ActionType::Enhancement,
+            title: "Owner-authored task".into(),
+            instructions: "Refactor the widget bundler for a smaller footprint.".into(),
+            owner_overrides: None,
+            recommendation: None,
+        };
+        let prompt = assemble(&order);
+
+        // Trusted layer intact: DEC-84 preamble + owner-approved instructions.
+        assert!(prompt.instructions.contains("DEC-84"));
+        assert!(prompt
+            .instructions
+            .contains("Refactor the widget bundler for a smaller footprint."));
+        // NO untrusted envelope at all.
+        assert!(
+            prompt.untrusted_envelope.is_empty(),
+            "owner-authored order must produce an empty untrusted envelope: {:?}",
+            prompt.untrusted_envelope
+        );
+        // render() is the trusted layer ALONE — an empty envelope renders
+        // nothing extra (no delimited feedback block appended). (The DEC-84
+        // preamble mentions the envelope *concept* by name, so we can't assert
+        // the delimiter substring is absent — the load-bearing property is that
+        // render() is byte-identical to the trusted instructions.)
+        let rendered = prompt.render();
+        assert_eq!(
+            rendered, prompt.instructions,
+            "owner-authored render() must be the trusted layer alone (no envelope appended)"
+        );
+    }
+
+    #[test]
     fn assemble_renders_owner_overrides_in_trusted_layer() {
         let mut order = order_with_feedback("feedback body", "do the work");
         order.owner_overrides = Some(serde_json::json!({"scope": "backend only"}));

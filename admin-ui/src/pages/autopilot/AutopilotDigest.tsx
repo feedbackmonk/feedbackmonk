@@ -77,6 +77,12 @@ function AutopilotDigestInner({ projectId }: { projectId: string }) {
     <main className="ap-page" aria-labelledby="ap-digest-title">
       <header className="page-header">
         <h1 id="ap-digest-title">Autopilot</h1>
+        <Link to="/admin/autopilot/work-orders/new" className="ap-nav-link">
+          + New story
+        </Link>
+        <Link to="/admin/autopilot/board" className="ap-nav-link">
+          Board view →
+        </Link>
         <Link to="/admin/autopilot/work-orders" className="ap-nav-link">
           Work orders →
         </Link>

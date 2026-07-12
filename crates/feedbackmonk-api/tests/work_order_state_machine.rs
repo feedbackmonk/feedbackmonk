@@ -48,7 +48,8 @@ use uuid::Uuid;
 use feedbackmonk_anon::AnonGate;
 use feedbackmonk_api::email::Mailer;
 use feedbackmonk_api::handlers::work_orders::{
-    create_work_order, transition_work_order, Actor, TransitionFailure, RUNNER_TOKEN_SCOPE,
+    create_owner_work_order, create_work_order, transition_work_order, Actor, TransitionFailure,
+    RUNNER_TOKEN_SCOPE,
 };
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::{work_order_admin_router, work_order_runner_router};
@@ -254,7 +255,7 @@ fn mint_runner_token_without_jti(
 }
 
 async fn make_draft(state: &AppState, s: &Seeded, rung: i32) -> Uuid {
-    create_work_order(state, &s.scope, s.recommendation_id, rung, None)
+    create_work_order(state, &s.scope, s.recommendation_id, rung, None, None)
         .await
         .unwrap()
         .id
@@ -602,7 +603,7 @@ async fn runner_token_without_jti_is_rejected(pool: PgPool) {
 async fn rung_zero_never_produces_a_work_order(pool: PgPool) {
     let state = build_test_state(&pool);
     let s = seed(&state, "wo-rung0@example.com").await;
-    let err = create_work_order(&state, &s.scope, s.recommendation_id, 0, None).await.unwrap_err();
+    let err = create_work_order(&state, &s.scope, s.recommendation_id, 0, None, None).await.unwrap_err();
     assert!(matches!(err, feedbackmonk_api::ApiError::BadRequest(_)), "rung 0 must be rejected; got {err:?}");
 }
 
@@ -664,4 +665,172 @@ async fn runner_token_mint_verify_revoke_round_trip(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::OK, "an unrevoked runner token must still claim");
     let wo = state.work_orders.get(&s.scope, id).await.unwrap();
     assert_eq!(wo.state, WorkOrderState::Claimed);
+}
+
+// ============================================================================
+// 12. C31 (P6) — owner-authored orders drive the SAME untouched state machine.
+//     An owner-authored draft (no recommendation provenance) reaches `completed`
+//     through the identical approve → dispatch → claim → … → accept lifecycle,
+//     and the approval gate is enforced exactly as for feedback-derived orders.
+// ============================================================================
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn owner_authored_order_completes_through_the_untouched_state_machine(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let s = seed(&state, "wo-owner-lifecycle@example.com").await;
+
+    // Owner-authored draft — NO recommendation/cluster provenance (C31 §3).
+    let wo = create_owner_work_order(
+        &state,
+        &s.scope,
+        "Owner-authored: tighten the rate limiter",
+        "Reduce the anon submit quota window; keep the existing gate wiring.",
+        ActionType::Enhancement,
+        1,
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(wo.recommendation_id.is_none(), "owner-authored order has no recommendation");
+    assert!(wo.cluster_id.is_none());
+    assert_eq!(wo.state, WorkOrderState::Draft);
+    let id = wo.id;
+
+    // Full lifecycle through the identical core transitions.
+    admin_approve(&state, &s.scope, id).await;
+    transition_work_order(&state, &s.scope, id, "dispatch", &Actor::System, None,
+        WorkOrderStatePatch { dispatched_at: Some(Utc::now()), ..Default::default() }).await.unwrap();
+    let runner = Actor::Runner { sub: "runner-1".into() };
+    transition_work_order(&state, &s.scope, id, "claim", &runner, None,
+        WorkOrderStatePatch { claimed_by_runner: Some("runner-1"), ..Default::default() }).await.unwrap();
+    transition_work_order(&state, &s.scope, id, "building", &runner, None, WorkOrderStatePatch::default()).await.unwrap();
+    transition_work_order(&state, &s.scope, id, "verifying", &runner, None, WorkOrderStatePatch::default()).await.unwrap();
+    transition_work_order(&state, &s.scope, id, "reported", &runner, None, WorkOrderStatePatch::default()).await.unwrap();
+    transition_work_order(&state, &s.scope, id, "accept", &Actor::Admin { id: Uuid::new_v4() }, None, WorkOrderStatePatch::default()).await.unwrap();
+
+    let final_wo = state.work_orders.get(&s.scope, id).await.unwrap();
+    assert_eq!(final_wo.state, WorkOrderState::Completed);
+    // The gate was enforced identically — a prior owner-authored approve exists.
+    assert!(state.work_order_events.has_approved_event(&s.scope, id).await.unwrap());
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn owner_authored_create_rejects_rung_zero_and_blank_fields(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let s = seed(&state, "wo-owner-validation@example.com").await;
+
+    // rung 0 → 400 (inv. 4, unchanged for owner-authored).
+    let err = create_owner_work_order(&state, &s.scope, "t", "i", ActionType::BugFix, 0, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, feedbackmonk_api::ApiError::BadRequest(_)), "rung 0 must be rejected; got {err:?}");
+
+    // blank title → 400.
+    let err = create_owner_work_order(&state, &s.scope, "   ", "i", ActionType::BugFix, 1, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, feedbackmonk_api::ApiError::BadRequest(_)), "blank title must be rejected; got {err:?}");
+
+    // blank instructions → 400.
+    let err = create_owner_work_order(&state, &s.scope, "t", "  ", ActionType::BugFix, 1, None)
+        .await
+        .unwrap_err();
+    assert!(matches!(err, feedbackmonk_api::ApiError::BadRequest(_)), "blank instructions must be rejected; got {err:?}");
+}
+
+// ============================================================================
+// 13. C31 §3 — the HTTP create-union XOR validation (400s) + owner-authored 200.
+//     Drives the admin `create` endpoint end-to-end (behind AdminSession).
+// ============================================================================
+
+/// Seed a verified tenant + project and return (session-cookie, project_id) so a
+/// test can drive the admin `create` endpoint. Mirrors `seed_verified_session`
+/// in tier_enforcement_smoke.rs.
+async fn seed_admin_session(state: &AppState, email: &str) -> (String, Uuid) {
+    let tenant = state.tenants.create(email, "hash").await.unwrap();
+    let tscope = state.tenants.scope_for(tenant.id).await.unwrap();
+    state.tenants.mark_verified(&tscope).await.unwrap();
+    let p = state
+        .projects
+        .create(&tscope, "Proj", &format!("adm-{}", &tenant.id.to_string()[..8]))
+        .await
+        .unwrap();
+    let cookie = feedbackmonk_api::auth::issue_session_cookie(
+        tenant.id,
+        i64::from(tenant.session_epoch),
+        state.session_secret.as_ref(),
+    );
+    let cookie_str = cookie.to_string().split(';').next().unwrap().to_string();
+    (cookie_str, p.id)
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn http_create_union_xor_validation(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let (cookie, project_id) = seed_admin_session(&state, "wo-xor@example.com").await;
+    let app = work_order_admin_router(state.clone());
+    let url = format!("/api/v1/projects/{project_id}/work-orders");
+
+    let post = |body: Value| {
+        Request::post(&url)
+            .header("content-type", "application/json")
+            .header("cookie", cookie.clone())
+            .body(Body::from(body.to_string()))
+            .unwrap()
+    };
+
+    // (a) Both variants present → 400 (ambiguous).
+    let resp = app
+        .clone()
+        .oneshot(post(json!({
+            "recommendation_id": Uuid::new_v4(),
+            "title": "t", "instructions": "i", "action_type": "bug_fix",
+            "autonomy_rung": 1
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "both variants must 400");
+
+    // (b) Neither variant present → 400.
+    let resp = app
+        .clone()
+        .oneshot(post(json!({ "autonomy_rung": 1 })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "neither variant must 400");
+
+    // (c) Incomplete owner body (missing action_type) → 400.
+    let resp = app
+        .clone()
+        .oneshot(post(json!({ "title": "t", "instructions": "i", "autonomy_rung": 1 })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "incomplete owner body must 400");
+
+    // (d) owner_overrides on an owner-authored body → 400.
+    let resp = app
+        .clone()
+        .oneshot(post(json!({
+            "title": "t", "instructions": "i", "action_type": "bug_fix",
+            "owner_overrides": {"x": 1}, "autonomy_rung": 1
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST, "owner_overrides on owner-authored must 400");
+
+    // (e) Valid owner-authored body → 200; provenance is null, routing_label echoed.
+    let resp = app
+        .clone()
+        .oneshot(post(json!({
+            "title": "Owner task", "instructions": "Do it", "action_type": "enhancement",
+            "autonomy_rung": 1, "routing_label": "ci-runner"
+        })))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "valid owner-authored body must 200");
+    let body = body_json(resp.into_body()).await;
+    assert!(body["recommendation_id"].is_null(), "owner-authored ⇒ recommendation_id null");
+    assert!(body["cluster_id"].is_null());
+    assert_eq!(body["routing_label"], "ci-runner");
+    assert_eq!(body["state"], "draft");
 }

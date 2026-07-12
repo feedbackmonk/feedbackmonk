@@ -94,6 +94,12 @@ pub struct WorkOrderStatePatch<'a> {
     /// create-time overrides. Added additively in Stage 1 (Worker A) over the
     /// Stage 0 patch; existing call sites use `..Default::default()` unchanged.
     pub owner_overrides: Option<&'a JsonValue>,
+    /// C31 §4 named-runner routing target (token `sub`), settable/overridable at
+    /// approve (the Q17 tweak surface). `None` COALESCEs to the existing value
+    /// (set-forward, like `owner_overrides`) — an owner who does not re-target at
+    /// approve keeps the create-time `routing_label`. Added additively in Stage 1
+    /// (Worker A, P6); existing call sites use `..Default::default()` unchanged.
+    pub routing_label: Option<&'a str>,
 }
 
 #[async_trait]
@@ -116,6 +122,22 @@ pub trait WorkOrderRepo: Send + Sync {
         scope: &ProjectScope,
         state: Option<&str>,
         cluster_id: Option<Uuid>,
+    ) -> Result<Vec<WorkOrder>>;
+
+    /// List work orders visible to a NAMED runner (C31 §5, D-P6-3). Identical to
+    /// [`WorkOrderRepo::list`] but adds the routing predicate
+    /// `routing_label IS NULL OR routing_label = <runner_sub>`: an unlabeled
+    /// order is visible to every runner (first-claim-wins), a labeled order only
+    /// to the runner whose verified token `sub` matches. The admin
+    /// [`WorkOrderRepo::list`] stays untouched (owners see every order). Routing
+    /// is coordination, not a trust boundary — the claim handler enforces the
+    /// same predicate as the authoritative gate (a 409 on mismatch).
+    async fn list_for_runner(
+        &self,
+        scope: &ProjectScope,
+        state: Option<&str>,
+        cluster_id: Option<Uuid>,
+        runner_sub: &str,
     ) -> Result<Vec<WorkOrder>>;
 
     /// **The combined state+ledger transition primitive (C22 inv. 3).** On a
@@ -349,6 +371,39 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
         Ok(rows.into_iter().map(map_work_order).collect())
     }
 
+    async fn list_for_runner(
+        &self,
+        scope: &ProjectScope,
+        state: Option<&str>,
+        cluster_id: Option<Uuid>,
+        runner_sub: &str,
+    ) -> Result<Vec<WorkOrder>> {
+        let rows = sqlx::query_as!(
+            WorkOrderRow,
+            r#"
+            SELECT id, tenant_id, project_id, recommendation_id, cluster_id,
+                   action_type, title, instructions, owner_overrides,
+                   autonomy_rung, state, approved_by, approved_at,
+                   dispatched_at, claimed_by_runner, result_ref,
+                   failure_reason, routing_label, created_at, updated_at
+            FROM work_orders
+            WHERE tenant_id = $1 AND project_id = $2
+              AND ($3::text IS NULL OR state = $3)
+              AND ($4::uuid IS NULL OR cluster_id = $4)
+              AND (routing_label IS NULL OR routing_label = $5)
+            ORDER BY created_at DESC
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            state,
+            cluster_id,
+            runner_sub,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(map_work_order).collect())
+    }
+
     async fn transition_in_executor(
         &self,
         scope: &ProjectScope,
@@ -373,6 +428,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
                 result_ref = COALESCE($9, result_ref),
                 failure_reason = COALESCE($10, failure_reason),
                 owner_overrides = COALESCE($11, owner_overrides),
+                routing_label = COALESCE($12, routing_label),
                 updated_at = now()
             WHERE tenant_id = $1 AND project_id = $2 AND id = $3
             "#,
@@ -387,6 +443,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
             patch.result_ref,
             patch.failure_reason,
             patch.owner_overrides,
+            patch.routing_label,
         )
         .execute(&mut *conn)
         .await?;
@@ -441,6 +498,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
                 result_ref = COALESCE($9, result_ref),
                 failure_reason = COALESCE($10, failure_reason),
                 owner_overrides = COALESCE($11, owner_overrides),
+                routing_label = COALESCE($12, routing_label),
                 updated_at = now()
             WHERE tenant_id = $1 AND project_id = $2 AND id = $3
             "#,
@@ -455,6 +513,7 @@ impl WorkOrderRepo for SqlxWorkOrderRepo {
             patch.result_ref,
             patch.failure_reason,
             patch.owner_overrides,
+            patch.routing_label,
         )
         .execute(&mut *conn)
         .await?;
@@ -747,5 +806,208 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, RepoError::NotFound));
+    }
+
+    // ---- C31 (P6): owner-authored provenance + routing_label ----------------
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn owner_authored_create_with_no_provenance_succeeds(pool: PgPool) {
+        // C31 / D-P6-2: an owner-authored order has NO feedback grounding —
+        // both provenance FKs are None. It still enters `draft`.
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s = seed(&pool, "wo-owner-authored@example.com").await;
+
+        let wo = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: None,
+                    cluster_id: None,
+                    action_type: ActionType::Enhancement,
+                    title: "Owner-authored task",
+                    instructions: "Do exactly this",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                    routing_label: Some("ci-runner"),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(wo.state, WorkOrderState::Draft);
+        assert!(wo.recommendation_id.is_none());
+        assert!(wo.cluster_id.is_none());
+        assert_eq!(wo.routing_label.as_deref(), Some("ci-runner"));
+
+        let got = repo.get(&s.scope, wo.id).await.unwrap();
+        assert_eq!(got, wo);
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn mixed_provenance_pair_is_rejected_before_the_db(pool: PgPool) {
+        // Half-null provenance is unrepresentable (migration 00028 CHECK); the
+        // repo rejects it with `Conflict` BEFORE the DB CHECK would fire.
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s = seed(&pool, "wo-mixed-pair@example.com").await;
+
+        // recommendation_id Some, cluster_id None.
+        let err = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: Some(s.recommendation_id),
+                    cluster_id: None,
+                    action_type: ActionType::BugFix,
+                    title: "x",
+                    instructions: "y",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                    routing_label: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RepoError::Conflict), "mixed pair must Conflict; got {err:?}");
+
+        // cluster_id Some, recommendation_id None (the other half).
+        let err = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: None,
+                    cluster_id: Some(s.cluster_id),
+                    action_type: ActionType::BugFix,
+                    title: "x",
+                    instructions: "y",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                    routing_label: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, RepoError::Conflict), "mixed pair must Conflict; got {err:?}");
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn routing_label_is_set_forward_by_the_patch(pool: PgPool) {
+        // C31 §4: a patch `routing_label = Some` overwrites; `None` COALESCEs to
+        // the existing value (set-forward, like owner_overrides).
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s = seed(&pool, "wo-routing-setfwd@example.com").await;
+        let wo = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: Some(s.recommendation_id),
+                    cluster_id: Some(s.cluster_id),
+                    action_type: ActionType::BugFix,
+                    title: "Fix",
+                    instructions: "Do",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                    routing_label: Some("runner-create"),
+                },
+            )
+            .await
+            .unwrap();
+
+        // A patch with routing_label = Some overrides the create-time value.
+        let mut tx = pool.begin().await.unwrap();
+        repo.update_state_in_executor(
+            &s.scope,
+            &mut tx,
+            wo.id,
+            WorkOrderState::Approved,
+            WorkOrderStatePatch {
+                approved_by: Some(Uuid::new_v4()),
+                approved_at: Some(Utc::now()),
+                routing_label: Some("runner-approve"),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(
+            repo.get(&s.scope, wo.id).await.unwrap().routing_label.as_deref(),
+            Some("runner-approve")
+        );
+
+        // A subsequent patch with routing_label = None keeps the existing value.
+        let mut tx = pool.begin().await.unwrap();
+        repo.update_state_in_executor(
+            &s.scope,
+            &mut tx,
+            wo.id,
+            WorkOrderState::Dispatched,
+            WorkOrderStatePatch { dispatched_at: Some(Utc::now()), ..Default::default() },
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(
+            repo.get(&s.scope, wo.id).await.unwrap().routing_label.as_deref(),
+            Some("runner-approve"),
+            "None routing_label must COALESCE to the existing value"
+        );
+    }
+
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn list_for_runner_filters_by_routing_label(pool: PgPool) {
+        // C31 §5 / D-P6-3: an unlabeled order is visible to every runner; a
+        // labeled order only to the runner whose sub matches.
+        let repo = SqlxWorkOrderRepo::new(pool.clone());
+        let s = seed(&pool, "wo-runner-poll@example.com").await;
+
+        // Unlabeled (first-claim-wins) order.
+        let unlabeled = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: Some(s.recommendation_id),
+                    cluster_id: Some(s.cluster_id),
+                    action_type: ActionType::BugFix,
+                    title: "Unlabeled",
+                    instructions: "Any runner",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                    routing_label: None,
+                },
+            )
+            .await
+            .unwrap();
+        // Labeled to "runner-A".
+        let labeled = repo
+            .create(
+                &s.scope,
+                NewWorkOrder {
+                    recommendation_id: None,
+                    cluster_id: None,
+                    action_type: ActionType::BugFix,
+                    title: "Labeled",
+                    instructions: "Only runner-A",
+                    owner_overrides: None,
+                    autonomy_rung: 1,
+                    routing_label: Some("runner-A"),
+                },
+            )
+            .await
+            .unwrap();
+
+        // runner-A sees BOTH (unlabeled + its own labeled).
+        let for_a = repo.list_for_runner(&s.scope, None, None, "runner-A").await.unwrap();
+        let ids_a: Vec<Uuid> = for_a.iter().map(|w| w.id).collect();
+        assert!(ids_a.contains(&unlabeled.id));
+        assert!(ids_a.contains(&labeled.id));
+
+        // runner-B sees ONLY the unlabeled one (the labeled order is invisible).
+        let for_b = repo.list_for_runner(&s.scope, None, None, "runner-B").await.unwrap();
+        let ids_b: Vec<Uuid> = for_b.iter().map(|w| w.id).collect();
+        assert!(ids_b.contains(&unlabeled.id));
+        assert!(!ids_b.contains(&labeled.id), "runner-B must NOT see runner-A's labeled order");
+
+        // The admin `list` is untouched — owners see every order regardless.
+        let admin = repo.list(&s.scope, None, None).await.unwrap();
+        assert_eq!(admin.len(), 2);
     }
 }

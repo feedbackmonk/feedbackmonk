@@ -116,10 +116,32 @@ function WorkOrderDetailInner({
         <dl>
           <dt>Action</dt>
           <dd>{ACTION_TYPE_LABELS[wo.action_type]}</dd>
+          {/* C31 (P6) provenance: recommendation_id === null ⇔ owner-authored
+              ("New story"), no feedback provenance. The pair is both-null or
+              both-set (migration 00028 CHECK), so recommendation_id alone
+              decides. */}
+          <dt>Provenance</dt>
+          <dd>
+            {wo.recommendation_id === null
+              ? "Owner-authored"
+              : "From feedback recommendation"}
+          </dd>
           <dt>Autonomy rung</dt>
           <dd>{rungLabel(wo.autonomy_rung)}</dd>
           <dt>State</dt>
           <dd>{WORK_ORDER_STATE_LABELS[wo.state]}</dd>
+          {/* C31 named-runner routing — always shown. A label pins the order to
+              one runner identity (token sub); null is first-claim-wins. */}
+          <dt>Routing</dt>
+          <dd>
+            {wo.routing_label ? `Routed to: ${wo.routing_label}` : "Any runner"}
+          </dd>
+          {wo.claimed_by_runner ? (
+            <>
+              <dt>Claimed by</dt>
+              <dd>{wo.claimed_by_runner}</dd>
+            </>
+          ) : null}
           {wo.approved_at ? (
             <>
               <dt>Approved</dt>

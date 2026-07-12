@@ -283,7 +283,7 @@ async fn runner_e2e_dispatch_claim_build_report(pool: PgPool) {
     // Drive the order to `dispatched` at autonomy rung 1 (so the runner's
     // `reported` does NOT auto-accept — the order rests at `reported`, the literal
     // GATE-1 terminal). approve + dispatch are authored through the audited core.
-    let id = create_work_order(&state, &s.scope, s.recommendation_id, 1, None)
+    let id = create_work_order(&state, &s.scope, s.recommendation_id, 1, None, None)
         .await
         .unwrap()
         .id;

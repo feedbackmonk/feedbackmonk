@@ -233,4 +233,22 @@ test.describe("Autopilot a11y smoke (WCAG 2.1 AA)", () => {
     ).toBeVisible();
     await expectNoAxeViolations(page, "work-order detail");
   });
+
+  // C31 §3 (P6) — the owner-authored "New story" create form. Labelled inputs,
+  // a select, the autonomy-rung radiogroup, and the optional routing input must
+  // all be axe-clean. Route MUST resolve to the form (not a work-order :id) —
+  // this witnesses the App.tsx `new`-before-`:id` ordering as well.
+  test("new-story form has zero violations", async ({ page }) => {
+    await page.goto("/admin/autopilot/work-orders/new");
+    await expect(
+      page.getByRole("heading", { name: /^New story$/, level: 1 }),
+    ).toBeVisible();
+    // The form fields render (labelled) and the rung dial radiogroup is present.
+    await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+    await expect(
+      page.getByRole("radiogroup", { name: /Autonomy rung/i }),
+    ).toBeVisible();
+    await expect(page.getByLabel(/Routing label/i)).toBeVisible();
+    await expectNoAxeViolations(page, "new-story form");
+  });
 });

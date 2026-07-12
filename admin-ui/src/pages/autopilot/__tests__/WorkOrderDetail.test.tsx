@@ -148,3 +148,50 @@ describe("WorkOrderDetail — owner actions mirror the C22 authz table", () => {
     expect(screen.getByText(/create/)).toBeInTheDocument();
   });
 });
+
+describe("WorkOrderDetail — C31 provenance + routing (P6)", () => {
+  it("shows 'From feedback recommendation' for a derived order", async () => {
+    mockedDetail.mockResolvedValue(wo("draft"));
+    renderWithClient(<WorkOrderDetailPage workOrderId="wo-1" />, { withRouter: true });
+    await waitFor(() =>
+      expect(screen.getByText(/From feedback recommendation/)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/Owner-authored/)).toBeNull();
+  });
+
+  it("shows 'Owner-authored' when recommendation_id is null", async () => {
+    // Owner-authored ⇔ both provenance ids null (migration 00028 CHECK pair).
+    mockedDetail.mockResolvedValue({
+      ...wo("draft"),
+      recommendation_id: null,
+      cluster_id: null,
+    });
+    renderWithClient(<WorkOrderDetailPage workOrderId="wo-1" />, { withRouter: true });
+    await waitFor(() =>
+      expect(screen.getByText(/Owner-authored/)).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/From feedback recommendation/)).toBeNull();
+  });
+
+  it("renders 'Any runner' when routing_label is null", async () => {
+    mockedDetail.mockResolvedValue(wo("draft"));
+    renderWithClient(<WorkOrderDetailPage workOrderId="wo-1" />, { withRouter: true });
+    await waitFor(() =>
+      expect(screen.getByText(/Any runner/)).toBeInTheDocument(),
+    );
+  });
+
+  it("renders the routing target and claimed runner when set", async () => {
+    mockedDetail.mockResolvedValue({
+      ...wo("claimed"),
+      routing_label: "ci-runner",
+      claimed_by_runner: "ci-runner",
+    });
+    renderWithClient(<WorkOrderDetailPage workOrderId="wo-1" />, { withRouter: true });
+    await waitFor(() =>
+      expect(screen.getByText(/Routed to: ci-runner/)).toBeInTheDocument(),
+    );
+    // Claimed-by row appears only when a runner has claimed the order.
+    expect(screen.getByText(/Claimed by/)).toBeInTheDocument();
+  });
+});

@@ -13,6 +13,8 @@ import { AutopilotDigest } from "./pages/autopilot/AutopilotDigest";
 import { ClusterDetail } from "./pages/autopilot/ClusterDetail";
 import { WorkOrderList } from "./pages/autopilot/WorkOrderList";
 import { WorkOrderDetail } from "./pages/autopilot/WorkOrderDetail";
+import { NewStory } from "./pages/autopilot/NewStory";
+import { Board } from "./pages/autopilot/Board";
 
 // Routes:
 //   /login                                   → Login
@@ -25,7 +27,9 @@ import { WorkOrderDetail } from "./pages/autopilot/WorkOrderDetail";
 //   /admin/moderation                        → ModerationQueue (owner approve/reject queue, Contract C28)
 //   /admin/autopilot                         → AutopilotDigest (P5a — digest + cluster list)
 //   /admin/autopilot/clusters/:clusterId     → ClusterDetail (members + rec cards)
+//   /admin/autopilot/board                   → Board (read-only Kanban over the work-order state machine, C31 §7)
 //   /admin/autopilot/work-orders             → WorkOrderList
+//   /admin/autopilot/work-orders/new         → NewStory (owner-authored create; MUST precede :id)
 //   /admin/autopilot/work-orders/:id         → WorkOrderDetail (state + ledger + owner actions)
 //   /public/projects/:projectId/roadmap      → PublicRoadmap (no admin chrome; project-segmented per Contract C15)
 //   /public/projects/:projectId/board        → PublicBoard (no admin chrome; approved-only public board per Contract C29)
@@ -95,6 +99,16 @@ export function App() {
   // P5a autopilot surface (FR-FBR-21). Project-less admin URLs (sole-project
   // resolution via fetchAdminProjects), mirroring the /admin/roadmap
   // convention. Order matters: match the deeper routes before the index.
+  //
+  // Owner-authored "New story" route (C31 §3).
+  // MUST be registered BEFORE the `:id` matcher below — otherwise the literal
+  // `new` segment is captured as a work-order id and 404s on load.
+  if (
+    pathname === "/admin/autopilot/work-orders/new" ||
+    pathname === "/admin/autopilot/work-orders/new/"
+  ) {
+    return <NewStory />;
+  }
   const workOrderDetail = pathname.match(
     /^\/admin\/autopilot\/work-orders\/([^/]+)\/?$/,
   );
@@ -114,6 +128,11 @@ export function App() {
   );
   if (clusterDetail) {
     return <ClusterDetail clusterId={decodeURIComponent(clusterDetail[1])} />;
+  }
+  // Read-only Kanban board (C31 §7). Exact-path
+  // match; independent of the `work-orders/*` routes above (no shadowing).
+  if (pathname === "/admin/autopilot/board" || pathname === "/admin/autopilot/board/") {
+    return <Board />;
   }
   if (pathname === "/admin/autopilot" || pathname === "/admin/autopilot/") {
     return <AutopilotDigest />;
