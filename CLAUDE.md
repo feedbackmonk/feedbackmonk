@@ -70,6 +70,17 @@ bash scripts/ci-local.sh --tests   # also the suite (needs DATABASE_URL + Postgr
 runner-speed flakes). This is the gate `/0-uldf-finalize`'s push step depends on —
 do not push without it.
 
+## Git remote (GitHub, not local Gitea) — HTTP/1.1 required
+
+Unlike most projects on this machine (which push to local Gitea), this repo's
+`origin` is the real public remote `github.com/feedbackmonk/feedbackmonk`. Over
+HTTP/2 the push transfer **hangs indefinitely** when run from an automated shell
+(the Claude Bash tool), even though `fetch`/`ls-remote` succeed — it is not an
+auth prompt, it is an HTTP/2 send-pack stall. Fix (already set repo-local in
+`.git/config`, but `.git/config` isn't version-controlled, so re-apply if the repo
+is re-cloned): `git config http.version HTTP/1.1`. With that set, `git push`
+completes normally from any context. (2026-07-12, P6 Stage 1 convergence.)
+
 ## Workflow
 
 - Use `/0-uldf-ldis-plan "feedbackmonk P<N> — <Phase Name>"` at each phase boundary.
