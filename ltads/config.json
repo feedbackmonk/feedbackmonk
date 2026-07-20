@@ -4,17 +4,13 @@
   "temporary": false,
   "projectDefinition": "docs/specs/",
   "autonomy": {
-    "default": "collaborative",
-    "domains": {
-      "spec": "critical-only",
-      "plan": "approve",
-      "delegate": "approve-roles",
-      "decide": "ask-major",
-      "quality": "report",
-      "commit": "approve-message"
-    },
     "safetyRails": {
-      "alwaysPause": ["force-push", "delete-branch", "modify-secrets", "schema-change"]
+      "alwaysPause": [
+        "force-push",
+        "delete-branch",
+        "modify-secrets",
+        "schema-change"
+      ]
     }
   },
   "sessionDefaults": {},
