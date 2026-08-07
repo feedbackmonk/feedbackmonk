@@ -1,7 +1,55 @@
 # DEFER-001: Throttle PODS worker spawning to prevent burst-spawn machine crash
 
-**Status**: PROPOSED
+**Status**: DECLINED — SUPERSEDED (2026-08-06, `defer-drain-FeedbackMonk-20260806`)
 **Deferred**: 2026-06-18
+
+> ## Disposition — the brief's central claim was already false when it was written
+>
+> **Historical below this banner; do not cite the body as current.** The incident narrative
+> (§ Extracted Context) is accurate and is preserved as the only account of the 2026-06-18 crash.
+> The *diagnosis of the framework's state* is not.
+>
+> **What was measured (2026-08-06, ULDF framework repo `S:/ULDF` + synced `~/.claude/`):**
+>
+> - The fix this brief proposes **already shipped on 2026-06-09** — commit `432cc833`,
+>   *"fix(pods-spawn): serialize Windows `--all` ConPTY tab-adds to stop wt.exe burst-crash
+>   (DISC-SPAWN-02)"* — **nine days before** the 2026-06-18 incident that generated this brief.
+>   The premise *"no throttle, no readiness gate, and no concurrency cap"* (§ Summary) was
+>   therefore untrue at the time of writing.
+> - `~/.claude/scripts/spawn-pods-all.ps1` implements proposals **1–3 verbatim**: serialize
+>   (one worker at a time), a **readiness gate** polling the worker's `shell.pid` until it names
+>   a live process with a bounded timeout — the brief's own preferred design over a fixed sleep —
+>   a settle delay, fail-loud abort (remaining workers are NOT spawned on timeout), and pacing
+>   configurable via `.claude/config.json` `podsSpawn`
+>   (`verifyTimeoutSeconds` / `windowsSettleSeconds` / `sequential`). 7/7 smoke harness at
+>   `scripts/hygiene-tests/spawn-pods-all-smoke.ps1`.
+> - It is the **mandated** Windows `--all` path (`segments/-pods/spawn-collaborator_prompt-template.md`
+>   Step 5b BURST GUARD; `skills/0-uldf-pods-spawn-collaborator/SKILL.md` Notes).
+> - **All four Open Questions are answered** by what shipped: readiness signal is the worker's
+>   `shell.pid` (not `claudeShellPid`), with a liveness re-check on timeout; defaults are 60s
+>   verify / 4s settle; the `.sh`/tmux path was **deliberately not mirrored** (the crash is
+>   `wt.exe`/ConPTY-specific — DISC-SPAWN-02 note (c)); and the worker-count warning is subsumed
+>   by fail-loud abort.
+> - The guard's own follow-on defects were separately found and drained in ULDF
+>   (cold-start false-negative → duplicate spawn; registry clobber; idempotent resume adoption,
+>   ULDF `SPECIFICATION.md` RESUME-01/02) — i.e. this subsystem has had three rounds of
+>   hardening since this brief was filed.
+> - **Only proposal 4 never shipped** — the optional pre-spawn free-memory check. No observed
+>   incident has required it; it is not carried forward as work.
+>
+> **Why the 2026-06-18 crash happened anyway — attribution NOT established.** The registry
+> timings in § Extracted Context (spawns at 18:13:40 / :46 / :52, ~6s apart, while CLAUDE-B's pid
+> took 19s to appear) are **incompatible with the orchestrator having been used** — its
+> verify-between gate cannot emit a second spawn 6s after the first when the first has not
+> verified. So the LD fired a per-worker loop. Whether it did so because the guard had not yet
+> been synced into `~/.claude/` (a user-consent-gated propagation op, so lag is by design) or
+> because it bypassed a guard that was present is **undeterminable** — `~/.claude/` carries no
+> sync-provenance record. That residual — enforcement against a *direct-spawn* burst is prose,
+> not a hook — is recorded as one line in
+> [`docs/planning/observations-ledger.md`](../observations-ledger.md) rather than filed as a
+> brief into ULDF, per the 2026-08-06 filing gate (real harm, but unattributable).
+>
+> **No feedbackmonk action. No ULDF brief.** This item is closed.
 **Deferred from**: feedbackmonk P5a Stage 1 — a PODS session (`collab-20260618-180600`, 3 workers) crashed all terminals during the worker-spawn burst; this brief was captured during recovery.
 **Scope**: ⚠️ **CROSS-REPO — the fix belongs in the ULDF framework repo (`claude-template/` → synced `~/.claude/`), NOT in feedbackmonk.** Captured here only because that is where the incident occurred. Port to the framework repo and dismiss this item once filed there.
 
