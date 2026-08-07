@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-Project-state oracle (cleanup category) that sweeps `ltads/execution/worker-shell-*.pid` files referencing PIDs that are no longer alive. Liveness-based — **no TTL**, per DEC-54: a worker shell that's gone is gone, age is irrelevant. Come here for the liveness-probe contract, the pre-delete `_pid-summary.jsonl` audit-trail invariant, and the `--gc` / `--gc-cheap` invocation contract. Don't come here for `active-sessions.json` registry hygiene — that's the sibling `dispatchable-sessions` oracle (CSI-05); both share the same liveness probe via `claude-template/scripts/lib/pid-liveness.{sh,ps1}`.
+Project-state oracle (cleanup category) that sweeps `ltads/execution/worker-shell-*.pid` files referencing PIDs that are no longer alive. Liveness-based — **no TTL**, per DEC-54: a worker shell that's gone is gone, age is irrelevant. Come here for the liveness-probe contract, the pre-delete `_pid-summary.jsonl` audit-trail invariant, and the `--gc` / `--gc-cheap` invocation contract. Don't come here for `active-sessions.json` registry hygiene — that's the sibling `dispatchable-sessions` oracle (CSI-05); both share the same liveness probe via `~/.claude/scripts/lib/pid-liveness.{sh,ps1}`.
 
 ## Identity
 
@@ -23,7 +23,7 @@ The oracle is the explicit-operator leg of the **three-leg defense** (DEC-55):
 2. **SWEEP-06 session-start `--gc-cheap`** — reactive cross-session sweep that catches `.pid` files from sessions that crashed without firing SessionEnd.
 3. **SWEEP-04 `--gc` mode** (this oracle) — explicit operator-initiated sweep for ad-hoc cleanup.
 
-All three legs share the same liveness probe (`pid_is_alive` / `Test-UldfPidAlive` in `claude-template/scripts/lib/pid-liveness.{sh,ps1}`).
+All three legs share the same liveness probe (`pid_is_alive` / `Test-UldfPidAlive` in `~/.claude/scripts/lib/pid-liveness.{sh,ps1}`).
 
 ## Files
 
@@ -123,11 +123,11 @@ Unlike `archive-retention` and `handoff-retention`, this oracle has **no KEEP-pi
 
 ## Surfaces (where the sweep fires)
 
-1. **SessionEnd hook (SWEEP-05)** — proactive close on natural exit; deletes the current session's matching `.pid` file. See `claude-template/hooks/session-end.{sh,ps1}`.
-2. **Session-start hook (SWEEP-06)** — `--gc-cheap` runs alongside CSI-05's hygiene sweep. See `claude-template/hooks/session-start.{sh,ps1}`.
+1. **SessionEnd hook (SWEEP-05)** — proactive close on natural exit; deletes the current session's matching `.pid` file. See `~/.claude/hooks/session-end.{sh,ps1}`.
+2. **Session-start hook (SWEEP-06)** — `--gc-cheap` runs alongside CSI-05's hygiene sweep. See `~/.claude/hooks/session-start.{sh,ps1}`.
 3. **`/0-uldf-oracle pid-orphan-detector --gc`** — explicit on-demand full sweep.
 
-All three share the same liveness probe via `claude-template/scripts/lib/pid-liveness.{sh,ps1}`.
+All three share the same liveness probe via `~/.claude/scripts/lib/pid-liveness.{sh,ps1}`.
 
 ## Testing
 
@@ -146,7 +146,7 @@ Validates:
 - T6: `--gc-cheap` is silent on success and performs the sweep.
 - T7: Empty `ltads/execution/` produces empty `briefing` field (gracefully absent).
 
-Smoke harness at `claude-template/scripts/hygiene-tests/sweep-pid-orphan-detector-smoke.{sh,ps1}` covers oracle cases plus SessionEnd hook integration across all 6 SessionEnd matchers and session-start `--gc-cheap` integration.
+Smoke harness at `~/.claude/scripts/hygiene-tests/sweep-pid-orphan-detector-smoke.{sh,ps1}` covers oracle cases plus SessionEnd hook integration across all 6 SessionEnd matchers and session-start `--gc-cheap` integration.
 
 ## Constraints
 
@@ -168,7 +168,7 @@ Smoke harness at `claude-template/scripts/hygiene-tests/sweep-pid-orphan-detecto
 - Spec: `docs/specs/SPECIFICATION.md` § SWEEP (SWEEP-04..06, SWEEP-08)
 - Decisions: `docs/specs/DECISIONS.md` DEC-54 (liveness, no TTL), DEC-55 (three-leg defense)
 - Discovery: `docs/specs/DISCOVERIES.md` DISC-HYGIENE-03
-- Liveness probe lib: `claude-template/scripts/lib/pid-liveness.{sh,ps1}`
-- Sibling oracle: `claude-template/oracles/dispatchable-sessions/` (registry hygiene; same probe pattern, different substrate)
-- Sibling oracle: `claude-template/oracles/archive-retention/` (`--gc` / `--gc-cheap` mode shape; KEEP-pin substrate)
+- Liveness probe lib: `~/.claude/scripts/lib/pid-liveness.{sh,ps1}`
+- Sibling oracle: `~/.claude/oracles/dispatchable-sessions/` (registry hygiene; same probe pattern, different substrate)
+- Sibling oracle: `~/.claude/oracles/archive-retention/` (`--gc` / `--gc-cheap` mode shape; KEEP-pin substrate)
 - Probandurgy: `FOUNDATIONS/PROBANDURGY_MECHANISMS.md` audit-trail subsection (third instance after RETENTION-05 and handoff-retention)

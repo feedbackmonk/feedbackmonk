@@ -1,0 +1,105 @@
+{
+  "name": "probandurgy-footprint",
+  "version": "1.0.0",
+  "question": "For each declared Probandurgy mechanism in this project's manifest, is the declared compile-time-presence footprint enforced by an active gate in the build configuration?",
+  "category": "probandurgy",
+  "kind": "verification",
+  "expected_runtime_ms": 600,
+  "lane": "fast",
+  "trigger_globs": [
+    ".claude/manifests/probandurgy-footprint.json",
+    "Cargo.toml",
+    "vite.config.*",
+    "webpack.config.*",
+    "rollup.config.*",
+    "Dockerfile"
+  ],
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
+  "invocation": {
+    "unix": ".claude/oracles/probandurgy-footprint/run.sh",
+    "windows": ".claude/oracles/probandurgy-footprint/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "schemaVersion": "string (\"1\" at Phase 1)",
+      "manifest_present": "boolean (false when .claude/manifests/probandurgy-footprint.json absent)",
+      "mechanisms_declared": [
+        {
+          "mechanism": "string (mechanism slug from manifest)",
+          "declared_axis_a": "one of: in-binary | feature-gated-out-by-default | not-applicable",
+          "declared_axis_b": "one of: on-by-default | runtime-gated | not-applicable",
+          "gate_implementation_found": "boolean (true iff every gate_locations[] entry resolves to a parseable, present gate)",
+          "gate_locations": "array of strings (file#anchor pointers as declared in manifest)",
+          "self_test_verifier_present": "boolean (verifier_script path resolves)",
+          "waivers": "array of waiver entries from manifest"
+        }
+      ],
+      "violations": [
+        {
+          "mechanism": "string (mechanism slug, or null when violation is manifest-level)",
+          "kind": "one of: declared-but-no-gate | gate-location-not-found | waiver-without-rationale-file | manifest-malformed | unsupported-anchor",
+          "evidence": "string (machine-readable pointer to what's wrong)",
+          "remediation": "string (one-line suggested fix)"
+        }
+      ],
+      "advisory": "boolean (always true at Phase 1)"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      ".claude/manifests/probandurgy-footprint.json",
+      "Cargo.toml",
+      "vite.config.ts",
+      "vite.config.js",
+      "vite.config.mjs",
+      "vite.config.cjs",
+      "webpack.config.ts",
+      "webpack.config.js",
+      "rollup.config.ts",
+      "rollup.config.js",
+      "rollup.config.mjs",
+      "Dockerfile"
+    ],
+    "comment": "Re-runs when manifest changes or when any cited build-config file mutates. Phase 1 verifies gates EXIST; Phase 2 (deferred) verifies gates are EFFECTIVE on built artifacts."
+  },
+  "consultation": {
+    "typical_sessions_using": "few",
+    "estimated_token_savings_per_call": 2000
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/probandurgy-footprint/validate.sh",
+    "self_test_windows": ".claude/oracles/probandurgy-footprint/validate.ps1",
+    "last_validated": null
+  },
+  "wiring": {
+    "finalize_phase_11_posture": "advisory-only at autopilot; halt at controlled-or-below when violations[] non-empty",
+    "comment": "Per FOOTPRINT-04 intake recommendation aligned with DEC-12 Halt Principle conservatism. Phase 11 auto-detects oracles in claude-template/oracles/; no explicit registration required."
+  },
+  "fallback": "Manually grep the project's build config files for the gates declared in .claude/manifests/probandurgy-footprint.json (Cargo [features], Vite/Webpack/Rollup define, Dockerfile ARG). Then check verifier_script paths with test -f and waiver rationale paths likewise. Slow and error-prone vs. the oracle.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-17T00:00:00Z",
+    "spec": "FOOTPRINT-04",
+    "decisions": [
+      "DEC-62",
+      "DEC-63"
+    ],
+    "discovery": "DISC-FOOTPRINT-01",
+    "note": "Verification Oracle for the Probandurgy Footprint Discipline (cross-cutting invariant). Phase 1: declared-vs-implemented check. Phase 2 (deferred): per-language artifact inspection. Reference implementation pattern: SessionHelm ARIA-08."
+  },
+  "config": {
+    "manifest_path": ".claude/manifests/probandurgy-footprint.json",
+    "manifest_path_env_override": "PROBANDURGY_FOOTPRINT_MANIFEST",
+    "supported_anchors": [
+      "Cargo.toml#features.<NAME>",
+      "vite.config.{ts,js,mjs,cjs}#define.<NAME>",
+      "webpack.config.{ts,js}#DefinePlugin.<NAME>",
+      "rollup.config.{ts,js,mjs}#replace.<NAME>",
+      "rollup.config.{ts,js,mjs}#define.<NAME>",
+      "Dockerfile#ARG.<NAME>"
+    ],
+    "comment": "Unsupported anchors emit 'gate-location-not-found' violation; oracle never crashes. To add a parser, edit run.sh + run.ps1 and update README's parser support matrix."
+  }
+}

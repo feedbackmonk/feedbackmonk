@@ -51,13 +51,15 @@ if [ -d "docs/planning/ideations" ] && [ -n "$(ls -A docs/planning/ideations 2>/
     IDEATE_EXISTS=true
 fi
 
-# LTADS state
+# LTADS state (ARC-03 / DEC-199: topmost arc of ltads/arc-state.json; jq read
+# -- graceful empty on absent/malformed. Legacy prose-only projects report no
+# active LTADS here; the ltads-state oracle's `legacy` verdict covers them.)
 LTADS_ACTIVE=false
 LTADS_STATUS=""
-if [ -f "ltads/sessions/current-session.md" ]; then
-    LTADS_STATUS=$(grep -oE '^(##[[:space:]]+|-[[:space:]]+\*\*|\*\*)Status(\*\*)?[[:space:]]*:[[:space:]]*[A-Z_]+' "ltads/sessions/current-session.md" 2>/dev/null | head -1 | grep -oE '[A-Z_]+$' || true)
+if [ -f "ltads/arc-state.json" ] && command -v jq >/dev/null 2>&1; then
+    LTADS_STATUS=$(jq -r 'try (.arcs[0].status) // empty' "ltads/arc-state.json" 2>/dev/null || true)
     case "$LTADS_STATUS" in
-        ACTIVE|IN_PROGRESS|STARTED) LTADS_ACTIVE=true ;;
+        ACTIVE) LTADS_ACTIVE=true ;;   # PAUSED = deliberately parked, not active (prose-era parity)
     esac
 fi
 

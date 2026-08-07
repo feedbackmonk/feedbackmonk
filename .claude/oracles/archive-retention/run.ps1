@@ -6,7 +6,7 @@
 #
 # Modes:
 #   (default)    : list all collab-* dirs with metadata + sweepability flags
-#   --gc-cheap   : session-start hygiene sweep, ~100ms budget, defers if exceeded
+#   --gc-cheap   : session-start hygiene sweep, ~1000ms budget, defers if exceeded
 #   --gc         : on-demand hygiene sweep, no time budget, prints {swept,before,after,...}
 #
 # Sweep criteria (--gc / --gc-cheap):
@@ -15,6 +15,16 @@
 #   Action: append JSON line to _summary.jsonl, verify write, Remove-Item -Recurse the dir.
 #   Threshold: .claude/config.json archiveRetention.threshold (numeric days or PnD), default 90.
 #   Design lineage: CSI-05 (claude-template/oracles/dispatchable-sessions/run.ps1).
+#
+# Test seam:
+#   ULDF_FAKE_NOW -- epoch seconds standing in for `now`. Honored ONLY when the
+#   value is strictly numeric; anything else is ignored and the real clock is
+#   used. Exists so validate.{sh,ps1} can prove its fixtures are time-invariant
+#   (DEFER-072): the fixtures are directory NAMES, so validator and oracle must
+#   shift together or the test measures the skew between them instead. When
+#   active, --gc / --dry-run / briefing output carries "clockSource":"fake" --
+#   this seam moves a delete cutoff, so an accidental activation must be visible
+#   rather than silent. Unset (the only production state) it is fully inert.
 
 param(
     [switch]$gc,
@@ -38,6 +48,7 @@ foreach ($a in $args) {
     switch ($a) {
         "--gc"        { $mode = "gc" }
         "--gc-cheap"  { $mode = "gc-cheap" }
+        "--dry-run"   { $mode = "dry-run" }
         default {
             if ($a -is [string] -and $a.StartsWith("--")) {
                 Write-Error "archive-retention: unknown mode: $a"
@@ -59,7 +70,7 @@ function Emit-Empty-Briefing {
 # ---- Locate the archived dir ----
 if (-not (Test-Path $archivedDir)) {
     if ($mode -eq "briefing") { Emit-Empty-Briefing }
-    if ($mode -eq "gc") {
+    if ($mode -eq "gc" -or $mode -eq "dry-run") {
         Write-Output '{"swept":0,"before":0,"after":0,"threshold":"P90D","thresholdSource":"default","summarized":0,"note":"no archived dir"}'
     }
     exit 0
@@ -114,7 +125,22 @@ if (Test-Path ".claude/config.json") {
     }
 }
 
-$now    = (Get-Date).ToUniversalTime()
+# ---- Clock ----
+# Single derivation point for `now`, so the seam cannot drift from the cutoff it
+# feeds. Strictly-numeric guard: a malformed ULDF_FAKE_NOW falls back to the real
+# clock rather than to a guess -- this value moves a Remove-Item cutoff.
+$clockSource = "real"
+$now = $null
+if ($env:ULDF_FAKE_NOW -match '^[0-9]+$') {
+    try {
+        $now = ([DateTime]::new(1970, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)).AddSeconds([double]$env:ULDF_FAKE_NOW)
+        $clockSource = "fake"
+    } catch {
+        $now = $null
+        $clockSource = "real"
+    }
+}
+if ($null -eq $now) { $now = (Get-Date).ToUniversalTime() }
 $cutoff = $now.AddDays(-1 * $thresholdDays)
 $nowIso = $now.ToString('yyyy-MM-ddTHH:mm:ssZ')
 
@@ -266,11 +292,18 @@ function Build-SummaryLine {
 # =============================================================================
 # Mode dispatch
 # =============================================================================
-if ($mode -eq "gc" -or $mode -eq "gc-cheap") {
+if ($mode -eq "gc" -or $mode -eq "gc-cheap" -or $mode -eq "dry-run") {
 
-    $budgetMs = 100
-    if ($mode -eq "gc") { $budgetMs = 0 }
-    $startTicks = [System.Diagnostics.Stopwatch]::StartNew()
+    # --dry-run: identical candidate computation, ZERO mutation (SWEEPER-05) --
+    #            no JSONL append, no Remove-Item; reports the would-sweep set.
+    # Cheap-mode budget: 1000ms, matching the sh twin and the sibling sweepers'
+    # DEC-79 calibration. At the former 100ms the budget could be consumed
+    # before the FIRST candidate was examined, so --gc-cheap swept nothing,
+    # forever (DEFER-019).
+    $budgetMs = 1000
+    # ULDF_AR_GC_BUDGET_MS: test seam (DEC-250), parity with the sh twin.
+    if ($env:ULDF_AR_GC_BUDGET_MS -match '^[0-9]+$') { $budgetMs = [int]$env:ULDF_AR_GC_BUDGET_MS }
+    if ($mode -eq "gc" -or $mode -eq "dry-run") { $budgetMs = 0 }
 
     $allDirs = @()
     try {
@@ -283,8 +316,21 @@ if ($mode -eq "gc" -or $mode -eq "gc-cheap") {
     $sweepIds = New-Object System.Collections.ArrayList
     $budgetExceeded = $false
 
+    # Clock starts HERE, not before enumeration: the budget bounds the sweep
+    # loop. The claim that used to sit here -- "the first candidate always
+    # clears it, forward progress is guaranteed" -- was false in both twins and
+    # unmeasured (DEC-250). The guarantee is now structural, via $workedAny.
+    $startTicks = [System.Diagnostics.Stopwatch]::StartNew()
+    $workedAny = $false   # minimum-progress guarantee (DEFER-064 rule 3, DEC-250)
+
     foreach ($d in $allDirs) {
-        if ($budgetMs -gt 0 -and $startTicks.ElapsedMilliseconds -gt $budgetMs) {
+        # Budget check, but NEVER before one unit of real work. The cheap
+        # filters below (KEEP pin, unparsable basename, too-young dir) are not
+        # progress, so a prefix of them must not starve the sweep. This twin's
+        # clock is in-process, so it never suffered the sh twin's forked-clock
+        # starvation -- but the non-candidate-prefix shape is shared, and
+        # TWIN-01 wants one behaviour, not two.
+        if ($budgetMs -gt 0 -and $workedAny -and $startTicks.ElapsedMilliseconds -gt $budgetMs) {
             $budgetExceeded = $true
             break
         }
@@ -298,6 +344,15 @@ if ($mode -eq "gc" -or $mode -eq "gc-cheap") {
         $createdAtDt = Parse-CollabBasename -Base $base
         if ($null -eq $createdAtDt) { continue }    # unparsable -> never sweep
         if ($createdAtDt -gt $cutoff) { continue }  # too young
+
+        # Past every cheap filter: a real sweep candidate, so the budget may bind.
+        $workedAny = $true
+
+        if ($mode -eq "dry-run") {
+            $sweepCount++
+            [void]$sweepIds.Add($base)
+            continue
+        }
 
         $line = Build-SummaryLine -DirPath $dirPath -SweptAt $nowIso
         if (-not (Append-Summary-Line -Line $line)) {
@@ -317,6 +372,23 @@ if ($mode -eq "gc" -or $mode -eq "gc-cheap") {
 
     $after = $before - $sweepCount
 
+    if ($mode -eq "dry-run") {
+        $idsCsv = ""
+        if ($sweepIds.Count -gt 0) { $idsCsv = ($sweepIds -join ",") }
+        $parts = @(
+            "`"dryRun`":true",
+            "`"wouldSweep`":$sweepCount",
+            "`"before`":$before",
+            "`"after`":$before",
+            "`"threshold`":`"$thresholdDisplay`"",
+            "`"thresholdSource`":`"$thresholdSource`""
+        )
+        if ($idsCsv) { $parts += "`"wouldSweepIds`":`"$idsCsv`"" }
+        if ($clockSource -eq "fake") { $parts += "`"clockSource`":`"fake`"" }
+        Write-Output ("{" + ($parts -join ",") + "}")
+        exit 0
+    }
+
     if ($mode -eq "gc") {
         $idsCsv = ""
         if ($sweepIds.Count -gt 0) { $idsCsv = ($sweepIds -join ",") }
@@ -330,6 +402,7 @@ if ($mode -eq "gc" -or $mode -eq "gc-cheap") {
         )
         if ($budgetExceeded) { $parts += "`"budgetExceeded`":true" }
         if ($idsCsv) { $parts += "`"sweptIds`":`"$idsCsv`"" }
+        if ($clockSource -eq "fake") { $parts += "`"clockSource`":`"fake`"" }
         Write-Output ("{" + ($parts -join ",") + "}")
     }
     exit 0
@@ -393,4 +466,5 @@ $count = $entries.Count
 $dirsJson = ($entries -join ",")
 $summary = "$count archived session(s); $sweepableCount sweepable, $keptCount kept (threshold $thresholdDisplay)"
 
-Write-Output ('{"count":' + $count + ',"dirs":[' + $dirsJson + '],"threshold":"' + $thresholdDisplay + '","thresholdSource":"' + $thresholdSource + '","summary":"' + $summary + '"}')
+$clockJson = if ($clockSource -eq "fake") { ',"clockSource":"fake"' } else { '' }
+Write-Output ('{"count":' + $count + ',"dirs":[' + $dirsJson + '],"threshold":"' + $thresholdDisplay + '","thresholdSource":"' + $thresholdSource + '"' + $clockJson + ',"summary":"' + $summary + '"}')

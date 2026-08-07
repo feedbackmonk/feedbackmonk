@@ -73,65 +73,30 @@ port_is_bound() {
 }
 
 # ---- Step 1: Parse Dev Port Registry from MACHINE_CONFIG.md ----
-# Format expectation (tolerant): a "Dev Port Registry" section with lines of
-# the rough shape "- <project>: <port>" or table rows "| <project> | <port> |".
-# We extract (project, port) pairs and scope to the current workDir's project
-# name when we can match it.
-machine_config=""
-if [ -n "${HOME:-}" ] && [ -f "$HOME/.claude/MACHINE_CONFIG.md" ]; then
-    machine_config="$HOME/.claude/MACHINE_CONFIG.md"
-elif [ -n "${USERPROFILE:-}" ] && [ -f "$USERPROFILE/.claude/MACHINE_CONFIG.md" ]; then
-    machine_config="$USERPROFILE/.claude/MACHINE_CONFIG.md"
-fi
+# The parse itself lives in scripts/lib/dev-port-registry.sh (QUIESCE-01,
+# DEC-208) — one owner, one fix. It was previously inlined here and in the .ps1
+# twin with a regex that could not match a single real row (markdown emphasis +
+# code spans), so `hasLiveDevServer` was structurally incapable of returning
+# true from 2026-05-10 to 2026-07-29. Never re-inline it.
+_prs_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_dpr_lib="$_prs_dir/../../scripts/lib/dev-port-registry.sh"
 
 current_project="$(basename "$(pwd)" 2>/dev/null || echo "")"
 
-if [ -n "$machine_config" ] && [ -f "$machine_config" ]; then
-    # Slice the section between "Dev Port Registry" heading and the next "## " heading.
-    section="$(awk '
-        /^##[[:space:]]+Dev Port Registry/ {in_section=1; next}
-        /^##[[:space:]]/ && in_section {in_section=0}
-        in_section {print}
-    ' "$machine_config" 2>/dev/null)"
-
-    # Extract candidate (project, port) pairs from list items / table rows.
-    # Patterns we accept:
-    #   - <name>: <port>
-    #   - * <name>: <port>
-    #   | <name> | <port> | ...
-    # The port is any 4-5 digit integer in 1024..65535.
-    while IFS= read -r raw; do
-        [ -n "$raw" ] || continue
-        # Trim leading list/table markers.
-        line="$(echo "$raw" | sed -E 's/^[[:space:]]*[-*+|][[:space:]]*//')"
-        # Match "<project>: <port>" form.
-        if echo "$line" | grep -qE '^[A-Za-z0-9._/[:space:]-]+:[[:space:]]*[1-9][0-9]{3,4}([[:space:]]|$)'; then
-            proj="$(echo "$line" | sed -E 's/^([A-Za-z0-9._/[:space:]-]+):[[:space:]]*([1-9][0-9]{3,4}).*$/\1/' | sed -E 's/[[:space:]]+$//')"
-            port="$(echo "$line" | sed -E 's/^([A-Za-z0-9._/[:space:]-]+):[[:space:]]*([1-9][0-9]{3,4}).*$/\2/')"
-        # Match table-row form "| <project> | <port> |".
-        elif echo "$line" | grep -qE '^\|?[[:space:]]*[A-Za-z0-9._/-]+[[:space:]]*\|[[:space:]]*[1-9][0-9]{3,4}[[:space:]]*\|'; then
-            proj="$(echo "$line" | sed -E 's/^\|?[[:space:]]*([A-Za-z0-9._/-]+)[[:space:]]*\|[[:space:]]*([1-9][0-9]{3,4}).*$/\1/')"
-            port="$(echo "$line" | sed -E 's/^\|?[[:space:]]*([A-Za-z0-9._/-]+)[[:space:]]*\|[[:space:]]*([1-9][0-9]{3,4}).*$/\2/')"
-        else
-            continue
+if [ -f "$_dpr_lib" ]; then
+    # shellcheck source=/dev/null
+    . "$_dpr_lib"
+    while IFS=$'\t' read -r proj port role; do
+        [ -n "$port" ] || continue
+        dev_port_entries+=("{\"project\":\"$(esc "$proj")\",\"port\":$port,\"source\":\"MACHINE_CONFIG.md\"}")
+        if port_is_bound "$port"; then
+            has_live_dev_server="true"
+            anti_fit_reasons+=("port $port assigned to '$proj' is currently bound (live dev server)")
         fi
-        # Guard: port must be 1024..65535
-        if [ "$port" -ge 1024 ] 2>/dev/null && [ "$port" -le 65535 ] 2>/dev/null; then
-            : # ok
-        else
-            continue
-        fi
-        # Scope to current project when name matches (case-insensitive substring).
-        proj_lc="$(echo "$proj" | tr '[:upper:]' '[:lower:]')"
-        cur_lc="$(echo "$current_project" | tr '[:upper:]' '[:lower:]')"
-        if [ -z "$cur_lc" ] || [ "$proj_lc" = "$cur_lc" ] || echo "$proj_lc" | grep -q "$cur_lc" 2>/dev/null || echo "$cur_lc" | grep -q "$proj_lc" 2>/dev/null; then
-            dev_port_entries+=("{\"project\":\"$(esc "$proj")\",\"port\":$port,\"source\":\"MACHINE_CONFIG.md\"}")
-            if port_is_bound "$port"; then
-                has_live_dev_server="true"
-                anti_fit_reasons+=("port $port assigned to '$proj' is currently bound (live dev server)")
-            fi
-        fi
-    done <<< "$section"
+    done < <(dpr_ports_for_project "$current_project" 2>/dev/null || true)
+else
+    # Degraded, and say so: an absent parser must not read as "no ports assigned".
+    anti_fit_reasons+=("dev-port-registry lib unavailable - Dev Port Registry not consulted (this is NO-DATA, not 'no assignments')")
 fi
 
 # ---- Step 2: Glob shared build artifacts ----

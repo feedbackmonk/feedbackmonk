@@ -1,0 +1,106 @@
+{
+  "name": "retirement-candidates",
+  "version": "1.1.0",
+  "question": "Which passages inside this project's living durable artifacts carry a deterministic signal that they may no longer earn their place -- a satisfied exit condition, a done marker, correction strata, a self-supersession banner, or zero inbound references?",
+  "category": "cleanup",
+  "kind": "verification",
+  "assertion": {
+    "asserts": "no passage in the configured corpus of living durable artifacts carries a mechanical signal of retirement-worthiness that a human or agent has not yet triaged -- i.e. the project's docs are free of un-swept dead content",
+    "measures": "textual markers over heading-delimited blocks (any heading level 1-6) in a configured file list: ISO dates in exit-condition sentences compared against today, uppercase completion tokens (DONE/RESOLVED/SUPERSEDED/...) and the check emoji, counts of CORRECTION/UPDATE-style strata, supersession banners in a file's first 15 lines, and basename occurrence in a single tree-wide grep",
+    "known_gaps": [
+      "THE central gap, and the reason this oracle's output is a worklist and never a delete list: utility is not machine-visible. A `DONE` marker measures that somebody typed DONE, not that the surrounding text stopped mattering. A post-mortem of a fixed bug and a trap note that still prevents a repeat are textually indistinguishable -- the discriminator (does a mechanical guard cover this trap?) requires reading the codebase and is left entirely to the agent per segments/_retirement-test.md",
+      "the converse false-negative is larger than the false-positive set: the 45 KB of dead narration that motivated this oracle was mostly ACCURATE prose carrying no marker at all. Utility decay leaves no textual trace, so a `pass` verdict is emphatically NOT evidence that a corpus is free of dead content -- only that it is free of *flagged* dead content",
+      "corpus is a configured list, not a discovery, and the coverage ratio on a real project is brutal: 11 of 414 doc files (2.7%) on the second project dogfooded 2026-08-02. Dead content in an unlisted file is invisible. The default list is deliberately conservative (follow-ups, discoveries, open questions, deferred briefs, reviews, next-session briefs) because a wide default would drown the worklist -- but a `pass` describes the corpus, never the project. v1.1.0 widened the follow-ups entry to spelling-tolerant globs after a literal-path miss silenced an 82 KB file; any OTHER project-specific naming still has to be added by hand",
+      "block granularity is the markdown heading, and this is the LARGEST remaining under-report. A file that keeps its entries as top-level bullets under one heading yields ONE candidate for the whole section rather than one per entry -- measured on a second project 2026-08-02: an 82 KB follow-ups file with 41 entries and 9 declared exit conditions reports as 2 candidates. Files whose entries ARE headings (DISCOVERIES.md, OPEN_QUESTIONS.md) get true per-entry granularity. Read a bullet-shaped file's candidate as 'somewhere in here', never as a located passage",
+      "MARKER SEMANTICS ARE FILE-CLASS-DEPENDENT and the oracle has no notion of file class, so `done-marker` precision swings from useful to near-zero across corpora. In a QUEUE file (follow-ups, deferred briefs, next-session briefs) a completion token means the entry is spent. In a RESOLUTION RECORD (OPEN_QUESTIONS.md, DECISIONS.md, DISCOVERIES.md) the same token marks the moment the entry BECOMES retention-category-2 knowledge -- it is at its most valuable exactly when it says RESOLVED. Measured on a second project 2026-08-02: 28 of 32 `done-marker` hits were in resolution records and essentially all were retention-worthy. The `--retire` sweep already works signals cheapest-confidence-first and ranks `done-marker` last for this reason; the ranking is the mitigation, not a fix",
+      "`exit-condition-satisfied` only evaluates conditions containing an ISO date already past. Every other exit condition -- 'once the installer ships', 'when this test exists' -- is reported in `surfaced[]` as declared-but-unevaluable, because verifying it requires checking the system, not the text",
+      "`exit-condition-satisfied` requires a STRONG match (an actual Remove/Delete/Retire directive) outside a markdown table. A WEAK match -- the mere phrase 'exit condition' -- can only ever reach `declared`. This split exists because the naive version fired on prose ABOUT exit conditions that happened to carry any date: dogfooding produced three such hits and ALL THREE were false, including the CLAUDE.md section describing this oracle. DEFER-044 records the identical defect in `governing-doc-consistency` ('a stale date appears anywhere on the line'), where the prescribed remedy would have written a lie into the docs. The residual gap runs the other way: a genuine exit condition phrased without a directive verb, or one living inside a table, now reads as merely `declared`",
+      "`no-inbound-refs` matches basenames as substrings in one grep pass. A file whose name is a common substring gets false-negatives (looks referenced when it is not), and a reference written as a bare title rather than a filename is missed. It also cannot see references from outside the repo",
+      "the scan is read-only and stateless: it does not know which candidates a previous run already triaged and a human deliberately kept. A KEEP-style suppression convention is deferred until the worklist proves noisy in practice",
+      "SOLE-COPY BLINDNESS, and `no-inbound-refs` actively points the wrong way. The scan cannot see that a doomed passage holds the only copy of a detail a live procedure depends on -- that dependency is on CONTENT, not on a filename, and the consuming document typically names a destination ('follow Phase 0') rather than the source. Worse, `no-inbound-refs` flags exactly the file class most likely to be a sole-copy host, so its highest-confidence-looking hits are where the Step 4.5 rescue gate matters most. The agent must grep for the thing itself (a distinctive command, path, threshold, phrase) before deleting; no signal here substitutes for that",
+      "accuracy decay is out of scope entirely, and the SUPERSEDE-IN-PLACE class is not textually detectable. A document whose factual claims contradict a source it is cited alongside -- a proven-then-fixed cipher description still pointed at by a spec -- reads as ordinary confident prose. Detecting it requires comparing a claim against the system, which is a verification question this oracle does not ask. `self-supersession` fires only where an author already wrote the banner; it never finds a document that needs one. Claiming otherwise would be the exact failure this assertion block exists to prevent"
+    ]
+  },
+  "expected_runtime_ms": 12000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-08-02 on the ULDF framework repo (74-file corpus): 5.7s bash under Git Bash / 2.5s PowerShell on win32, the slowest supported environment -- declared pessimistic-honest per ORACLE-COST-01 since under-declaration causes timeout kills. The first implementation measured 30s; per-file `git grep` and per-file `awk` spawns were folded into one tree-wide pass each",
+  "invocation": {
+    "unix": ".claude/oracles/retirement-candidates/run.sh",
+    "windows": ".claude/oracles/retirement-candidates/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "string -- pass | warn. NEVER fail: retirement is a judgment lane and a proxy signal must not block a commit",
+      "details": {
+        "files_scanned": "integer",
+        "candidate_count": "integer",
+        "surfaced_count": "integer",
+        "by_signal": "object -- signal name to count",
+        "scan_duration_ms": "integer",
+        "contract": "string -- the standing worklist disclaimer, emitted on every run so a consumer cannot read the output as a delete list"
+      },
+      "candidates": [
+        {
+          "path": "string (repo-relative)",
+          "line_start": "integer",
+          "line_end": "integer (0 for whole-file signals)",
+          "signal": "one of: exit-condition-satisfied, done-marker, correction-strata, provisional-no-exit, self-supersession, no-inbound-refs",
+          "heading": "string -- the enclosing markdown heading, or (whole file)",
+          "excerpt": "string -- up to 120 chars of the triggering line"
+        }
+      ],
+      "surfaced": [
+        {
+          "path": "string",
+          "line": "integer",
+          "signal": "exit-condition-declared",
+          "heading": "string",
+          "excerpt": "string",
+          "note": "string -- why this is reported but not actionable"
+        }
+      ],
+      "briefing": "string -- briefing line for the session-start hook; empty when candidates[] is empty"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "few",
+    "estimated_token_savings_per_call": 2500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/retirement-candidates/validate.sh",
+    "self_test_windows": ".claude/oracles/retirement-candidates/validate.ps1",
+    "last_validated": "2026-08-02",
+    "note": "v1.1.0 adds T13 (a level-1-only file is scanned at all) and T14 (the default corpus + provisional regex see a kebab-cased follow-ups file). Both are regressions on a verified silent false `pass`: heading depth and filename spelling each independently silenced an entire 82 KB file of the exact target class. bash 22/22 incl. twin parity, PowerShell 20/20"
+  },
+  "fallback": "Read each file in the corpus end to end and judge every section against the four retention categories by hand. This is exactly the pass that recovered 45 KB from a 160 KB follow-ups file in one session -- accurate, and far too expensive to repeat on a schedule.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-08-02T13:39:00Z",
+    "note": "CTXY-04. Content-level sibling of SWEEP-02 (planning-doc-staleness), which is whole-file. Detection leg only; the action legs are /0-uldf-finalize Phase 8.8 (CTXY-05, inline) and /0-uldf-context-audit --retire (CTXY-06, sweep). Judgment lives in segments/_retirement-test.md. Trigger: a 160 KB docs/PENDING_FOLLOW_UPS.md, ~39% narration of finished work, in a file every session is instructed to read at startup."
+  },
+  "config": {
+    "corpus": [
+      "CLAUDE.md",
+      "docs/PENDING_FOLLOW_UPS.md",
+      "docs/*[Ff]ollow*[Uu]p*.md",
+      "docs/*FOLLOW*UP*.md",
+      "docs/specs/DISCOVERIES.md",
+      "docs/specs/OPEN_QUESTIONS.md",
+      "docs/planning/deferred/*.md",
+      "docs/pending/*.md",
+      "docs/reviews/*.md",
+      "NEXT_SESSION*.md",
+      "docs/NEXT_SESSION*.md"
+    ],
+    "provisional_paths": "(docs/planning/deferred/|docs/pending/|[Pp][Ee][Nn][Dd][Ii][Nn][Gg][-_ ]?[Ff][Oo][Ll][Ll][Oo][Ww][-_ ]?[Uu][Pp]|NEXT_SESSION)",
+    "max_files": 200,
+    "max_file_bytes": 1048576,
+    "max_candidates": 400,
+    "env_override": "CLAUDE_RETIREMENT_CORPUS (colon-separated globs) -- used by the validators",
+    "comment": "Files matching provisional_paths are provisional BY CONSTRUCTION: one with no exit condition anywhere fires provisional-no-exit (a CTXY-07 authoring gap). The runtime authoritative values live in run.{sh,ps1}; this block documents the contract. Widen `corpus` per project, but note known_gaps: a wide corpus drowns the worklist."
+  }
+}

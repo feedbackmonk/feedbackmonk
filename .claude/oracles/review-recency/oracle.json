@@ -1,0 +1,48 @@
+{
+  "name": "review-recency",
+  "version": "1.0.0",
+  "question": "Did I already run a heavy periodic review/refactor skill (e.g. /0-uldf-scrutinize, /0-uldf-uladp-compliance) on THIS project recently — such that re-running it now would be redundant?",
+  "kind": "project-state",
+  "category": "workflow",
+  "expected_runtime_ms": 1500,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-07-03 -- one review-recency.sh reader pass (jq over command-usage/*.jsonl, project-scoped) on the ULDF framework repo under Git Bash (win32; slowest supported environment); pessimistic-honest per ORACLE-COST-01",
+  "invocation": {
+    "unix": ".claude/oracles/review-recency/run.sh",
+    "windows": ".claude/oracles/review-recency/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "recent": "boolean (true when >=1 covered skill ran on this project within recentDays)",
+      "details": {
+        "project": "string (this project's directory basename)",
+        "recentDays": "integer (the surface window)",
+        "recentSkills": "array of {skill, lastUsed, lastArg1} — covered skills whose most-recent run on this project is within recentDays"
+      },
+      "briefing": "string (empty when recent=false; one-liner suitable for ORACLE BRIEFING when recent=true)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 300
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/review-recency/validate.sh",
+    "self_test_windows": ".claude/oracles/review-recency/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run scripts/review-recency.sh --project \"$(basename \"$PWD\")\" --json and read .projects[0].skills; a covered skill with status==\"recent\" means it ran on this project within recentDays. The same reader powers /0-uldf-portfolio recency (cross-project) and the in-skill guard in /0-uldf-scrutinize + /0-uldf-uladp-compliance.",
+  "provenance": {
+    "authored_by": "recency-arc",
+    "created": "2026-07-03T00:00:00Z",
+    "spec_refs": [
+      "RECENCY-03",
+      "RECENCY-04"
+    ],
+    "note": "Per-project briefing consumer of the review-recency reader (RECENCY-01). Emits nothing on the common path (no covered skill run within recentDays); gracefully absent on NO-DATA (no usage registry). The direct 'don't re-run' defense is the in-skill guard (RECENCY-05); this briefing is the passive heads-up. DEC-139."
+  }
+}

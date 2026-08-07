@@ -2,6 +2,12 @@
   "name": "synopsis-coverage",
   "version": "1.0.0",
   "kind": "verification",
+  "expected_runtime_ms": 70000,
+  "lane": "slow",
+  "trigger_globs": [
+    "**/README.md"
+  ],
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "question": "What fraction of this project's modules conform to the HCT Synopsis discipline?",
   "category": "documentation",
   "invocation": {
@@ -22,8 +28,9 @@
   },
   "freshness": {
     "strategy": "trigger-invalidate",
-    "triggers": ["**/README.md"],
-    "compute_cost_ms": 100
+    "triggers": [
+      "**/README.md"
+    ]
   },
   "consultation": {
     "typical_sessions_using": "every",

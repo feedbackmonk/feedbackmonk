@@ -1,0 +1,8 @@
+[package]
+name = "aria-fixture"
+version = "0.0.1"
+edition = "2021"
+
+[features]
+default = []
+# NOTE: aria-dev feature deliberately missing — oracle should flag this as declared-but-no-gate.

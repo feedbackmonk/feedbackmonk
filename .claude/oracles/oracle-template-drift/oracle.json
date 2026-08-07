@@ -1,0 +1,88 @@
+{
+  "name": "oracle-template-drift",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "expected_runtime_ms": 3000,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-06-18 (pessimistic-honest per ORACLE-COST-01): hashes up to ~5 functional files across every installed project oracle; under Git Bash (win32; slowest supported environment) each sha256sum is a fork, so ~30-60 forks dominate. Under-declaration causes timeout kills; 3x-declared briefing timeout (9000ms) stays within the 15000ms budget.",
+  "question": "Does any oracle installed in this project's .claude/oracles/ differ from the current framework baseline (a starter-pack fix the project never received)?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/oracle-template-drift/run.sh",
+    "windows": ".claude/oracles/oracle-template-drift/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "drifted": "boolean (true when one or more compared oracles differ from baseline)",
+      "drifted_oracles": "array of {name: string, files: array of string} -- per-oracle list of functional files that differ from (or are missing vs) baseline",
+      "drift_count": "integer (number of drifted oracles)",
+      "compared_count": "integer (oracles present in BOTH project and baseline, not pinned)",
+      "missing_starter": "array of string (PACK-02 additive extension: PACK_MANIFEST.json packs.starter entries with no installed project dir; empty when manifest absent)",
+      "missing_count": "integer (length of missing_starter)",
+      "briefing": "string (empty when no drift AND no missing-starter gaps; otherwise a one-line /0-uldf-migrate-oracles nudge naming drift and/or missing counts)"
+    },
+    "schema_frozen": true,
+    "frozen_at": "2026-06-18T21:00:00Z",
+    "frozen_message_ref": "docs/pending/project-artifact-refresh-mechanism.md",
+    "schema_extended_additively": "2026-07-02 (PACK-02): missing_starter + missing_count fields and the missing-only briefing form added; the frozen base fields and `drifted` semantics (content drift of INSTALLED oracles only) are unchanged"
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "**/.claude/oracles/**",
+      "claude-template/oracles/**"
+    ]
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 400
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/oracle-template-drift/validate.sh",
+    "self_test_windows": ".claude/oracles/oracle-template-drift/validate.ps1",
+    "last_validated": "2026-06-18T21:00:00Z"
+  },
+  "fallback": "For each oracle directory under <project>/.claude/oracles/ that also exists under ~/.claude/oracles/ (or claude-template/oracles/ via walk-up) and lacks a .local-customized marker, compare the CR-normalized content of the 5 functional files (oracle.json, run.sh, run.ps1, validate.sh, validate.ps1); a project copy that differs from (or is missing relative to) the baseline copy is drift. README.md and test-fixtures/ are NOT compared. When no drift: briefing is empty. When drift: 'oracle-template-drift: N oracle(s) drifted from framework baseline — run /0-uldf-migrate-oracles to refresh'.",
+  "baseline_resolution": {
+    "order": [
+      "CLAUDE_ORACLE_BASELINE_DIR env override (test fixtures only)",
+      "$HOME/.claude/oracles (deployed location)",
+      "claude-template/oracles via walk-up search (framework-dev fallback)"
+    ],
+    "graceful_absent": "When no baseline oracle dir found: drifted=false, briefing='', exit 0"
+  },
+  "project_resolution": {
+    "order": [
+      "CLAUDE_ORACLE_PROJECT_DIR env override (test fixtures only)",
+      "./.claude/oracles"
+    ],
+    "graceful_absent": "When project oracle dir missing or empty: drifted=false, compared_count=0, briefing='', exit 0"
+  },
+  "tracked_files": [
+    "oracle.json",
+    "run.sh",
+    "run.ps1",
+    "validate.sh",
+    "validate.ps1"
+  ],
+  "customization_opt_out": {
+    "marker": ".local-customized",
+    "semantics": "A project oracle directory containing a .local-customized file is skipped by BOTH this oracle (never flagged as drift) and /0-uldf-migrate-oracles (never re-copied). Escape hatch for intentionally-divergent project oracles."
+  },
+  "briefing_line_convention": "Empty briefing string = suppress line (per ULDF gracefully-absent convention). Hook MUST NOT print a 'no drift' fallback.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-06-18T21:00:00Z",
+    "spec_refs": [
+      "REFRESH-01",
+      "PACK-02"
+    ],
+    "discovery_refs": [],
+    "decision_refs": [
+      "DEC-90"
+    ],
+    "trigger_session": "handoff-20260618-205202",
+    "note": "Companion to /0-uldf-migrate-oracles. Surfaces installed-oracle drift in the session-start ORACLE BRIEFING so projects that ran /0-uldf-setup-project (add-only installer) before a starter-oracle fix get nudged to refresh. Sibling of gitignore-template-drift (the .gitignore-pattern equivalent of this same propagation-gap pattern); pending follow-up #11 (docs/pending/project-artifact-refresh-mechanism.md)."
+  }
+}

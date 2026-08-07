@@ -1,8 +1,6 @@
 # `ui-fixture-inventory` Oracle
 
-## Synopsis
-
-Project-state oracle answering *"what fixture/smoke-test infrastructure does this project have, and what conventions are in use?"* Composes with `ui-surface-detector` (ARIA-02, the upstream "is there UI?" question) to answer the downstream "is there fixture infrastructure?" question. Consumed by `/0-uldf-ldis-plan` Phase 4 testability gate Q4 and surfaced as `[fixture-inventory]` in the session-start ORACLE BRIEFING.
+> **Synopsis**: Project-state oracle answering *"what fixture/smoke-test infrastructure does this project have, and what conventions are in use?"* Composes with `ui-surface-detector` (ARIA-02) for the upstream "is there UI?" question; this oracle answers the downstream "is there fixture infrastructure?" question. Consumed by `/0-uldf-ldis-plan` Phase 4 testability gate Q4 (scaffolding-leverage scoring) and surfaced as `[fixture-inventory]` in the session-start ORACLE BRIEFING for surface-with-no-fixtures projects.
 
 ## Purpose & Responsibilities
 
@@ -97,4 +95,4 @@ bash .claude/oracles/ui-fixture-inventory/validate.sh
 - **Spec**: TGFP-02 in `docs/specs/SPECIFICATION.md`
 - **Decisions**: DEC-57 (mechanism framing), DEC-58 (justification artifact path)
 - **Related oracles**: `ui-surface-detector` (composed upstream), `aria-status` (parallel pattern for ARIA briefing)
-- **Consumers**: `claude-template/segments/-ldis/plan-phase4-testability-gate.md` Q4 (TGFP-04), `claude-template/hooks/session-start.{sh,ps1}` (TGFP-03), `claude-template/segments/-finalize/phase0.6-testability-persistence-gate.md` (TGFP-05)
+- **Consumers**: `~/.claude/segments/-ldis/plan-phase4-testability-gate.md` Q4 (TGFP-04), `~/.claude/hooks/session-start.{sh,ps1}` (TGFP-03), `~/.claude/segments/-finalize/phase0.6-testability-persistence-gate.md` (TGFP-05)

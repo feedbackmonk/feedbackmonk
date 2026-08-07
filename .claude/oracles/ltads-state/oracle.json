@@ -1,8 +1,12 @@
 {
   "name": "ltads-state",
-  "version": "1.0.0",
-  "question": "What is the LTADS state of this project: permanent/temporary/legacy/none, session id, and status?",
+  "version": "1.1.0",
+  "question": "What is the LTADS state of this project: permanent/temporary/legacy/none, the arc record's validity and topmost arc, FRESH/CONTINUATION mode, session id, and status?",
+  "kind": "project-state",
   "category": "ltads",
+  "expected_runtime_ms": 900,
+  "lane": "fast",
+  "cost_provenance": "re-measured 2026-07-22 (v1.1.0 arc-state validation legs: ~800ms with arc-state.json present, ~400ms without) under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/ltads-state/run.sh",
     "windows": ".claude/oracles/ltads-state/run.ps1"
@@ -15,14 +19,18 @@
       "is_tracked": "boolean",
       "config_exists": "boolean",
       "is_temporary": "boolean",
-      "session_id": "string|null",
-      "session_status": "string|null",
-      "summary": "string"
+      "cleanup_candidate": "boolean (LTADS-GC-01: true when state=temporary and spec-progress True Progress is exhausted, or state=incomplete_temp orphan; offer ~/.claude/segments/-ltads/_temp-ltads-cleanup.md)",
+      "session_id": "string|null (topmost arc id when arc-state.json is valid; legacy prose **ID** otherwise)",
+      "session_status": "string|null (topmost arc status when arc-state.json is valid; legacy prose Status otherwise)",
+      "summary": "string",
+      "arc_state": "one of: valid, invalid, legacy, absent, unvalidated (ARC-01 schema-validation verdict; legacy = prose-only current-session.md, the ARC-11 migration surfacing trigger; unvalidated = lib/jq unavailable, NO-DATA never false-green)",
+      "arc_mode": "FRESH|CONTINUATION|null (ARC-06 two-fact rule: absent file or topmost CONCLUDED => FRESH, topmost ACTIVE/PAUSED => CONTINUATION; null when the verdict forbids deriving a mode)",
+      "topmost_arc": "object|null ({id, status, boundConsentExpired} of arcs[0] when arc_state=valid)",
+      "size_warning": "boolean (ARC-01 cap-approach WARN: arc-state.json > 80% of the ~4KB cap; breach handling is lib rotation, never truncation)"
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 40
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",
@@ -33,7 +41,7 @@
     "self_test_windows": ".claude/oracles/ltads-state/validate.ps1",
     "last_validated": null
   },
-  "fallback": "Check if ltads/ exists; read ltads/config.json for temporary flag; read ltads/sessions/current-session.md for Status field; run git ls-files ltads/ for tracking status.",
+  "fallback": "Check if ltads/ exists; read ltads/config.json for temporary flag; read ltads/arc-state.json topmost arc via the arc-state lib getters (fall back to ltads/sessions/current-session.md Status on prose-only projects); run git ls-files ltads/ for tracking status.",
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-04-08T00:00:00Z",

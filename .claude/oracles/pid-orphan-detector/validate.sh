@@ -18,6 +18,33 @@ PASS=0
 FAIL=0
 fail() { echo "FAIL: $1" >&2; FAIL=$((FAIL+1)); }
 pass() { echo "PASS: $1"; PASS=$((PASS+1)); }
+SKIP=0
+
+# DEFER-070 / DEC-247: T6 exercises --gc-cheap, whose sweep runs under a 500ms
+# wall-clock budget -- the TIGHTEST of the four sweepers, so the most exposed.
+# The budget is re-checked before every candidate including the first, and a
+# single _ms_now fork (~22ms on MSYS, unbounded under load) can consume it, at
+# which point the cell reports a true statement about a starved run as a
+# failure of sweep semantics. Measured in the sibling sweeper 2026-08-04.
+# Budget UNCHANGED; only the grading of a red is adjudicated (OVALID-05).
+_TG_LIB="$ORACLE_DIR/../../scripts/lib/timing-guard.sh"
+[ -f "$_TG_LIB" ] || _TG_LIB="$ORACLE_DIR/../../../claude-template/scripts/lib/timing-guard.sh"
+[ -f "$_TG_LIB" ] || _TG_LIB="$HOME/.claude/scripts/lib/timing-guard.sh"
+if [ -f "$_TG_LIB" ]; then
+    . "$_TG_LIB"
+else
+    # Graceful absence: grade normally (status quo ante), never silently skip.
+    timing_guard_declare() { :; }; timing_guard_deferred() { return 1; }
+    timing_guard_note() { :; }; timing_guard_summary() { :; }
+fi
+timing_guard_declare "pid-orphan-detector --gc-cheap 500ms sweep budget (T6)"
+fail_timed() {
+    if timing_guard_deferred; then
+        SKIP=$((SKIP+1)); echo "SKIP: $1" >&2; echo "      $(timing_guard_note)" >&2
+    else
+        fail "$1"
+    fi
+}
 
 PYBIN=""
 for c in python3 python; do
@@ -30,17 +57,47 @@ done
 
 # Resolve a real, currently-alive Windows PID (for cross-MSYS visibility) when
 # possible; otherwise use $$ (works on real Linux/macOS).
+#
+# DEFER-022: this MUST be a process the test OWNS. The previous implementation
+# sampled an arbitrary live bash.exe off the machine:
+#     (Get-Process -Name bash | Select-Object -First 1).Id
+# Nothing kept that process alive, so when the sampled PID happened to be a
+# short-lived subshell that exited between selection and the --gc liveness
+# check, the "alive" fixture read as dead: --gc swept its .pid file (T2) and a
+# second summary line appeared (T5). Reproduced at ~1 failure in 10 runs -- a
+# flake rate low enough to look like noise and high enough to redden a finalize
+# once wired. A test fixture whose liveness depends on an unrelated process is
+# not a fixture, it is a sampling of the machine.
+#
+# Now: spawn a sleeper WE own and hold for the run, so "alive" is guaranteed by
+# construction. Cleaned up by the EXIT trap below.
+SLEEPER_PID=""
 _pick_alive_pid() {
     case "$(uname -s 2>/dev/null)" in
         MINGW*|MSYS*|CYGWIN*)
             local p
-            p=$(powershell.exe -NoProfile -Command "(Get-Process -Name bash | Select-Object -First 1).Id" 2>/dev/null | tr -d '[:space:]')
+            # Start-Process -PassThru returns the Windows PID (what the oracle
+            # sees); a bash-backgrounded job would give an MSYS pid instead.
+            p=$(powershell.exe -NoProfile -Command "(Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 300' -PassThru -WindowStyle Hidden).Id" 2>/dev/null | tr -d '[:space:]')
             if [ -n "$p" ] && [ "$p" -gt 0 ] 2>/dev/null; then
+                # NOTE: do NOT set SLEEPER_PID here. This function is invoked as
+                # $(_pick_alive_pid), i.e. in a SUBSHELL, so any assignment made
+                # here dies with it and the EXIT trap would reap nothing --
+                # leaking one sleeper per run (observed: 11 orphans after 10
+                # runs). The CALLER records ownership instead.
                 echo "$p"; return 0
             fi
             ;;
     esac
     echo "$$"
+}
+
+_kill_sleeper() {
+    if [ -n "$SLEEPER_PID" ]; then
+        powershell.exe -NoProfile -Command "Stop-Process -Id $SLEEPER_PID -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
+        SLEEPER_PID=""
+    fi
+    return 0
 }
 
 # =============================================================================
@@ -63,7 +120,7 @@ pass "Phase1: briefing emits frozen schema"
 # Phase 2 — sandbox sweep semantics
 # =============================================================================
 SANDBOX="$(mktemp -d 2>/dev/null || mktemp -d -t 'pidoracle')"
-cleanup() { rm -rf "$SANDBOX"; }
+cleanup() { rm -rf "$SANDBOX"; _kill_sleeper; return 0; }
 trap cleanup EXIT
 
 mkdir -p "$SANDBOX/ltads/execution"
@@ -88,6 +145,14 @@ fi
 
 ALIVE_PID=$(_pick_alive_pid)
 [ -n "$ALIVE_PID" ] || { fail "Phase2: could not pick an alive PID for fixture"; exit 1; }
+# Record sleeper ownership HERE, in the parent shell (see _pick_alive_pid). On
+# Windows a returned pid that is not our own $$ is the sleeper we just spawned,
+# so the EXIT trap must reap it.
+case "$(uname -s 2>/dev/null)" in
+    MINGW*|MSYS*|CYGWIN*)
+        if [ "$ALIVE_PID" != "$$" ]; then SLEEPER_PID="$ALIVE_PID"; fi
+        ;;
+esac
 DEAD_PID=999999  # Effectively never-allocated
 
 EXEC="$SANDBOX/ltads/execution"
@@ -171,11 +236,11 @@ else
 fi
 [ ! -f "$EXEC/worker-shell-20260102-100000-003.pid" ] \
     && pass "T6: --gc-cheap performed the sweep" \
-    || fail "T6: --gc-cheap did not delete dead-PID file"
+    || fail_timed "T6: --gc-cheap did not delete dead-PID file"
 
 # T7: empty exec dir -> empty briefing
 EMPTY_SANDBOX="$(mktemp -d 2>/dev/null || mktemp -d -t 'pidoracle2')"
-trap "rm -rf '$SANDBOX' '$EMPTY_SANDBOX'" EXIT
+trap "rm -rf '$SANDBOX' '$EMPTY_SANDBOX'; _kill_sleeper" EXIT
 mkdir -p "$EMPTY_SANDBOX/ltads/execution"
 mkdir -p "$EMPTY_SANDBOX/.claude/oracles/pid-orphan-detector"
 mkdir -p "$EMPTY_SANDBOX/.claude/scripts/lib"
@@ -192,6 +257,7 @@ echo "$EMPTY_OUT" | grep -q '"swept":\[\]' \
     || fail "T7: empty exec dir non-empty swept[] ($EMPTY_OUT)"
 
 echo "----"
-echo "Total: PASS=$PASS  FAIL=$FAIL"
+echo "Total: PASS=$PASS  FAIL=$FAIL  DEFERRED=$SKIP"
+timing_guard_summary
 [ "$FAIL" -gt 0 ] && exit 1
 exit 0

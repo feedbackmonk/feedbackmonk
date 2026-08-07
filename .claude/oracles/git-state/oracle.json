@@ -2,7 +2,11 @@
   "name": "git-state",
   "version": "1.0.0",
   "question": "What is the current git state: branch, working tree cleanliness, last commit?",
+  "kind": "project-state",
   "category": "git",
+  "expected_runtime_ms": 1200,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/git-state/run.sh",
     "windows": ".claude/oracles/git-state/run.ps1"
@@ -25,8 +29,7 @@
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 30
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",

@@ -6,7 +6,11 @@
   "_authoredAt": "2026-04-30T08:00:00Z",
   "_lineage": {
     "spec": "docs/specs/SPECIFICATION.md § CSI-01",
-    "decisions": ["DEC-21", "DEC-22", "DEC-24"],
+    "decisions": [
+      "DEC-21",
+      "DEC-22",
+      "DEC-24"
+    ],
     "schema": "docs/specs/SPECIFICATION.md § DISPATCH-01 (locked at commit 8077fa6)"
   },
   "scenarios": [
@@ -42,7 +46,7 @@
         "lastUpdated": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>"
       },
       "expectedSessionState": {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "sessionId": "<MATCH:^interactive-\\d{8}T\\d{6}Z-\\d{6}$>",
         "sessionRole": "interactive",
         "createdAt": "<MATCH:^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$>",
@@ -103,7 +107,7 @@
         }
       },
       "expectedSessionState": {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "sessionId": "<MATCH:^.+$>",
         "sessionRole": "pods-worker"
       },
@@ -112,7 +116,8 @@
         "expectedRegistry.sessionsAt0.role preserved from input.preExistingEntry.role (descriptive field NOT overwritten by hook)",
         "expectedRegistry.sessionsAt0.podsWindow preserved from input.preExistingEntry.podsWindow",
         "expectedRegistry.sessionsAt0.spawnedAt preserved from input.preExistingEntry.spawnedAt (NOT overwritten with hook's 'now')",
-        "Sample literal values shown in `input.preExistingEntry` are illustrative -- the contract is shape-level (matched via <MATCH:> patterns) and preservation-level (asserted by the smoke harness's literal-value assertions on the same registry, not duplicated here)."
+        "Sample literal values shown in `input.preExistingEntry` are illustrative -- the contract is shape-level (matched via <MATCH:> patterns) and preservation-level (asserted by the smoke harness's literal-value assertions on the same registry, not duplicated here).",
+        "DISC-CSI-30 -- a harness realizing this scenario MUST seed `spawnedAt` as a RELATIVE recent timestamp (e.g. now-5min), never as the absolute literal shown above. This entry is status='active' with a PID every sweeper reads as dead, so only its AGE keeps it out of the registry pruner's jaws: the session-start hook's coordination-gc leg delegates to prune-active-sessions --grace-hours (24h), which drops any older dead/PID-less active entry. An absolute literal therefore expires -- the pruner correctly sweeps the entry the scenario exists to assert is merged and preserved, and because those sweeps are budget-limited the failure only lands on a fast/idle machine, so the verdict tracks machine load rather than code. Keep the seed far enough from 'now' (minutes, not seconds) that the preservation assertion can still distinguish a preserved value from a re-stamped one."
       ]
     },
     {
@@ -177,5 +182,6 @@
     "path": "claude-template/oracles/dispatchable-sessions/",
     "patternKind": "Pattern A — paired oracle (Oraculurgy Part 11)",
     "_doc": "The existing dispatchable-sessions oracle reads the real registry. Drift between this fixture's expectedRegistry shape and what the oracle returns indicates a CSI-01 regression. The fixture is the static expectation; the oracle is the live-state mirror. Validation: invoke the oracle after a fresh session start and compare its output's `peers[].sessionRole` and `.id` against this fixture's matching scenario."
-  }
+  },
+  "_csi16Note": "schemaVersion 3 = CSI-16 per-session store: the state file moved from the shared .claude/session-state/this-session.json to .claude/session-state/sessions/<sessionId>.json (DISC-CSI-12 deferred #2 / DISC-PRO-17). Field set unchanged from v2."
 }

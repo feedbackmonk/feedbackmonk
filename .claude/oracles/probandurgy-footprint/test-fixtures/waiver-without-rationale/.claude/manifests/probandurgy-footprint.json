@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1",
+  "mechanisms": [
+    {
+      "name": "aria",
+      "axis_a": "feature-gated-out-by-default",
+      "axis_b": "runtime-gated",
+      "gate_locations": [
+        "Cargo.toml#features.aria-dev"
+      ],
+      "verifier_script": null,
+      "self_test_supported": false,
+      "waivers": [
+        {
+          "surface": "aria_frontend_log",
+          "rationale": "docs/probandurgy-waivers/aria-frontend-log-rationale.md",
+          "review_due": "2026-11-17"
+        }
+      ]
+    }
+  ]
+}

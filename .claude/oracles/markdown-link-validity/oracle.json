@@ -1,9 +1,24 @@
 {
   "name": "markdown-link-validity",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "question": "Do all internal markdown links in tracked documentation files resolve to existing targets?",
   "category": "documentation",
   "kind": "verification",
+  "assertion": {
+    "asserts": "every internal markdown citation in the scanned docs names a real target, so a reader following it lands somewhere",
+    "measures": "for each [text](dest) outside fenced code and inline code spans, whether the path resolved against the CITING FILE's directory exists in the WORKING TREE right now",
+    "known_gaps": [
+      "working tree, not HEAD: an UNCOMMITTED deletion of a tracked target would make a correct citation look broken -- handled, not accepted (OVALID-05): such targets are classified into the informational uncommitted_deletions bucket and do not set status; commit the deletion and the path leaves that set and fails for real. The gate is deferred, not weakened",
+      "resolution is citing-file-relative only: a repo-root-relative citation written without the relative prefix resolves to the wrong path and is reported broken. Cite relative to the citing file",
+      "existence, not correctness: a target that exists but no longer contains what the citing sentence claims passes. This oracle cannot see content",
+      "anchors are not verified: the #fragment is stripped before resolution, so a citation of a heading that no longer exists passes",
+      "markdown link syntax only: bare or backticked paths in prose are never checked, and neither are non-.md files' contents. This is deliberate -- it is what keeps the oracle structurally immune to the manifest-path-value false-positive class (see oracles/README.md)",
+      "scope is config.scan_directories + config.scan_root_files: a citation in an unscanned directory is invisible, not passing"
+    ]
+  },
+  "expected_runtime_ms": 1500,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/markdown-link-validity/run.sh",
     "windows": ".claude/oracles/markdown-link-validity/run.ps1"
@@ -24,13 +39,21 @@
             "link": "string (the link destination as written, including any anchor)",
             "resolved_path": "string (the absolute-from-repo-root path the link was checked against)"
           }
+        ],
+        "uncommitted_deletion_count": "integer (OVALID-05: citations whose target is tracked and present in HEAD, absent from the working tree only because of an UNCOMMITTED deletion -- informational, never sets status)",
+        "uncommitted_deletions": [
+          {
+            "source": "string (path to markdown file containing the citation)",
+            "line": "integer (1-based line number in source)",
+            "link": "string (the link destination as written)",
+            "resolved_path": "string (the path checked; present in HEAD, deleted-but-uncommitted in the tree)"
+          }
         ]
       }
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 500
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "few",
@@ -45,11 +68,18 @@
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-04-27T00:00:00Z",
-    "note": "Starter Verification Oracle for the Verification Oracle category. Dogfoods the category by validating ULDF's own internal documentation links."
+    "note": "Starter Verification Oracle for the Verification Oracle category. Dogfoods the category by validating ULDF's own internal documentation links. v1.1.0 (2026-07-20): the manifest declared validate.{sh,ps1} self-tests the directory never shipped -- authored them (5 anti-silent-breakage cases: clean tree, one-broken, exclusions, relative-nesting, empty-scope). Writing them surfaced a latent run.ps1 defect: an `[ordered]@{...}` literal with an array-valued entry threw ArgumentException on Windows PowerShell 5.1 (the framework's primary Windows shell), so the Windows path emitted nothing and silently exited 0 -- fixed by materializing broken[] with List.ToArray() and building the maps incrementally. v1.2.0 (2026-07-30, OVALID-05/DEC-220): this oracle was the framework's own instance of the DEFER-044 asserts-P/measures-Q class -- it asserted 'the citation resolves' and measured working-tree presence, so a live sibling session's UNCOMMITTED deletion of a target present in HEAD reddened it with the citation entirely correct (reproduced in an isolated repo before the fix). Added the informational uncommitted_deletions bucket via git ls-files --deleted plus the textual path canonicalization the comparison needs (git never emits `..` segments; the oracle resolves citing-file-relative and does), and the assertion declaration above. Self-tests gained T6a/T6b/T6c; both were demonstrated RED against a blanket-amnesty mutant and against a neutered canonicalizer."
   },
   "config": {
-    "scan_directories": ["claude-template", "docs", "FOUNDATIONS"],
-    "scan_root_files": ["CLAUDE.md", "README.md"],
+    "scan_directories": [
+      "claude-template",
+      "docs",
+      "FOUNDATIONS"
+    ],
+    "scan_root_files": [
+      "CLAUDE.md",
+      "README.md"
+    ],
     "comment": "Edit scan_directories or scan_root_files to change scope. Avoid adding huge directories: this oracle has a <2s speed contract."
   }
 }

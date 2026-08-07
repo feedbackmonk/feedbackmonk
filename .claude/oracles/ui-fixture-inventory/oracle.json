@@ -2,6 +2,9 @@
   "name": "ui-fixture-inventory",
   "version": "1.0.0",
   "kind": "project-state",
+  "expected_runtime_ms": 1800,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "question": "What fixture/smoke-test infrastructure does this project have, and what conventions are in use?",
   "category": "workflow",
   "invocation": {
@@ -19,18 +22,31 @@
         "e2e_specs": "integer (count of files matching e2e-spec patterns)"
       },
       "conventions": "array of strings (high-level conventions detected: 'co-located smoke', 'playwright', 'cypress', 'vitest fixtures', 'jest fixtures', 'pytest fixtures', etc.)",
-      "briefing": "string (≤200 chars; what the session-start hook emits as [fixture-inventory]; empty string suppresses the line)"
+      "briefing": "string (\u2264200 chars; what the session-start hook emits as [fixture-inventory]; empty string suppresses the line)"
     }
   },
   "freshness": {
     "strategy": "trigger-invalidate",
-    "compute_cost_ms": 200,
-    "invalidate_on": ["tests/", "e2e/", "__tests__/", "playwright.config.ts", "playwright.config.js", "cypress.config.ts", "cypress.config.js", "vitest.config.ts", "vitest.config.js", "jest.config.ts", "jest.config.js", "package.json", "pyproject.toml"]
+    "invalidate_on": [
+      "tests/",
+      "e2e/",
+      "__tests__/",
+      "playwright.config.ts",
+      "playwright.config.js",
+      "cypress.config.ts",
+      "cypress.config.js",
+      "vitest.config.ts",
+      "vitest.config.js",
+      "jest.config.ts",
+      "jest.config.js",
+      "package.json",
+      "pyproject.toml"
+    ]
   },
   "consultation": {
     "typical_sessions_using": "every",
     "estimated_token_savings_per_call": 700,
-    "note": "Marked 'every' so the session-start hook iterator picks it up. Per-invocation cost is bounded by compute_cost_ms (200ms) and the oracle short-circuits on no-surface projects, so 'every' here means 'every session with a UI surface' in practice. Healthy fixtured projects emit empty briefing → line suppressed."
+    "note": "Marked 'every' so the session-start hook fan-out picks it up. Per-invocation cost is bounded by expected_runtime_ms (the hook's per-oracle timeout) and the oracle short-circuits on no-surface projects, so 'every' here means 'every session with a UI surface' in practice. Healthy fixtured projects emit empty briefing -> line suppressed."
   },
   "validation": {
     "self_test_unix": ".claude/oracles/ui-fixture-inventory/validate.sh",
@@ -41,7 +57,11 @@
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-05-09T23:03:13Z",
-    "spec_refs": ["TGFP-02", "TGFP-03", "TGFP-04"],
-    "note": "Universal Starter Set member. Composes with ui-surface-detector (ARIA-02) for the 'is there UI?' upstream question; this oracle answers the 'is there fixture infrastructure?' downstream question. Consumed by /0-uldf-ldis-plan Phase 4 testability gate Q4 (scaffolding-leverage scoring). Filesystem stat + small file reads only — never executes project scripts."
+    "spec_refs": [
+      "TGFP-02",
+      "TGFP-03",
+      "TGFP-04"
+    ],
+    "note": "Universal Starter Set member. Composes with ui-surface-detector (ARIA-02) for the 'is there UI?' upstream question; this oracle answers the 'is there fixture infrastructure?' downstream question. Consumed by /0-uldf-ldis-plan Phase 4 testability gate Q4 (scaffolding-leverage scoring). Filesystem stat + small file reads only \u2014 never executes project scripts."
   }
 }

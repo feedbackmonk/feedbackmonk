@@ -1,0 +1,1 @@
+{"schemaVersion":"1","manifest_present":true,"mechanisms_declared":[],"violations":[{"mechanism":null,"kind":"manifest-malformed","evidence":".claude/manifests/probandurgy-footprint.json","remediation":"Fix JSON syntax in the manifest (validate with `jq . .claude/manifests/probandurgy-footprint.json`). Phase 1 cannot proceed until the manifest parses cleanly."}],"advisory":true}

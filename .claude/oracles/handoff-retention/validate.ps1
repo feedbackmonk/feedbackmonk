@@ -7,7 +7,8 @@
 #   T4. --gc is idempotent: re-running on post-sweep dir sweeps zero.
 #   T5. --gc emits JSON summary with all expected fields.
 #   T6. .claude/config.json handoffRetention.threshold honored (numeric and PnD forms).
-#   T7. --gc-cheap is silent on success.
+#   T7. --gc-cheap (DEC-79 auto-sweep) emits summary JSON with empty briefing
+#       when nothing is sweepable (silent briefing line).
 #   T8. _summary.jsonl receives one valid JSON line per swept brief BEFORE delete (SWEEP-08).
 #   T9. Malformed config falls back to default 30 days with threshold_source=default.
 
@@ -83,7 +84,8 @@ try {
     Set-Content -Path (Join-Path $handoff "handoff-aged-B.md.KEEP") -Value "Keep because: T3 fixture" -Encoding utf8
 
     # ---- T1+T2+T3+T5+T8: --gc -----------------------------------------------
-    Push-Location $sandbox
+    if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sandbox -ErrorAction Stop
     try {
         $gcOut = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $oracleSandboxDir "run.ps1") --gc 2>&1) | Out-String
     } finally { Pop-Location }
@@ -134,7 +136,8 @@ try {
     }
 
     # ---- T4: idempotence ----------------------------------------------------
-    Push-Location $sandbox
+    if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sandbox -ErrorAction Stop
     try {
         $gcOut2 = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $oracleSandboxDir "run.ps1") --gc 2>&1) | Out-String
     } finally { Pop-Location }
@@ -150,7 +153,8 @@ try {
     # ---- T6: config.json threshold honored (numeric form) ------------------
     Set-Content -Path (Join-Path $sandbox ".claude/config.json") -Value '{"handoffRetention":{"threshold":3}}' -Encoding utf8
 
-    Push-Location $sandbox
+    if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sandbox -ErrorAction Stop
     try {
         $gcOut3 = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $oracleSandboxDir "run.ps1") --gc 2>&1) | Out-String
     } finally { Pop-Location }
@@ -167,7 +171,8 @@ try {
 
     # T6 PnD form (default mode)
     Set-Content -Path (Join-Path $sandbox ".claude/config.json") -Value '{"handoffRetention":{"threshold":"P1D"}}' -Encoding utf8
-    Push-Location $sandbox
+    if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sandbox -ErrorAction Stop
     try {
         $defOut = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $oracleSandboxDir "run.ps1") 2>&1) | Out-String
     } finally { Pop-Location }
@@ -181,21 +186,32 @@ try {
         Test-Fail "T6: PnD-form default output not JSON: $defOut"
     }
 
-    # ---- T7: --gc-cheap silent ---------------------------------------------
-    Push-Location $sandbox
+    # ---- T7: --gc-cheap auto-sweep (DEC-79): nothing sweepable -> swept 0 + empty briefing ----
+    # Reset threshold to default 30d first — T6 left a P1D config under which
+    # the surviving recent brief WOULD be sweepable, making this flaky.
+    Remove-Item -Path (Join-Path $sandbox ".claude/config.json") -Force -ErrorAction SilentlyContinue
+    if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sandbox -ErrorAction Stop
     try {
         $cheapOut = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $oracleSandboxDir "run.ps1") --gc-cheap 2>&1) | Out-String
     } finally { Pop-Location }
     $cheapOut = $cheapOut.Trim()
-    if ([string]::IsNullOrWhiteSpace($cheapOut)) {
-        Test-Pass "T7: --gc-cheap silent on success"
+    Write-Host "[gc-cheap on no-stale sandbox]: $cheapOut"
+    if ($cheapOut -match '"swept":0') {
+        Test-Pass "T7: --gc-cheap sweeps zero when nothing sweepable"
     } else {
-        Test-Fail "T7: --gc-cheap emitted output: $cheapOut"
+        Test-Fail "T7: --gc-cheap swept != 0 (got: $cheapOut)"
+    }
+    if ($cheapOut -match '"briefing":""') {
+        Test-Pass "T7: --gc-cheap empty briefing (silent line) when nothing swept"
+    } else {
+        Test-Fail "T7: --gc-cheap briefing not empty (got: $cheapOut)"
     }
 
     # ---- T9: malformed config falls back to default ------------------------
     Set-Content -Path (Join-Path $sandbox ".claude/config.json") -Value 'this is not json {{{' -Encoding utf8
-    Push-Location $sandbox
+    if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sandbox -ErrorAction Stop
     try {
         $badOut = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $oracleSandboxDir "run.ps1") 2>&1) | Out-String
     } finally { Pop-Location }

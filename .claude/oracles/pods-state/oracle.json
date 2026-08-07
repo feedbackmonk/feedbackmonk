@@ -1,0 +1,66 @@
+{
+  "name": "pods-state",
+  "version": "1.1.0",
+  "question": "Is a PODS session active in this project, who is on the roster, what is each worker's status, and are there open alerts / messages-to-LEAD / decisions?",
+  "category": "workflow",
+  "kind": "project-state",
+  "expected_runtime_ms": 2500,
+  "cost_provenance": "measured 1.8s 2026-07-02 on the ULDF framework repo under Git Bash (win32; slowest supported environment) with a live 4-worker PODS session -- declared 2500ms pessimistic-honest per ORACLE-COST-01; no lane field (project-state, consumed on demand, never in the finalize fast lane or the every-session briefing fan-out)",
+  "invocation": {
+    "unix": ".claude/oracles/pods-state/run.sh",
+    "windows": ".claude/oracles/pods-state/run.ps1"
+  },
+  "assertion": {
+    "asserts": "A PODS collaboration session is active in this project, and this is its roster, per-worker status, and set of open alerts / messages-to-LEAD / decisions.",
+    "measures": "That the registry's top-level podsSession value yields a collab id (the canonical STRING form directly; the legacy dict form via its sessionId, then id, read only from inside the podsSession value itself), that .claude/collaboration/<id>/ exists as a directory, and the parse of that directory's channels/*.md under the monitor-pods parsing conventions.",
+    "known_gaps": [
+      "OVALID / DEFER-096, the drift this declaration was added to close: until 2026-08-05 this oracle measured 'a STRING-form podsSession row exists' while asserting 'a PODS session is active', so an LD who wrote the dict form got active:false for a demonstrably live session (converge collab-20260804-230108 Phase 2). Both shapes are read now; the declaration exists so the next shape change is noticed before it ships, not after.",
+      "Liveness is DIRECTORY-and-pointer-shaped, not process-shaped: a converged-but-uncleared podsSession pointer whose session directory still exists reports active:true. No pid is probed here (that is csi_arc_conclude_eligibility's job) -- converge clearing the pointer to null is what makes this answer go false.",
+      "Worker status is whatever channels/status.md SAYS. A worker that died mid-turn without updating its section reports its last written status indefinitely; the field measures the self-report, not the process.",
+      "The extractor is bounded to the podsSession value by a brace walk, so a sessions[] entry's sessionId/siblingGroup/podsWindow cannot be mistaken for the active collab -- but the walk assumes well-formed JSON. A registry truncated mid-publish can leave the object unterminated, in which case the walk consumes the remainder and the object regex may find nothing, yielding active:false (the gracefully-absent direction, never a wrong id)."
+    ]
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "active": "boolean",
+      "podsSession": "string|null (collab session id; always emitted as a STRING regardless of which registry shape it was read from)",
+      "sessionDir": "string|null (repo-relative session directory)",
+      "agents": "array of {id, role, status (UPPERCASE|null), progress (string|null), isComplete: boolean, spawned: boolean}",
+      "counts": {
+        "total": "number",
+        "complete": "number",
+        "blocked": "number",
+        "unspawned": "number"
+      },
+      "allComplete": "boolean",
+      "open": {
+        "alerts": "array of ACTIVE alert ids (ALERT-*)",
+        "messagesToLead": "array of OPEN QUESTION/REQUEST message ids addressed to LEAD/ALL (MSG-*)",
+        "decisions": "array of OPEN decision ids (DEC-*)"
+      },
+      "generatedAt": "string (ISO-8601 Zulu)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "pods-sessions-on-demand",
+    "estimated_token_savings_per_call": 900
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/pods-state/validate.sh",
+    "self_test_windows": ".claude/oracles/pods-state/validate.ps1",
+    "last_validated": "2026-08-05"
+  },
+  "fallback": "Read .claude/collaboration/active-sessions.json top-level podsSession -- canonically a STRING collab id; if it is an object instead (legacy, machine-local registries keep it), take its sessionId or id. When non-null, read .claude/collaboration/<podsSession>/channels/status.md (agent sections '## CLAUDE-X | Role' with '**Status**:' fields; COMPLETE/COMPLETED/DONE/FINISHED all mean complete), channels/alerts.md (ACTIVE '## ALERT-*' blocks), channels/messages.md (OPEN '## MSG-*' blocks whose To: names LEAD or ALL), channels/decisions.md (OPEN '## DEC-*' blocks).",
+  "provenance": {
+    "authored_by": "skill-corpus-scrutiny-arc4",
+    "created": "2026-07-02T00:00:00Z",
+    "spec_refs": [
+      "PODS-STATE-01"
+    ],
+    "note": "Scrutiny 05 ADD-3: the LD, converge Phase 2 readiness, and collab-sync re-derived this answer agentically by reading 4 files every time. Parsing contract is parity-locked to monitor-pods.{sh,ps1} parse_snapshot/scan_channel_file conventions (heading regex, colon-inside-bold Status tolerance, completion-synonym set, To: LEAD/ALL matching) -- if the monitor's parser changes, change this oracle in the same commit."
+  }
+}

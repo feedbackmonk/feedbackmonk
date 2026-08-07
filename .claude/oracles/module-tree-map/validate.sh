@@ -30,6 +30,14 @@ fi
 TMPROOT=$(mktemp -d)
 trap 'rm -rf "$TMPROOT"' EXIT
 
+# Cache isolation: run.sh keeps its trigger-invalidate cache in a cache/ dir
+# NEXT TO ITSELF, so validating the in-place script would poison the
+# production cache with test-fixture output. Copy the script into the
+# sandbox; its cache then lives (and dies) with $TMPROOT.
+mkdir -p "$TMPROOT/oracle"
+cp "$RUN_SH" "$TMPROOT/oracle/run.sh"
+RUN_SH="$TMPROOT/oracle/run.sh"
+
 # ---- T4: empty project ----
 T4DIR="$TMPROOT/t4-empty"
 mkdir -p "$T4DIR"
@@ -153,5 +161,70 @@ assert 'file_index' in d['root'], 'T5 root has file_index'
 print('PASS T2 + T3 + T5: multi-module hierarchical, missing-synopsis, file-index extraction')
 " || { echo "FAIL T2/T3/T5" >&2; exit 1; }
 
-echo "PASS: module-tree-map oracle validates (T1, T2, T3, T4, T5)"
+# ---- T7: cache warm-hit (freshness contract — serve identical bytes) ----
+# The T2 run above stored a cache (digest of the T2 tree). An immediate
+# re-run with an unchanged trigger set must serve byte-identical output.
+[ -f "$TMPROOT/oracle/cache/latest.json" ] || { echo "FAIL T7: cache not stored after compute" >&2; exit 1; }
+out2=$(bash "$RUN_SH" 2>/dev/null)
+[ "$out2" = "$out" ] || { echo "FAIL T7: warm-hit output differs from computed output" >&2; exit 1; }
+echo "PASS T7: cache warm-hit serves byte-identical output"
+
+# ---- T8: invalidation — every trigger-set mutation class recomputes ----
+# (a) edit: touch an existing README (mtime change)
+sleep 1
+touch src/auth/README.md
+out3=$(bash "$RUN_SH" 2>/dev/null)
+echo "$out3" | "$PYBIN" -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+assert d['stats']['total_modules'] == 5, 'T8a recompute total'
+print('PASS T8a: mtime edit invalidates (recomputed, same content)')
+" || { echo "FAIL T8a" >&2; exit 1; }
+# (b) add: a new module README must appear (proves recompute, not stale serve)
+mkdir -p src/newmod
+printf '# New\n\n## Synopsis\n\nNew module.\n' > src/newmod/README.md
+out4=$(bash "$RUN_SH" 2>/dev/null)
+echo "$out4" | "$PYBIN" -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+assert d['stats']['total_modules'] == 6, f'T8b add not seen: {d[\"stats\"][\"total_modules\"]}'
+print('PASS T8b: added README invalidates (new module visible)')
+" || { echo "FAIL T8b" >&2; exit 1; }
+# (c) delete: removing a README must drop the module (set-level digest —
+# a newest-mtime check would MISS this class)
+rm -f src/newmod/README.md
+out5=$(bash "$RUN_SH" 2>/dev/null)
+echo "$out5" | "$PYBIN" -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+assert d['stats']['total_modules'] == 5, f'T8c delete not seen: {d[\"stats\"][\"total_modules\"]}'
+print('PASS T8c: deleted README invalidates (module dropped)')
+" || { echo "FAIL T8c" >&2; exit 1; }
+
+# ---- T9: briefing-context cold cache — graceful absence, never a stale serve ----
+rm -rf "$TMPROOT/oracle/cache"
+out6=$(ULDF_BRIEFING=1 bash "$RUN_SH" 2>/dev/null)
+echo "$out6" | "$PYBIN" -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+assert d.get('briefing') == '', 'T9 cold briefing must be empty (graceful absence)'
+assert d.get('cache') == 'cold-refreshing', 'T9 cache marker'
+print('PASS T9: briefing-context cold cache gracefully absents (no stale serve)')
+" || { echo "FAIL T9" >&2; exit 1; }
+# The detached refresh should warm the cache shortly.
+for _i in 1 2 3 4 5 6 7 8 9 10; do
+    [ -f "$TMPROOT/oracle/cache/latest.json" ] && break
+    sleep 1
+done
+[ -f "$TMPROOT/oracle/cache/latest.json" ] || { echo "FAIL T9b: detached refresh did not warm the cache" >&2; exit 1; }
+out7=$(ULDF_BRIEFING=1 bash "$RUN_SH" 2>/dev/null)
+echo "$out7" | "$PYBIN" -c "
+import sys, json
+d = json.loads(sys.stdin.read())
+assert d['stats']['total_modules'] == 5, 'T9b warmed briefing serve'
+assert d.get('cache') != 'cold-refreshing', 'T9b not cold anymore'
+print('PASS T9b: detached refresh warmed the cache; next briefing serves it')
+" || { echo "FAIL T9b" >&2; exit 1; }
+
+echo "PASS: module-tree-map oracle validates (T1, T2, T3, T4, T5, T7, T8a-c, T9)"
 exit 0

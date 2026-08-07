@@ -1,19 +1,74 @@
 #!/bin/bash
 # stale-ltads-state oracle (Unix)
 #
-# CSI-14 (Phase 1.6): emit a [stale-ltads-state] briefing line when
-# ltads/sessions/current-session.md Status is ACTIVE/PAUSED/IN_PROGRESS but
-# the matching active-sessions.json entry is closed/expired/missing/PID-dead.
+# CSI-14 (Phase 1.6): emit a [stale-ltads-state] briefing line when the
+# topmost arc in ltads/arc-state.json has status ACTIVE/PAUSED but the
+# matching active-sessions.json entry is closed/expired/missing/PID-dead.
 #
 # Output: single-line JSON (always-fresh; ~60ms budget).
 # Gracefully absent: when state is consistent, briefing field is empty so the
 # session-start hook emits no line (parallel to dispatchable-sessions's
 # empty-result silence).
+#
+# Field reading (ARC-03 migration, DEC-199; previously the prose parser lib):
+#   Status + correlation id come from the ARC-02 arc-state lib
+#   (scripts/lib/arc-state.sh — ast_get_status / ast_get_arc_owner_id).
+#   - Status: topmost arc's `status` field (schema-validated JSON — the
+#     DISC-HOOK-01/02 fictional-field class dies structurally).
+#   - Correlation id: the most-recent checkpoints[].by of the topmost arc
+#     (DEC-44). This — NOT the arc `id` (e.g. A042, never a registry key) —
+#     is what active-sessions.json `.id` keys on. A fresh active arc with
+#     zero mid-arc finalizes carries no checkpoint -> no id -> degrade to
+#     consistent (stale:false). DISC-CSI-11's "committed but never closed"
+#     target always has >=1 mid-arc finalize, so the checkpoint exists.
+#
+# Legacy window (ARC-11): a prose-only project (no arc-state.json) degrades to
+# consistent — staleness detection resumes at conversion; the ltads-state
+# oracle's `legacy` verdict is the surfacing signal for the migration itself.
 
 set +e
 
-CS_MD="ltads/sessions/current-session.md"
+ARC_STATE="ltads/arc-state.json"
 REGISTRY=".claude/collaboration/active-sessions.json"
+
+# ---- Source the ARC-02 arc-state lib ----------------------------------------
+# Probe order mirrors pid-orphan-detector's lib resolution: deployed project
+# (.claude/oracles/<o>/ -> .claude/scripts/lib/), template repo, global.
+_THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for _ast_cand in \
+    "$_THIS_DIR/../../scripts/lib/arc-state.sh" \
+    "$_THIS_DIR/../../../claude-template/scripts/lib/arc-state.sh" \
+    "$HOME/.claude/scripts/lib/arc-state.sh"; do
+    if [ -f "$_ast_cand" ]; then
+        # shellcheck source=/dev/null
+        . "$_ast_cand"
+        break
+    fi
+done
+
+# ---- SWEEP-10 / DEFER-095: identity-aware liveness via lib/pid-liveness.sh --
+# A recycled owner pid (live process, started after the entry's own
+# claudeShellPidWrittenAt anchor) defended a stale ACTIVE arc forever -- the
+# exact staleness this oracle exists to surface. Identity-refused -> dead ->
+# registry-pid-dead-state-active. Anchor-only, no name glob (DEC-257); absent/
+# unparseable anchor or lib unavailable -> byte-identical existence-only
+# verdict. Path is REPORTABLE (QUIESCE-08 W4).
+SLS_PID_IDENTITY="fallback"
+for _sls_pl in \
+    "$_THIS_DIR/../../scripts/lib/pid-liveness.sh" \
+    "$_THIS_DIR/../../../claude-template/scripts/lib/pid-liveness.sh" \
+    "$HOME/.claude/scripts/lib/pid-liveness.sh"; do
+    if [ -f "$_sls_pl" ]; then
+        # shellcheck source=/dev/null
+        . "$_sls_pl" 2>/dev/null || true
+        break
+    fi
+done
+command -v pid_is_alive_as >/dev/null 2>&1 && SLS_PID_IDENTITY="lib"
+if [ "${ULDF_SLS_REPORT_PID_IDENTITY:-}" = "1" ]; then
+    printf '%s\n' "$SLS_PID_IDENTITY"
+    exit 0
+fi
 
 # ---- Default empty/consistent output ---------------------------------------
 emit_consistent() {
@@ -25,39 +80,50 @@ EOF
     exit 0
 }
 
-# ---- Graceful absence: no LTADS file -> nothing to compare -----------------
-if [ ! -f "$CS_MD" ]; then
+# ---- Graceful absence: no arc record -> nothing to compare ------------------
+# (Legacy prose-only projects land here too — see header.)
+if [ ! -f "$ARC_STATE" ]; then
     emit_consistent "null" "null"
 fi
 
-# ---- Read current-session.md -----------------------------------------------
-status_value=$(grep -m 1 -E '^Status:[[:space:]]*' "$CS_MD" 2>/dev/null | sed -E 's/^Status:[[:space:]]*([^[:space:]]+).*/\1/')
-session_id=$(grep -m 1 -E '^Session:[[:space:]]*' "$CS_MD" 2>/dev/null | sed -E 's/^Session:[[:space:]]*([^[:space:]]+).*/\1/')
-
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
+# ---- Read topmost arc status via the ARC-02 lib -----------------------------
+# Absent lib or malformed document -> empty status -> degrade to consistent
+# rather than emit a stale verdict we cannot verify.
+if ! command -v ast_get_status >/dev/null 2>&1; then
+    echo "stale-ltads-state: arc-state.sh not found; degrading to consistent" >&2
+    emit_consistent "null" "null"
+fi
+status_value=$(ast_get_status "$ARC_STATE")
 
 status_json="null"
 if [ -n "$status_value" ]; then status_json="\"$(esc "$status_value")\""; fi
-sid_json="null"
-if [ -n "$session_id" ]; then sid_json="\"$(esc "$session_id")\""; fi
 
-# Only ACTIVE/PAUSED/IN_PROGRESS warrant the inconsistency check.
+# Only ACTIVE/PAUSED warrant the inconsistency check (IN_PROGRESS was prose-era
+# vocabulary; the schema normalizes it to ACTIVE at migration).
 case "$status_value" in
-    ACTIVE|PAUSED|IN_PROGRESS) ;;
-    *) emit_consistent "$status_json" "$sid_json" ;;
+    ACTIVE|PAUSED) ;;
+    *) emit_consistent "$status_json" "null" ;;
 esac
 
-# Status is ACTIVE/PAUSED/IN_PROGRESS but no Session: id -> can't lookup; treat
-# as consistent to avoid false positives (session id will appear once the next
-# /0-uldf-ltads-start writes the file).
+# ---- Derive the correlation sessionId from the topmost arc's checkpoints ----
+# Most-recent checkpoints[].by (DEC-44); `unknown`/empty -> "".
+session_id=$(ast_get_arc_owner_id "$ARC_STATE")
+
+# No recoverable owner id -> can't correlate; degrade to consistent (no false
+# positive). The file self-heals on its next mid-arc finalize, which appends a
+# checkpoint carrying `by`.
 if [ -z "$session_id" ]; then
-    emit_consistent "$status_json" "$sid_json"
+    emit_consistent "$status_json" "null"
 fi
+
+sid_json="\"$(esc "$session_id")\""
 
 # ---- No registry -> session never registered; emit missing ------------------
 if [ ! -f "$REGISTRY" ]; then
     cat <<EOF
-{"stale":true,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"missing","registry_pid_alive":null,"inconsistency_kind":"registry-missing-state-active"},"briefing":"current-session.md Status: $status_value (session $session_id) but active-sessions.json missing"}
+{"stale":true,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"missing","registry_pid_alive":null,"inconsistency_kind":"registry-missing-state-active"},"briefing":"arc-state.json topmost arc: $status_value (arc owner $session_id) but active-sessions.json missing"}
 EOF
     exit 0
 fi
@@ -81,6 +147,7 @@ fi
 
 reg_status=""
 reg_pid=""
+reg_anchor=""
 if [ "$parser" = "jq" ]; then
     reg_status="$(jq -r --arg sid "$session_id" '
         ((.sessions // []) | map(select(.id == $sid)) | .[0]) as $a
@@ -94,35 +161,46 @@ if [ "$parser" = "jq" ]; then
         reg_pid="$(jq -r --arg sid "$session_id" '
             (.sessions // []) | map(select(.id == $sid)) | .[0].claudeShellPid // ""
         ' "$REGISTRY" 2>/dev/null)"
+        # DEFER-095: the identity anchor for the pid probe (empty when absent).
+        reg_anchor="$(jq -r --arg sid "$session_id" '
+            (.sessions // []) | map(select(.id == $sid)) | .[0].claudeShellPidWrittenAt // ""
+        ' "$REGISTRY" 2>/dev/null)"
     fi
 else
     out="$(SID="$session_id" "$parser" - "$REGISTRY" <<'PY' 2>/dev/null
 import json, os, sys
 try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
-    print("missing\t")
+    print("missing\t\t")
     sys.exit(0)
 if not isinstance(d, dict):
-    print("missing\t")
+    print("missing\t\t")
     sys.exit(0)
 sid = os.environ["SID"]
 for s in (d.get("sessions") or []):
     if isinstance(s, dict) and s.get("id") == sid:
         pid = s.get("claudeShellPid", "")
-        print(f"active\t{pid}")
+        wa = s.get("claudeShellPidWrittenAt") or ""
+        print(f"active\t{pid}\t{wa}")
         sys.exit(0)
 for s in (d.get("closed") or []):
     if isinstance(s, dict) and s.get("id") == sid:
         st = s.get("status", "closed")
-        print(f"{st}\t")
+        print(f"{st}\t\t")
         sys.exit(0)
-print("missing\t")
+print("missing\t\t")
 PY
 )"
     reg_status="${out%%	*}"
-    reg_pid="${out#*	}"
+    _sls_rest="${out#*	}"
+    # `${var#*<tab>}` returns the WHOLE string when no tab remains (DEC-232
+    # class) -- split only while a tab is present.
+    case "$_sls_rest" in
+        *"	"*) reg_pid="${_sls_rest%%	*}"; reg_anchor="${_sls_rest#*	}" ;;
+        *)      reg_pid="$_sls_rest"; reg_anchor="" ;;
+    esac
 fi
 
 [ -z "$reg_status" ] && reg_status="missing"
@@ -131,12 +209,30 @@ fi
 inconsistency_kind="none"
 pid_alive_json="null"
 
+# TWIN-03 (DEFER-042): registry PIDs are NATIVE Windows PIDs; Git-Bash
+# `kill -0` cannot see those, so a raw probe false-reported live sessions dead
+# (spurious registry-pid-dead-state-active). Platform-branched probe (inline —
+# oracles are self-contained; same pattern as dispatchable-sessions).
+_PID_PROBE="kill"
+case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) _PID_PROBE="powershell" ;; esac
+_pid_alive() {
+    case "$1" in ''|*[!0-9]*) return 1 ;; esac
+    if [ "$_PID_PROBE" = "powershell" ]; then
+        powershell.exe -NoProfile -Command "if (Get-Process -Id $1 -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }" >/dev/null 2>&1 </dev/null
+    else
+        kill -0 "$1" 2>/dev/null
+    fi
+}
+
 case "$reg_status" in
     active)
         # Check if registered PID is alive. If not, that's a stale-state
-        # signal (session died but no GC ran yet AND state is still ACTIVE).
+        # signal (session died but no GC ran yet AND the arc is still ACTIVE).
+        # DEFER-095: "alive" is identity-aware -- a recycled pid (started after
+        # the anchor) reads dead; absent anchor/lib -> existence-only.
         if [ -n "$reg_pid" ] && [ "$reg_pid" != "0" ]; then
-            if kill -0 "$reg_pid" 2>/dev/null; then
+            if { [ "$SLS_PID_IDENTITY" = "lib" ] && pid_is_alive_as "$reg_pid" "$reg_anchor"; } \
+               || { [ "$SLS_PID_IDENTITY" != "lib" ] && _pid_alive "$reg_pid"; }; then
                 pid_alive_json="true"
             else
                 pid_alive_json="false"
@@ -162,16 +258,16 @@ fi
 # ---- Compose briefing -------------------------------------------------------
 case "$inconsistency_kind" in
     registry-closed-state-active)
-        briefing="current-session.md Status: $status_value (session $session_id) but registry shows entry as CLOSED -- run /0-uldf-finalize or /0-uldf-ltads-stop to reconcile"
+        briefing="arc-state.json topmost arc: $status_value (arc owner $session_id) but registry shows that session as CLOSED -- run /0-uldf-finalize --complete-arc to reconcile"
         ;;
     registry-expired-state-active)
-        briefing="current-session.md Status: $status_value (session $session_id) but registry shows entry as EXPIRED (CSI-05 GC swept it) -- state should have been auto-flipped by CSI-13"
+        briefing="arc-state.json topmost arc: $status_value (arc owner $session_id) but registry shows that session as EXPIRED (CSI-05 GC swept it) -- state should have been auto-flipped by CSI-13"
         ;;
     registry-pid-dead-state-active)
-        briefing="current-session.md Status: $status_value (session $session_id) but registered PID is dead -- next GC sweep will reconcile, or run /0-uldf-finalize manually"
+        briefing="arc-state.json topmost arc: $status_value (arc owner $session_id) but that session's PID is dead -- next GC sweep will reconcile, or run /0-uldf-finalize manually"
         ;;
     registry-missing-state-active)
-        briefing="current-session.md Status: $status_value (session $session_id) but no matching registry entry -- session never registered or registry was reset"
+        briefing="arc-state.json topmost arc: $status_value (arc owner $session_id) but no matching registry entry -- that session never registered or the registry was reset"
         ;;
     *)
         briefing="stale-ltads-state inconsistency"

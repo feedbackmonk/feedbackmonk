@@ -1,0 +1,63 @@
+{
+  "name": "cloud-sync-coordination-hazard",
+  "version": "1.0.0",
+  "question": "Is this project's coordination store inside a cloud-synced folder, where a background sync client can silently discard a write the mkdir lock believed it had serialized?",
+  "category": "environment",
+  "kind": "project-state",
+  "expected_runtime_ms": 200,
+  "lane": "fast",
+  "cost_provenance": "Pure path-string inspection of the resolved project root plus an optional Windows attribute probe -- no directory walking, no network. 200ms is a pessimistic shell cold-start allowance; measured well under 100ms on win32 2026-07-19.",
+  "invocation": {
+    "unix": ".claude/oracles/cloud-sync-coordination-hazard/run.sh",
+    "windows": ".claude/oracles/cloud-sync-coordination-hazard/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "hosted": "boolean (true iff the project root resolves under a recognized cloud-sync provider path)",
+      "provider": "string|null (OneDrive|Dropbox|Google Drive|iCloud Drive; null when not hosted or undeterminable)",
+      "root": "string|null (the resolved project root inspected; null when undeterminable -> graceful absence)",
+      "matched_segment": "string|null (the path segment that triggered the match, for auditability)",
+      "at_risk_paths": "array of strings (coordination-store paths that exist under the hosted root)",
+      "briefing": "string (empty when not hosted -> session-start suppresses the line)"
+    },
+    "_briefingForms": {
+      "clean": "\"\"  (empty -> line suppressed; the normal case)",
+      "hosted": "\"coordination store is inside <provider> (<segment>) -- concurrent writes to active-sessions.json / touches.json / channels can be silently reconciled away below the lock (DISC-CSI-25). Prefer a local path for this project, or avoid concurrent PODS work here.\""
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "config": {
+    "source_priority": [
+      "env ULDF_CLOUD_SYNC_PROVIDERS (comma-separated segment list, overrides defaults)",
+      "project .claude/config.json cloudSyncHazard.providers",
+      "built-in defaults"
+    ],
+    "defaults": {
+      "providers": ["OneDrive", "Dropbox", "Google Drive", "GoogleDrive", "iCloud Drive", "iCloudDrive"]
+    }
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 150
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/cloud-sync-coordination-hazard/validate.sh",
+    "self_test_windows": ".claude/oracles/cloud-sync-coordination-hazard/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run `pwd -W` (Git Bash) or `(Get-Location).Path` (PowerShell) and look for a OneDrive/Dropbox/Google Drive segment. If present, the project's .claude/collaboration/ and .claude/session-state/ are on synced storage.",
+  "graceful_absence": "When the project root cannot be resolved, the oracle emits hosted=false with an empty briefing rather than guessing. A false 'you are safe' is the failure mode to avoid least here: the oracle is a tripwire, not a guarantee, and its silence means 'no recognized provider segment', never 'verified safe'.",
+  "provenance": {
+    "authored_by": "defer-016",
+    "created": "2026-07-19T00:00:00Z",
+    "design_lineage": [
+      "disk-artifact-bloat -- same cheap every-session environment tripwire shape, empty-briefing-suppresses-line discipline",
+      "gitignore-template-drift (HYGIENE-03) -- session-start advisory nudge pattern",
+      "segments/-ldis/spec_lock.md -- the pre-existing document-only mitigation of this same hazard class for the spec-edit lock"
+    ],
+    "note": "Detection-first response to DISC-CSI-25 / DEFER-016 (DEC-188). The mkdir-based lock in registry-write.{sh,ps1} serializes processes on ONE machine's local filesystem view; it has no leverage over a sync client's after-the-fact reconciliation, which can discard a write that was verified locally at write-time. Observed live 2026-07-12: two writers appended to grant-requests.jsonl ~2 minutes apart, both verified written, and only one record survived. This oracle does NOT fix that -- it makes the exposure visible every session so a human can decide, and generates the evidence that would justify the far more invasive store-relocation option later."
+  }
+}

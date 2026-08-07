@@ -2,6 +2,9 @@
   "name": "module-tree-map",
   "version": "1.0.0",
   "kind": "project-state",
+  "expected_runtime_ms": 90000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "question": "What is the hierarchical synopsis tree of this project's modules? (HCT triage map)",
   "category": "module",
   "invocation": {
@@ -18,8 +21,9 @@
   },
   "freshness": {
     "strategy": "trigger-invalidate",
-    "triggers": ["**/README.md"],
-    "compute_cost_ms": 200
+    "triggers": [
+      "**/README.md"
+    ]
   },
   "consultation": {
     "typical_sessions_using": "every",
@@ -30,11 +34,11 @@
     "self_test_windows": ".claude/oracles/module-tree-map/validate.ps1",
     "last_validated": null
   },
-  "fallback": "Use Glob to enumerate README.md files, then Read each to extract Synopsis sections — but you will pay full README ingestion cost across the breadth-first candidate set, which is exactly the cost HCT exists to eliminate.",
+  "fallback": "Use Glob to enumerate README.md files, then Read each to extract Synopsis sections \u2014 but you will pay full README ingestion cost across the breadth-first candidate set, which is exactly the cost HCT exists to eliminate.",
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-05-03T00:00:00Z",
     "spec_ref": "HCT-03",
-    "principle_ref": "FOUNDATIONS/HIERARCHICAL_CONTEXT_TRIAGE.md § 4.2"
+    "principle_ref": "FOUNDATIONS/HIERARCHICAL_CONTEXT_TRIAGE.md \u00a7 4.2"
   }
 }

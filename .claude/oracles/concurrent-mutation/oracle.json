@@ -1,0 +1,71 @@
+{
+  "name": "concurrent-mutation",
+  "version": "1.1.0",
+  "question": "Have LTADS lifecycle files or ltads/execution/<arc>/ been externally mutated since this session's last known-good snapshot?",
+  "category": "ltads",
+  "kind": "verification",
+  "expected_runtime_ms": 1800,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-07-20 on the ULDF framework repo under Git Bash (win32; slowest supported environment): 3 runs 711-862ms (git-log + per-file mtime delta over the tracked LTADS path set). Declared 1800ms is ~2x measured for git-history variance headroom, honestly below the 2000ms fast-lane ceiling (ORACLE-COST-01). The prior 3000ms conflated the fast-lane timeout floor with expected runtime; the runner's auto-demotion (ORACLE-COST-03) is the safety net for pathological repos.",
+  "invocation": {
+    "unix": ".claude/oracles/concurrent-mutation/run.sh",
+    "windows": ".claude/oracles/concurrent-mutation/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "external_mutation": "boolean (true when >=1 tracked LTADS path was externally mutated since the baseline)",
+      "mutations": [
+        {
+          "path": "string (repo-relative tracked LTADS path)",
+          "source": "string (git-log | mtime)",
+          "since": "string (ISO-8601 timestamp the mutation was observed: commit committer-date for git-log, file mtime for mtime)",
+          "by_session": "string|null (attributed sessionId when derivable; null for uncommitted writes and human-authored commits -- never this session, that is why it is reported)"
+        }
+      ],
+      "baseline_age_seconds": "integer|null (seconds since the baseline snapshot was captured; null when no baseline exists for this session -- graceful absence)",
+      "summary": "string (one-line headline)",
+      "briefing": "string (empty when external_mutation=false; one-liner suitable for ORACLE BRIEFING when true -- the session-start hook prepends the [concurrent-mutation] tag)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/concurrent-mutation/validate.sh",
+    "self_test_windows": ".claude/oracles/concurrent-mutation/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read .claude/session-state/this-session.json csi10Baseline (sessionId + mtimes map + headSha + sessionStart). For each tracked LTADS path (ltads/arc-state.json, ltads/arc-state.archive.json, ltads/sessions/session-history.md, ltads/sessions/blockers.md, and every file under ltads/execution/) compare the current file mtime against csi10Baseline.mtimes[path]; a current mtime later than the baseline that this session did not author is an uncommitted external write. Then git diff --name-only <baseline.headSha>..HEAD over the same paths catches committed external mutations. Either signal firing means another session mutated the arc state. No baseline / baseline.sessionId != your sessionId -> cannot deduce mutation, report external_mutation:false (failure-open).",
+  "provenance": {
+    "authored_by": "csi-phase-3",
+    "created": "2026-06-25T00:00:00Z",
+    "spec_refs": [
+      "CSI-10"
+    ],
+    "discoveries_closed": [
+      "DISC-CSI-01",
+      "DISC-CSI-02"
+    ],
+    "note": "CSI Phase 3 (artifact-time leg of the three-leg defense). Phase 1 = prompt-level visibility; Phase 2 = runtime gates (CSI-07/08/09); Phase 3 = this oracle, which detects external mutation independently of any in-session decision. Hybrid baseline per DEC-22 (git-log delta + per-file mtime delta). Uses the CSI-10 domain schema (external_mutation/mutations/baseline_age_seconds/summary) per SPECIFICATION CSI-10 acceptance, mirroring the CSI briefing-oracle convention (stale-ltads-state, dispatchable-sessions) of a domain schema plus a briefing field rather than the generic status/details envelope; the read-only run.{sh,ps1} never write -- the baseline is persisted by the sibling update-baseline.{sh,ps1}, wired into the session-start hook and /0-uldf-finalize."
+  },
+  "config": {
+    "tracked_files": [
+      "ltads/arc-state.json",
+      "ltads/arc-state.archive.json",
+      "ltads/sessions/session-history.md",
+      "ltads/sessions/blockers.md"
+    ],
+    "tracked_dirs": [
+      "ltads/execution"
+    ],
+    "baseline_file": ".claude/session-state/this-session.json",
+    "baseline_key": "csi10Baseline",
+    "max_mutations": 50,
+    "comment": "Tracked path set per CSI-10. Keep these aligned with run.sh / run.ps1 / update-baseline.{sh,ps1} (the scripts hardcode the same defaults for the <2s speed contract). Extend tracked_files/tracked_dirs to widen scope."
+  }
+}

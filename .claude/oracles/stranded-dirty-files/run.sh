@@ -200,6 +200,39 @@ pid_alive() {
     fi
 }
 
+# SWEEP-10 / DEFER-095: identity-aware liveness via lib/pid-liveness.sh. A
+# recycled peer pid (live process, started after the entry's own
+# claudeShellPidWrittenAt anchor) inflated LIVE_PEER_COUNT and its dirtyFiles
+# kept masking genuinely stranded files. Anchor-only, no name glob (DEC-257);
+# absent/unparseable anchor or lib unavailable -> byte-identical existence-only
+# verdict. Path is REPORTABLE (QUIESCE-08 W4).
+_SDF_THIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+SDF_PID_IDENTITY="fallback"
+for _sdf_pl in \
+    "$_SDF_THIS_DIR/../../scripts/lib/pid-liveness.sh" \
+    "$_SDF_THIS_DIR/../../../claude-template/scripts/lib/pid-liveness.sh" \
+    "$HOME/.claude/scripts/lib/pid-liveness.sh"; do
+    if [ -f "$_sdf_pl" ]; then
+        # shellcheck source=/dev/null
+        . "$_sdf_pl" 2>/dev/null || true
+        break
+    fi
+done
+command -v pid_is_alive_as >/dev/null 2>&1 && SDF_PID_IDENTITY="lib"
+if [ "${ULDF_SDF_REPORT_PID_IDENTITY:-}" = "1" ]; then
+    printf '%s\n' "$SDF_PID_IDENTITY"
+    exit 0
+fi
+
+# sdf_peer_alive <pid> <anchor> -- identity-aware when the lib resolved.
+sdf_peer_alive() {
+    if [ "$SDF_PID_IDENTITY" = "lib" ]; then
+        pid_is_alive_as "$1" "$2"
+    else
+        pid_alive "$1"
+    fi
+}
+
 if [ -n "$parser" ] && [ -f "$REGISTRY" ]; then
     # Emit one line per live peer matching this workDir:
     #   "<pid>	<file1>	<file2>..."   (tab-separated; first field PID).
@@ -222,13 +255,15 @@ if [ -n "$parser" ] && [ -f "$REGISTRY" ]; then
                 and (((.workDir // "") | gsub("\\\\"; "/") | sub("/+$"; "")) == $wd)
               ))
             | .[]
-            | (([.claudeShellPid | tostring] + ((.dirtyFiles // []) | map(tostring))) | join("	"))
+            | (([.claudeShellPid | tostring]
+                + [((.claudeShellPidWrittenAt // "-") | tostring)]
+                + ((.dirtyFiles // []) | map(tostring))) | join("	"))
         ' "$REGISTRY" 2>/dev/null)"
     else
         peers_data="$(WD="$PROJ_ROOT_NORM" "$parser" - "$REGISTRY" <<'PY' 2>/dev/null
 import json, os, sys
 try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
     sys.exit(0)
@@ -243,14 +278,17 @@ for s in sessions:
     if swd != wd: continue
     df = s.get("dirtyFiles") or []
     if not isinstance(df, list): df = []
-    parts = [str(pid)] + [str(x) for x in df]
+    wa = s.get("claudeShellPidWrittenAt") or "-"
+    parts = [str(pid), str(wa)] + [str(x) for x in df]
     print("\t".join(parts))
 PY
 )"
     fi
 
     if [ -n "$peers_data" ]; then
-        # Each line: "<pid>\t<file1>\t<file2>..."  (tab-separated; first field PID)
+        # Each line: "<pid>\t<writtenAt|->\t<file1>\t<file2>..." (tab-separated;
+        # field 2 is the DEFER-095 identity anchor, "-" sentinel when absent --
+        # never an empty field into a tab-IFS protocol, DEFER-078).
         while IFS= read -r line; do
             [ -n "$line" ] || continue
             old_IFS="$IFS"
@@ -259,9 +297,11 @@ PY
             set -- $line
             IFS="$old_IFS"
             pid="$1"
-            shift
+            anchor="${2:-}"
+            shift; [ $# -gt 0 ] && shift
+            [ "$anchor" = "-" ] && anchor=""
             [ -n "$pid" ] || continue
-            if pid_alive "$pid"; then
+            if sdf_peer_alive "$pid" "$anchor"; then
                 LIVE_PEER_COUNT=$((LIVE_PEER_COUNT + 1))
                 for f in "$@"; do
                     [ -n "$f" ] || continue

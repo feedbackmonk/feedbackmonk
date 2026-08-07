@@ -2,7 +2,11 @@
   "name": "project-runtime-state",
   "version": "1.0.0",
   "question": "Does this project have live dev servers, shared build artifacts, file watchers, or stateful runtimes that would conflict under PODS worktree isolation?",
+  "kind": "project-state",
   "category": "environment",
+  "expected_runtime_ms": 8000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/project-runtime-state/run.sh",
     "windows": ".claude/oracles/project-runtime-state/run.ps1"
@@ -21,8 +25,7 @@
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 150
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "rare",
@@ -38,8 +41,13 @@
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-05-10T00:00:00Z",
-    "spec_refs": ["WT-05", "WT-06"],
-    "decision_refs": ["DEC-61"],
+    "spec_refs": [
+      "WT-05",
+      "WT-06"
+    ],
+    "decision_refs": [
+      "DEC-61"
+    ],
     "note": "Project-state oracle that pre-answers the worktree-mode fit question. Consumer is the proactive heuristic in `claude-template/segments/-pods/parallelize_analysis.md` Step 6 (WT-06). Output schema frozen at v1; future indicators land as additive fields with backward-compat fixtures. PODS opt-in worktree mode Arc 1 (DEC-61, 2026-05-10)."
   }
 }

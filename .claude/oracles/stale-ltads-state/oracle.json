@@ -1,8 +1,12 @@
 {
   "name": "stale-ltads-state",
-  "version": "1.0.0",
-  "question": "Is ltads/sessions/current-session.md inconsistent with the active-sessions.json registry (state ACTIVE but registry says closed/expired/missing/PID-dead)?",
+  "version": "1.1.0",
+  "question": "Is ltads/arc-state.json inconsistent with the active-sessions.json registry (topmost arc ACTIVE/PAUSED but registry says closed/expired/missing/PID-dead)?",
+  "kind": "verification",
   "category": "workflow",
+  "expected_runtime_ms": 300,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/stale-ltads-state/run.sh",
     "windows": ".claude/oracles/stale-ltads-state/run.ps1"
@@ -12,7 +16,7 @@
     "schema": {
       "stale": "boolean",
       "details": {
-        "current_session_status": "string|null (ACTIVE | PAUSED | IN_PROGRESS | CONCLUDED | etc.)",
+        "current_session_status": "string|null (ACTIVE | PAUSED | CONCLUDED; topmost arc status)",
         "current_session_id": "string|null",
         "registry_status": "string (active | closed | expired | missing)",
         "registry_pid_alive": "boolean|null (true/false when status=active and PID is non-null; null otherwise)",
@@ -22,8 +26,7 @@
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 60
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",
@@ -32,14 +35,19 @@
   "validation": {
     "self_test_unix": ".claude/oracles/stale-ltads-state/validate.sh",
     "self_test_windows": ".claude/oracles/stale-ltads-state/validate.ps1",
-    "last_validated": null
+    "last_validated": "2026-07-22"
   },
-  "fallback": "Read ltads/sessions/current-session.md and grep for 'Status:' and 'Session:'. Read .claude/collaboration/active-sessions.json and look for the entry whose .id == that session id. If state Status is ACTIVE/PAUSED/IN_PROGRESS but the registry entry is in closed[] or absent or its PID is not alive, that's a stale-state inconsistency.",
+  "fallback": "Read ltads/arc-state.json (schema: templates/ARC_STATE_SCHEMA.md). The topmost arc is arcs[0]; its status field is the arc state. The registry-correlation id is the MOST-RECENT checkpoints[].by of the topmost arc (NOT the arc id, which is never a registry key). Read .claude/collaboration/active-sessions.json and find the entry whose .id == that sessionId. If the topmost arc status is ACTIVE/PAUSED but that entry is in closed[] / absent / its PID is not alive, that's a stale-state inconsistency. No checkpoints -> treat as consistent (stale:false). Legacy prose-only projects (no arc-state.json) -> consistent; the ltads-state oracle's legacy verdict surfaces the migration (ARC-11).",
   "provenance": {
     "authored_by": "csi-phase-1.6",
     "created": "2026-05-06T00:00:00Z",
-    "spec_refs": ["CSI-14"],
-    "discoveries_closed": ["DISC-CSI-11"],
-    "note": "Third leg of CSI Phase 1.6's three-leg session-end cleanup defense. CSI-12 (SessionEnd hook) is proactive; CSI-13 (GC coupling) is reactive at next-session-start; CSI-14 is reflective -- it surfaces inconsistencies that slipped through both. Briefing-line emission gracefully absent when state is consistent."
+    "spec_refs": [
+      "CSI-14",
+      "ARC-03"
+    ],
+    "discoveries_closed": [
+      "DISC-CSI-11"
+    ],
+    "note": "Third leg of CSI Phase 1.6's three-leg session-end cleanup defense. CSI-12 (SessionEnd hook) is proactive; CSI-13 (GC coupling) is reactive at next-session-start; CSI-14 is reflective -- it surfaces inconsistencies that slipped through both. Briefing-line emission gracefully absent when state is consistent. v1.1.0 (2026-07-22): re-anchored on ltads/arc-state.json via the ARC-02 lib (DEC-199); output schema unchanged."
   }
 }

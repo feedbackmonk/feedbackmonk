@@ -35,16 +35,19 @@ if (Test-Path "docs/planning/ideations") {
     if ($ideationItems) { $IdeateExists = $true }
 }
 
-# LTADS state
+# LTADS state (ARC-03 / DEC-199: topmost arc of ltads/arc-state.json; native
+# JSON read -- graceful empty on absent/malformed. Legacy prose-only projects
+# report no active LTADS here; ltads-state's `legacy` verdict covers them.)
 $LtadsActive = $false
 $LtadsStatus = ""
-$currentSessionPath = "ltads/sessions/current-session.md"
-if (Test-Path $currentSessionPath) {
+$arcStatePath = "ltads/arc-state.json"
+if (Test-Path $arcStatePath) {
     try {
-        $sessionContent = Get-Content $currentSessionPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-        if ($sessionContent -match '(?m)^\s*(?:##\s+|-\s+\*\*|\*\*)Status(?:\*\*)?\s*:\s*([A-Z_]+)') {
-            $LtadsStatus = $Matches[1].ToUpper()
-            if ($LtadsStatus -in @("ACTIVE", "IN_PROGRESS", "STARTED")) { $LtadsActive = $true }
+        $arcDoc = Get-Content $arcStatePath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue | ConvertFrom-Json
+        $arcs = @($arcDoc.arcs)
+        if ($arcs.Count -gt 0 -and $arcs[0].status) {
+            $LtadsStatus = [string]$arcs[0].status
+            if ($LtadsStatus -eq "ACTIVE") { $LtadsActive = $true }   # PAUSED = parked, not active (prose-era parity)
         }
     } catch {}
 }

@@ -1,0 +1,72 @@
+{
+  "name": "tracked-docs-not-clobbered",
+  "version": "1.1.0",
+  "question": "Do any load-bearing tracked docs (CLAUDE.md, root README.md, docs/specs/*.md) contain raw dev-server / build log output (ANSI escape sequences, Vite/cargo/tauri/webpack banners) -- the signature of a misdirected dev-server stdout redirect clobbering a source file?",
+  "category": "documentation",
+  "kind": "verification",
+  "assertion": {
+    "asserts": "no load-bearing tracked doc has been clobbered by a misdirected dev-server / build stdout redirect",
+    "measures": "per scanned file, whether its content contains a literal ANSI CSI escape (the decisive signal) OR at least two of a fixed list of known build-tool banner patterns (Vite/cargo/tauri/webpack)",
+    "known_gaps": [
+      "signature-bound, both ways: a clobber by a tool whose output carries NO ANSI escapes and none of the listed banners passes silently -- the known false-GREEN direction. Adding a new build tool to the project should mean adding its banner signature here",
+      "the two-banner threshold is a false-positive guard, not a correctness property: a doc that legitimately QUOTES one build banner (a troubleshooting runbook) is correctly ignored, but one quoting two is reported. Prose about build output is the false-RED direction",
+      "the decisive ANSI path has a portability history: it was `grep -qP` until 2026-07-19, which errors on BSD/macOS grep and silently fell through to the weaker banner heuristic while the self-test stayed green (an OVALID-03 instance in this very oracle). It is now `LC_ALL=C grep -qF` with an ANSI-only self-test sample that fails loudly if the decisive path regresses",
+      "scope is the configured tracked-doc set: a clobbered file outside it is invisible, not passing"
+    ]
+  },
+  "expected_runtime_ms": 6500,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
+  "invocation": {
+    "unix": ".claude/oracles/tracked-docs-not-clobbered/run.sh",
+    "windows": ".claude/oracles/tracked-docs-not-clobbered/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "one of: pass, fail",
+      "details": {
+        "checked": "integer (number of tracked docs scanned)",
+        "contaminated_count": "integer",
+        "contaminated": [
+          {
+            "path": "string (repo-relative path of the clobbered doc)",
+            "ansi": "boolean (true if raw ANSI escape sequences were found)",
+            "signatures": "string[] (which dev-log banner patterns matched)",
+            "excerpt": "string (first offending line, ESC bytes shown as <ESC>)"
+          }
+        ],
+        "scan_duration_ms": "integer"
+      },
+      "briefing": "string"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 0
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/tracked-docs-not-clobbered/run.sh --self-test",
+    "self_test_windows": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/oracles/tracked-docs-not-clobbered/run.ps1 -SelfTest",
+    "last_validated": null
+  },
+  "fallback": "Open CLAUDE.md / README.md / docs/specs/*.md and look for raw terminal output: ANSI escapes, a `VITE vX.Y ready in N ms` banner, `Compiling <crate> v...`, `Running BeforeDevCommand`, or `webpack compiled`. If present, the file was clobbered by a dev server launched with stdout redirected into it; restore from HEAD (`git show HEAD:<file> > <file>`) and kill any orphaned dev process still holding the file handle (on Windows the handle blocks `git checkout` / `rm` until the process dies).",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-26T00:00:00Z",
+    "note": "Starter Verification Oracle. Originated from a reference-implementation incident: a detached dev server launched with stdout redirected into a tracked file (`> CLAUDE.md`) destroyed the file, re-clobbering it on every HMR reload via an inherited file descriptor, and was caught only by chance at the pre-commit diff stage. Makes the catch deterministic and every-finalize (Probandurgy inner-loop gate). The companion mitigation is a one-line guardrail in project CLAUDE.md: never redirect a dev server into a tracked file; log to a gitignored path. v1.1.0 (2026-07-20, upstreamed from a downstream consumer that hit the bug on macOS): run.sh detected ANSI escapes with `grep -qP`, whose PCRE flag BSD/macOS grep lacks -- the check errored out and silently fell through to the weaker textual-banner path, while --self-test stayed falsely green because its only sample also carried banners. Fixed with `LC_ALL=C grep -qF` (portable fixed-string) and guarded by a second ANSI-ONLY self-test sample (in both run.sh and run.ps1) that no banner pattern can match, so a regression of the decisive path now fails the self-test loudly."
+  },
+  "config": {
+    "scan_root_files": [
+      "CLAUDE.md",
+      "README.md"
+    ],
+    "scan_directories": [
+      "docs/specs"
+    ],
+    "comment": "Scan scope. The run scripts use these defaults; edit the script constants to change scope. Keep the <2s speed contract (Part 11) -- avoid adding large recursive trees."
+  }
+}

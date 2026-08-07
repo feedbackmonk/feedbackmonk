@@ -1,8 +1,6 @@
 # gitignore-template-drift fixtures
 
-## Synopsis
-
-Six representative input pairs (`baseline.gitignore` + `project.gitignore`) covering the drift cases the parent oracle must classify correctly. Driven by `validate.{sh,ps1}` via `CLAUDE_GITIGNORE_BASELINE` / `CLAUDE_GITIGNORE_PROJECT` env overrides. Test-input data, not a runtime module.
+> Synopsis — Six representative input pairs (`baseline.gitignore` + `project.gitignore`) covering the drift cases the oracle must classify correctly. Driven by `validate.{sh,ps1}` via `CLAUDE_GITIGNORE_BASELINE` / `CLAUDE_GITIGNORE_PROJECT` env overrides.
 
 ## Purpose
 

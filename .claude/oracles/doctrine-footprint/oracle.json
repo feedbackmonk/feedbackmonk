@@ -1,0 +1,49 @@
+{
+  "name": "doctrine-footprint",
+  "kind": "project-state",
+  "version": "1.0.0",
+  "question": "For each ULDF doctrine (Tectonurgy, Development Jigs, Block Verifiability Warrant, AOR/ARIA, In-App Agent, RSPD, Oraculurgy), which prescribed instrumentation artifacts does THIS project have installed, and which are absent?",
+  "category": "doctrine",
+  "expected_runtime_ms": 1500,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-07-10 -- a handful of directory-exists checks plus one recursive README grep (Warrant coverage) over the project tree; pessimistic-honest per ORACLE-COST-01 for Git Bash on win32 (slowest supported). On-demand only (not a session-start briefing oracle), so it is NOT bound by the 15000ms briefing budget.",
+  "invocation": {
+    "unix": ".claude/oracles/doctrine-footprint/run.sh",
+    "windows": ".claude/oracles/doctrine-footprint/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "schemaVersion": "string (\"1\" at Phase 1)",
+      "has_claude_dir": "boolean (false when the audited project has no .claude/ at all)",
+      "framework_baseline": "string (date of the expected-artifact baseline the run script encodes -- DAUD-07 honesty marker)",
+      "doctrines": "array of {doctrine, present[], absent[], verdict_hint, note?} -- one entry per audited doctrine. Artifact tokens are tagged: oracle:<name> | spec:<section> | file:<name> | log:<name> | manifest:<name> | wire:<phase> | coverage:<marker> | dir:<path>. The optional `note` string appears only on pilot-gated doctrines, explaining why nothing is prescribed yet.",
+      "missing_total": "integer (total absent artifacts across all doctrines)",
+      "no_data": "boolean (true when a scan target is present-but-unreadable -- NO-DATA honesty, never a silent clean)",
+      "briefing": "string (double-quote-free summary line). PRESENCE ONLY -- verdict rendering, not-applicable judgment, and remediation routing belong to the /0-uldf-doctrine-audit skill (DAUD-02). `verdict_hint` is a naive present/absent rollup (integrated|partial|missing) the skill may override to not-applicable. A fourth value, pilot-gated, marks a doctrine the framework has authored but does not yet prescribe per-project instrumentation for: it carries empty present[]/absent[] and contributes 0 to missing_total by construction (DAUD-07 baseline honesty -- never false-flag a project against artifacts the framework does not per-project ship). It is a DISCOVERABILITY signal, not adoption pressure."
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "on-demand",
+    "estimated_token_savings_per_call": 2500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/doctrine-footprint/validate.sh",
+    "self_test_windows": ".claude/oracles/doctrine-footprint/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "For each doctrine, check whether its framework-shipped artifacts exist under .claude/oracles/ (module-size/change-coupling/code-graph for Tectonurgy; jig-friction for Jigs; block-verifiability-warrant for BVW; aria-status/ui-surface-detector for AOR/ARIA; rspd-elaboration-tree for RSPD) plus spec sections (## MODULARITY), files (JIG_CATALOG.md, .claude/aria-manifest.json), logs (.claude/session-state/aria-probe-candidates.jsonl), and README '## Verifiability Warrant' coverage markers. None present => that doctrine is missing; some => partial; all => integrated. Absence is a finding, not an error. Do NOT expect dependency-drift as a per-project artifact -- it ships as a global script (~/.claude/scripts/dependency-drift.*), never installed per-project.",
+  "provenance": {
+    "authored_by": "doctrine-audit-feature",
+    "created": "2026-07-10T00:00:00Z",
+    "spec_refs": [
+      "DAUD-01",
+      "DAUD-03",
+      "DAUD-07"
+    ],
+    "note": "Presence engine for /0-uldf-doctrine-audit (§ DOCTRINE-AUDIT, DEC-153). Mirrors the probandurgy-footprint presence-check pattern but as kind:project-state (not a build-config verification oracle). On-demand: typical_sessions_using is 'on-demand' so it is NOT auto-admitted to the session-start briefing fan-out -- it is an audit engine, consulted by the skill, not a per-session line. Baseline of EXPECTED artifacts is the framework's PER-PROJECT-installed instrumentation as of framework_baseline; the Tectonurgy surface dependency-drift is excluded because it ships as a GLOBAL script (~/.claude/scripts/), not a per-project artifact -- per DAUD-07 (global-vs-per-project, NOT unbuilt)."
+  }
+}

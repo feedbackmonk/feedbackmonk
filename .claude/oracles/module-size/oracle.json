@@ -1,0 +1,54 @@
+{
+  "name": "module-size",
+  "version": "1.0.0",
+  "question": "Which ULADP modules (directories bearing a README.md) exceed the soft token band (default ~4000, M2) by byte-based estimate, and which directories look like undocumented modules (>=3 code files, no README)?",
+  "category": "module",
+  "kind": "verification",
+  "expected_runtime_ms": 2000,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-07-07 on the ULDF framework repo (1276 tracked files) under Git Bash (win32; slowest supported environment) -- ~1.0s via the git ls-tree fast path; declared pessimistically at the fast-lane ceiling per ORACLE-COST-01",
+  "invocation": {
+    "unix": ".claude/oracles/module-size/run.sh",
+    "windows": ".claude/oracles/module-size/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "one of: pass, warn, no-data",
+      "modules_scanned": "integer (count of README-bearing, non-excluded directories)",
+      "over_band": "array of {path, est_tokens, band} -- modules over the soft band (advisory), sorted by est_tokens desc, capped",
+      "over_band_total": "integer (true count before the cap)",
+      "no_readme": "array of {path, est_tokens, code_files} -- dirs with >=3 code files and no README.md (possible undocumented modules)",
+      "no_readme_total": "integer (true count before the cap)",
+      "no_data": "array of {path, reason} -- paths that could not be analyzed (unreadable); never a silent pass",
+      "no_data_total": "integer",
+      "band": { "softTokens": "integer (the active band)", "source": "one of: default, config" },
+      "enum_mode": "one of: git (ls-tree fast path), find (filesystem fallback), none (no-data)",
+      "scan_duration_ms": "integer",
+      "briefing": "string (empty when status=pass; one-liner suitable for a warn surface)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "finalize",
+    "estimated_token_savings_per_call": 0
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/module-size/validate.sh",
+    "self_test_windows": ".claude/oracles/module-size/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Estimate per-directory tokens by hand: for each directory bearing a README.md, sum the byte sizes of the files directly in it and divide by 4 (the segments/-uladp/compliance_architecture.md convention); a result over ~4000 is an over-band module worth decomposing. Or run /0-uldf-uladp-compliance --architecture for the full sizing + boundary analysis. git ls-tree -r -l HEAD gives per-file sizes in one command.",
+  "provenance": {
+    "authored_by": "scrutiny-hierarchical-modularity-arc1",
+    "created": "2026-07-07T00:00:00Z",
+    "spec_refs": [],
+    "note": "Scrutiny ADD A6 / finding P0-7: the framework's own Enforcement Placement Principle (detection that is pure arithmetic belongs in code, not prose) + Oraculurgy Part 11 jointly mandate a deterministic module-sizing oracle, yet trajectory-cap shipped a deterministic size-cap oracle for ONE markdown file while the doctrinal per-module token cap had none. This is that oracle. M2 re-derivation: the ~4k number is restated as a SOFT BAND (a tripwire proxy for one session's reliable comprehension per Principle 2.9's capacity formula + Team-Topologies cognitive-load framing / CTD-16 horizon), NOT a context-window-fit claim (obsolete at 1M contexts). ADVISORY by design (status=warn, exit 0): a hard cap invites split-for-the-metric micro-modules (perverse incentive) -- report, do not refuse. The 500-token summary-compressibility test (Principle 2.9) is the better companion diagnostic but is agentic, not this oracle's job; this oracle is the deterministic tripwire."
+  },
+  "config": {
+    "softBandTokens": 4000,
+    "comment": "Soft band (advisory tripwire), overridable per-project via .claude/config.json moduleSize.softBandTokens. Token estimate = sum(direct-file bytes)/4. The band is a proxy for one-session comprehension, NOT a context-window-fit cliff (M2). Keep the git ls-tree fast path for the <2s Part 11 fast-lane contract."
+  }
+}

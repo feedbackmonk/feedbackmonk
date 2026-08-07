@@ -6,10 +6,16 @@
 #
 # Modes:
 #   (default)    : full inventory JSON with `briefing` field
-#   --gc-cheap   : silent (read-only per SWEEP-01); never blocks briefing
+#   --gc-cheap   : session-start AUTO-SWEEP (DEC-79) + sweep-report JSON with
+#                  `briefing` field (empty when nothing swept -> silent line);
+#                  ~100ms budget, defers remainder if exceeded
 #   --gc         : destructive sweep + JSONL audit; emits summary JSON
 #
-# Spec: SPECIFICATION.md § SWEEP-01, SWEEP-07, SWEEP-08; DEC-52, DEC-54
+# DEC-79 (2026-06-12): --gc-cheap performs the sweep instead of nagging. See
+# run.sh header for the full rationale (nag never acted on; SWEEP-08 +
+# KEEP-pin rails proven by archive-retention).
+#
+# Spec: SPECIFICATION.md § SWEEP-01 (as amended by DEC-79), SWEEP-07, SWEEP-08; DEC-52, DEC-54, DEC-79
 # Substrate: claude-template/oracles/archive-retention/ (RETENTION-01..06)
 
 param(
@@ -32,6 +38,7 @@ foreach ($a in $args) {
     switch ($a) {
         "--gc"        { $mode = "gc" }
         "--gc-cheap"  { $mode = "gc-cheap" }
+        "--dry-run"   { $mode = "dry-run" }
         default {
             if ($a -is [string] -and $a.StartsWith("--")) {
                 Write-Error "handoff-retention: unknown mode: $a"
@@ -53,8 +60,12 @@ function Emit-Empty-Briefing {
 # ---- Locate handoff dir ----
 if (-not (Test-Path $handoffDir)) {
     if ($mode -eq "briefing") { Emit-Empty-Briefing }
-    if ($mode -eq "gc") {
+    if ($mode -eq "gc" -or $mode -eq "dry-run") {
         Write-Output '{"swept":0,"before":0,"after":0,"threshold":"P30D","thresholdSource":"default","summarized":0,"note":"no handoff dir"}'
+    }
+    if ($mode -eq "gc-cheap") {
+        # Nothing to sweep -> empty briefing (silent line)
+        Write-Output '{"swept":0,"before":0,"after":0,"threshold":"P30D","thresholdSource":"default","summarized":0,"briefing":""}'
     }
     exit 0
 }
@@ -177,9 +188,8 @@ function Build-SummaryLine {
 # =============================================================================
 # Mode dispatch
 # =============================================================================
-
-# --gc-cheap: silent no-op per SWEEP-01.
-if ($mode -eq "gc-cheap") { exit 0 }
+# --gc-cheap (DEC-79): falls through to the sweep block below alongside --gc,
+# with a ~100ms time budget and a sweep-report briefing field.
 
 # Collect handoff files matching the pattern (sorted alphabetically).
 $allFiles = @()
@@ -232,14 +242,36 @@ foreach ($f in $allFiles) {
 }
 
 # =============================================================================
-# --gc: actually sweep stale candidates
+# --gc / --gc-cheap: actually sweep stale candidates (DEC-79: cheap mode
+#            sweeps too, under a ~100ms budget, and reports via `briefing`)
+# --dry-run: identical candidate computation, ZERO mutation (SWEEPER-05) --
+#            no JSONL append, no Remove-Item; reports the would-sweep set.
 # =============================================================================
-if ($mode -eq "gc") {
+if ($mode -eq "gc" -or $mode -eq "gc-cheap" -or $mode -eq "dry-run") {
     $sweepCount = 0
     $summarized = 0
     $sweptFiles = New-Object System.Collections.ArrayList
+    $budgetExceeded = $false
+
+    # Budget mirrors run.sh (1000ms — calibrated for MSYS bash subprocess
+    # cost; PS per-file ops are much cheaper so this rarely fires here).
+    $budgetMs = 0
+    if ($mode -eq "gc-cheap") { $budgetMs = 1000 }
+    # ULDF_HR_GC_BUDGET_MS: test seam (DEC-250), parity with the sh twin.
+    if ($mode -eq "gc-cheap" -and $env:ULDF_HR_GC_BUDGET_MS -match '^[0-9]+$') { $budgetMs = [int]$env:ULDF_HR_GC_BUDGET_MS }
+    $sweepWatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $workedAny = $false   # minimum-progress guarantee (DEFER-064 rule 3, DEC-250)
 
     foreach ($f in $allFiles) {
+        # --gc-cheap budget: defer the remainder to the next session-start
+        # rather than stalling the briefing (mirrors archive-retention) -- but
+        # NEVER before one unit of real work, so a prefix of KEEP-pinned or
+        # too-young files cannot starve the sweep (DEC-250).
+        if ($budgetMs -gt 0 -and $workedAny -and $sweepWatch.ElapsedMilliseconds -gt $budgetMs) {
+            $budgetExceeded = $true
+            break
+        }
+
         # KEEP-pin
         if (Test-Path ($f.FullName + ".KEEP")) { continue }
 
@@ -248,6 +280,15 @@ if ($mode -eq "gc") {
 
         $ageDays = [int][Math]::Floor(($now - $mtime).TotalDays)
         $relPath = ".claude/handoff/" + $f.Name
+
+        # Past every cheap filter: a real sweep candidate, so the budget may bind.
+        $workedAny = $true
+
+        if ($mode -eq "dry-run") {
+            $sweepCount++
+            [void]$sweptFiles.Add($f.Name)
+            continue
+        }
 
         # Build summary line BEFORE delete (SWEEP-08 invariant)
         $line = Build-SummaryLine -FilePath $relPath -SweptAt $nowIso -AgeDays $ageDays
@@ -266,6 +307,24 @@ if ($mode -eq "gc") {
         }
     }
 
+    if ($mode -eq "dry-run") {
+        $parts = @(
+            "`"dryRun`":true",
+            "`"wouldSweep`":$sweepCount",
+            "`"before`":$beforeFiles",
+            "`"after`":$beforeFiles",
+            "`"threshold`":`"$thresholdDisplay`"",
+            "`"thresholdSource`":`"$thresholdSource`""
+        )
+        if ($sweptFiles.Count -gt 0) {
+            $csv = ($sweptFiles -join ",")
+            $jCsv = ConvertTo-JsonString -Value $csv
+            $parts += "`"wouldSweepFiles`":`"$jCsv`""
+        }
+        Write-Output ("{" + ($parts -join ",") + "}")
+        exit 0
+    }
+
     $afterFiles = $beforeFiles - $sweepCount
 
     $parts = @(
@@ -276,10 +335,27 @@ if ($mode -eq "gc") {
         "`"thresholdSource`":`"$thresholdSource`"",
         "`"summarized`":$summarized"
     )
+    if ($budgetExceeded) {
+        $parts += "`"budgetExceeded`":true"
+    }
     if ($sweptFiles.Count -gt 0) {
         $csv = ($sweptFiles -join ",")
         $jCsv = ConvertTo-JsonString -Value $csv
         $parts += "`"sweptFiles`":`"$jCsv`""
+    }
+    if ($mode -eq "gc-cheap") {
+        # DEC-79 sweep-report briefing: silent (empty) when nothing swept.
+        $briefingText = ""
+        if ($sweepCount -gt 0) {
+            $noun = if ($sweepCount -eq 1) { "brief" } else { "briefs" }
+            $briefingText = "swept $sweepCount expired handoff $noun (>${thresholdDays}d, KEEP-pinned exempt) -- audit: $summaryFile"
+            if ($budgetExceeded) {
+                $briefingText += "; budget hit, remainder next session"
+            }
+        }
+        $jBrief = ConvertTo-JsonString -Value $briefingText
+        if ($null -eq $jBrief) { $jBrief = "" }
+        $parts += "`"briefing`":`"$jBrief`""
     }
     Write-Output ("{" + ($parts -join ",") + "}")
     exit 0

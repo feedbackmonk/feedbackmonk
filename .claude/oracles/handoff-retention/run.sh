@@ -7,16 +7,25 @@
 #
 # Modes:
 #   (default)    : full inventory JSON with `briefing` field
-#   --gc-cheap   : silent (read-only per SWEEP-01); never blocks briefing
+#   --gc-cheap   : session-start AUTO-SWEEP (DEC-79) + sweep-report JSON with
+#                  `briefing` field (empty when nothing swept -> silent line);
+#                  ~100ms budget, defers remainder if exceeded
 #   --gc         : destructive sweep + JSONL audit; emits summary JSON
 #
-# Sweep criteria (--gc):
+# Sweep criteria (--gc / --gc-cheap):
 #   filename matches /^handoff-.+\.md$/ AND no sibling <file>.KEEP present
 #   AND mtime is older than (now - threshold).
 #   Action: append JSON line to _summary.jsonl, verify write, rm the file (SWEEP-08).
 #   Threshold: .claude/config.json handoffRetention.threshold (numeric days or PnD), default 30.
 #
-# Spec: SPECIFICATION.md § SWEEP-01, SWEEP-07, SWEEP-08; DEC-52, DEC-54
+# DEC-79 (2026-06-12): --gc-cheap performs the sweep instead of nagging. The
+# Arc 2.5 retrospective showed the nag-only briefing line fired every session
+# for ~a month and was never acted on once; the safety rails (SWEEP-08
+# pre-delete audit + KEEP pins) are proven by archive-retention's clean
+# audited sweeps. The briefing line is now a report of what was swept and is
+# SILENT when nothing was swept.
+#
+# Spec: SPECIFICATION.md § SWEEP-01 (as amended by DEC-79), SWEEP-07, SWEEP-08; DEC-52, DEC-54, DEC-79
 # Substrate: claude-template/oracles/archive-retention/ (RETENTION-01..06)
 
 set -e
@@ -35,23 +44,46 @@ MODE="briefing"
 case "${1:-}" in
     --gc)        MODE="gc" ;;
     --gc-cheap)  MODE="gc-cheap" ;;
+    --dry-run)   MODE="dry-run" ;;
     "")          MODE="briefing" ;;
     *)
         echo "handoff-retention: unknown mode: $1" >&2
-        echo "  usage: run.sh [--gc|--gc-cheap]" >&2
+        echo "  usage: run.sh [--gc|--gc-cheap|--dry-run]" >&2
         exit 1
         ;;
+esac
+
+# ---- OLOG fire record (ORA-FIRE-01, DEC-166 / DISC-ORA-02) ------------------
+# Actuator leg: fires as a session-start --gc-cheap sweep, silent on success. Without
+# this record the oracle is invisible to oracle-consultations.jsonl and DEC-82's
+# retirement criterion scores it as unused no matter how hard it works. A fire is not
+# a consultation -- it carries via:"sweep". Append-failure is swallowed.
+case "$MODE" in
+  gc|gc-cheap)
+    _OFL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for _ofl_cand in \
+        "$_OFL_DIR/../../scripts/lib/oracle-fire-log.sh" \
+        "$_OFL_DIR/../../../claude-template/scripts/lib/oracle-fire-log.sh" \
+        "$HOME/.claude/scripts/lib/oracle-fire-log.sh"; do
+        if [ -f "$_ofl_cand" ]; then
+            # shellcheck source=/dev/null
+            . "$_ofl_cand" && oracle_fire_log "handoff-retention" "sweep"
+            break
+        fi
+    done
+    ;;
 esac
 
 # ---- Locate handoff dir; absent => graceful nothing-to-do ----
 if [ ! -d "$HANDOFF_DIR" ]; then
     if [ "$MODE" = "briefing" ]; then
         emit_empty_briefing
-    elif [ "$MODE" = "gc" ]; then
+    elif [ "$MODE" = "gc" ] || [ "$MODE" = "dry-run" ]; then
         echo '{"swept":0,"before":0,"after":0,"threshold":"P30D","thresholdSource":"default","summarized":0,"note":"no handoff dir"}'
         exit 0
     else
-        # --gc-cheap is silent on graceful absence
+        # --gc-cheap: nothing to sweep -> empty briefing (silent line)
+        echo '{"swept":0,"before":0,"after":0,"threshold":"P30D","thresholdSource":"default","summarized":0,"briefing":""}'
         exit 0
     fi
 fi
@@ -91,7 +123,7 @@ if [ -n "$CONFIG" ] && [ -n "$PARSER" ]; then
         CFG_RAW=$("$PARSER" - "$CONFIG" <<'PY' 2>/dev/null || true
 import json, sys
 try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
     sys.exit(0)
@@ -195,12 +227,36 @@ _build_summary_line() {
 # =============================================================================
 # Mode dispatch
 # =============================================================================
+# --gc-cheap (DEC-79): falls through to the sweep block below alongside --gc,
+# with a ~100ms time budget and a sweep-report briefing field.
 
-# --gc-cheap: silent no-op per SWEEP-01 (briefing only via default-mode iteration).
-# Exists for symmetry with archive-retention's hook wiring; not destructive.
-if [ "$MODE" = "gc-cheap" ]; then
-    exit 0
-fi
+# Millisecond clock for the --gc-cheap budget (mirrors archive-retention).
+# Empty result disables the budget check (sweep set is TTL-bounded anyway).
+_ms_now() {
+    # Zero-fork fast path (DEFER-064 rule 2, propagated by DEC-250): a forked
+    # clock costs ~300-500ms per call on a busy MSYS host, so the budget
+    # measurement consumes the budget it is measuring.
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        local _er_s="${EPOCHREALTIME%%[.,]*}" _er_f="${EPOCHREALTIME#*[.,]}"
+        case "$_er_s$_er_f" in (*[!0-9]*) : ;; *)
+            _er_f="${_er_f}000"
+            echo "$(( _er_s * 1000 + 10#${_er_f:0:3} ))"
+            return 0
+            ;;
+        esac
+    fi
+    local ms
+    ms=$(date +%s%3N 2>/dev/null)
+    if [ -n "$ms" ] && [ "${ms#*N}" = "$ms" ]; then
+        case "$ms" in (*[!0-9]*) ;; *) echo "$ms"; return 0 ;; esac
+    fi
+    if command -v perl >/dev/null 2>&1; then
+        perl -MTime::HiRes=time -e 'printf("%d\n", time*1000)' 2>/dev/null && return 0
+    fi
+    if [ -n "$PARSER" ] && [ "$PARSER" != "jq" ]; then
+        "$PARSER" -c 'import time; print(int(time.time()*1000))' 2>/dev/null
+    fi
+}
 
 # Collect handoff files matching pattern (glob expansion in alphabetical order).
 shopt -s nullglob 2>/dev/null || true
@@ -267,15 +323,47 @@ for file in "$HANDOFF_DIR"/handoff-*.md; do
 done
 
 # =============================================================================
-# --gc: actually sweep stale candidates
+# --gc / --gc-cheap: actually sweep stale candidates (DEC-79: cheap mode
+#            sweeps too, under a ~100ms budget, and reports via `briefing`)
+# --dry-run: identical candidate computation, ZERO mutation (SWEEPER-05) --
+#            no JSONL append, no rm; reports the would-sweep set.
 # =============================================================================
-if [ "$MODE" = "gc" ]; then
+if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ] || [ "$MODE" = "dry-run" ]; then
     SWEEP_COUNT=0
     SUMMARIZED=0
     SWEPT_FILES=""
+    BUDGET_EXCEEDED=""
+
+    # Budget calibrated for MSYS/Git-Bash, where each per-file sweep costs
+    # ~0.5s in subprocess spawns (measured 7.3s for 14 files, 2026-06-12).
+    # 1000ms sweeps 50+ files on real Unix, ~2 per session on MSYS; the
+    # deferred remainder drains across sessions and is reported honestly
+    # via budgetExceeded + the briefing line.
+    BUDGET_MS=0
+    if [ "$MODE" = "gc-cheap" ]; then BUDGET_MS=1000; fi
+    # ULDF_HR_GC_BUDGET_MS: test seam (DEC-250), mirroring ULDF_DS_GC_BUDGET_MS.
+    case "${ULDF_HR_GC_BUDGET_MS:-}" in
+        ''|*[!0-9]*) : ;;
+        *) [ "$MODE" = "gc-cheap" ] && BUDGET_MS="$ULDF_HR_GC_BUDGET_MS" ;;
+    esac
+    START_MS=$(_ms_now)
+    WORKED_ANY=""   # minimum-progress guarantee (DEFER-064 rule 3)
 
     for file in "$HANDOFF_DIR"/handoff-*.md; do
         [ -f "$file" ] || continue
+
+        # --gc-cheap budget: defer the remainder to the next session-start
+        # rather than stalling the briefing (mirrors archive-retention) -- but
+        # NEVER before one unit of real work (DEFER-064 rule 3, DEC-250). The
+        # cheap filters below (KEEP pin, unreadable mtime, too-young file) are
+        # not progress, so a prefix of them must not starve the sweep.
+        if [ "$BUDGET_MS" -gt 0 ] && [ -n "$WORKED_ANY" ]; then
+            NOW_MS=$(_ms_now)
+            if [ -n "$START_MS" ] && [ -n "$NOW_MS" ] && [ "$((NOW_MS - START_MS))" -gt "$BUDGET_MS" ]; then
+                BUDGET_EXCEEDED=1
+                break
+            fi
+        fi
 
         # KEEP-pin
         [ -f "$file.KEEP" ] && continue
@@ -286,6 +374,21 @@ if [ "$MODE" = "gc" ]; then
         [ "$mtime" -gt "$CUTOFF_EPOCH" ] && continue
 
         age_days=$(( (NOW_EPOCH - mtime) / 86400 ))
+
+        # Past every cheap filter: this file IS a sweep candidate, so from here
+        # on the invocation has done real work and the budget may bind again.
+        WORKED_ANY=1
+
+        if [ "$MODE" = "dry-run" ]; then
+            SWEEP_COUNT=$((SWEEP_COUNT + 1))
+            base=$(basename "$file")
+            if [ -z "$SWEPT_FILES" ]; then
+                SWEPT_FILES="$base"
+            else
+                SWEPT_FILES="$SWEPT_FILES,$base"
+            fi
+            continue
+        fi
 
         # Build summary line BEFORE delete (SWEEP-08 invariant)
         line=$(_build_summary_line "$file" "$NOW_ISO" "$age_days")
@@ -309,13 +412,40 @@ if [ "$MODE" = "gc" ]; then
         fi
     done
 
+    if [ "$MODE" = "dry-run" ]; then
+        printf '{"dryRun":true,"wouldSweep":%s,"before":%s,"after":%s,"threshold":"%s","thresholdSource":"%s"' \
+            "$SWEEP_COUNT" "$BEFORE_FILES" "$BEFORE_FILES" "$THRESHOLD_DISPLAY" "$THRESHOLD_SOURCE"
+        if [ -n "$SWEPT_FILES" ]; then
+            jSwept=$(_json_esc "$SWEPT_FILES")
+            printf ',"wouldSweepFiles":"%s"' "$jSwept"
+        fi
+        printf '}\n'
+        exit 0
+    fi
+
     AFTER_FILES=$((BEFORE_FILES - SWEEP_COUNT))
 
     printf '{"swept":%s,"before":%s,"after":%s,"threshold":"%s","thresholdSource":"%s","summarized":%s' \
         "$SWEEP_COUNT" "$BEFORE_FILES" "$AFTER_FILES" "$THRESHOLD_DISPLAY" "$THRESHOLD_SOURCE" "$SUMMARIZED"
+    if [ -n "$BUDGET_EXCEEDED" ]; then
+        printf ',"budgetExceeded":true'
+    fi
     if [ -n "$SWEPT_FILES" ]; then
         jSwept=$(_json_esc "$SWEPT_FILES")
         printf ',"sweptFiles":"%s"' "$jSwept"
+    fi
+    if [ "$MODE" = "gc-cheap" ]; then
+        # DEC-79 sweep-report briefing: silent (empty) when nothing swept.
+        BRIEFING=""
+        if [ "$SWEEP_COUNT" -gt 0 ]; then
+            noun="briefs"
+            [ "$SWEEP_COUNT" -eq 1 ] && noun="brief"
+            BRIEFING="swept $SWEEP_COUNT expired handoff $noun (>${THRESHOLD_DAYS}d, KEEP-pinned exempt) -- audit: $SUMMARY_FILE"
+            if [ -n "$BUDGET_EXCEEDED" ]; then
+                BRIEFING="$BRIEFING; budget hit, remainder next session"
+            fi
+        fi
+        printf ',"briefing":"%s"' "$(_json_esc "$BRIEFING")"
     fi
     printf '}\n'
     exit 0

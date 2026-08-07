@@ -1,0 +1,1 @@
+{"schemaVersion":"1","manifest_present":true,"mechanisms_declared":[{"mechanism":"aria","declared_axis_a":"feature-gated-out-by-default","declared_axis_b":"runtime-gated","gate_implementation_found":true,"gate_locations":["Cargo.toml#features.aria-dev","vite.config.ts#define.__ARIA_ENABLED__"],"self_test_verifier_present":false,"waivers":[]}],"violations":[],"advisory":true}

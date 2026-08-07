@@ -2,6 +2,9 @@
   "name": "ui-surface-detector",
   "version": "1.0.0",
   "kind": "project-state",
+  "expected_runtime_ms": 400,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "question": "Does this project have a UI / runtime surface that ARIA could instrument, and what kind?",
   "category": "environment",
   "invocation": {
@@ -18,8 +21,14 @@
   },
   "freshness": {
     "strategy": "trigger-invalidate",
-    "compute_cost_ms": 150,
-    "invalidate_on": ["package.json", "Cargo.toml", "pubspec.yaml", "src-tauri/", "index.html", "bin/"]
+    "invalidate_on": [
+      "package.json",
+      "Cargo.toml",
+      "pubspec.yaml",
+      "src-tauri/",
+      "index.html",
+      "bin/"
+    ]
   },
   "consultation": {
     "typical_sessions_using": "occasional",
@@ -34,7 +43,9 @@
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-04-29T00:00:00Z",
-    "spec_refs": ["ARIA-02"],
-    "note": "Universal Starter Set member. Consumed by /0-uldf-ldis-intake Phase 1 risk profiling and /0-uldf-ldis-plan Phase 4 testability gate (Leg B of ARIA's four-leg detection machinery). Also used by the aria-status oracle (ARIA-01) as the surface-detection helper. Filesystem stat + small file reads only — never executes project scripts."
+    "spec_refs": [
+      "ARIA-02"
+    ],
+    "note": "Universal Starter Set member. Consumed by /0-uldf-ldis-intake Phase 1 risk profiling and /0-uldf-ldis-plan Phase 4 testability gate (Leg B of ARIA's four-leg detection machinery). Also used by the aria-status oracle (ARIA-01) as the surface-detection helper. Filesystem stat + small file reads only \u2014 never executes project scripts."
   }
 }

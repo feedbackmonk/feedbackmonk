@@ -1,0 +1,56 @@
+{
+  "name": "runtime-perception-questions",
+  "version": "1.0.0",
+  "kind": "project-state",
+  "expected_runtime_ms": 400,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-06-29 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; the read is a single JSONL scan of a per-session marker log (typically <50 lines)",
+  "question": "In this session, did the agent ask a human to run-and-report a runtime-perception question that an AOR surface should have answered itself (the Human-as-I/O-Relay anti-pattern)?",
+  "category": "workflow",
+  "invocation": {
+    "unix": ".claude/oracles/runtime-perception-questions/run.sh",
+    "windows": ".claude/oracles/runtime-perception-questions/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "count": "integer (runtime-probe candidates logged this session; 0 when none)",
+      "questions": [
+        {
+          "question": "string (the runtime question the agent relayed through a human)",
+          "category": "navigation | errors | async | other",
+          "aria_could_answer": "bool (true when the question maps to an AOR/ARIA-07 capability; false when deeper instrumentation is needed)",
+          "capability": "string (optional; the concrete AOR verb the gap names, e.g. 'command-invoke:interpretLive' or 'state-dump:lens')",
+          "suggested_endpoint": "string (optional; proposed endpoint/handler name for an ARIA-expansion candidate)",
+          "surface_present": "bool (optional; whether an AOR surface existed at all when the relay occurred)"
+        }
+      ],
+      "briefing": "string (<=200 chars; what a [runtime-perception] line would carry; empty string suppresses the line)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "note": "Reads a per-session append-only marker log (.claude/session-state/aria-probe-candidates.jsonl) that mutates within the session; no caching. Read-only and idempotent."
+  },
+  "consultation": {
+    "typical_sessions_using": "finalize",
+    "estimated_token_savings_per_call": 600,
+    "note": "Not an every-session-start oracle (excluded from the briefing fan-out by the non-'every' value). Primary consumer is /0-uldf-finalize Phase 11.5 (ARIA-10); also on-demand via /0-uldf-oracle runtime-perception-questions and surfaced in /verify and /0-uldf-test."
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/runtime-perception-questions/validate.sh",
+    "self_test_windows": ".claude/oracles/runtime-perception-questions/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Inspect .claude/session-state/aria-probe-candidates.jsonl directly (one JSON object per line). Each is a Human-as-I/O-Relay gap the Leg-C reflex logged: a runtime question relayed through a human plus the concrete AOR capability that would close it. Doctrine: FOUNDATIONS/AGENT_OPERABLE_RUNTIME_DOCTRINE.md. Spec: ARIA-09/ARIA-10/ARIA-22.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-06-29T00:00:00Z",
+    "spec_refs": [
+      "ARIA-09",
+      "ARIA-10",
+      "ARIA-22"
+    ],
+    "note": "Universal Starter Set member (Phase 2+). Leg-D substrate of ARIA's four-leg detection machinery: the deterministic reader of the probe-candidate marker log the Leg-C pre-ask reflex appends to (claude-template/CLAUDE.template.md AOR section). Consumed by /0-uldf-finalize Phase 11.5 (the ARIA-Candidate Audit, ARIA-10) to surface Human-as-I/O-Relay probe candidates. Advisory only -- never blocks a commit."
+  }
+}

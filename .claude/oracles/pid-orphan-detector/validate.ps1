@@ -11,6 +11,29 @@ $global:Pass = 0
 $global:Fail = 0
 function Pass-Test { param([string]$Msg) Write-Host "PASS: $Msg"; $global:Pass++ }
 function Fail-Test { param([string]$Msg) Write-Host "FAIL: $Msg" -ForegroundColor Red; $global:Fail++ }
+$global:Skip = 0
+
+# DEFER-070 / DEC-247: T6's subject (--gc-cheap) sweeps under a 500ms wall-clock
+# budget, so under machine load it can report a starved run as a sweep-semantics
+# failure -- a red that is not evidence. Budget UNCHANGED; only the grading of a
+# red is adjudicated (OVALID-05: defer the assertion, never weaken the gate).
+$tgLib = Join-Path $OracleDir '../../scripts/lib/timing-guard.ps1'
+if (-not (Test-Path -LiteralPath $tgLib)) { $tgLib = Join-Path $OracleDir '../../../claude-template/scripts/lib/timing-guard.ps1' }
+if (Test-Path -LiteralPath $tgLib) {
+    . $tgLib
+    Set-TimingGuardDeclared "pid-orphan-detector --gc-cheap 500ms sweep budget (T6)"
+} else {
+    # Graceful absence: grade normally (status quo ante), never silently skip.
+    function Test-TimingGuardDeferred { return $false }
+    function Get-TimingGuardNote { return '' }
+    function Get-TimingGuardSummary { return '' }
+}
+function Fail-Timed {
+    param([string]$Msg)
+    if (Test-TimingGuardDeferred) {
+        $global:Skip++; Write-Host "SKIP: $Msg"; Write-Host "      $(Get-TimingGuardNote)"
+    } else { Fail-Test $Msg }
+}
 
 function Get-LiveBashPid {
     try {
@@ -71,7 +94,11 @@ Set-Content -LiteralPath (Join-Path $exec "worker-shell-20260508-100000-001.pid"
 Set-Content -LiteralPath (Join-Path $exec "worker-shell-20260101-100000-002.pid") -Value "$deadPid" -Encoding ASCII
 Set-Content -LiteralPath (Join-Path $exec "worker-shell-20260101-100000-bogus.pid") -Value "garbage" -Encoding ASCII
 
-Push-Location $sandbox
+# DEFER-077: a failed entry leaves the REAL repo as cwd, and the relative
+# .claude\oracles\pid-orphan-detector
+un.ps1 invocations below include --gc modes.
+if (-not $sandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sandbox -ErrorAction Stop
 try {
     # T1: default mode lists, does not delete
     $defaultOut = (& powershell.exe -NoProfile -File ".claude\oracles\pid-orphan-detector\run.ps1" 2>&1) -join "`n"
@@ -123,7 +150,7 @@ try {
     Set-Content -LiteralPath (Join-Path $exec "worker-shell-20260102-100000-003.pid") -Value "$deadPid" -Encoding ASCII
     $cheapOut = (& powershell.exe -NoProfile -File ".claude\oracles\pid-orphan-detector\run.ps1" "--gc-cheap" 2>&1) -join "`n"
     if ([string]::IsNullOrWhiteSpace($cheapOut)) { Pass-Test "T6: --gc-cheap silent on success" } else { Fail-Test "T6: --gc-cheap emitted output: $cheapOut" }
-    if (-not (Test-Path (Join-Path $exec "worker-shell-20260102-100000-003.pid"))) { Pass-Test "T6: --gc-cheap performed the sweep" } else { Fail-Test "T6: --gc-cheap did not delete dead-PID file" }
+    if (-not (Test-Path (Join-Path $exec "worker-shell-20260102-100000-003.pid"))) { Pass-Test "T6: --gc-cheap performed the sweep" } else { Fail-Timed "T6: --gc-cheap did not delete dead-PID file" }
 } finally {
     Pop-Location
 }
@@ -154,6 +181,8 @@ try {
 Remove-Item -Recurse -Force -LiteralPath $sandbox -ErrorAction SilentlyContinue
 
 Write-Host "----"
-Write-Host "Total: PASS=$($global:Pass)  FAIL=$($global:Fail)"
+Write-Host "Total: PASS=$($global:Pass)  FAIL=$($global:Fail)  DEFERRED=$($global:Skip)"
+$tgSummary = Get-TimingGuardSummary
+if ($tgSummary) { Write-Host $tgSummary }
 if ($global:Fail -gt 0) { exit 1 }
 exit 0

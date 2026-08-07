@@ -12,7 +12,7 @@ Project-state visibility oracle (CSI-15, Phase 1.7) that reports dirty files old
 **Kind**: `project-state`
 **Spec**: `docs/specs/SPECIFICATION.md` § CSI-15
 **Discovery**: `docs/specs/DISCOVERIES.md` DISC-HYGIENE-01 (SessionHelm 2026-05-06 — 200+ uncommitted files surfaced after `/0-uldf-finalize` accumulated cross-session-conservative scope decisions over weeks)
-**Design lineage**: `claude-template/oracles/stale-ltads-state/` (CSI-14) — same briefing-line silence pattern; `claude-template/oracles/dispatchable-sessions/` (CSI-05) — registry-aware project-state oracle skeleton; `claude-template/oracles/workspace-shared-repos/` (SHARED-CSI-01) — frozen-schema discipline + Set 1/Set 2 partition pattern that FINALIZE-04 mirrors.
+**Design lineage**: `~/.claude/oracles/stale-ltads-state/` (CSI-14) — same briefing-line silence pattern; `~/.claude/oracles/dispatchable-sessions/` (CSI-05) — registry-aware project-state oracle skeleton; `~/.claude/oracles/workspace-shared-repos/` (SHARED-CSI-01) — frozen-schema discipline + Set 1/Set 2 partition pattern that FINALIZE-04 mirrors.
 
 ## 1. Purpose & Responsibilities
 
@@ -152,8 +152,8 @@ When `briefing == ""`, the session-start hook MUST NOT emit a `[stranded-dirty-f
 
 | Consumer | Where | What it reads |
 |---|---|---|
-| Session-start hook briefing | `claude-template/hooks/session-start.{sh,ps1}` | `.briefing` field — emitted as-is when non-empty |
-| `/0-uldf-finalize --include-stranded` | `claude-template/segments/-finalize/_stranded-flag-handling.md` + `_stranded-partition.md` | `.sample[].path` (preview); on opt-in, oracle re-invocation collects the full set; `.count` and `.last_finalize_at` for summary block |
+| Session-start hook briefing | `~/.claude/hooks/session-start.{sh,ps1}` | `.briefing` field — emitted as-is when non-empty |
+| `/0-uldf-finalize --include-stranded` | `~/.claude/segments/-finalize/_stranded-flag-handling.md` + `_stranded-partition.md` | `.sample[].path` (preview); on opt-in, oracle re-invocation collects the full set; `.count` and `.last_finalize_at` for summary block |
 | Spec reconciliation | `/0-uldf-finalize` Phase 4.5 | Indirect — when stranded files include spec docs, finalize surfaces them for explicit user decision |
 
 ### Sibling oracles
@@ -184,9 +184,9 @@ This oracle does **not** expose `--gc` / `--gc-cheap` modes. Visibility oracles 
 - **Spec**: `docs/specs/SPECIFICATION.md` § CSI-15 (acceptance criteria); § FINALIZE-04 (consumer flag)
 - **Discovery (trigger)**: `docs/specs/DISCOVERIES.md` DISC-HYGIENE-01
 - **Plan**: `docs/planning/plans/20260507T065531-post-csi-1-6-framework-hygiene-arc.md` § Worker B1
-- **Skeleton precedents**: `claude-template/oracles/stale-ltads-state/`, `claude-template/oracles/dispatchable-sessions/`, `claude-template/oracles/workspace-shared-repos/`
+- **Skeleton precedents**: `~/.claude/oracles/stale-ltads-state/`, `~/.claude/oracles/dispatchable-sessions/`, `~/.claude/oracles/workspace-shared-repos/`
 - **Foundation**: `FOUNDATIONS/CSI_DESIGN.md` § Phase 1.7 (this oracle); `FOUNDATIONS/ORACULURGY_DESIGN.md` (project-state oracle category) and `FOUNDATIONS/PRINCIPLES_OF_LLM_AGENT_ORCHESTRATION.md` § 2.13 (Probandurgy — CSI is mechanism 8)
-- **Consumer flag**: `claude-template/skills/0-uldf-finalize/SKILL.md` `--include-stranded` flag table entry; `claude-template/segments/-finalize/_stranded-flag-handling.md`; `claude-template/segments/-finalize/_stranded-partition.md`
+- **Consumer flag**: `~/.claude/skills/0-uldf-finalize/SKILL.md` `--include-stranded` flag table entry; `~/.claude/segments/-finalize/_stranded-flag-handling.md`; `~/.claude/segments/-finalize/_stranded-partition.md`
 
 ## 8. Testing
 
@@ -205,4 +205,4 @@ Validates five scenarios:
 | **T4** | detection-skipped-too-many — 2001+ dirty files; `count==-1`, briefing references "detection skipped" |
 | **T5** | live-peer-owns-file — peer claims one of two stranded files via `dirtyFiles[]`; only the unclaimed file appears in `sample` |
 
-The full hygiene smoke harness at `claude-template/scripts/hygiene-tests/hygiene-csi15-stranded-smoke.{sh,ps1}` adds three flag-wiring smoke cases (without-flag, with-flag, composable-with-shared) on top of the oracle T1-T5 set.
+The full hygiene smoke harness at `~/.claude/scripts/hygiene-tests/hygiene-csi15-stranded-smoke.{sh,ps1}` adds three flag-wiring smoke cases (without-flag, with-flag, composable-with-shared) on top of the oracle T1-T5 set.

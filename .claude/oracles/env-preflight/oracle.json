@@ -1,0 +1,61 @@
+{
+  "name": "env-preflight",
+  "version": "1.0.0",
+  "question": "Does this environment have the capabilities the project's development requires (git, JSON parser, build tooling, optional device/browser probes)?",
+  "category": "environment",
+  "kind": "verification",
+  "expected_runtime_ms": 1800,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-07-20 on the ULDF framework repo (no Android markers) under Git Bash (win32; slowest supported environment): 3 runs 1053-1146ms (binary-presence `command -v` probes; every conditional probe is file-existence-gated). Declared 1800ms is honest for the common (non-mobile) path, below the 2000ms fast-lane ceiling (ORACLE-COST-01). The bounded (2s-capped) adb device probe fires ONLY on Android-marker projects; on those the runner's auto-demotion (ORACLE-COST-03) is the safety net. The prior 2500ms declared the mobile worst-case as expected AND kept lane:fast -- self-contradictory (>2000ms is a fast-lane violation).",
+  "invocation": {
+    "unix": ".claude/oracles/env-preflight/run.sh",
+    "windows": ".claude/oracles/env-preflight/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "ok": "boolean (false when >=1 critical capability is unavailable)",
+      "checks": [
+        {
+          "name": "string (git | json-parser | python | node | playwright | adb)",
+          "status": "string (available | degraded | unavailable | not-applicable)",
+          "critical": "boolean (true = unavailable blocks autonomous execution)",
+          "detail": "string (one-line finding)",
+          "fix": "string (one-line remediation; empty when status=available or not-applicable)"
+        }
+      ],
+      "critical_failures": "integer (count of checks with critical=true and status=unavailable)",
+      "warnings": "integer (count of non-critical degraded/unavailable checks)",
+      "summary": "string (one-line headline)",
+      "briefing": "string (empty when ok=true; one-liner suitable for a briefing line when a critical capability is missing)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "on-demand",
+    "estimated_token_savings_per_call": 2500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/env-preflight/validate.sh",
+    "self_test_windows": ".claude/oracles/env-preflight/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Probe manually: `git rev-parse --is-inside-work-tree` (critical); a working JSON parser (`jq --version`, else `python -c \"import json\"` -- beware the Windows Store python stub, PW-005: the binary exists but exits non-zero on `-c pass`); if package.json exists, `node --version` (critical for build); if playwright.config.* exists, check node_modules/playwright or node_modules/@playwright is installed; if the project has Android markers (android/ dir, AndroidManifest.xml, build.gradle), `adb devices` shows a connected device/emulator. Any critical capability missing means autonomous execution will fail mid-run -- fix before starting.",
+  "provenance": {
+    "authored_by": "skill-corpus-scrutiny-arc3-claude-c",
+    "created": "2026-07-01T00:00:00Z",
+    "spec_refs": [
+      "LTADS-ENV-01"
+    ],
+    "note": "Replaces the hand-rolled 239-line agentic preflight probe in segments/-ltads/start_preflight.md (scrutiny 04 F17/ADD-3; Enforcement Placement section 1: code can enforce it). start_preflight.md is now a thin invoker over this oracle; `/0-uldf-ltads-start --preflight` and Phase -2 consume it. Read-only by contract (ORACULURGY_DESIGN.md Part 11 sec 11.3.4). Conditional probes are project-marker-gated so non-web/non-mobile projects pay only the universal checks."
+  },
+  "config": {
+    "node_marker": "package.json",
+    "playwright_markers": ["playwright.config.ts", "playwright.config.js", "playwright.config.mjs"],
+    "android_markers": ["android/", "AndroidManifest.xml", "app/build.gradle", "build.gradle"],
+    "adb_probe_timeout_seconds": 2,
+    "comment": "Marker sets gate the conditional probes. Keep aligned with run.sh / run.ps1 (the scripts hardcode the same defaults for the <2s speed contract)."
+  }
+}

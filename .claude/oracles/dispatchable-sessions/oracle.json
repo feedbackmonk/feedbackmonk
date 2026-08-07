@@ -1,7 +1,24 @@
 {
   "name": "dispatchable-sessions",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "question": "What live sibling sessions can THIS session dispatch work to right now?",
+  "kind": "sweeper",
+  "assertion": {
+    "asserts": "The peers[] list (and the derived briefing line) names exactly the OTHER live, dispatchable sessions of THIS project; --duplicate-of answers whether another live session holds a given identity here; --gc/--gc-cheap flip only dead-and-stale entries to expired.",
+    "measures": "The project registry (.claude/collaboration/active-sessions.json) filtered by status/dispatchable/registryVersion, with per-entry IDENTITY-AWARE liveness probes (SWEEP-10 / DEC-252 / DEFER-088: pid_is_alive_as / Test-UldfPidAliveAs from lib/pid-liveness, anchored on claudeShellPidWrittenAt, on the briefing, --duplicate-of, --driver-of, and both gc sweep paths; graceful-absence fallback to existence-only probes, path reportable via ULDF_DS_REPORT_PID_IDENTITY=1) and env-var self-exclusion (ULDF_SELF_SESSION_ID > CLAUDE_SESSION_ID).",
+    "known_gaps": [
+      "SYSTEM-process pid-recycle residue (DEFER-088): identity refusal is anchor-only (no name glob -- recorded shells are heterogeneous: claude, plus legacy bash/powershell from the pre-DEC-251 $PPID fallback, so a name refusal would hit LIVE legacy sessions). An entry whose pid was recycled onto a SYSTEM-owned process is indeterminate (.StartTime is ACCESS-DENIED unelevated -> reads consistent -> fails open) and can NEVER be refused by these consumers -- svchost is one of the two measured recycled entries that motivated the work. Closure path (CIM Win32_Process.CreationDate fallback in the probe) is filed as DEFER-093, not built here.",
+      "Anchor-absent entries (pre-DEC-251 registrations, claudeShellPidWrittenAt null/missing) get the existence-only verdict forever -- legacy entries are never retroactively swept on identity evidence.",
+      "Registry-vs-reality: a session that never registered, or whose entry was externally corrupted, is invisible regardless of liveness -- the oracle measures the registry, not the process table (project-scoped by design; machine-wide scans are the documented anti-pattern, DEFER-002).",
+      "Liveness is probed at read time, not at consumption time: a peer can die between the briefing line being emitted and a dispatch being attempted (accepted; dispatch itself re-verifies).",
+      "No-identity-env briefing runs cannot self-exclude and MAY list the caller's own entry (documented in the header; callers that know their id pass ULDF_SELF_SESSION_ID).",
+      "--gc-cheap defers the TAIL of the probe loop past its ~1000ms budget to the next session start (honest deferral, silent). The first candidate is ALWAYS probed (min-progress guarantee, DEFER-064) -- before that guarantee, MSYS setup cost alone exceeded the budget and the cheap sweep never ran on slow-fork machines while every surface stayed green.",
+      "The self-test's liveness cells embed a spawned sleeper PID in fixtures; the harness re-verifies the sleeper is alive at each fixture write (ensure_sleeper, DEFER-064) -- without that re-check a mid-run fixture death masquerades as an oracle liveness bug, pseudo-deterministically."
+    ]
+  },
+  "expected_runtime_ms": 3000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "category": "workflow",
   "invocation": {
     "unix": ".claude/oracles/dispatchable-sessions/run.sh",
@@ -11,15 +28,14 @@
     "format": "json",
     "schema": {
       "count": "integer",
-      "peers": "array of {sessionId, sessionRole, role, workDir, claudeShellPid, dispatchable, spawnedAt, siblingGroup?}",
+      "peers": "array of {sessionId, sessionRole, role, workDir, claudeShellPid, dispatchable, spawnedAt, siblingGroup?, intent?, resourceClaim?} — intent/resourceClaim additive per SACT-06 (DEC-240), omitted when absent, expired claims (boundUntil < now) never surfaced; briefing appends '(role: intent)' per peer and a '| resource claims: id:resource(kind)' fragment when any live claim exists",
       "briefing": "string (human-readable one-line summary suitable for the session-start ORACLE BRIEFING)",
       "_sessionRole_taxonomy": "interactive | handoff-successor | lead-developer | monitor | peer | pods-worker | orchestrated-worker (CSI-01 added 'interactive' for sessions registered by the session-start hook with no spawn-script provenance)",
-      "_siblingGroup_semantics": "Optional string field on peer objects. Populated with the PODS session ID (e.g., 'pods-20260510-XXXXXX') when the worker is part of an active PODS session — both same-branch and worktree-mode workers populate it. Absent for non-PODS sessions. Cross-workDir grouping key: workers in the same PODS session share `siblingGroup` even when their `workDir` values differ (worktree mode). Additive at WT-03/WT-04 (Arc 1, DEC-61, 2026-05-10); frozen-schema additive contract — existing consumers reading `peers[].sessionId` etc. are unaffected."
+      "_siblingGroup_semantics": "Optional string field on peer objects. Populated with the PODS session ID (e.g., 'pods-20260510-XXXXXX') when the worker is part of an active PODS session \u2014 both same-branch and worktree-mode workers populate it. Absent for non-PODS sessions. Cross-workDir grouping key: workers in the same PODS session share `siblingGroup` even when their `workDir` values differ (worktree mode). Additive at WT-03/WT-04 (Arc 1, DEC-61, 2026-05-10); frozen-schema additive contract \u2014 existing consumers reading `peers[].sessionId` etc. are unaffected."
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 80
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",
@@ -30,14 +46,37 @@
     "self_test_windows": ".claude/oracles/dispatchable-sessions/validate.ps1",
     "last_validated": null
   },
-  "fallback": "Read .claude/collaboration/active-sessions.json (or ltads/sessions/active-sessions.json) and filter to entries where status=='active' AND dispatchable==true AND claudeShellPid is non-null AND the PID is alive (kill -0 / Get-Process). Each surviving entry exposes the dispatch surface that /0-uldf-dispatch consumes.",
+  "fallback": "Read .claude/collaboration/active-sessions.json and filter to entries where status=='active' AND dispatchable==true AND claudeShellPid is non-null AND the PID is alive (kill -0 / Get-Process). Each surviving entry exposes the dispatch surface that /0-uldf-dispatch consumes. (The legacy ltads/sessions/active-sessions.json fallback is retired -- dead per DEC-124/Arc 1 DEC-198.)",
+  "duplicateOfMode": {
+    "summary": "RESUME-03 project-scoped duplicate-self-check (DEFER-002a). Answers: is ANOTHER live session currently holding identity <id> in THIS project? The sanctioned primitive for a resuming PODS worker's 'am I a duplicate?' question -- replaces improvised machine-wide process scans (Get-Process claude / pgrep claude), which match every Claude session on the machine regardless of project and misidentify unrelated sessions as twins (trigger incident: GitCellar collab-20260612-085148, CLAUDE-B ALERT-002 false-positive on an unrelated project's session). Read-only; additive mode (the default-path peers[] schema is untouched).",
+    "invocation_unix": ".claude/oracles/dispatchable-sessions/run.sh --duplicate-of=<sessionId>",
+    "invocation_windows": ".claude/oracles/dispatchable-sessions/run.ps1 --duplicate-of=<sessionId>",
+    "output_schema": "{sessionId: string, duplicate: bool, holder: null | {entryId, claudeShellPid, workDir, workDirMatch, sessionRole, spawnedAt, isSelf}, note: string} -- schema-stable across shells; frozen additive contract",
+    "verdict_criteria": "duplicate==true iff an ACTIVE registry entry with id==<sessionId> exists AND its claudeShellPid is alive-as-recorded (identity-aware per SWEEP-10: a pid recycled onto a process that started after claudeShellPidWrittenAt reads DEAD; absent anchor degrades to existence-only) AND that pid is NOT in the calling process's own ancestor chain (self-exclusion: the entry a resuming session wrote for itself is not its twin) AND the entry's workDir matches the current workDir (normalized; case-folded on Windows). Dead-pid / no-entry / no-registry / self-held / different-workDir all return duplicate:false with an explanatory note -- a resume NEVER stands down on absent or out-of-project evidence.",
+    "consumers": "PODS GUIDE.md section 8 (Recovery After Compaction / respawn) directs resuming workers here; kill-path tooling (kill-worker.{ps1,sh}) enforces the complementary correlation guard (RESUME-04) before acting on any 'duplicate' PID",
+    "spec_refs": [
+      "RESUME-03"
+    ]
+  },
+  "driverOfMode": {
+    "summary": "CSI-07 query interface. Answers: does arc <arc> have a LIVE driver claim, and which session holds it? Read-only; additive mode (the default-path peers[] schema is untouched).",
+    "invocation_unix": ".claude/oracles/dispatchable-sessions/run.sh --driver-of=<arc>",
+    "invocation_windows": ".claude/oracles/dispatchable-sessions/run.ps1 --driver-of=<arc>",
+    "output_schema": "{arc: string, driver: null | {sessionId, arc, consentScope, boundUntil, entryId, claudeShellPid}, note?: string} -- byte-identical across shells; frozen additive contract",
+    "liveness_criteria": "claim is live iff owning entry status=='active' AND (driver.boundUntil absent OR not passed, ISO-8601 lexical compare) AND (claudeShellPid absent OR alive-as-recorded -- identity-aware per SWEEP-10, anchored on claudeShellPidWrittenAt; absent anchor degrades to existence-only). Dead-PID/recycled-PID/expired claims return driver:null with a note (stale claims never gate peers; CSI-05 sweeps them).",
+    "consumers": "CSI-08 PreToolUse gate and CSI-09 pre-commit gate use the same liveness semantics (inline, fail-open); /0-uldf-ltads-start surfaces conflicts before claiming",
+    "spec_refs": [
+      "CSI-07"
+    ]
+  },
   "gcMode": {
-    "summary": "Registry hygiene sweep (CSI-05). Sweeps active-sessions.json for entries where status=='active' AND claudeShellPid is dead AND spawnedAt is older than the threshold; flips status to 'expired' and moves the entry to closed[] (audit trail preserved).",
+    "summary": "Registry hygiene sweep (CSI-05). Sweeps active-sessions.json for entries where status=='active' AND claudeShellPid is dead AND spawnedAt is older than the threshold; flips status to 'expired' and moves the entry to closed[] (audit trail preserved). Additionally (DISC-PRO-13, Arc 3): both gc and gc-cheap audit closed[]-entry sizes -- any entry whose serialized JSON exceeds 4096 bytes is truncated to a bounded summary (id/spawnedAt/status/sweptAt/closedAt/closedBy/role/workDir kept, strings capped at 256 chars, plus truncated:true + originalBytes + truncatedAt) AFTER a per-entry audit line is appended and verified in _registry-audit.jsonl (SWEEP-08: audit-write failure skips the truncation). gc summary gains closedTruncated:N when >0. Smoke: claude-template/scripts/csi-tests/registry-guard-smoke.{sh,ps1}.",
     "cheap": {
       "invocation_unix": ".claude/oracles/dispatchable-sessions/run.sh --gc-cheap",
       "invocation_windows": ".claude/oracles/dispatchable-sessions/run.ps1 --gc-cheap",
-      "budget_ms": 100,
-      "behavior": "Session-start path. If the per-entry liveness probe budget is exceeded, the sweep aborts and defers to the next session-start (graceful absence). Output is empty on success; warning on stderr on failure.",
+      "budget_ms": 1000,
+      "budget_semantics": "The budget bounds the per-entry liveness PROBE LOOP only, measured from after the candidate parse (setup is O(1) and unbudgeted); the clock is fork-free where the shell allows ($EPOCHREALTIME / Stopwatch); the FIRST candidate is always probed (min-progress guarantee) so a slow environment defers the tail, never the whole sweep. Recalibrated 100->1000ms (DEC-79 class); measurement boundary + guarantee added for DEFER-064. Test seam: ULDF_DS_GC_BUDGET_MS (validate T8/T9).",
+      "behavior": "Session-start path. If the per-entry liveness probe budget is exceeded mid-loop, candidates already collected are still swept and the remainder defers to the next session-start (graceful absence). Output is empty on success; warning on stderr on failure.",
       "exit_codes": "Always 0 (graceful). Internal failures are logged to stderr and never block the session-start briefing."
     },
     "on_demand": {
@@ -53,17 +92,38 @@
         "thresholdSource": "string (one of: 'config', 'default')"
       }
     },
-    "criteria": "status=='active' AND claudeShellPid is non-null AND PID is dead (kill -0 / Get-Process) AND spawnedAt is older than threshold (default 24h). Live-PID entries are NEVER swept regardless of age. The age threshold protects fresh sessions from transient probe failures.",
+    "criteria": "status=='active' AND claudeShellPid is non-null AND PID is dead-or-identity-refused (SWEEP-10: existence probe plus, when claudeShellPidWrittenAt is present, refusal of a pid whose process started after that anchor -- a recycled pid is positive evidence of death and makes the entry sweepable, the DEFER-088 self-healing leg) AND spawnedAt is older than threshold (default 24h). Live-as-recorded entries are NEVER swept regardless of age. The age threshold protects fresh sessions from transient probe failures.",
     "action": "Set status='expired', append a sweptAt timestamp, and move the entry from sessions[] to closed[]. The closed[] entry preserves the original fields plus 'expired' status and 'sweptAt' for audit trail.",
     "atomic_semantics": "Sweep mirrors CSI-01's lock contract (50/200/800ms exp-backoff, 4 attempts, 1050ms budget; same lock path as registry-write.{sh,ps1}). Bash sweep + bash helper both use mkdir-lock at <registry>.lock (single primitive; cross-writer mutually exclusive). PowerShell sweep uses New-Item -ItemType Directory at <registry>.lock (mkdir-equivalent), but the PowerShell helper (registry-write.ps1) currently uses [System.IO.File]::Open FileShare::None on the registry file itself -- a different OS resource than the sweep's mkdir-lock. PS-to-PS writers are correctly serialized via FileShare::None contention; cross-shell PS<->bash concurrent writers contend on different primitives and are NOT mutually exclusive in Phase 1. Concurrent registration of new sessions through registry-write.{sh,ps1} is safe by read-confirm-or-write semantics (DEC-24). Phase 2 (CSI-07 driver-claim adds a third writer) is the planned consolidation point: all writers will adopt the bash mkdir-lock primitive at <registry>.lock. Tracked as A2 in the Stage 3 R-A review (resolution: documentation + Phase 2 consolidation, per Stage 4 disposition option (b)).",
     "threshold_config": "Configurable via .claude/config.json key 'csi.registryHygieneThreshold' (numeric hours OR ISO-8601 duration string PnH/PnD). Falls back to default 24h if config is absent or malformed.",
-    "spec_refs": ["CSI-05"],
-    "discoveries_closed": ["DISC-PRO-05 (REGISTRY-GC-01 follow-up)"]
+    "spec_refs": [
+      "CSI-05"
+    ],
+    "discoveries_closed": [
+      "DISC-PRO-05 (REGISTRY-GC-01 follow-up)"
+    ],
+    "kind_contract": "kind: 'sweeper' per ORACULURGY_DESIGN.md Part 12 / spec SWEEPER-01..06. Default (no-flag) invocation is READ-ONLY and answers the manifest question like any oracle; mutation happens ONLY under the declared sweep modes below, bounded by write_scope, audited per audit_log, idempotent, and dry-runnable.",
+    "write_scope": [
+      ".claude/collaboration/active-sessions.json",
+      ".claude/collaboration/_registry-audit.jsonl",
+      "ltads/sessions/current-session.md",
+      "<shared-repo>/.claude/collaboration/active-sessions.json (SHARED-CSI-06 cross-repo extension)"
+    ],
+    "audit_log": "in-registry for sweeps: swept entries are MOVED to closed[] with status='expired' + sweptAt timestamp (audit trail preserved inside the registry file itself, not a separate JSONL). For closed[]-size truncations (DISC-PRO-13): .claude/collaboration/_registry-audit.jsonl, one pre-rewrite JSONL line per truncated entry ({ts, kind:'closed-entry-truncated', id, index, originalBytes, boundBytes}); append + verify BEFORE the rewrite per SWEEP-08.",
+    "dry_run": {
+      "invocation_unix": ".claude/oracles/dispatchable-sessions/run.sh --dry-run",
+      "invocation_windows": ".claude/oracles/dispatchable-sessions/run.ps1 --dry-run",
+      "behavior": "Identical candidate computation (registry read, liveness probe, age filter); exits BEFORE lock acquisition; zero mutation. Output: {dryRun:true, wouldSweep, before, after, threshold, thresholdSource, wouldSweepIds?}."
+    },
+    "idempotency": "State-based criteria (dead PID + age threshold), not event-based: a second consecutive --gc run sweeps 0 because the first run already moved every matching entry to closed[]."
   },
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-04-27T00:00:00Z",
-    "spec_refs": ["DISPATCH-04", "CSI-05"],
+    "spec_refs": [
+      "DISPATCH-04",
+      "CSI-05"
+    ],
     "note": "Surfaces the live dispatchable-peer set in the session-start ORACLE BRIEFING so any session immediately knows whether /0-uldf-dispatch is usable. Reconciles plan D5 (peers array shape) with the task-spec briefing-line format by emitting an object with a structured 'peers' array AND a pre-formatted 'briefing' string in a single output mode (avoids hook special-casing). CSI-05 (W-D, 2026-04-30) added --gc / --gc-cheap modes for registry hygiene sweeping; closes DISC-PRO-05's REGISTRY-GC-01 follow-up."
   }
 }

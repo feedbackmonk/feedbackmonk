@@ -1,0 +1,74 @@
+{
+  "name": "disk-artifact-bloat",
+  "version": "1.0.0",
+  "question": "Is the dev drive running low on free space (regenerable build-artifact bloat risk)?",
+  "category": "environment",
+  "kind": "project-state",
+  "expected_runtime_ms": 800,
+  "lane": "fast",
+  "cost_provenance": "Get-PSDrive / df is effectively instant; 800ms is a pessimistic PowerShell cold-start allowance measured 2026-06-30 on win32 (slowest supported environment).",
+  "invocation": {
+    "unix": ".claude/oracles/disk-artifact-bloat/run.sh",
+    "windows": ".claude/oracles/disk-artifact-bloat/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "tripped": "boolean (true iff a free-space threshold or drift trip fired; equals briefing != '')",
+      "level": "string (ok|warn|alert)",
+      "drive": "string|null (the drive checked, e.g. 'S:' on Windows or the mount path on POSIX; null when undeterminable)",
+      "free_gb": "number|null (free space in GiB; null when undeterminable -> graceful empty)",
+      "total_gb": "number|null (total capacity in GiB; null when undeterminable)",
+      "warn_gb": "number (warn threshold in GiB)",
+      "alert_gb": "number (alert threshold in GiB)",
+      "drift_gb": "number|null (free-space DROP since the last sweep baseline; null when no baseline)",
+      "baseline_age_days": "number|null (age of the baseline used for drift; null when no baseline)",
+      "briefing": "string (empty when level==ok and no drift trip -> session-start suppresses the line)"
+    },
+    "_briefingForms": {
+      "ok": "\"\"  (empty -> line suppressed; the normal case)",
+      "warn": "\"<drive> <free> GB free (warn < <warn> GB)<drift clause> -- run ~/.claude/scripts/disk-artifact-sweep.ps1 (dry-run) to inspect\"",
+      "alert": "\"ALERT <drive> <free> GB free (alert < <alert> GB)<drift clause> -- run ~/.claude/scripts/disk-artifact-sweep.ps1 to reclaim regenerable artifacts\"",
+      "drift_only": "\"<drive> free dropped <N> GB since last sweep (<D>d ago) -- run ~/.claude/scripts/disk-artifact-sweep.ps1 -Scan\""
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "config": {
+    "source_priority": [
+      "env ULDF_BLOAT_ROOT / ULDF_BLOAT_WARN_GB / ULDF_BLOAT_ALERT_GB / ULDF_BLOAT_DRIFT_GB",
+      "project .claude/config.json diskArtifactBloat {root,warnGb,alertGb,driftGb}",
+      "global ~/.claude/config.json diskArtifactBloat {root,warnGb,alertGb,driftGb}",
+      "built-in defaults"
+    ],
+    "defaults": {
+      "root": "(unset) -> check the drive of the current working directory; set to force a specific drive/path",
+      "warnGb": 80,
+      "alertGb": 40,
+      "driftGb": 50
+    },
+    "baseline_path": "~/.claude/session-state/disk-artifact-baseline.json (written by disk-artifact-sweep; read here for the drift clause; gracefully absent)"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/disk-artifact-bloat/validate.sh",
+    "self_test_windows": ".claude/oracles/disk-artifact-bloat/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run `Get-PSDrive <letter>` (Windows) or `df -kP <path>` (POSIX) for the dev drive's free space. Compare against the warn/alert thresholds. For drift, read ~/.claude/session-state/disk-artifact-baseline.json and subtract current free_bytes from baseline free_bytes.",
+  "graceful_absence": "When the drive's free space cannot be read (path absent on this machine, df/Get-PSDrive failure), the oracle emits free_gb=null with an empty briefing. It therefore ships in the starter set on every machine but only ever speaks where a real dev drive crosses a threshold.",
+  "provenance": {
+    "authored_by": "bloat-guard-uldf-seed",
+    "created": "2026-06-30T00:00:00Z",
+    "design_lineage": [
+      "stranded-dirty-files (CSI-15) -- same starter-set hygiene-oracle shape, frozen JSON schema, empty-briefing-suppresses-line discipline",
+      "gitignore-template-drift (HYGIENE-03) -- session-start nudge-to-run-a-command pattern",
+      "archive-retention (RETENTION) -- .claude/config.json threshold-configuration convention"
+    ],
+    "note": "Cheap every-session tripwire only. The heavy artifact enumeration + cleanup lives in scripts/disk-artifact-sweep.{ps1,sh}, which also writes the baseline this oracle reads. Trigger: 2026-06-30 SourceControlled HDD->SSD migration (447 GB usable; full artifact footprint exceeds the disk)."
+  }
+}

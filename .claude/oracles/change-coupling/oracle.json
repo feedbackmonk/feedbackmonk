@@ -1,0 +1,71 @@
+{
+  "name": "change-coupling",
+  "version": "1.0.0",
+  "question": "Which files and modules repeatedly change together in the same commits (co-change) across module boundaries — the language-agnostic coupling signal no import graph sees?",
+  "category": "module",
+  "kind": "project-state",
+  "expected_runtime_ms": 6000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-07-07 on the ULDF framework repo under Git Bash (win32; slowest supported environment): 482 commits / ~1.6k distinct files over the 180-day window mined in ~4.8s cold; cached rerun ~0.8s. Pessimistic-honest per ORACLE-COST-01. On-demand (not in the every-session briefing fan-out), so the fast-lane 15s briefing budget does not apply; the declared budget is for the /0-uldf-oracle audit and any slow-lane consumer.",
+  "invocation": {
+    "unix": ".claude/oracles/change-coupling/run.sh",
+    "windows": ".claude/oracles/change-coupling/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "one of: ok, no-data",
+      "reason": "string (present on no-data; the honest reason the history could not be analyzed)",
+      "shallow": "boolean (true when the repository is a shallow clone — history may be truncated)",
+      "window": {
+        "sinceDays": "integer (history window mined, in days)",
+        "maxCommits": "integer (commit cap applied)",
+        "commitsAnalyzed": "integer (non-merge commits actually seen in the window)",
+        "qualifyingCommits": "integer (commits with 2..bulkCommitMax files — the ones that contribute pairs)"
+      },
+      "filters": {
+        "bulkCommitMax": "integer (commits touching MORE than this many files are excluded — bulk renames/format sweeps)",
+        "minCoChanges": "integer (a pair must co-change at least this many times to be reported)",
+        "excludedCommits": "integer (count of commits excluded by the bulk filter)"
+      },
+      "filePairs": "array of {a, b, coChanges} — file pairs co-changing >= minCoChanges, desc, capped at 50",
+      "modulePairs": "array of {moduleA, moduleB, coChanges, crossBoundary} — module-level aggregation, desc, capped at 50",
+      "crossBoundaryTop": "array of {moduleA, moduleB, coChanges, crossBoundary:true} — the boundary-crossing subset (the finding), desc, capped at 50",
+      "truncated": "boolean (true when any array was capped at 50 — no silent drops)",
+      "cached": "boolean (true when served from the HEAD+config-keyed session-state cache)",
+      "briefing": "string (advisory one-liner; frames results as co-change EVIDENCE, not proven dependency)"
+    }
+  },
+  "freshness": {
+    "strategy": "cache-key",
+    "key": "HEAD sha + changeCoupling config; cache at .claude/session-state/change-coupling-cache.json (session-state, never committed)"
+  },
+  "consultation": {
+    "typical_sessions_using": "on-demand",
+    "estimated_token_savings_per_call": 1200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/change-coupling/validate.sh",
+    "self_test_windows": ".claude/oracles/change-coupling/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Mine co-change by hand: `git -c core.quotepath=off log --name-only --no-merges --since='180 days ago' --pretty=format:'@@%H'`, then for each commit with 2..20 files count every unordered file pair; pairs reaching 5+ co-changes across module boundaries (map each file to its nearest-ancestor-README directory) are coupled IN FACT whatever the import graph says. This is CORRELATION (co-change evidence), never proven dependency — advisory only.",
+  "provenance": {
+    "authored_by": "collab-20260707-190500:CLAUDE-C",
+    "created": "2026-07-07T00:00:00Z",
+    "spec_refs": [
+      "A2",
+      "M3"
+    ],
+    "note": "Scrutiny ADD proposal A2 (KEEP verdict), Arc 1 deterministic detection substrate. The language-agnostic coupling leg: two files/modules that repeatedly change in the same commits are coupled in fact — and this needs only git log, so it covers config/doc/cross-language coupling no parser sees, including this repo's own bash/PowerShell/markdown substrate (the .sh<->.ps1 twin pairs surface strongly). One of the M3 'second trigger family' members: high boundary-crossing co-change is the architecture-decomposition trigger the capacity-only (>85% context) rule misses. ADVISORY, correlation-not-dependency (the A2 critic's binding condition): never blocks, never exits nonzero on findings. NO-DATA honesty: not-a-repo / no history / insufficient history / no co-change-analyzable commits -> status:no-data with a reason, never a silent empty-but-ok that reads as 'no coupling'. Rename/bulk-commit filters keep format sweeps from polluting the signal (CodeScene change-coupling lineage)."
+  },
+  "config": {
+    "config_keys": ".claude/config.json -> changeCoupling: {sinceDays, maxCommits, bulkCommitMax, minCoChanges}",
+    "sinceDays": 180,
+    "maxCommits": 1000,
+    "bulkCommitMax": 20,
+    "minCoChanges": 5,
+    "arrayCap": 50,
+    "comment": "All keys optional with these defaults. Cache is keyed by HEAD sha + these four values, so a config change invalidates the cache. bulkCommitMax excludes bulk renames/format sweeps (a k-file commit contributes O(k^2) pairs; the <=20 cap keeps it to <=190 pairs/commit). Module mapping is nearest-ancestor directory containing README.md, falling back to the top-level directory component (or '(root)') for README-less trees."
+  }
+}

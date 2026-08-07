@@ -1,24 +1,26 @@
 # stale-ltads-state oracle
 
-## Synopsis
-
-Reflective leg of CSI Phase 1.6's three-leg session-end cleanup defense (CSI-12 hook + CSI-13 GC coupling + CSI-14 this oracle). Surfaces inconsistencies between `ltads/sessions/current-session.md` and `.claude/collaboration/active-sessions.json` that slipped through the proactive (SessionEnd) and reactive (GC sweep) defenses, emitting `[stale-ltads-state]` at session start. Gracefully absent when state is consistent.
+> Reflective leg of CSI Phase 1.6's three-leg session-end cleanup defense (CSI-12 hook + CSI-13 GC coupling + **CSI-14 this oracle**). Surfaces inconsistencies between `ltads/arc-state.json` (topmost arc) and `.claude/collaboration/active-sessions.json` that slipped through the proactive (SessionEnd) and reactive (GC sweep) defenses. Briefing line is gracefully absent when state is consistent.
 
 ## Purpose & Responsibilities
 
-Detects the case where `current-session.md` Status is `ACTIVE` / `PAUSED` / `IN_PROGRESS` but the matching registry entry says otherwise (closed, expired, missing, or PID-dead). Emits a `[stale-ltads-state]` line in the session-start ORACLE BRIEFING when an inconsistency exists, so the session has explicit signal to act on it.
+Detects the case where the topmost arc in `arc-state.json` has status `ACTIVE` / `PAUSED` but the matching registry entry says otherwise (closed, expired, missing, or PID-dead). Emits a `[stale-ltads-state]` line in the session-start ORACLE BRIEFING when an inconsistency exists, so the session has explicit signal to act on it.
 
-Trigger incident: GitCellar S002 (DISC-CSI-11) — a worker session committed B0..B3c stages successfully but `current-session.md` stayed `Status: ACTIVE` for a week because no closing command was invoked.
+**How it correlates** (DISC-HOOK-01 fix, 2026-06-01): the **arc owner's CSI sessionId** — recovered from the most-recent `**Mid-arc Checkpoint**: <ts>, by <sessionId>` line within the active (topmost) arc — is the `active-sessions.json` registry key. The LTADS `**ID**:` field (e.g. `S042`) is the *arc* id and is **never** a registry key, so it is not used. An active arc with zero recoverable checkpoint id (fresh, zero-finalize, or legacy prose-only checkpoints) degrades to `stale:false` — no false positive; the file self-heals on its next mid-arc finalize, which writes a canonical `, by <sessionId>` token (writer: `~/.claude/segments/-finalize/phase9-mid-arc-checkpoint.md`). DISC-CSI-11's "committed but never closed" target always has ≥1 mid-arc finalize, so the checkpoint exists for exactly the case this oracle must catch.
+
+Trigger incident: GitCellar S002 (DISC-CSI-11) — a worker session committed B0..B3c stages successfully but the arc state stayed `ACTIVE` for a week because no closing command was invoked.
 
 ## File Index
 
 | File | Purpose |
 |---|---|
 | `oracle.json` | Manifest — output schema, freshness contract, fallback instructions, provenance |
-| `run.sh` | Unix oracle entry point. Reads current-session.md + registry, classifies inconsistency, emits JSON |
+| `run.sh` | Unix oracle entry point. Reads arc-state.json + registry, classifies inconsistency, emits JSON |
 | `run.ps1` | Windows oracle entry point. Same contract as run.sh |
 | `validate.sh` | Unix self-test — invokes run.sh, validates JSON shape against oracle.json schema |
 | `validate.ps1` | Windows self-test |
+
+Smoke harnesses (real-format fixtures + cross-shell parity) live in `~/.claude/scripts/csi-tests/csi-14-smoke.{sh,ps1}` (14/14 each).
 
 ## Public API & Usage
 
@@ -42,7 +44,7 @@ Emits single-line JSON:
     "registry_pid_alive": null,
     "inconsistency_kind": "registry-expired-state-active"
   },
-  "briefing": "current-session.md Status: ACTIVE (session stale-session-from-april) but registry shows entry as EXPIRED ..."
+  "briefing": "arc-state.json topmost arc: ACTIVE (arc owner stale-session-from-april) but registry shows entry as EXPIRED ..."
 }
 ```
 
@@ -59,17 +61,20 @@ When `stale=false`, the `briefing` field is the empty string and the session-sta
 
 | Depends on | Why |
 |---|---|
-| `ltads/sessions/current-session.md` | Source of state Status + Session id |
-| `.claude/collaboration/active-sessions.json` | Source of registry status + PID for liveness check |
+| `ltads/sessions/current-session.md` | Source of the active-arc **Status** field (canonical `**Status**:` / `- **Status**:` / `## Status:` forms, value-at-EOL anchored to exclude Arc-Terminus prose) and the **arc-owner CSI sessionId** (most-recent `**Mid-arc Checkpoint**: <ts>, by <sessionId>` within the topmost arc) |
+| `.claude/collaboration/active-sessions.json` | Source of registry status + PID for liveness check; keyed by `.id` == the arc-owner sessionId |
+| `awk` | Locale-independent status-field + checkpoint-id parsing (MSYS/Git-Bash `grep -P` rejects non-UTF-8/empty locales, so `-P` is avoided) |
 | `kill -0` (Unix) / `Get-Process` (Windows) | PID liveness probe for the `registry-pid-dead-state-active` classification |
 | `jq` (preferred) or `python` (fallback) | JSON parsing for the registry. Python fallback probe-verifies (Microsoft Store stub on Windows is silently non-functional) |
 
 | Consumed by | Where |
 |---|---|
-| `claude-template/hooks/session-start.{sh,ps1}` | Auto-discovered via oracle manifest; emitted in ORACLE BRIEFING when `briefing` field is non-empty |
+| `~/.claude/hooks/session-start.{sh,ps1}` | Auto-discovered via oracle manifest; emitted in ORACLE BRIEFING when `briefing` field is non-empty |
 
 ## Decision Log
 
 - **DEC-44**: ships as a standalone oracle, not as an extension to `ltads-state`. Rationale: separation of concerns (`ltads-state` reports current state; `stale-ltads-state` reports inconsistency between state and registry); cleaner gracefully-absent contract; matches existing convention of one briefing-line emitter per oracle (`coordination`, `handoff-scope`, `shared-repo-coordination` are all standalone).
 - **Inconsistency taxonomy** (`inconsistency_kind` enum): `registry-closed-state-active` | `registry-expired-state-active` | `registry-pid-dead-state-active` | `registry-missing-state-active` | `none`. Frozen by CSI-14 spec; new variants require a spec extension.
 - **PID liveness only checked when `registry_status=="active"`**: when the registry already shows `closed`/`expired`, the GC has already determined the PID is dead — re-probing wastes the budget. The PID-alive field is `null` in those cases.
+- **Correlation key is the arc-owner CSI sessionId from the Mid-arc Checkpoint, not the LTADS `**ID**:`** (DISC-HOOK-01, 2026-06-01). The original implementation parsed a `Session:` field (status) and `^Status:` (plain) that do not exist in canonical `current-session.md` files — it read nothing on every real file and always returned `stale:false` (dead in production). The fix: (1) read the canonical `**Status**:` field in all three documented line forms, EOL-anchored to exclude Arc-Terminus prose; (2) recover the registry key from the most-recent `**Mid-arc Checkpoint**: <ts>, by <sessionId>` of the active arc — empirically the only owner-id any real file carries, and the LTADS `**ID**:` (`S042`) is the *arc* id which is never a registry key. This made a **writer-side change load-bearing**: the finalize Mid-arc Checkpoint writer must always emit the `, by <sessionId>` token (real agents had been writing prose-only checkpoints that dropped it). The design was chosen over a workDir-liveness correlation because id-correlation self-resolves the compaction case (the owner's own live registry entry → consistent) with no self-exclusion edge. Rationale chain: DISC-HOOK-01 forward-use; this oracle's `run.{sh,ps1}`; writer `~/.claude/segments/-finalize/phase9-mid-arc-checkpoint.md`; prose-era schema retired with the parser lib (ARC-04; successor: `~/.claude/templates/ARC_STATE_SCHEMA.md` § Checkpoint object).
+- **awk over `grep -P` for parsing**: MSYS/Git-Bash `grep` rejects `-P` under empty/non-UTF-8 locales (`grep: -P supports only unibyte and UTF-8 locales`), so the status and checkpoint matchers use locale-independent `awk` rather than the PCRE `\K`/lookahead form used by `session-detect.sh`. Same three-form + value-at-EOL semantics, more portable.

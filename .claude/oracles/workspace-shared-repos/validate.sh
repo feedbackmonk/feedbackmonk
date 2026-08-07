@@ -34,7 +34,16 @@ done
 # -----------------------------------------------------------------------------
 SANDBOX=""
 cleanup() {
-    [ -n "$SANDBOX" ] && [ -d "$SANDBOX" ] && rm -rf "$SANDBOX"
+    if [ -n "$SANDBOX" ] && [ -d "$SANDBOX" ]; then
+        rm -rf "$SANDBOX"
+    fi
+    # MUST return 0 (DEFER-022). cleanup is called explicitly near the end AND
+    # again by the EXIT trap; on that second run the sandbox is already gone, so
+    # a bare `[ -n ] && [ -d ] && rm` chain ends non-zero. An EXIT trap's status
+    # overrides the script's explicit `exit 0`, so this validator reported
+    # PASS=37 FAIL=0 while exiting 1 -- i.e. it could never be wired into the
+    # finalize smoke-selector without permanently HALTing the finalize.
+    return 0
 }
 trap cleanup EXIT
 

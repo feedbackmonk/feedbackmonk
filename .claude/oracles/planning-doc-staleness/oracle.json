@@ -4,6 +4,9 @@
   "question": "Are there planning docs in docs/planning/{intakes,plans}/ whose corresponding work has shipped (commit-hash-found OR all-spec-entries-DONE) but the file remains un-archived?",
   "category": "spec",
   "kind": "verification",
+  "expected_runtime_ms": 10000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/planning-doc-staleness/run.sh",
     "windows": ".claude/oracles/planning-doc-staleness/run.ps1"
@@ -19,7 +22,9 @@
         }
       ],
       "fresh": [
-        {"path": "string (planning doc path relative to repo root)"}
+        {
+          "path": "string (planning doc path relative to repo root)"
+        }
       ],
       "unknown": [
         {
@@ -31,8 +36,7 @@
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 1700
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "few",

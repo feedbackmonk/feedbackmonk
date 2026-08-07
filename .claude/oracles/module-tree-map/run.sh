@@ -10,6 +10,94 @@ set -e
 
 EXCLUDES='node_modules|target|\.git|\.vscode|\.idea|dist|build|out|coverage|__pycache__|\.venv|venv|\.claude/oracles/cache|\.claude/checkpoints'
 
+# Walk-time prune (WinDirFul 2026-07-10, DEFER-windirful § 2; twin of the
+# synopsis-coverage block): name-based excludes prune at descent time instead
+# of grep-after-full-walk; the two path-based excludes stay grep-filtered.
+# Output set is identical to the grep-only behavior.
+_MTM_PRUNE=( \( -name node_modules -o -name target -o -name .git -o -name .vscode -o -name .idea -o -name dist -o -name build -o -name out -o -name coverage -o -name __pycache__ -o -name .venv -o -name venv \) -prune -o )
+
+# =============================================================================
+# Trigger-invalidate cache (implements the freshness contract the manifest
+# declares — previously declared-but-unimplemented; the ~90s full recompute on
+# every invocation is why DEC-86 deferred this oracle from the session-start
+# briefing budget).
+#
+# Digest = hash of the sorted "path<TAB>mtime<TAB>size" lines of every
+# trigger-set file (**/README.md, EXCLUDES-filtered). Catches edits (mtime or
+# size), adds, deletes, and renames — set-level, not just newest-mtime, so a
+# deleted README invalidates too (Oraculurgy anti-pattern #1: a
+# stale-undetected cache is worse than no cache). Warm path cost = one find
+# pass + hash. The digest is re-computed AFTER a cold compute and the cache is
+# stored only when pre/post digests agree — a README mutated mid-compute can
+# never be frozen into a fresh-looking cache.
+#
+# Briefing context (ULDF_BRIEFING=1, set by the briefing fan-out lib): a COLD
+# cache is NOT recomputed inline — the declared expected_runtime_ms is the
+# warm cost, so an inline cold compute would be killed at 3x-declared and the
+# cache could never warm through the briefing path. Instead the script spawns
+# ONE detached background refresh (stampede-guarded) and emits a minimal
+# valid-schema object with an empty briefing (graceful absence this session;
+# the line returns next session from the warmed cache). Stale cache is never
+# served — absent beats wrong. Direct invocations recompute synchronously.
+#
+# Flags: --refresh / --no-cache force a synchronous recompute.
+# =============================================================================
+_MTM_ORACLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+_MTM_CACHE_DIR="$_MTM_ORACLE_DIR/cache"
+_MTM_CACHE_FILE="$_MTM_CACHE_DIR/latest.json"
+_MTM_DIGEST_FILE="$_MTM_CACHE_DIR/trigger-digest.txt"
+_MTM_REFRESH_MARK="$_MTM_CACHE_DIR/refresh-in-progress"
+
+_MTM_FORCE=""
+for _a in "$@"; do
+    case "$_a" in --refresh|--no-cache) _MTM_FORCE=1 ;; esac
+done
+
+_mtm_trigger_digest() {
+    {
+        # GNU find (Linux/Git Bash): single-pass stat — cheap under win32
+        # spawn tax. BSD/macOS find lacks -printf; falls through to the
+        # per-file stat loop (small absolute cost on those platforms).
+        find . "${_MTM_PRUNE[@]}" -type f -name 'README.md' -printf '%p\t%T@\t%s\n' 2>/dev/null \
+        || find . "${_MTM_PRUNE[@]}" -type f -name 'README.md' -print 2>/dev/null \
+            | while IFS= read -r _f; do
+                _m=$(stat -f '%m %z' "$_f" 2>/dev/null || echo 0)
+                printf '%s\t%s\n' "$_f" "$_m"
+              done
+    } \
+        | grep -vE "(^\./|/)($EXCLUDES)(/|$)" \
+        | LC_ALL=C sort \
+        | { md5sum 2>/dev/null || shasum 2>/dev/null || cksum; } \
+        | awk '{print $1}'
+}
+
+_MTM_DIGEST_PRE="$(_mtm_trigger_digest)"
+if [ -z "$_MTM_FORCE" ] && [ -n "$_MTM_DIGEST_PRE" ] \
+    && [ -f "$_MTM_CACHE_FILE" ] && [ -f "$_MTM_DIGEST_FILE" ] \
+    && [ "$(cat "$_MTM_DIGEST_FILE" 2>/dev/null)" = "$_MTM_DIGEST_PRE" ]; then
+    cat "$_MTM_CACHE_FILE"
+    exit 0
+fi
+
+# Cold cache in briefing context: detached refresh + graceful absence.
+if [ -z "$_MTM_FORCE" ] && [ "${ULDF_BRIEFING:-}" = "1" ]; then
+    _MTM_SPAWN_REFRESH=1
+    if [ -f "$_MTM_REFRESH_MARK" ]; then
+        # Stampede guard: skip if a refresh started <10 min ago.
+        _MTM_MARK_AGE=$(( $(date +%s) - $(stat -c '%Y' "$_MTM_REFRESH_MARK" 2>/dev/null || stat -f '%m' "$_MTM_REFRESH_MARK" 2>/dev/null || echo 0) ))
+        [ "$_MTM_MARK_AGE" -lt 600 ] && _MTM_SPAWN_REFRESH=""
+    fi
+    if [ -n "$_MTM_SPAWN_REFRESH" ]; then
+        mkdir -p "$_MTM_CACHE_DIR" 2>/dev/null || true
+        : > "$_MTM_REFRESH_MARK" 2>/dev/null || true
+        ( ULDF_BRIEFING="" nohup bash -c \
+            "cd \"$(pwd)\" && bash \"$_MTM_ORACLE_DIR/run.sh\" --refresh >/dev/null 2>&1; rm -f \"$_MTM_REFRESH_MARK\"" \
+            >/dev/null 2>&1 & ) 2>/dev/null
+    fi
+    printf '{"root":{"path":".","synopsis":null,"children":[]},"stats":{"total_modules":0,"synopsized":0,"missing_synopsis":[]},"briefing":"","cache":"cold-refreshing"}\n'
+    exit 0
+fi
+
 # JSON-escape a string: backslash, quote, newline, tab, CR, control chars.
 json_escape() {
     local s="$1"
@@ -154,7 +242,7 @@ while IFS= read -r dir; do
 
     # Persist: path|synopsis_json|file_index_json (use TAB as field separator — paths and JSON may contain |)
     printf '%s\t%s\t%s\n' "$dir_clean" "$syn_json" "$fi_json" >> "$PATHS_FILE"
-done < <(find . -type d 2>/dev/null | sort)
+done < <(find . "${_MTM_PRUNE[@]}" -type d -print 2>/dev/null | sort)
 
 # Sort paths file lexically
 sort -t $'\t' -k1,1 "$PATHS_FILE" -o "$PATHS_FILE"
@@ -239,7 +327,24 @@ if [ "$total" -gt 0 ]; then
 fi
 briefing_esc="$(json_escape "$briefing")"
 
-# Emit final JSON
-printf '{"root":'
-emit_node "."
-printf ',"stats":{"total_modules":%d,"synopsized":%d,"missing_synopsis":%s},"briefing":"%s"}\n' "$total" "$synopsized" "$ms_json" "$briefing_esc"
+# Emit final JSON (via tmp so the cache stores exactly what is emitted)
+_MTM_OUT="$TMPDIR_ORACLE/out.json"
+{
+    printf '{"root":'
+    emit_node "."
+    printf ',"stats":{"total_modules":%d,"synopsized":%d,"missing_synopsis":%s},"briefing":"%s"}\n' "$total" "$synopsized" "$ms_json" "$briefing_esc"
+} > "$_MTM_OUT"
+
+# Store cache only when the trigger set is byte-identical to what we scanned
+# before computing (no mid-compute mutation) — see cache block header.
+# Under --refresh the pre-digest was taken at refresh start, which is the
+# correct freshness anchor for the stored cache.
+_MTM_DIGEST_POST="$(_mtm_trigger_digest)"
+if [ -n "$_MTM_DIGEST_POST" ] && [ "$_MTM_DIGEST_POST" = "$_MTM_DIGEST_PRE" ]; then
+    mkdir -p "$_MTM_CACHE_DIR" 2>/dev/null || true
+    cp "$_MTM_OUT" "$_MTM_CACHE_FILE" 2>/dev/null \
+        && printf '%s' "$_MTM_DIGEST_POST" > "$_MTM_DIGEST_FILE" 2>/dev/null \
+        || true
+fi
+
+cat "$_MTM_OUT"

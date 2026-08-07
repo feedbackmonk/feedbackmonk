@@ -12,7 +12,7 @@ Project-state discovery oracle (SHARED-CSI-01) that enumerates sibling git repos
 **Kind**: `project-state`
 **Spec**: `docs/specs/SPECIFICATION.md` § SHARED-CSI-01
 **Decision**: `docs/specs/DECISIONS.md` DEC-35 (discovery format scope)
-**Design lineage**: `claude-template/oracles/dispatchable-sessions/` (CSI-05) and `claude-template/oracles/archive-retention/` (RETENTION-01..06), per DISC-CSI-09's transferable-skeleton finding.
+**Design lineage**: `~/.claude/oracles/dispatchable-sessions/` (CSI-05) and `~/.claude/oracles/archive-retention/` (RETENTION-01..06), per DISC-CSI-09's transferable-skeleton finding.
 
 ## 1. Purpose & Responsibilities
 
@@ -122,7 +122,7 @@ This schema is consumed by SHARED-CSI-02 (writer) and SHARED-FINALIZE-02 (reader
 - Session-scoped: written at session-start, consumed at `/0-uldf-finalize` time, overwritten by the next session-start.
 - **Filename derivation (FROZEN — load-bearing for both writer and reader)**: `sha256(<absolute_repo_path>)`, then take the **first 12 hex characters** as the filename stem. Append `.json`. Example: `/abs/path/sibling-a` → sha256 hex starts with `b3a91c4f7e02...` → snapshot filename is `b3a91c4f7e02.json`.
 - **Why hash-derived**: collision-free by construction. Earlier basename-based naming with parent-dir disambiguation had a writer/reader contract gap — writer disambiguated, reader did not, producing wrong-snapshot reads when two shared repos shared a basename (e.g., `apps/foo` + `libs/foo`). Hash derivation eliminates the entire collision concept; both sides compute the filename identically from the absolute path alone (C-002 fix per Stage 3 critic of the CSI Phase 1.5 implementation arc).
-- **Reference implementations**: `_csi_shared_snapshot_filename` in `claude-template/scripts/lib/shared-repos.sh`; `Get-CsiSharedSnapshotFilename` in `claude-template/scripts/lib/shared-repos.ps1`. Both fall back through sha256sum / shasum / openssl / python; on total hash-tool failure, fall back to a deterministic basename-derivation that is also collision-free per pair (path-encoded).
+- **Reference implementations**: `_csi_shared_snapshot_filename` in `~/.claude/scripts/lib/shared-repos.sh`; `Get-CsiSharedSnapshotFilename` in `~/.claude/scripts/lib/shared-repos.ps1`. Both fall back through sha256sum / shasum / openssl / python; on total hash-tool failure, fall back to a deterministic basename-derivation that is also collision-free per pair (path-encoded).
 
 **Schema**:
 
@@ -219,7 +219,7 @@ Empty glob expansion (no matches) is silently no-op — the pattern contributes 
 
 ### Compute budget
 
-Target: **80ms** per invocation (manifest `compute_cost_ms: 80`).
+Target: **≤500ms** per invocation (manifest `expected_runtime_ms: 500`, measured under Git Bash).
 
 Achievable via simple file reads + glob expansion + `[ -d ... ]` checks. Worst case (3 declaration files + 5 glob patterns expanding to 10 candidates each) stays well under 200ms on observed Windows PowerShell + Git Bash runs.
 
@@ -236,13 +236,13 @@ PowerShell process-spawn overhead inflates the wall-clock timing of the validate
 
 | Consumer | Where | What it reads |
 |---|---|---|
-| Session-start hook (CLAUDE-B; SHARED-CSI-02) | `claude-template/hooks/session-start.{sh,ps1}` | Full output; iterates `repos[]` for cross-repo registration + snapshot capture |
+| Session-start hook (CLAUDE-B; SHARED-CSI-02) | `~/.claude/hooks/session-start.{sh,ps1}` | Full output; iterates `repos[]` for cross-repo registration + snapshot capture |
 | Session-start briefing (CLAUDE-B; SHARED-CSI-03) | Same hook | `repos[]` paths used to read each shared-repo `active-sessions.json` for cross-correlation |
 | Session-start hygiene sweep (CLAUDE-B; SHARED-CSI-06) | `dispatchable-sessions --gc-cheap` extension | `repos[]` paths drive the per-shared-repo `--gc-cheap` extension loop |
-| `/0-uldf-finalize` setup (CLAUDE-C; SHARED-FINALIZE-01) | `claude-template/segments/0-uldf-finalize/setup.md` | Full output; cached for the duration of the finalize invocation |
-| `/0-uldf-finalize` per-repo flow (CLAUDE-C; SHARED-FINALIZE-04) | `claude-template/segments/0-uldf-finalize/shared-repo-flow.md` | `repos[]` paths drive the per-repo finalize loop |
-| `/0-uldf-ltads-stop` Phase 4.5 (CLAUDE-C; SHARED-CSI-04) | `claude-template/segments/-ltads/stop_phases.md` | `repos[]` paths drive cross-repo arc-terminus close |
-| `/0-uldf-pods-converge` Phase 7 (CLAUDE-C; SHARED-CSI-04) | `claude-template/segments/-pods/converge_phases.md` | `repos[]` paths drive cross-repo arc-terminus close + opportunistic archive-retention sweep |
+| `/0-uldf-finalize` setup (CLAUDE-C; SHARED-FINALIZE-01) | `~/.claude/segments/-finalize/_shared-repo-discovery.md` | Full output; cached for the duration of the finalize invocation |
+| `/0-uldf-finalize` per-repo flow (CLAUDE-C; SHARED-FINALIZE-04) | `~/.claude/segments/-finalize/shared-repo-flow.md` | `repos[]` paths drive the per-repo finalize loop |
+| Arc-completing `/0-uldf-finalize` Phase 9 (SHARED-CSI-04; DEC-119 — `/0-uldf-ltads-stop` is a thin alias) | `~/.claude/segments/-finalize/phase9-arc-terminus.md` § 8 | `repos[]` paths drive cross-repo arc-terminus close |
+| `/0-uldf-pods-converge` Phase 7 (CLAUDE-C; SHARED-CSI-04) | `~/.claude/segments/-pods/converge_phases.md` | `repos[]` paths drive cross-repo arc-terminus close + opportunistic archive-retention sweep |
 
 ### Sibling oracles
 
@@ -274,7 +274,7 @@ This oracle does **not** expose `--gc` / `--gc-cheap` modes. Discovery oracles d
 - **Decision (discovery scope)**: `docs/specs/DECISIONS.md` DEC-35
 - **Discovery (skeleton lineage)**: `docs/specs/DISCOVERIES.md` DISC-CSI-09
 - **Plan**: `docs/planning/plans/20260430T131500-shared-repo-aware-finalize-cross-repo-cs.md` § Stage 1, § Frozen Output Schema, § Frozen Snapshot Schema, § Acceptance gating
-- **Skeleton precedents**: `claude-template/oracles/dispatchable-sessions/`, `claude-template/oracles/archive-retention/`
+- **Skeleton precedents**: `~/.claude/oracles/dispatchable-sessions/`, `~/.claude/oracles/archive-retention/`
 - **Foundation**: `FOUNDATIONS/ORACULURGY_DESIGN.md` (project-state oracle category) and `FOUNDATIONS/PRINCIPLES_OF_LLM_AGENT_ORCHESTRATION.md` § 2.12 (Oraculurgy)
 - **CSI Phase 1.5 framing**: `FOUNDATIONS/CSI_DESIGN.md` (Stage 4 will extend with § 6 Cross-Repo Phase 1.5 — pending LD authorship)
 

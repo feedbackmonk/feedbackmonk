@@ -10,6 +10,71 @@ set -e
 SCAN_DIRS=(claude-template docs FOUNDATIONS)
 SCAN_ROOT_FILES=(CLAUDE.md README.md)
 
+# OVALID-05 (DEC-220): this oracle asserts "the citation resolves" but measures
+# "a path exists in the WORKING TREE" -- and that tree is shared with live
+# sibling sessions. A target listed by `git ls-files --deleted` is TRACKED and
+# present in HEAD; only an UNCOMMITTED deletion removed it from the tree, so the
+# citation is correct and the doc is not broken. Failing on it let any peer's
+# in-flight WIP redden a commit gate, and the remediation advice it produced was
+# actively wrong (repoint a CORRECT citation at some other path).
+#
+# The gate is DEFERRED, not weakened: such targets go to an informational
+# `uncommitted_deletions` bucket and do not set status. Commit the deletion and
+# the path leaves this set, at which point it fails as a genuine broken link.
+# Not a blanket amnesty -- every other failure class still fails, in the same
+# run, alongside a suppressed one (asserted invertibly by validate.sh case 6).
+# Graceful absence: no git, or not a work tree -> empty set, oracle behaves
+# exactly as it did before this clause (strict by default).
+deleted_set=""
+if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    deleted_set=$(git ls-files --deleted 2>/dev/null || true)
+fi
+
+# Textual path canonicalization. `git ls-files` emits repo-root-relative paths
+# with no `.`/`..` segments, while this oracle resolves links against the citing
+# file's directory and so produces e.g. `docs/../FOUNDATIONS/X.md`. Without
+# normalization the comparison below would silently never match for any
+# parent-relative citation -- a proxy bug inside the fix for a proxy bug.
+norm_path() {
+    np_in="$1"
+    while [ "${np_in#./}" != "$np_in" ]; do np_in="${np_in#./}"; done
+    np_out=""
+    np_saved_ifs="$IFS"
+    IFS='/'
+    set -- $np_in
+    IFS="$np_saved_ifs"
+    for np_seg in "$@"; do
+        case "$np_seg" in
+            ""|".") continue ;;
+            "..")
+                if [ -z "$np_out" ] || [ "$np_out" = ".." ] || [ "${np_out%/..}" != "$np_out" ]; then
+                    np_out="${np_out:+$np_out/}.."
+                elif [ "${np_out#*/}" = "$np_out" ]; then
+                    np_out=""
+                else
+                    np_out="${np_out%/*}"
+                fi
+                ;;
+            *) np_out="${np_out:+$np_out/}$np_seg" ;;
+        esac
+    done
+    printf '%s' "$np_out"
+}
+
+# Exact whole-path membership test -- newline-sentinel wrapping so `docs/a.md`
+# cannot match `docs/a.md.bak`. Pure builtins, no subshell, no fork.
+is_uncommitted_deletion() {
+    [ -n "$deleted_set" ] || return 1
+    case "
+$deleted_set
+" in
+        *"
+$1
+"*) return 0 ;;
+    esac
+    return 1
+}
+
 # date +%s%3N is a GNU extension; fall back to seconds when unavailable.
 start_ms=$(date +%s%3N 2>/dev/null)
 case "$start_ms" in
@@ -35,7 +100,7 @@ done
 scanned_files=${#files[@]}
 
 if [ "$scanned_files" -eq 0 ]; then
-    echo '{"status":"pass","details":{"checked":0,"broken_count":0,"scanned_files":0,"scan_duration_ms":0,"broken":[]}}'
+    echo '{"status":"pass","details":{"checked":0,"broken_count":0,"scanned_files":0,"scan_duration_ms":0,"broken":[],"uncommitted_deletion_count":0,"uncommitted_deletions":[]}}'
     exit 0
 fi
 
@@ -81,6 +146,8 @@ esc_json() {
 checked=0
 broken_count=0
 broken_json=""
+uncommitted_deletions=0
+uncommitted_json=""
 
 # Process awk output. Per-link work uses only shell builtins (no fork-per-link).
 while IFS=$'\t' read -r src lineno dest; do
@@ -125,12 +192,23 @@ while IFS=$'\t' read -r src lineno dest; do
     esac
 
     if [ ! -e "$resolved" ]; then
-        broken_count=$((broken_count + 1))
         entry="{\"source\":\"$(esc_json "$src")\",\"line\":$lineno,\"link\":\"$(esc_json "$dest")\",\"resolved_path\":\"$(esc_json "$resolved")\"}"
-        if [ -z "$broken_json" ]; then
-            broken_json="$entry"
+        # OVALID-05: tracked-and-present-in-HEAD, removed only by an uncommitted
+        # deletion -> informational, does not set status. See the header note.
+        if is_uncommitted_deletion "$(norm_path "$resolved")"; then
+            uncommitted_deletions=$((uncommitted_deletions + 1))
+            if [ -z "$uncommitted_json" ]; then
+                uncommitted_json="$entry"
+            else
+                uncommitted_json="$uncommitted_json,$entry"
+            fi
         else
-            broken_json="$broken_json,$entry"
+            broken_count=$((broken_count + 1))
+            if [ -z "$broken_json" ]; then
+                broken_json="$entry"
+            else
+                broken_json="$broken_json,$entry"
+            fi
         fi
     fi
 done < <(awk "$awk_extract" "${files[@]}" 2>/dev/null)
@@ -148,5 +226,5 @@ if [ "$broken_count" -gt 0 ]; then
 fi
 
 cat <<EOF
-{"status":"$status","details":{"checked":$checked,"broken_count":$broken_count,"scanned_files":$scanned_files,"scan_duration_ms":$duration_ms,"broken":[$broken_json]}}
+{"status":"$status","details":{"checked":$checked,"broken_count":$broken_count,"scanned_files":$scanned_files,"scan_duration_ms":$duration_ms,"broken":[$broken_json],"uncommitted_deletion_count":$uncommitted_deletions,"uncommitted_deletions":[$uncommitted_json]}}
 EOF

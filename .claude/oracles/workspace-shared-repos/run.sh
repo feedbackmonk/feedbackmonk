@@ -282,7 +282,7 @@ _discover_explicit() {
         lines=$("$PARSER" - .claude/config.json <<'PY' 2>/dev/null
 import json, sys
 try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
     sys.exit(0)
@@ -491,7 +491,7 @@ _discover_npm() {
         lines=$("$PARSER" - package.json <<'PY' 2>/dev/null
 import json, sys
 try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
     sys.exit(0)

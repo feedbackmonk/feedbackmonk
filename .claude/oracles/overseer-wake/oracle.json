@@ -1,0 +1,57 @@
+{
+  "name": "overseer-wake",
+  "version": "1.0.0",
+  "question": "Is there anything in the airspace worth waking the LLM Overseer for? (the cheap deterministic mechanic of CSO's three-role split)",
+  "category": "workflow",
+  "kind": "verification",
+  "expected_runtime_ms": 2500,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-07-20 on the ULDF framework repo under Git Bash (win32; slowest supported environment): 3 runs 1956-2089ms (mean ~2003ms). Aggregates four reads incl. a sibling concurrent-mutation oracle invocation (a subprocess), so it sits at/over the 2000ms fast-lane ceiling and grows with live sessions / shared repos -- honestly a slow-lane aggregator. Declared 2500ms carries headroom over measured. The prior 5000ms with lane:fast was a self-contradiction (>2000ms is a fast-lane violation, ORACLE-COST-01).",
+  "invocation": {
+    "unix": ".claude/oracles/overseer-wake/run.sh",
+    "windows": ".claude/oracles/overseer-wake/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "wake": "boolean (true when >=1 airspace signal warrants waking the LLM Overseer; fires only on positive evidence)",
+      "signals": [
+        {
+          "detectorId": "string -- a member of the CSO_CONTRACTS.md 1.1 detector registry: concurrent-mutation | shared-foreign-claim | stall-monitor | touches-conflict | resource-contention",
+          "severity": "string (info | warn | critical)",
+          "sessions": "string[] (the sessionId(s) the signal involves; may be empty)",
+          "summary": "string (one-line human headline)"
+        }
+      ],
+      "summary": "string (one-line verdict headline)",
+      "briefing": "string (empty when wake=false; one-liner suitable for ORACLE BRIEFING when wake=true -- the session-start hook prepends the [overseer-wake] tag)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 300
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/overseer-wake/validate.sh",
+    "self_test_windows": ".claude/oracles/overseer-wake/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read .claude/collaboration/active-sessions.json: any sessions[] entry with status==active and a dead claudeShellPid is a stall/terminal signal. Run .claude/oracles/concurrent-mutation/run.sh and check external_mutation. Glob .claude/collaboration/*/file-tracking/touches.json for any file path claimed by >=2 distinct agents. Read .claude/collaboration/active-sessions.json again for >=2 active entries whose resourceClaim.resource strings match (live pid, unexpired boundUntil) -- that is resource contention. Any positive signal means the airspace has something worth the Overseer's attention. Absence of all sources is NO-DATA, never an all-clear -- do NOT assume the airspace is clean just because the oracle is unavailable.",
+  "provenance": {
+    "authored_by": "cso-phase-1",
+    "created": "2026-06-26T00:00:00Z",
+    "spec_refs": [
+      "CSO-01",
+      "CSO-04",
+      "CSO-21",
+      "CSO-09"
+    ],
+    "questions_resolved": [
+      "Q-CSO-01"
+    ],
+    "note": "CSO Phase 1, component C1 -- the cheap deterministic mechanic. PURE-SHELL aggregator over the five existing detectors (CSO-04 + CSO-21 resource-contention); NO LLM in this path. The cost defense (CSO-09): the LLM Overseer is woken ONLY when this oracle raises wake:true, never on a hot poll (the 15x multi-agent cost trap). Uses the CSO domain schema (wake/signals/summary) per the briefing-oracle convention (concurrent-mutation, stale-ltads-state, dispatchable-sessions) -- a domain schema plus a briefing field, NOT the generic status/details envelope. Read-only: run.{sh,ps1} never write. Graceful absence: a missing source is NO-DATA (omitted), never a fabricated all-clear; wake fires only on positive evidence."
+  }
+}

@@ -8,7 +8,7 @@ Verification Oracle (`kind: "verification"` per Oraculurgy Part 11) that detects
 
 ## Why this oracle exists
 
-Trigger: DISC-HYGIENE-03 — the SessionHelm 2026-05-07 audit and same-pattern reproduction in this very repo (15 intakes / 1 archived; 13 plans / 1 archived). The previous mechanism was advisory text inside `claude-template/skills/0-uldf-finalize/SKILL.md` lines ~635-639 instructing finalizer subagents to manually migrate planning docs. That advisory was consistently ignored. Detection without enforcement is the failure mode this oracle (paired with Phase 8.7) replaces. Per DEC-53, detection (oracle) and action (finalize Phase) are split — the Probandurgy idiom.
+Trigger: DISC-HYGIENE-03 — the SessionHelm 2026-05-07 audit and same-pattern reproduction in this very repo (15 intakes / 1 archived; 13 plans / 1 archived). The previous mechanism was advisory text inside `claude-template/skills/0-uldf-finalize/SKILL.md` lines ~635-639 instructing finalizer subagents to manually migrate planning docs. That advisory was consistently ignored. Detection without enforcement is the failure mode this oracle (paired with Phase 8.7) replaces. Per DEC-53, detection (oracle) and action (finalize Phase) are split — the Probandurgy idiom. <!-- path-ok: historical provenance, replaced mechanism -->
 
 ## Heuristic — what counts as "stale"
 
@@ -74,13 +74,13 @@ Field rules:
 
 ## Speed contract
 
-`always-fresh` with `compute_cost_ms: 1700`. Oraculurgy Part 11 §11.3.3 sets a hard 2s budget for Verification Oracles; this oracle's design fits that envelope by minimizing fork count on Windows MSYS:
+`always-fresh`; declared cost is `expected_runtime_ms: 10000` (measured under Git Bash, hence `lane: "slow"`). Oraculurgy Part 11 §11.3.3 sets a hard 2s budget for fast-lane Verification Oracles; this oracle's design fits that envelope by minimizing fork count on Windows MSYS:
 
 - One `git log --since=60.days.ago --pretty=format:%s` invocation
 - One `awk` pass over `SPECIFICATION.md` (builds spec ID → status table)
 - One `awk` pass over all planning docs (builds the per-file refs-found / refs-done table)
 - One `stat` call across all planning docs (mtime table)
-- Per-file work uses bash builtins (`${var,,}` for lowercasing, parameter expansion lookup against the precomputed tables, `printf '%(…)T'` for ISO-8601 formatting) — zero forks per iteration.
+- Per-file work uses bash parameter-expansion lookup against the precomputed tables plus `printf '%(…)T'` for ISO-8601 formatting. Lowercasing uses `tr` (one fork per file) for bash-3.2 portability — macOS `/bin/bash` is 3.2 and lacks `${var,,}`. The spec ID→status table is handed to the Heuristic-2 `awk` pass via a temp file (the `FNR==NR` two-file idiom), because BWK `awk` (macOS one-true-awk) rejects an embedded newline in a `-v` assignment.
 
 Measured cost on the ULDF repo: ~1.7s on Git Bash (Windows), ~0.5s on PowerShell. Both well under the 2s contract. If runtime ever drifts above 2s, the per-file iteration is the place to add bounds (e.g., scope the planning-doc walk to the diff via `recent-activity` per Oraculurgy §11.5).
 
@@ -130,5 +130,5 @@ Slow and error-prone vs. the oracle, but the workflow continues.
 - Spec: `docs/specs/SPECIFICATION.md` § SWEEP-02 (this oracle), SWEEP-03 (Phase 8.7 action leg), SWEEP-07 (session-start hook wire-in)
 - Decision: DEC-53 (heuristic + safety direction); DEC-54 (no TTL — work-shipped signal, not time)
 - Discovery: DISC-HYGIENE-03 (trigger pattern)
-- Substrate: `claude-template/oracles/markdown-link-validity/` (precedent — only other `kind: "verification"` oracle in the framework)
+- Substrate: `~/.claude/oracles/markdown-link-validity/` (precedent — only other `kind: "verification"` oracle in the framework)
 - Verification Oracle conventions: `FOUNDATIONS/ORACULURGY_DESIGN.md` Part 11

@@ -50,5 +50,41 @@ if [ "$SP" = "false" ] && [ -n "$BRIEFING" ]; then
     exit 1
 fi
 
+# AOR capabilities (ARIA-17) is OPTIONAL (NO-DATA when the disk companion is absent),
+# but when present it must carry a "verbs" key (never an empty-capabilities claim).
+if echo "$OUTPUT" | grep -q '"capabilities"'; then
+    if ! echo "$OUTPUT" | grep -q '"verbs"'; then
+        echo "FAIL: capabilities present but missing 'verbs' (empty-capabilities claim forbidden)" >&2
+        exit 1
+    fi
+fi
+
+# Operability Ladder fields (OPER-05, DEC-133) are OPTIONAL and additive:
+# when present, operability_tier must be a valid T0..T3 token, switchboard
+# entries must be aor.*-prefixed, and both require capabilities to be present
+# (they are projections of it — a tier with no capabilities is a fabrication).
+if echo "$OUTPUT" | grep -q '"operability_tier"'; then
+    TIER=$(echo "$OUTPUT" | grep -oE '"operability_tier"[[:space:]]*:[[:space:]]*"[^"]+"' | grep -oE '"[^"]+"$' | tr -d '"')
+    case "$TIER" in
+        T0|T1|T2|T3) ;;
+        *) echo "FAIL: operability_tier='$TIER' not in T0..T3" >&2; exit 1 ;;
+    esac
+    if ! echo "$OUTPUT" | grep -q '"capabilities"'; then
+        echo "FAIL: operability_tier present without capabilities (projection without source)" >&2
+        exit 1
+    fi
+fi
+if echo "$OUTPUT" | grep -q '"switchboard"'; then
+    if ! echo "$OUTPUT" | grep -q '"capabilities"'; then
+        echo "FAIL: switchboard present without capabilities (projection without source)" >&2
+        exit 1
+    fi
+    SB_BAD=$(echo "$OUTPUT" | grep -oE '"switchboard"[[:space:]]*:[[:space:]]*\[[^]]*\]' | sed -E 's/^"switchboard"[[:space:]]*:[[:space:]]*//' | grep -oE '"[^"]+"' | grep -v '^"aor\.' || true)
+    if [ -n "$SB_BAD" ]; then
+        echo "FAIL: switchboard contains non-aor.* entries: $SB_BAD" >&2
+        exit 1
+    fi
+fi
+
 echo "PASS: aria-status oracle validates (surface_present=$SP, exposure_mechanism=$MECH, briefing_len=${#BRIEFING})"
 exit 0

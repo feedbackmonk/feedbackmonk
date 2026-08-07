@@ -55,5 +55,39 @@ if ((-not $parsed.surface_present) -and $parsed.briefing -ne "") {
     exit 1
 }
 
+# AOR capabilities (ARIA-17) is OPTIONAL (NO-DATA when the disk companion is absent),
+# but when present it must carry a "verbs" key (never an empty-capabilities claim).
+if ($parsed.PSObject.Properties.Name -contains "capabilities") {
+    if (-not ($parsed.capabilities.PSObject.Properties.Name -contains "verbs")) {
+        Write-Error "FAIL: capabilities present but missing 'verbs' (empty-capabilities claim forbidden)"
+        exit 1
+    }
+}
+
+# Operability Ladder fields (OPER-05, DEC-133) are OPTIONAL and additive: valid
+# T0..T3 token, aor.*-prefixed switchboard entries, and both require capabilities
+# (they are projections of it -- a tier with no capabilities is a fabrication).
+if ($parsed.PSObject.Properties.Name -contains "operability_tier") {
+    if (@("T0","T1","T2","T3") -notcontains $parsed.operability_tier) {
+        Write-Error "FAIL: operability_tier='$($parsed.operability_tier)' not in T0..T3"
+        exit 1
+    }
+    if (-not ($parsed.PSObject.Properties.Name -contains "capabilities")) {
+        Write-Error "FAIL: operability_tier present without capabilities (projection without source)"
+        exit 1
+    }
+}
+if ($parsed.PSObject.Properties.Name -contains "switchboard") {
+    if (-not ($parsed.PSObject.Properties.Name -contains "capabilities")) {
+        Write-Error "FAIL: switchboard present without capabilities (projection without source)"
+        exit 1
+    }
+    $bad = @($parsed.switchboard | Where-Object { -not ($_ -is [string] -and $_.StartsWith("aor.")) })
+    if ($bad.Count -gt 0) {
+        Write-Error "FAIL: switchboard contains non-aor.* entries: $($bad -join ', ')"
+        exit 1
+    }
+}
+
 Write-Host "PASS: aria-status oracle validates (surface_present=$($parsed.surface_present), exposure_mechanism=$($parsed.exposure_mechanism), briefing_len=$($parsed.briefing.Length))"
 exit 0

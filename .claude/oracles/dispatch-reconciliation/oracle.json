@@ -1,0 +1,63 @@
+{
+  "name": "dispatch-reconciliation",
+  "version": "1.0.0",
+  "question": "Of the dispatches this project logged that did NOT carry a submission receipt, which ones show the target taking a turn afterwards -- and which are still sitting with no sign of life, on a target that is still running?",
+  "category": "coordination",
+  "kind": "verification",
+  "assertion": {
+    "asserts": "no prompt dispatched to a live peer is stranded un-submitted in that peer's composer without anyone noticing",
+    "measures": "for each non-confirmed entry in .claude/session-state/dispatch-log.jsonl within the lookback window, whether the target's .claude/session-state/turn-state/<resolvedId>.json carries a stamp whose atEpoch is greater than the dispatch's logged ts",
+    "known_gaps": [
+      "THE central gap, and the reason the verdict is named ACTIVITY-AFTER-DISPATCH rather than CONFIRMED-LATE: turn-state stores only the target's LATEST transition, so a stamp newer than the dispatch proves the target took *a* turn afterwards -- never that the turn was ours. A user typing something unrelated in that window is textually indistinguishable from consumption of the dispatched prompt. The originating brief (DEFER-058) proposed CONFIRMED-LATE; that label would have asserted more than this measurement can support, so it was deliberately not adopted. Read ACTIVITY-AFTER-DISPATCH as 'consistent with consumption', never as proof of it",
+      "the converse under-report: a target that consumed the prompt, finished, and had its Stop hook FAIL leaves turn-active frozen at an old timestamp. That target reads as NO-ACTIVITY-SINCE and can be graded a false stranding. The DISPATCH-11 stale-turn caveat names the same hazard at dispatch time; neither surface can resolve it from the stamp alone",
+      "a target whose prompt was genuinely stranded but which the user then rescued by hand (pressing Enter) reads as ACTIVITY-AFTER-DISPATCH and is graded pass. That is the correct OUTCOME but the wrong REASON -- the oracle cannot see that a human closed the loop, so it cannot count how often the Human-as-I/O-Relay path is still being walked",
+      "FAIL is deliberately restricted to a four-way conjunction (reason == receipt-timeout AND in-window AND target still live AND no activity since). Every other stranded-looking row is reported informationally. This means a genuinely stranded prompt on a target that has since EXITED is never graded fail -- correctly, since nothing can be done about it, but it also means the fail count systematically under-reports historical stranding. The count is an actionability measure, not an incidence measure",
+      "`delivered-queued` entries (DISPATCH-11: the target was mid-turn) are reconciled and reported but NEVER graded fail, because a non-receipt from a busy target is the expected result rather than a symptom. If the queued classification itself were wrong -- a stale turn-active stamp misread as genuine work -- this oracle would inherit that error silently and report the row as merely informational",
+      "the log records the dispatch's ts at SECOND granularity and the turn-state stamp likewise, so a target that submits within the same second as the dispatch is compared with a strictly-greater test and can read as NO-ACTIVITY-SINCE. In practice the receipt path inside the dispatcher already catches that case as CONFIRMED, so it reaches this oracle only when the receipt poll was skipped or raced",
+      "scope is one project's log. A cross-project dispatch (--project=<path>) logs into the TARGET project's session-state, so reconciling it means running this oracle THERE. Running it here will not see it, and will not say so -- absence of a row is indistinguishable from a dispatch that was never sent",
+      "liveness is read from the registry plus a PID check. A registry entry that is stale in the optimistic direction (recorded PID belongs to a recycled process) makes a dead target look live and can produce a false fail"
+    ]
+  },
+  "expected_runtime_ms": 2500,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-08-02 on the ULDF framework repo: the dominant cost is one pass over dispatch-log.jsonl plus one small file read per distinct target. Declared pessimistically at 2500ms per ORACLE-COST-01 because the log is append-only and unbounded -- a project with a very long dispatch history pays linearly in the scan, and under-declaration causes timeout kills",
+  "every_session": false,
+  "invocation": {
+    "unix": ".claude/oracles/dispatch-reconciliation/run.sh",
+    "windows": ".claude/oracles/dispatch-reconciliation/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "string -- pass | fail | no-data. fail ONLY on the four-way conjunction described in known_gaps",
+      "details": {
+        "log_present": "boolean",
+        "entries_scanned": "integer -- non-confirmed entries inside the lookback window",
+        "lookback_hours": "integer",
+        "activity_after_dispatch": "integer",
+        "no_activity_since": "integer",
+        "no_data": "integer",
+        "stranded_actionable": "integer -- the fail count; the four-way conjunction",
+        "contract": "string -- the standing over-claim disclaimer, emitted on every run"
+      },
+      "entries": [
+        {
+          "ts": "string -- ISO8601-UTC, when the dispatch was logged",
+          "target": "string -- the id as typed by the caller",
+          "resolvedId": "string -- the id receipts and turn-state key on",
+          "outcome": "string -- delivered-unconfirmed | delivered-queued",
+          "reason": "string -- no-stamp | receipt-timeout | queued-behind-active-turn",
+          "verdict": "string -- ACTIVITY-AFTER-DISPATCH | NO-ACTIVITY-SINCE | NO-DATA",
+          "targetLive": "boolean",
+          "actionable": "boolean -- true only for rows that count toward status=fail",
+          "stampAt": "string -- the target's latest turn-state stamp, or empty"
+        }
+      ]
+    }
+  },
+  "consumers": [
+    "/0-uldf-dispatch --reconcile (routes here; never reimplements the join)",
+    "/0-uldf-oracle dispatch-reconciliation (on-demand audit)"
+  ],
+  "spec_refs": ["DISPATCH-12", "DISPATCH-11", "TSTATE-01", "DEC-230"]
+}

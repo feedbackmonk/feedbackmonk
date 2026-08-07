@@ -37,7 +37,10 @@ while IFS= read -r dir; do
     # A less conservative version would also include dirs with source files.
     if [ "$has_readme" = "true" ]; then
         # Extract purpose: first non-heading, non-empty paragraph under first heading
-        purpose=$(awk '/^#/{if(h){exit}; h=1; next} h && /^[^[:space:]]/{print; exit}' "$readme_path" 2>/dev/null | head -c 200 | tr '\n' ' ' | sed 's/"/\\"/g; s/\\/\\\\/g' || echo "")
+        # JSON string escaping: backslash FIRST, then double-quote, then control chars (tab/CR).
+        # (Newlines are already collapsed to spaces by tr above.) Order matters: escaping the
+        # quote before the backslash would double-escape any pre-existing \" sequence.
+        purpose=$(awk '/^#/{if(h){exit}; h=1; next} h && /^[^[:space:]]/{print; exit}' "$readme_path" 2>/dev/null | head -c 200 | tr '\n' ' ' | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g' || echo "")
         if [ -z "$purpose" ]; then purpose=""; fi
 
         if [ "$first" -eq 1 ]; then first=0; else modules_json+=","; fi

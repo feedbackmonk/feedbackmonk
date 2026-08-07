@@ -1,12 +1,10 @@
 # gitignore-template-drift Oracle
 
-## Synopsis
-
-Project-state oracle that flags when a project's `.gitignore` lacks any framework-managed patterns from the current `claude-template/.gitignore` baseline. Emits a `[gitignore-template-drift]` line in the session-start ORACLE BRIEFING when drift is detected, nudging the user to run `/0-uldf-migrate-hygiene`. Empty briefing on no-drift (gracefully absent).
+> **Synopsis** — Project-state oracle that flags when a project's `.gitignore` lacks any framework-managed patterns from the current `~/.claude/.gitignore` baseline. Emits a `[gitignore-template-drift]` line in the session-start ORACLE BRIEFING when drift is detected, nudging the user to run `/0-uldf-migrate-hygiene`. Empty briefing on no-drift (gracefully absent).
 
 ## Purpose & Responsibilities
 
-Surface baseline drift cheaply (≤50 ms) at session start so legacy projects — those that ran `/0-uldf-setup-project` before CSI Phase 1+1.5+1.6+HYGIENE-01 — get nudged onto the post-CSI-1.6 gitignore baseline. Companion to `/0-uldf-migrate-hygiene` (HYGIENE-02): the migrate command is a one-shot manual operation; this oracle is the recurring sentinel that catches future drift whenever `claude-template/.gitignore` adds new patterns.
+Surface baseline drift cheaply (≤50 ms) at session start so legacy projects — those that ran `/0-uldf-setup-project` before CSI Phase 1+1.5+1.6+HYGIENE-01 — get nudged onto the post-CSI-1.6 gitignore baseline. Companion to `/0-uldf-migrate-hygiene` (HYGIENE-02): the migrate command is a one-shot manual operation; this oracle is the recurring sentinel that catches future drift whenever `~/.claude/.gitignore` adds new patterns.
 
 The oracle does **not**:
 
@@ -52,7 +50,7 @@ Programmatic consumers (session-start hook briefing assembly) read these fields 
 ### Invocation
 
 ```bash
-# Unix (autodiscovers baseline at $HOME/.claude/.gitignore or walks up for claude-template/.gitignore)
+# Unix (autodiscovers baseline at $HOME/.claude/.gitignore or walks up for claude-template/.gitignore) <!-- path-ok: framework-dev walk-up fallback -->
 bash .claude/oracles/gitignore-template-drift/run.sh
 
 # Windows
@@ -68,19 +66,19 @@ powershell -NoProfile -File .claude/oracles/gitignore-template-drift/run.ps1
 
 ## Constraints & Business Rules
 
-- **Compute budget**: ≤ 50 ms (`compute_cost_ms` declared in `oracle.json`). Implementation is two `awk`/`Get-Content` passes plus one `grep -F -x` per missing-check candidate; well within budget on typical project sizes.
+- **Compute budget**: declared via `expected_runtime_ms` in `oracle.json` (measured ~1.5s under Git Bash spawn tax). Implementation is two `awk`/`Get-Content` passes plus one `grep -F -x` per missing-check candidate; well within the session-start briefing budget on typical project sizes.
 - **Section discipline**: Only patterns AFTER the literal header line `# Claude Code (session artifacts — never commit)` are tracked. Sub-headers (`# CSI registry (mutates every session-start)`, etc.) are skipped as comments — only their pattern lines are extracted.
 - **Match semantics**: Line-trimmed exact match (UTF-8 byte equality). No regex, no glob expansion, no fuzzy matching. The em-dash in the section header is U+2014 (UTF-8 `0xE2 0x80 0x94`); files must be UTF-8 (no BOM required, but no other encodings).
 - **Empty-briefing convention**: When `drifted=false`, `briefing=""` so the session-start hook suppresses the line (per ULDF gracefully-absent briefing convention). The hook MUST NOT emit a "No drift detected" fallback.
-- **Baseline graceful absent**: When neither `$HOME/.claude/.gitignore` nor a walk-up `claude-template/.gitignore` is found, output is `{drifted:false, missing_patterns:[], baseline_patterns:0, project_patterns:0, briefing:""}` — never warns about a missing baseline (silent on success).
+- **Baseline graceful absent**: When neither `$HOME/.claude/.gitignore` nor a walk-up `claude-template/.gitignore` is found, output is `{drifted:false, missing_patterns:[], baseline_patterns:0, project_patterns:0, briefing:""}` — never warns about a missing baseline (silent on success). <!-- path-ok: framework-dev walk-up fallback -->
 - **Extras not flagged**: Patterns in project `.gitignore` that are NOT in baseline are never reported. Only baseline → project direction is checked (one-way drift detection).
 
 ## Relationships & Dependencies
 
 | Direction | Counterpart | Relationship |
 |---|---|---|
-| Consumed by | `claude-template/hooks/session-start.{sh,ps1}` | Hook reads `briefing` field and emits it as a `[gitignore-template-drift]` line in the ORACLE BRIEFING (when non-empty). |
-| Reads from | `claude-template/.gitignore` (or `~/.claude/.gitignore` deployed) | The framework baseline pattern source — owned by HYGIENE-01 (CLAUDE-A). |
+| Consumed by | `~/.claude/hooks/session-start.{sh,ps1}` | Hook reads `briefing` field and emits it as a `[gitignore-template-drift]` line in the ORACLE BRIEFING (when non-empty). |
+| Reads from | `claude-template/.gitignore` (or `~/.claude/.gitignore` deployed) | The framework baseline pattern source — owned by HYGIENE-01 (CLAUDE-A). | <!-- path-ok: source baseline vs deployed -->
 | References | `/0-uldf-migrate-hygiene` (HYGIENE-02) | Briefing-line text instructs the user to run this command. The oracle does not invoke it; the user does. |
 | Sibling oracle | `dispatchable-sessions` | Output-shape lineage: structured `count`-or-`drifted` field plus a pre-formatted `briefing` string in a single emit (avoids hook special-casing). |
 
@@ -88,7 +86,7 @@ powershell -NoProfile -File .claude/oracles/gitignore-template-drift/run.ps1
 
 - **Why expose env-var overrides for baseline/project paths?** Required for fixture-driven validation. The 6 test cases need to point at synthetic input files inside `test-fixtures/`. The alternative — copying the oracle into a sandbox + `cd` per case — was the pattern used by `dispatchable-sessions/validate.sh` Phase 2, and proved fragile on Git Bash (path-mangling of `--` arguments to `jq`, see DISC-CSI cross-project portability gotchas). Env-var injection is portable, doesn't touch the real registry, and keeps the script pure-bash on Unix and pure-PowerShell on Windows.
 
-- **Why the walk-up fallback for the framework-dev case?** The deployed setting is `~/.claude/.gitignore`, but the framework's own dogfood run (running inside the ULDF repo before sync) needs the oracle to find `claude-template/.gitignore` directly — without that, the oracle would be permanently in "no baseline" mode while authoring/testing the framework itself, defeating the purpose of paired-shell smoke tests during HYGIENE-03 development. Bounded depth (6 ancestors) keeps the cost trivial.
+- **Why the walk-up fallback for the framework-dev case?** The deployed setting is `~/.claude/.gitignore`, but the framework's own dogfood run (running inside the ULDF repo before sync) needs the oracle to find `claude-template/.gitignore` directly — without that, the oracle would be permanently in "no baseline" mode while authoring/testing the framework itself, defeating the purpose of paired-shell smoke tests during HYGIENE-03 development. Bounded depth (6 ancestors) keeps the cost trivial. <!-- path-ok: framework-dev walk-up rationale -->
 
 - **Why exact-match (not glob-match)?** Drift detection is about "is this exact framework-managed line in the project's `.gitignore`," not "does the project effectively cover the same paths via different patterns." Project-scope patterns (e.g., `**/.claude/**`) might cover the same files as the framework's specific `**/.claude/session-state/`, but the framework wants the exact pattern in the project so that future baseline updates don't silently overlap and create maintenance ambiguity. Spec acceptance pinned this: "preserves pattern text exactly; no fuzzy matching."
 

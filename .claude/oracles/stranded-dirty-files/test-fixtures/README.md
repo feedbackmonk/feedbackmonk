@@ -1,8 +1,6 @@
 # stranded-dirty-files fixtures
 
-## Synopsis
-
-Five representative scenarios covering the strand classes the parent oracle must classify correctly. Inputs are git working-tree state + registry contents — not check-inable as static trees, so the `validate.{sh,ps1}` scripts build sandboxes inline using the patterns documented here. Test-input data, not a runtime module.
+> Synopsis — Five representative scenarios covering the strand classes the oracle must classify correctly. Inputs are git working-tree state + registry contents — not check-inable as static trees, so the `validate.{sh,ps1}` scripts build sandboxes inline using the patterns documented here.
 
 ## Purpose
 
@@ -29,7 +27,7 @@ The fixtures are inline-built by `validate.sh` and `validate.ps1`. Each scenario
 5. Running `bash .claude/oracles/stranded-dirty-files/run.sh` (or the `.ps1`) inside the sandbox.
 6. Asserting the JSON output's shape + key fields.
 
-The full hygiene smoke harness at `claude-template/scripts/hygiene-tests/hygiene-csi15-stranded-smoke.{sh,ps1}` reuses these patterns AND adds three FINALIZE-04 flag-wiring smoke cases (without-flag, with-flag, composable-with-shared).
+The full hygiene smoke harness at `~/.claude/scripts/hygiene-tests/hygiene-csi15-stranded-smoke.{sh,ps1}` reuses these patterns AND adds three FINALIZE-04 flag-wiring smoke cases (without-flag, with-flag, composable-with-shared).
 
 ## Constraints
 

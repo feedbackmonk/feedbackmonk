@@ -1,0 +1,50 @@
+{
+  "name": "pending-ideas",
+  "kind": "project-state",
+  "version": "1.2.0",
+  "question": "Does this project have un-triaged injected/deferred ideas (status: PROPOSED), or deliberately-PARKED open work, waiting in docs/planning/deferred/ -- and is any brief carrying a status word this oracle does not recognize, so it is being dropped without anyone seeing it?",
+  "category": "followup",
+  "expected_runtime_ms": 500,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-07-08 -- small-directory scan (few DEFER-*.md files, front-matter parse); pessimistic-honest per ORACLE-COST-01 for Git Bash on win32 (slowest supported); well under the 15000ms briefing budget",
+  "invocation": {
+    "unix": ".claude/oracles/pending-ideas/run.sh",
+    "windows": ".claude/oracles/pending-ideas/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "pending_count": "integer (count of status:PROPOSED items)",
+      "items": "array of {id, title, origin, injected_at, source_project} for status:PROPOSED items only (TRIAGED/IN-PROGRESS/COMPLETED/DISMISSED excluded)",
+      "parked_count": "integer (count of status:PARKED items -- triaged, still open, deliberately not being built. DEC-281/DEFER-109; deliberately NOT folded into pending_count, whose frozen contract is un-triaged-only)",
+      "parked": "array of {id, title, re_arm} for status:PARKED items. re_arm is the declared re-arm condition verbatim, or the empty string when none was declared -- reported by PRESENCE only and NEVER evaluated (OVALID-02: only the presence of a declaration is mechanizable)",
+      "unknown_status_count": "integer (count of DEFER-*.md whose status WORD is neither PROPOSED/PARKED nor one of the recognized done-words. DEC-317/DEFER-151; NOT folded into pending_count -- the filter is correct and is deliberately not widened. Zero on a corpus using only known words)",
+      "unknown_status": "array of {id, status} for those files -- the status word verbatim. Exists because a file this oracle silently drops is indistinguishable from a file that is not there (ORACLE-COST-09/10, DEC-292): a live cross-project injection carrying `**Status**: OPEN` was invisible here AND unaudited by dec-alloc-guard --check-defer, and was found only by a hand census",
+      "no_data": "boolean (true when the deferred dir is unreadable or a DEFER-*.md file has no parseable status -- NO-DATA honesty, never a silent none. An UNRECOGNIZED status word is NOT no_data: the status was read fine, it is the vocabulary that disagrees)",
+      "briefing": "string (empty when no deferred/ dir OR zero PROPOSED, zero PARKED and zero unrecognized-status items -- line suppressed; populated with count + item tuples when PROPOSED items exist, a parked clause when PARKED items exist, and/or a NO-DATA note when no_data. Contains NO double-quote so the fan-out briefing regex captures it whole.)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 200
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/pending-ideas/validate.sh",
+    "self_test_windows": ".claude/oracles/pending-ideas/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "List docs/planning/deferred/DEFER-*.md; for each, read its front-matter `status:` field (or the legacy `**Status**:` body line) and take the FIRST WORD of it -- 28 of 160 briefs in the ULDF corpus write a rationale after the word, which is house style, not a different status (DEC-317). Items with status PROPOSED are un-triaged pending ideas; items with status PARKED are triaged, still open, and deliberately not being built (read their `re-arm:` field for the stated condition, but do not judge whether it is met); TRIAGED/IN-PROGRESS/COMPLETED/DISMISSED are neither. No deferred/ dir, or zero PROPOSED and zero PARKED, means nothing to surface. A file whose status cannot be read is NO-DATA -- do not report 'none' silently.",
+  "provenance": {
+    "authored_by": "inject-feature",
+    "created": "2026-07-08T00:00:00Z",
+    "spec_refs": [
+      "INJECT-08",
+      "INJECT-18",
+      "INJECT-20"
+    ],
+    "note": "Feeder-side surfacing for /0-uldf-inject (§ INJECT). Auto-admitted by the session-start briefing fan-out via typical_sessions_using:every (no hook edit). Output schema frozen per INJECT-08 and ADDITIVELY widened once, by DEC-281 (INJECT-18): parked_count + parked[] are new fields, pending_count/items/no_data are untouched, and the single narrowed clause is graceful absence -- the briefing is now empty when there is nothing PROPOSED AND nothing PARKED. Rationale: surfacing only PROPOSED made a triaged-but-still-open brief invisible at every session start forever, which is the documented workflow switching an item off (DEFER-109). Deliberately NOT added: a stale-PARKED signal (the drive-to-zero ritual OVALID bounded exists to avoid), and any evaluation of a re-arm condition (judgment, not measurement). WIDENED A SECOND TIME, ADDITIVELY, by DEC-317 (INJECT-20, DEFER-151): the status WORD is now parsed out of the status line rather than compared against the whole line -- measured, 28 of 160 briefs carry a rationale after the word and every one of them was being dropped in silence, including two PARKED-with-a-re-arm briefs that parked[] exists to show -- and a word outside the recognized set rides NEW unknown_status_count/unknown_status[] plus its own briefing clause instead of vanishing. pending_count/items[] are untouched and the surfaced SET is unchanged; the graceful-absence clause takes its second deliberate widening, on the same argument DEC-281 used for PARKED (a file dropped for a word nobody recognizes is not 0-noise, it is the thing being surfaced). Recognized done-words are derived from a census of the corpus, not from memory -- the first hand-typed list dropped one and the existing anti-noise cell reddened on it."
+  }
+}

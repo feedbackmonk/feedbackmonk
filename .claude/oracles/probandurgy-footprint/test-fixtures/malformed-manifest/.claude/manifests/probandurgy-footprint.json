@@ -1,0 +1,10 @@
+{
+  "schemaVersion": "1",
+  "mechanisms": [
+    {
+      "name": "aria",
+      "axis_a": "feature-gated-out-by-default"
+      // missing comma here — deliberately malformed JSON for fixture
+      "axis_b": "runtime-gated"
+    }
+  ]

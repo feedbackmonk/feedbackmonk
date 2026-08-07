@@ -1,0 +1,75 @@
+{
+  "name": "trajectory-cap",
+  "version": "1.0.0",
+  "question": "Does docs/PROJECT_TRAJECTORY.md exceed its documented size caps (total lines, total bytes, single-line length) or contain encoding-corruption (mojibake) -- the signature of a Phase 12 run that appended instead of reshaping?",
+  "category": "documentation",
+  "kind": "verification",
+  "assertion": {
+    "asserts": "docs/PROJECT_TRAJECTORY.md is within its documented size caps and free of encoding corruption -- i.e. Phase 12 reshaped the file rather than appending to it",
+    "measures": "line count, byte count, longest single-line length, and a mojibake-signature line count of that one file, each against a configured threshold",
+    "known_gaps": [
+      "near-identity by construction: the caps ARE line/byte/length counts, so P and Q barely differ. This declaration is deliberately boring -- a `valid` verdict under OVALID-04 is the correct outcome and not every oracle needs a gap",
+      "size within caps is not evidence of a good reshape: a Phase 12 run that truncated the file, or reshaped it into something useless, passes every threshold. This oracle bounds bloat, it does not judge content",
+      "single-file scope: it says nothing about any other doc that Phase 12 might have appended to"
+    ]
+  },
+  "expected_runtime_ms": 600,
+  "lane": "fast",
+  "trigger_globs": [
+    "docs/PROJECT_TRAJECTORY.md"
+  ],
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
+  "invocation": {
+    "unix": ".claude/oracles/trajectory-cap/run.sh",
+    "windows": ".claude/oracles/trajectory-cap/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "one of: pass, warn",
+      "details": {
+        "file_exists": "boolean (false -> pass, nothing to check)",
+        "path": "string (repo-relative path checked)",
+        "lines": "integer (total line count)",
+        "bytes": "integer (total file size)",
+        "longest_line_chars": "integer (length of the longest single line)",
+        "longest_line_number": "integer (1-based line number of the longest line)",
+        "lines_over_char_cap": "integer (count of lines exceeding max_line_chars)",
+        "mojibake_lines": "integer (count of lines containing UTF-8/CP1252 mojibake markers)",
+        "violations": "string[] (human-readable cap breaches, empty when clean)",
+        "caps": {
+          "max_lines": "integer",
+          "max_bytes": "integer",
+          "max_line_chars": "integer"
+        },
+        "scan_duration_ms": "integer"
+      },
+      "briefing": "string"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "finalize",
+    "estimated_token_savings_per_call": 0
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/trajectory-cap/run.sh --self-test",
+    "self_test_windows": "powershell -NoProfile -ExecutionPolicy Bypass -File .claude/oracles/trajectory-cap/run.ps1 -SelfTest",
+    "last_validated": null
+  },
+  "fallback": "Open docs/PROJECT_TRAJECTORY.md and check: is it more than ~250 lines, more than ~32KB, or does any single line run to thousands of characters? If so, Phase 12 of /0-uldf-finalize appended instead of reshaping (it is supposed to prune to 5 capped sections). The fix is the Phase 12 REPAIR path: salvage the section headers + short bullet lines that still parse, discard the bloated spans, and rewrite a clean capped file (do NOT preserve-merge into the bloated one). The repaired file fully replaces the old. Re-run /0-uldf-finalize (or just reshape by hand to claude-template/templates/PROJECT_TRAJECTORY.md structure).",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-05-26T00:00:00Z",
+    "note": "Starter Verification Oracle. Trigger incident DISC-TRAJ-01: Phase 12 (TRAJECTORY-02) is prose-only -- the size caps were agent-executed instructions with no deterministic enforcement, so runs that appended a multi-thousand-char 'Last updated' line and skipped pruning accumulated silently. Found bloated trajectories across nearly every instrumented project (SessionHelm 262KB / 57KB single line, quiqpic 277KB, GitCellar 198KB). A line-count check alone MISSES this (SessionHelm was 173 lines) -- the giant-single-line and byte-size signals are load-bearing. Advisory (status=warn, exit 0): the breach is self-correcting within the same /0-uldf-finalize via the Phase 12 REPAIR path, so this oracle must NOT block the commit that runs the repair."
+  },
+  "config": {
+    "target": "docs/PROJECT_TRAJECTORY.md",
+    "max_lines": 250,
+    "max_bytes": 32768,
+    "max_line_chars": 2000,
+    "comment": "Caps mirror SPECIFICATION.md TRAJECTORY-01/02 (~250 lines / ~2k tokens). max_bytes (32KB ~= 8k tokens) is a defensive accumulation cap with generous headroom over the ~2k-token target; max_line_chars catches the giant-single-line append failure that a line-count check misses. Edit these constants in the run scripts to change scope; keep the <2s speed contract (ORACULURGY Part 11.3.3)."
+  }
+}

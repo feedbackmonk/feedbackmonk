@@ -7,7 +7,7 @@
 #
 # Modes:
 #   (default)    : list all collab-* dirs with metadata + sweepability flags
-#   --gc-cheap   : session-start hygiene sweep, ~100ms budget, defers if exceeded
+#   --gc-cheap   : session-start hygiene sweep, ~1000ms budget, defers if exceeded
 #   --gc         : on-demand hygiene sweep, no time budget, prints {swept,before,after,...}
 #
 # Sweep criteria (--gc / --gc-cheap):
@@ -16,6 +16,16 @@
 #   Action: append JSON line to _summary.jsonl, verify write, rm -rf the dir.
 #   Threshold: .claude/config.json archiveRetention.threshold (numeric days or PnD), default 90.
 #   Design lineage: CSI-05 (claude-template/oracles/dispatchable-sessions/run.sh).
+#
+# Test seam:
+#   ULDF_FAKE_NOW -- epoch seconds standing in for `now`. Honored ONLY when the
+#   value is strictly numeric; anything else is ignored and the real clock is
+#   used. Exists so validate.{sh,ps1} can prove its fixtures are time-invariant
+#   (DEFER-072): the fixtures are directory NAMES, so validator and oracle must
+#   shift together or the test measures the skew between them instead. When
+#   active, --gc / --dry-run / briefing output carries "clockSource":"fake" --
+#   this seam moves a delete cutoff, so an accidental activation must be visible
+#   rather than silent. Unset (the only production state) it is fully inert.
 
 set -e
 
@@ -33,19 +43,41 @@ MODE="briefing"
 case "${1:-}" in
     --gc)        MODE="gc" ;;
     --gc-cheap)  MODE="gc-cheap" ;;
+    --dry-run)   MODE="dry-run" ;;
     "")          MODE="briefing" ;;
     *)
         echo "archive-retention: unknown mode: $1" >&2
-        echo "  usage: run.sh [--gc|--gc-cheap]" >&2
+        echo "  usage: run.sh [--gc|--gc-cheap|--dry-run]" >&2
         exit 1
         ;;
+esac
+
+# ---- OLOG fire record (ORA-FIRE-01, DEC-166 / DISC-ORA-02) ------------------
+# Actuator leg: fires as a session-start --gc-cheap sweep, silent on success. Without
+# this record the oracle is invisible to oracle-consultations.jsonl and DEC-82's
+# retirement criterion scores it as unused no matter how hard it works. A fire is not
+# a consultation -- it carries via:"sweep". Append-failure is swallowed.
+case "$MODE" in
+  gc|gc-cheap)
+    _OFL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for _ofl_cand in \
+        "$_OFL_DIR/../../scripts/lib/oracle-fire-log.sh" \
+        "$_OFL_DIR/../../../claude-template/scripts/lib/oracle-fire-log.sh" \
+        "$HOME/.claude/scripts/lib/oracle-fire-log.sh"; do
+        if [ -f "$_ofl_cand" ]; then
+            # shellcheck source=/dev/null
+            . "$_ofl_cand" && oracle_fire_log "archive-retention" "sweep"
+            break
+        fi
+    done
+    ;;
 esac
 
 # ---- Locate the archived dir; absent => graceful nothing-to-do ----
 if [ ! -d "$ARCHIVED_DIR" ]; then
     if [ "$MODE" = "briefing" ]; then
         emit_empty_briefing
-    elif [ "$MODE" = "gc" ]; then
+    elif [ "$MODE" = "gc" ] || [ "$MODE" = "dry-run" ]; then
         echo '{"swept":0,"before":0,"after":0,"threshold":"P90D","thresholdSource":"default","summarized":0,"note":"no archived dir"}'
         exit 0
     else
@@ -89,7 +121,7 @@ if [ -n "$CONFIG" ] && [ -n "$PARSER" ]; then
         CFG_RAW=$("$PARSER" - "$CONFIG" <<'PY' 2>/dev/null
 import json, sys
 try:
-    with open(sys.argv[1], "r", encoding="utf-8") as f:
+    with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
     sys.exit(0)
@@ -120,9 +152,18 @@ PY
     fi
 fi
 
-NOW_EPOCH=$(date -u +%s)
+# ---- Clock ----------------------------------------------------------------
+# Single derivation point for `now`, so the seam cannot drift from the cutoff it
+# feeds. Strictly-numeric guard: a malformed ULDF_FAKE_NOW falls back to the real
+# clock rather than to a guess -- this value moves an rm -rf cutoff.
+CLOCK_SOURCE="real"
+NOW_EPOCH=""
+case "${ULDF_FAKE_NOW:-}" in
+    ''|*[!0-9]*) ;;
+    *) NOW_EPOCH="$ULDF_FAKE_NOW"; CLOCK_SOURCE="fake" ;;
+esac
+[ -n "$NOW_EPOCH" ] || NOW_EPOCH=$(date -u +%s)
 CUTOFF_EPOCH=$((NOW_EPOCH - THRESHOLD_DAYS * 86400))
-NOW_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 # ---- Helpers --------------------------------------------------------------
 
@@ -289,6 +330,22 @@ _build_summary_line() {
 }
 
 _ms_now() {
+    # Zero-fork fast path (DEFER-064 rule 2, propagated here by DEC-250): bash
+    # >= 4.4 exposes $EPOCHREALTIME ("<sec>.<usec>"; the separator is
+    # locale-dependent, so split on either '.' or ','). A FORKED clock is not
+    # free on MSYS -- ~300-500ms per fork on a busy Windows host -- so with a
+    # forked clock the budget measurement itself consumes the budget. That is
+    # not a micro-optimization here: it is one of the two reasons this sweeper
+    # could return having swept nothing.
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        local _er_s="${EPOCHREALTIME%%[.,]*}" _er_f="${EPOCHREALTIME#*[.,]}"
+        case "$_er_s$_er_f" in (*[!0-9]*) : ;; *)
+            _er_f="${_er_f}000"
+            echo "$(( _er_s * 1000 + 10#${_er_f:0:3} ))"
+            return 0
+            ;;
+        esac
+    fi
     local ms
     ms=$(date -u +%s%3N 2>/dev/null)
     if [ -n "$ms" ] && [ "${ms#*N}" = "$ms" ]; then
@@ -302,17 +359,37 @@ _ms_now() {
     fi
 }
 
+# Derived from NOW_EPOCH (not a second `date` call) so a faked clock stamps
+# sweptAt consistently with the ageDays computed against the same instant.
+NOW_ISO=$(_epoch_to_iso "$NOW_EPOCH")
+
 # =============================================================================
 # Mode dispatch
 # =============================================================================
-if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ]; then
+if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ] || [ "$MODE" = "dry-run" ]; then
     # -------------------------------------------------------------------------
     # RETENTION-01..06 sweep
+    # --dry-run: identical candidate computation, ZERO mutation (SWEEPER-05) --
+    #            no JSONL append, no rm -rf; reports the would-sweep set.
     # -------------------------------------------------------------------------
-    BUDGET_MS=100
-    if [ "$MODE" = "gc" ]; then BUDGET_MS=0; fi
-
-    START_MS=$(_ms_now)
+    # Cheap-mode budget, calibrated for MSYS/Git-Bash where each per-dir sweep
+    # costs ~0.75s in subprocess spawns (measured 2.3s for 3 dirs, 2026-07-18).
+    # 1000ms sweeps many dirs on real Unix, ~1 per session on MSYS; the deferred
+    # remainder drains across sessions and is reported honestly via
+    # budgetExceeded. Matches the sibling sweepers' DEC-79 calibration
+    # (handoff-retention, dispatchable-sessions) -- this oracle was the lone
+    # holdout at 100ms, where a single _ms_now() fork (~22ms on MSYS) plus the
+    # pre-count pass consumed the whole budget before the FIRST candidate was
+    # examined, so --gc-cheap swept nothing, forever (DEFER-019).
+    #
+    # ULDF_AR_GC_BUDGET_MS: test seam (DEC-250), mirroring the sibling's
+    # ULDF_DS_GC_BUDGET_MS. Without a seam the minimum-progress guarantee is
+    # only assertable by waiting for a machine loaded enough to starve it --
+    # which is why the guarantee this file's own comment CLAIMED went four
+    # months unmeasured, and false. Non-numeric or empty falls back to default.
+    BUDGET_MS="${ULDF_AR_GC_BUDGET_MS:-1000}"
+    case "$BUDGET_MS" in (''|*[!0-9]*) BUDGET_MS=1000 ;; esac
+    if [ "$MODE" = "gc" ] || [ "$MODE" = "dry-run" ]; then BUDGET_MS=0; fi
 
     BEFORE=0
     SWEEP_COUNT=0
@@ -332,10 +409,27 @@ if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ]; then
         esac
     done
 
+    # Clock starts HERE, not before the pre-count pass: the budget bounds the
+    # sweep loop (what it claims to bound). Mirrors handoff-retention's
+    # structure. This comment used to continue "and the first candidate always
+    # clears it, guaranteeing forward progress on every invocation" -- which was
+    # FALSE and unmeasured for four months (DEC-250): nothing exempted the first
+    # candidate, so a single slow clock fork could trip the check before any
+    # work happened. Demonstrated at a starved budget: 5 pending candidates,
+    # 0 swept. The guarantee is now structural (WORKED_ANY), not asserted.
+    START_MS=$(_ms_now)
+    WORKED_ANY=""   # minimum-progress guarantee (DEFER-064 rule 3)
+
     for dir in "$ARCHIVED_DIR"/collab-*; do
         [ -d "$dir" ] || continue
 
-        if [ "$BUDGET_MS" -gt 0 ]; then
+        # Budget check, but NEVER before one unit of real work has completed.
+        # Gating on WORKED_ANY rather than on the loop index is deliberate: the
+        # cheap filters below (`continue` on a bad basename, a KEEP pin, or a
+        # too-young dir) are not progress, so counting them would let a prefix
+        # of non-candidates starve the sweep exactly as setup cost used to.
+        # Walking that prefix is free -- the pre-count pass already pays it.
+        if [ "$BUDGET_MS" -gt 0 ] && [ -n "$WORKED_ANY" ]; then
             NOW_MS=$(_ms_now)
             if [ -n "$START_MS" ] && [ -n "$NOW_MS" ] && [ "$((NOW_MS - START_MS))" -gt "$BUDGET_MS" ]; then
                 BUDGET_EXCEEDED=1
@@ -367,6 +461,20 @@ if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ]; then
             continue
         fi
 
+        # Past every cheap filter: this dir IS a sweep candidate, so from here
+        # on the invocation has done real work and the budget may bind again.
+        WORKED_ANY=1
+
+        if [ "$MODE" = "dry-run" ]; then
+            SWEEP_COUNT=$((SWEEP_COUNT + 1))
+            if [ -z "$SWEEP_IDS" ]; then
+                SWEEP_IDS="$local_base"
+            else
+                SWEEP_IDS="$SWEEP_IDS,$local_base"
+            fi
+            continue
+        fi
+
         # Build summary line BEFORE delete
         line=$(_build_summary_line "$dir" "$NOW_ISO")
         if ! _append_summary "$line"; then
@@ -391,6 +499,19 @@ if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ]; then
 
     AFTER=$((BEFORE - SWEEP_COUNT))
 
+    if [ "$MODE" = "dry-run" ]; then
+        printf '{"dryRun":true,"wouldSweep":%s,"before":%s,"after":%s,"threshold":"%s","thresholdSource":"%s"' \
+            "$SWEEP_COUNT" "$BEFORE" "$BEFORE" "$THRESHOLD_DISPLAY" "$THRESHOLD_SOURCE"
+        if [ -n "$SWEEP_IDS" ]; then
+            printf ',"wouldSweepIds":"%s"' "$SWEEP_IDS"
+        fi
+        if [ "$CLOCK_SOURCE" = "fake" ]; then
+            printf ',"clockSource":"fake"'
+        fi
+        printf '}\n'
+        exit 0
+    fi
+
     if [ "$MODE" = "gc" ]; then
         printf '{"swept":%s,"before":%s,"after":%s,"threshold":"%s","thresholdSource":"%s","summarized":%s' \
             "$SWEEP_COUNT" "$BEFORE" "$AFTER" "$THRESHOLD_DISPLAY" "$THRESHOLD_SOURCE" "$SUMMARIZED"
@@ -399,6 +520,9 @@ if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ]; then
         fi
         if [ -n "$SWEEP_IDS" ]; then
             printf ',"sweptIds":"%s"' "$SWEEP_IDS"
+        fi
+        if [ "$CLOCK_SOURCE" = "fake" ]; then
+            printf ',"clockSource":"fake"'
         fi
         printf '}\n'
     fi
@@ -480,5 +604,9 @@ KEPT_COUNT=$(echo "$DIRS_JSON" | grep -o '"kept":true' | wc -l | tr -d ' ')
 
 SUMMARY="$COUNT archived session(s); ${SWEEPABLE_COUNT} sweepable, ${KEPT_COUNT} kept (threshold $THRESHOLD_DISPLAY)"
 
-printf '{"count":%s,"dirs":[%s],"threshold":"%s","thresholdSource":"%s","summary":"%s"}\n' \
-    "$COUNT" "$DIRS_JSON" "$THRESHOLD_DISPLAY" "$THRESHOLD_SOURCE" "$SUMMARY"
+printf '{"count":%s,"dirs":[%s],"threshold":"%s","thresholdSource":"%s"' \
+    "$COUNT" "$DIRS_JSON" "$THRESHOLD_DISPLAY" "$THRESHOLD_SOURCE"
+if [ "$CLOCK_SOURCE" = "fake" ]; then
+    printf ',"clockSource":"fake"'
+fi
+printf ',"summary":"%s"}\n' "$SUMMARY"

@@ -19,6 +19,31 @@ $scopeGuardMax    = 2000
 $sampleCap        = 10
 $largeThreshold   = 50
 
+# ---- SWEEP-10 / DEFER-095: identity-aware liveness via lib/pid-liveness.ps1 --
+# A recycled peer pid inflated live_peer_count and its dirtyFiles kept masking
+# genuinely stranded files. Anchor-only, no name glob (DEC-257); absent anchor
+# or lib unavailable -> byte-identical existence-only verdict. Path REPORTABLE
+# (QUIESCE-08 W4). Dot-sourced at SCRIPT scope.
+$sdfPidIdentity = 'fallback'
+foreach ($sdfPlCand in @(
+    (Join-Path $PSScriptRoot "../../scripts/lib/pid-liveness.ps1"),
+    (Join-Path $PSScriptRoot "../../../claude-template/scripts/lib/pid-liveness.ps1"),
+    (Join-Path $env:USERPROFILE ".claude/scripts/lib/pid-liveness.ps1")
+)) {
+    if (Test-Path -LiteralPath $sdfPlCand) {
+        try {
+            if (-not (Test-Path variable:global:_UldfPidLivenessLoaded)) { $global:_UldfPidLivenessLoaded = $false }
+            . $sdfPlCand
+            if (Get-Command Test-UldfPidAliveAs -ErrorAction SilentlyContinue) { $sdfPidIdentity = 'lib' }
+        } catch { }
+        break
+    }
+}
+if ($env:ULDF_SDF_REPORT_PID_IDENTITY -eq '1') {
+    Write-Output $sdfPidIdentity
+    exit 0
+}
+
 function Emit-Json($obj) {
     # Compact one-line JSON, dictionaries preserve insertion order via [ordered]
     $json = $obj | ConvertTo-Json -Compress -Depth 6
@@ -151,11 +176,21 @@ if (Test-Path $registry) {
                 $sWd = ([string]$s.workDir -replace '\\', '/').TrimEnd('/')
             }
             if ($sWd -ne $projRootNorm) { continue }
-            # Liveness probe
+            # Liveness probe (DEFER-095: identity-aware -- a recycled pid,
+            # started after the entry's own claudeShellPidWrittenAt anchor,
+            # reads dead; absent anchor/lib -> existence-only).
+            $sAnchor = ''
+            if ($s.PSObject.Properties.Name -contains 'claudeShellPidWrittenAt' -and $null -ne $s.claudeShellPidWrittenAt) {
+                $sAnchor = [string]$s.claudeShellPidWrittenAt
+            }
             $alive = $false
             try {
-                $proc = Get-Process -Id $sPid -ErrorAction SilentlyContinue
-                if ($null -ne $proc) { $alive = $true }
+                if ($sdfPidIdentity -eq 'lib') {
+                    $alive = [bool](Test-UldfPidAliveAs $sPid $sAnchor)
+                } else {
+                    $proc = Get-Process -Id $sPid -ErrorAction SilentlyContinue
+                    if ($null -ne $proc) { $alive = $true }
+                }
             } catch { $alive = $false }
             if (-not $alive) { continue }
 

@@ -9,6 +9,7 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new()
 
 $DefaultEndpoint = "http://127.0.0.1:14550/aria/health"
 $AriaConfig = ".claude/aria.json"
+$AriaManifest = ".claude/aria-manifest.json"   # AOR capabilities disk companion (ARIA-17)
 $TelemetryLog = ".claude/aria-telemetry.jsonl"
 $ProbeTimeoutSec = 0.3
 
@@ -120,18 +121,35 @@ if ($endpointReachable) {
     }
 }
 
-# ---- query_count_24h from telemetry log ----
+# ---- query_count_24h from telemetry log (v1+v2 capture contract, ARIA-13) ----
+# NO-DATA semantics (DISC-ARIA-09 / DEC-81): a missing log file is NO-DATA, never zero;
+# a 24h window with zero heartbeats AND zero query events is NO-DATA for the window.
+# Counting rules: v2 lines ("schemaVersion" present) count when event=="query";
+# heartbeats (event=="telemetry-armed") tracked separately; probe:true lines excluded;
+# v1 legacy lines (no "schemaVersion", {tool,timestamp,...}) count as query events.
 $queryCount24h = $null
+$heartbeatCount24h = 0
+$telemetryState = "no-data"
 if (Test-Path $TelemetryLog) {
     try {
         $cutoff = (Get-Date).ToUniversalTime().AddHours(-24).ToString("yyyy-MM-ddTHH:mm:ssZ")
         $count = 0
         Get-Content $TelemetryLog -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object {
-            if ($_ -match '"timestamp"\s*:\s*"([^"]+)"') {
-                if ($Matches[1] -ge $cutoff) { $count++ }
-            }
+            $line = $_
+            $ts = $null
+            if ($line -match '"ts"\s*:\s*"([^"]+)"') { $ts = $Matches[1] }
+            elseif ($line -match '"timestamp"\s*:\s*"([^"]+)"') { $ts = $Matches[1] }
+            if (-not $ts -or $ts -lt $cutoff) { return }
+            if ($line -match '"probe"\s*:\s*true') { return }
+            if ($line -match '"event"\s*:\s*"telemetry-armed"') { $heartbeatCount24h++; return }
+            if ($line -match '"event"\s*:\s*"query"') { $count++; return }
+            if ($line -notmatch '"schemaVersion"' -and $line -match '"timestamp"') { $count++ }
         }
-        $queryCount24h = $count
+        if ($count -gt 0 -or $heartbeatCount24h -gt 0) {
+            $telemetryState = "measured"
+            $queryCount24h = $count
+        }
+        # else: zero heartbeats AND zero queries in window -> NO-DATA, not zero
     } catch {}
 }
 
@@ -139,9 +157,14 @@ if (Test-Path $TelemetryLog) {
 $briefing = ""
 if ($endpointReachable) {
     if ($flErrors -and $flAsync -and $flNav) {
-        $qph = 0
-        if ($queryCount24h -ne $null -and $queryCount24h -gt 0) { $qph = [int][Math]::Floor($queryCount24h / 24) }
-        $briefing = "ARIA: errors+async+navigation healthy (qph=$qph)"
+        # NO-DATA is never presented as qph=0 (DISC-ARIA-09).
+        if ($telemetryState -eq "measured") {
+            $qph = 0
+            if ($queryCount24h -ne $null -and $queryCount24h -gt 0) { $qph = [int][Math]::Floor($queryCount24h / 24) }
+            $briefing = "ARIA: errors+async+navigation healthy (qph=$qph)"
+        } else {
+            $briefing = "ARIA: errors+async+navigation healthy (qph=no-data; telemetry meter not armed, see ARIA-13)"
+        }
     } else {
         $healthyCats = @()
         $degradedCats = @()
@@ -164,6 +187,18 @@ if ($endpointReachable) {
 
 if ($briefing.Length -gt 200) { $briefing = $briefing.Substring(0, 197) + "..." }
 
+# ---- AOR capabilities disk companion (ARIA-17) ----
+# Value-free projection of the runtime manifest (AOR_CONTRACTS.md §4) committed by
+# an AOR-conformant app. NO-DATA: absent/malformed -> field omitted, never an
+# empty-capabilities claim. Source of truth is the runtime manifest()/GET /aor/capabilities.
+$capabilities = $null
+if ((Test-Path $AriaManifest) -and ((Get-Item $AriaManifest).Length -gt 0)) {
+    try {
+        $cap = (Get-Content -Raw -LiteralPath $AriaManifest) | ConvertFrom-Json -ErrorAction Stop
+        if ($cap -and $cap.PSObject.Properties.Name -contains "verbs") { $capabilities = $cap }
+    } catch {}
+}
+
 # ---- Emit JSON ----
 $result = [ordered]@{
     surface_present = $true
@@ -173,8 +208,24 @@ $result = [ordered]@{
     foundation_layer = [ordered]@{ errors = $flErrors; async = $flAsync; navigation = $flNav }
 }
 if ($recentSuccessAt) { $result.recent_success_at = $recentSuccessAt }
-if ($queryCount24h -ne $null) { $result.query_count_24h = $queryCount24h }
+if ($telemetryState -eq "measured" -and $queryCount24h -ne $null) { $result.query_count_24h = $queryCount24h }
+$result.telemetry_state = $telemetryState
+if ($capabilities -ne $null) {
+    $result.capabilities = $capabilities
+    # Operability Ladder surface (OPER-05, DEC-133) -- additive top-level convenience
+    # projection of the capabilities' optional operabilityTier / switchboard fields
+    # (AOR_CONTRACTS.md Appendix A). NO-DATA: omitted when undeclared -- never
+    # inferred, never defaulted to "T0".
+    $tier = $capabilities.operabilityTier
+    if ($tier -is [string] -and @("T0","T1","T2","T3") -contains $tier) {
+        $result.operability_tier = $tier
+    }
+    $sb = $capabilities.switchboard
+    if ($sb -is [System.Array] -and ($sb.Count -eq 0 -or -not ($sb | Where-Object { -not ($_ -is [string] -and $_.StartsWith("aor.")) }))) {
+        if ($sb.Count -gt 0) { $result.switchboard = $sb }
+    }
+}
 $result.briefing = $briefing
 
-Write-Output ($result | ConvertTo-Json -Compress -Depth 5)
+Write-Output ($result | ConvertTo-Json -Compress -Depth 8)
 exit 0

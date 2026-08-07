@@ -1,0 +1,48 @@
+{
+  "name": "harness-capabilities",
+  "kind": "project-state",
+  "version": "1.0.0",
+  "question": "Which native harness features does the current session's harness expose (version-keyed capability map)?",
+  "category": "harness",
+  "expected_runtime_ms": 2500,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-07-10 on the ULDF framework repo under Git Bash (win32; slowest supported environment): env checks ~0ms + one `claude --version` invocation measured 0.4s; pessimistic-honest per ORACLE-COST-01 -- under-declaration causes timeout kills",
+  "invocation": {
+    "unix": ".claude/oracles/harness-capabilities/run.sh",
+    "windows": ".claude/oracles/harness-capabilities/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "schemaVersion": "string (\"1\" at freeze)",
+      "harness": "string (\"claude-code\" | \"unknown\")",
+      "version": "string|null (harness version; null when harness unknown or version undetectable -- null forces every version-keyed bit false)",
+      "capabilities": "flat map of the 12 frozen boolean bits (workflowTool, nativeWorktrees, monitor, monitorWebsocket, sendMessage, sharedTaskList, bundledReviewSkills, loopScheduleWakeup, cronLocal, agentTeams, forkSubagents, backgroundSubagents) -- undetectable => false, never guessed",
+      "detectedAt": "string (ISO-8601 UTC)",
+      "briefing": "string (double-quote-free summary line; ADVISORY -- excluded from the frozen consuming semantics, HAL branches read capabilities only)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "note": "The map is point-in-time; consumers treat a persisted map older than the current session as stale-but-usable (advisory) per HAL_CAPABILITY_MAP.md section 3.4 -- a stale map risks only a wrongly-false fast path, never breakage."
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 800
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/harness-capabilities/validate.sh",
+    "self_test_windows": ".claude/oracles/harness-capabilities/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Check env CLAUDECODE=1 or CLAUDE_CODE_SESSION_ID for Claude Code; run `claude --version` for the version; then consult the version->capability floor table in HAL_CAPABILITY_MAP.md section 2. Non-Claude or undetectable harness => treat every capability as false and take the ULDF path (which always works). NEVER guess a capability from adjacency.",
+  "provenance": {
+    "authored_by": "hal-arc",
+    "created": "2026-07-10T00:00:00Z",
+    "spec_refs": [
+      "HAL-01",
+      "HAL-02"
+    ],
+    "note": "The HAL (Harness Abstraction Layer) detection engine -- DEC-156. Output schema is FROZEN in claude-template/templates/HAL_CAPABILITY_MAP.md; a schema change there is a spec-level event. The version->capability floor table lives HERE (in the run scripts), NOT in consuming skills -- skills branch only via segments/_hal-gate.md. Conservative floors (2.1.205/2.1.206 for rolling features) are deliberate: a false-false costs only a missed fast path, never breakage. Test seams HARNESS_CAPS_FORCE_VERSION / HARNESS_CAPS_NOW exist solely so validators can pin golden fixtures; never set them in normal operation."
+  }
+}

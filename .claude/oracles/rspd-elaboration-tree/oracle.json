@@ -1,0 +1,47 @@
+{
+  "name": "rspd-elaboration-tree",
+  "version": "1.0.0",
+  "question": "What is the elaboration state of each delegated node in the decomposition tree (charter / elaborated / in_progress / done / missing)?",
+  "category": "spec",
+  "kind": "project-state",
+  "gracefullyAbsent": true,
+  "expected_runtime_ms": 1500,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-06-22 on the ULDF framework repo under Git Bash (win32; slowest supported environment); pessimistic-honest per ORACLE-COST-01. Derive cost scales with the number of delegated sub-spec stores, not total spec size.",
+  "invocation": {
+    "unix": ".claude/oracles/rspd-elaboration-tree/run.sh",
+    "windows": ".claude/oracles/rspd-elaboration-tree/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "string",
+      "applicable": "boolean",
+      "spec_root": "string|null",
+      "tree": "array<{id:string, domain:string, status:string, store:string, store_exists:boolean, elaboration:string}>",
+      "summary": "{total:integer, charter:integer, elaborated:integer, in_progress:integer, done:integer, missing:integer}",
+      "briefing": "string"
+    }
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "docs/specs/SPECIFICATION.md",
+      "docs/specs/**/SPECIFICATION.md"
+    ]
+  },
+  "consultation": {
+    "typical_sessions_using": "some",
+    "estimated_token_savings_per_call": 700
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/rspd-elaboration-tree/validate.sh",
+    "self_test_windows": ".claude/oracles/rspd-elaboration-tree/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Read docs/specs/SPECIFICATION.md and any nested docs/specs/<domain>/SPECIFICATION.md stores; for each requirement row with status [CHARTER]/[ELABORATED]/[IN_PROGRESS]/[DONE] and a 'Spec-Owner: child (delegated)' pointer, check whether the pointed-at <domain>/SPECIFICATION.md store exists (absent => missing/broke; present => map status to elaboration).",
+  "provenance": {
+    "authored_by": "collab-20260622-160223:CLAUDE-B",
+    "created": "2026-06-22T00:00:00Z"
+  }
+}

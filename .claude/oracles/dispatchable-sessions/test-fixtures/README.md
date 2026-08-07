@@ -2,12 +2,12 @@
 
 ## Synopsis
 
-Pattern A paired-oracle fixtures (Oraculurgy Part 11) for `dispatchable-sessions`: documented expected-state scenarios for the `active-sessions.json` registry that the live oracle is asserted against by the `csi-01-fixture-drift.py` verifier. Come here when adding a CSI-01 registration scenario, debugging a smoke-harness failure in `claude-template/scripts/csi-tests/csi-01-smoke.{sh,ps1}`, or looking up the `<MATCH:regex>` predicate syntax for variant fields. Don't come here for cross-oracle generated-artifact fixtures — those live under `claude-template/templates/fixtures/`.
+Pattern A paired-oracle fixtures (Oraculurgy Part 11) for `dispatchable-sessions`: documented expected-state scenarios for the `active-sessions.json` registry that the live oracle is asserted against by the `csi-01-fixture-drift.py` verifier. Come here when adding a CSI-01 registration scenario, debugging a smoke-harness failure in `~/.claude/scripts/csi-tests/csi-01-smoke.{sh,ps1}`, or looking up the `<MATCH:regex>` predicate syntax for variant fields. Don't come here for cross-oracle generated-artifact fixtures — those live under `~/.claude/templates/fixtures/`.
 
 ## Purpose & Responsibilities
 
 Expected-state fixtures specific to the `dispatchable-sessions` oracle
-(`claude-template/oracles/dispatchable-sessions/`). Each fixture documents
+(`~/.claude/oracles/dispatchable-sessions/`). Each fixture documents
 what the oracle (or the substrate it reads — the dispatch registry at
 `.claude/collaboration/active-sessions.json`) should look like in a labeled
 scenario. Paired with a drift-detection verifier so the fixture is a
@@ -15,7 +15,7 @@ load-bearing contract rather than an inert document.
 
 Scope: fixtures of registry shape and oracle output shape. Tests that drive
 the oracle end-to-end live in
-`claude-template/oracles/dispatchable-sessions/validate.{sh,ps1}`.
+`~/.claude/oracles/dispatchable-sessions/validate.{sh,ps1}`.
 
 ## File Index
 
@@ -30,11 +30,11 @@ To validate the live registry against this fixture in a sandbox:
 
 ```bash
 # Bash smoke (calls the Python verifier per scenario):
-bash claude-template/scripts/csi-tests/csi-01-smoke.sh
+bash ~/.claude/scripts/csi-tests/csi-01-smoke.sh
 
 # Or invoke the verifier directly against an existing sandbox:
-python claude-template/scripts/csi-tests/csi-01-fixture-drift.py \
-    --fixture claude-template/oracles/dispatchable-sessions/test-fixtures/csi-01-registration-fixture.json \
+python ~/.claude/scripts/csi-tests/csi-01-fixture-drift.py \
+    --fixture ~/.claude/oracles/dispatchable-sessions/test-fixtures/csi-01-registration-fixture.json \
     --scenario interactive-session-fresh \
     --sandbox <path-to-sandbox-with-.claude/-populated>
 ```
@@ -51,7 +51,7 @@ error.
   hook).
 - **Verifier-mandated** (F1-RT): no fixture in this directory ships without
   a consuming verifier. The verifier lives in
-  `claude-template/scripts/csi-tests/` (cross-mechanism) and is invoked by
+  `~/.claude/scripts/csi-tests/` (cross-mechanism) and is invoked by
   the CSI-01 smoke harnesses on every scenario sandbox.
 - **Match syntax**: fields whose values begin with `<MATCH:regex>` are
   validated as Python-flavored regular expressions. Fields without the
@@ -64,9 +64,9 @@ error.
 
 ## Relationships & Dependencies
 
-- **Consuming verifier**: `claude-template/scripts/csi-tests/csi-01-fixture-drift.py`
-- **Consuming smokes**: `claude-template/scripts/csi-tests/csi-01-smoke.{sh,ps1}`
-- **Oracle**: `claude-template/oracles/dispatchable-sessions/run.{sh,ps1}`
+- **Consuming verifier**: `~/.claude/scripts/csi-tests/csi-01-fixture-drift.py`
+- **Consuming smokes**: `~/.claude/scripts/csi-tests/csi-01-smoke.{sh,ps1}`
+- **Oracle**: `~/.claude/oracles/dispatchable-sessions/run.{sh,ps1}`
   (paired oracle — reads the real registry; drift between this fixture and
   the oracle's output flags a regression).
 - **Schema authority**: DISPATCH-01 (`docs/specs/SPECIFICATION.md`, locked
@@ -79,7 +79,7 @@ error.
   tightly coupled to the oracle's contract and should live next to it.
   Cross-oracle fixtures (or fixtures of generated artifacts the framework
   writes broadly, like `current-session.md`) live in
-  `claude-template/templates/fixtures/`.
+  `~/.claude/templates/fixtures/`.
 - **Why this directory was missing a README in Stage 1** — the fixture was
   authored by STAGE1-CSI-01 as the first occupant of a new path. Stage 4
   (R-A A1) closed the ULADP gap with this README and Stage 4 (F1-RT) wired

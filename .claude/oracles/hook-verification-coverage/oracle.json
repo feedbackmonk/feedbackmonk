@@ -1,0 +1,65 @@
+{
+  "name": "hook-verification-coverage",
+  "version": "1.0.0",
+  "kind": "verification",
+  "assertion": {
+    "asserts": "every hook script registered in settings.json carries its own verification surface, per EPP-03",
+    "measures": "for each `hooks/<name>.{sh,ps1}` matched by a regex over settings.json: whether `hooks/tests/<name>.test.{sh,ps1}` exists on disk, OR whether any file under the configured smoke directories contains the text `<name>.sh` / `<name>.ps1`",
+    "known_gaps": [
+      "measures-presence-not-function (the primary gap, accepted deliberately): an EMPTY test file, or a smoke that merely MENTIONS the hook in a comment or a path list, satisfies the check. Whether the surface asserts anything about the hook's behaviour is a judgment question and cannot be mechanized here -- this oracle bounds the 'nobody wrote one at all' failure, which is the one EPP-03 was written for",
+      "registration is found by regex over settings.json: a hook invoked through a wrapper script, an absolute path, or a non-matching filename shape is invisible to the scan, so `checked` is a floor and not a census",
+      "text-match coverage is direction-blind: a smoke referencing hook A while testing hook B credits A. A rename that updates the smoke's prose but not its assertions keeps the credit"
+    ]
+  },
+  "expected_runtime_ms": 1200,
+  "lane": "fast",
+  "trigger_globs": [
+    "**/hooks/**",
+    "**/settings.json",
+    "**/scripts/csi-tests/**"
+  ],
+  "cost_provenance": "re-measured 2026-07-13 on the ULDF framework repo under Git Bash (win32; slowest supported environment): 627-707ms STANDALONE. Raised 600 -> 1200 because the 600 declaration was measured standalone and the oracle runs CONCURRENTLY with ~9 fast-lane siblings -- under lane contention it exceeded its 3x kill (2000ms) and was AUTO-DEMOTED out of the fast lane (oracle-demotions.json, 2026-07-13). An oracle silently demoted for under-declaring its cost stops running while still appearing installed: the same silence-read-as-absence failure as DISC-ORA-02/03, one layer down. Declare for the contended case, not the quiet one -- pessimistic-honest per ORACLE-COST-01.",
+  "question": "Does every hook script registered in settings.json carry its own verification surface (test file or smoke-harness reference), per EPP-03?",
+  "category": "test",
+  "invocation": {
+    "unix": ".claude/oracles/hook-verification-coverage/run.sh",
+    "windows": ".claude/oracles/hook-verification-coverage/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "pass | warn | fail",
+      "details": {
+        "applicable": "bool (false when no settings.json found -- graceful absence)",
+        "checked": "integer (unique hook script basenames found in settings.json)",
+        "covered": "array of strings (hooks with a verification surface)",
+        "uncovered_new": "array of strings (hooks with NO surface and NOT grandfathered -- these produce status fail)",
+        "uncovered_legacy": "array of strings (hooks with NO surface but grandfathered in the baseline -- these produce status warn)"
+      },
+      "briefing": "string (empty on pass)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "framework-development sessions touching hooks or settings.json; /0-uldf-finalize Phase 1a when hook files are in the diff",
+    "estimated_token_savings_per_call": 0,
+    "note": "Gate, not a savings oracle. Enforces EPP-03 (no hook ships without its own verification surface)."
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/hook-verification-coverage/validate.sh",
+    "self_test_windows": ".claude/oracles/hook-verification-coverage/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Manually list hook scripts referenced in settings.json 'hooks' blocks; for each, confirm a hooks/tests/<name>.test.{sh,ps1} file exists or a smoke under scripts/csi-tests/ OR scripts/smoke-tests/ references '<name>.sh'/'<name>.ps1'.",
+  "baseline_note": "The grandfathered-hook baseline (hooks shipped before EPP-03 without a surface) is hardcoded identically in run.sh and run.ps1 and documented in README.md. Remove entries as legacy hooks gain tests.",
+  "provenance": {
+    "authored_by": "agent",
+    "created": "2026-06-11T00:00:00Z",
+    "spec_refs": [
+      "EPP-03"
+    ],
+    "note": "Arc 2 mechanism honesty (FOUNDATIONS audit 2026-06-11, Theme E / SS 6.2). Verification surface for the EPP-03 clause itself: a clause demanding verification surfaces that had none would be self-refuting. Trigger exemplars: DEC-71/DISC-CSI-12 (SessionEnd hook concluded the orchestrator's arc 4x); 2026-06-11 sync chmod ~45-min silent stall (fixed d304599/8014f5f)."
+  }
+}

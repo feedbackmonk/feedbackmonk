@@ -1,0 +1,7 @@
+# The framework write-journal hook creates .claude/session-state/write-journal/
+# at THIS directory root whenever a validator runs with its CWD resolving here.
+# That is a test-time side-effect, never part of a fixture. Anchored (leading /)
+# so it ignores ONLY test-fixtures/.claude -- the fixture subdirectory
+# fully-instrumented/.claude/ is a deliberate, committed fixture artifact and is
+# NOT matched by this rule.
+/.claude/

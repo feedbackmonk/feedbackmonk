@@ -9,7 +9,8 @@
 #   T4. --gc is idempotent: re-running on post-sweep dir sweeps zero.
 #   T5. --gc emits JSON summary with all expected fields.
 #   T6. .claude/config.json handoffRetention.threshold is honored (numeric and PnD).
-#   T7. --gc-cheap is silent on success.
+#   T7. --gc-cheap (DEC-79 auto-sweep) emits summary JSON with empty briefing
+#       when nothing is sweepable (silent briefing line).
 #   T8. _summary.jsonl receives one valid JSON line per swept brief BEFORE delete (SWEEP-08).
 #   T9. Malformed config falls back to default 30 days with threshold_source=default.
 
@@ -187,13 +188,14 @@ echo "[default with PnD config 1d]: $GC_OUT3b"
 echo "$GC_OUT3b" | grep -q '"threshold_days":1' && pass "T6: PnD form parses (threshold_days=1)" || fail "T6: PnD form did not parse (got: $GC_OUT3b)"
 echo "$GC_OUT3b" | grep -q '"threshold_source":"config"' && pass "T6: PnD form sets source=config" || fail "T6: PnD form source mismatch"
 
-# ---- T7: --gc-cheap silent on success --------------------------------------
+# ---- T7: --gc-cheap auto-sweep (DEC-79): nothing sweepable -> swept 0 + empty briefing ----
+# Reset threshold to default 30d first — T6 left a P1D config under which the
+# surviving recent brief WOULD be sweepable, making this assertion flaky.
+rm -f "$SANDBOX/.claude/config.json"
 CHEAP_OUT=$(cd "$SANDBOX" && bash .claude/oracles/handoff-retention/run.sh --gc-cheap 2>&1)
-if [ -z "$(echo "$CHEAP_OUT" | tr -d '[:space:]')" ]; then
-    pass "T7: --gc-cheap silent on success"
-else
-    fail "T7: --gc-cheap emitted output (should be silent): $CHEAP_OUT"
-fi
+echo "[gc-cheap on no-stale sandbox]: $CHEAP_OUT"
+echo "$CHEAP_OUT" | grep -q '"swept":0' && pass "T7: --gc-cheap sweeps zero when nothing sweepable" || fail "T7: --gc-cheap swept != 0 (got: $CHEAP_OUT)"
+echo "$CHEAP_OUT" | grep -q '"briefing":""' && pass "T7: --gc-cheap empty briefing (silent line) when nothing swept" || fail "T7: --gc-cheap briefing not empty (got: $CHEAP_OUT)"
 
 # ---- T9: malformed config falls back to default ----------------------------
 echo 'this is not json {{{' > "$SANDBOX/.claude/config.json"

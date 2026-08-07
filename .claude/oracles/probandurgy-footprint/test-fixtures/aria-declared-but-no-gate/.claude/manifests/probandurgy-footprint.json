@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "1",
+  "mechanisms": [
+    {
+      "name": "aria",
+      "axis_a": "feature-gated-out-by-default",
+      "axis_b": "runtime-gated",
+      "gate_locations": [
+        "Cargo.toml#features.aria-dev",
+        "vite.config.ts#define.__ARIA_ENABLED__"
+      ],
+      "verifier_script": null,
+      "self_test_supported": false,
+      "waivers": []
+    }
+  ]
+}

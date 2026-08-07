@@ -1,0 +1,64 @@
+{
+  "name": "code-graph",
+  "version": "1.0.0",
+  "question": "What does this module depend on, what depends on it, what is the transitive impact set if its interface changes, and are there dependency cycles — over the module-level graph, with declared coverage honesty?",
+  "category": "module",
+  "kind": "project-state",
+  "expected_runtime_ms": 4000,
+  "lane": "on-demand",
+  "cost_provenance": "measured 2026-07-07 on the ULDF framework repo under Git Bash (win32; slowest supported environment): 71 modules / 166 grep-observed edges derived by dependency-drift.py --emit-edges in ~2-3s; the query verbs (Tarjan SCC, transitive closure) add sub-second. Pessimistic-honest per ORACLE-COST-01. On-demand (NOT in the every-session briefing fan-out): invoked by /0-uldf-oracle and by Arc 3 A4 impact-injection, so the fast-lane 15s briefing budget does not apply.",
+  "invocation": {
+    "unix": ".claude/oracles/code-graph/run.sh",
+    "windows": ".claude/oracles/code-graph/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "one of: ok, no-data",
+      "reason": "string (present ONLY on no-data; the honest reason the graph/query could not be answered)",
+      "query": {
+        "verb": "one of: deps, consumers, impact, cycles, summary (default)",
+        "target": "string|null (the module the verb was asked about; null for cycles/summary)",
+        "transitive": "boolean (true when the answer is a transitive closure — always true for impact)"
+      },
+      "result": "for deps/consumers/impact: array of module paths (sorted, capped at 500). For cycles: array of {members:[...], size:N}. For summary: object {modules:[...], edgeCount:N, cycleCount:N}.",
+      "coverage": "one of: full, grep-only, none — MANDATORY; the weakest (min) coverage of the modules involved in the answer. full=all involved extractor-covered; grep-only=any involved only grep-observed (answer is a FLOOR); none=nothing observable (empty result is inability-to-observe, not proven absence)",
+      "coverageNote": "string (honest degrade note; empty when coverage is full)",
+      "truncated": "boolean (true when a result list was capped at 500 — no silent drops)",
+      "extractor": {
+        "configured": "boolean (was a pluggable dependencyDrift.edgeExtractor configured?)",
+        "coveredModules": "array of module paths the extractor authoritatively covered"
+      },
+      "briefing": "string (non-empty ONLY when a real finding exists — i.e. dependency cycles present; quiet otherwise per the suppressed-line convention)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "key": "no cache; re-derives the graph via dependency-drift.py --emit-edges on every call (query oracle, invoked on demand)"
+  },
+  "consultation": {
+    "typical_sessions_using": "on-demand",
+    "estimated_token_savings_per_call": 1500
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/code-graph/validate.sh",
+    "self_test_windows": ".claude/oracles/code-graph/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Derive the module graph by hand: run `.claude/scripts/dependency-drift.sh --emit-edges` to get {edges:[{from,to,evidence}], modules:[{path,coverage}]}, then for --deps follow out-edges from the target, for --consumers/--impact follow reverse edges (impact = transitive closure of consumers = everything that could break if the target's interface changes), for --cycles find strongly-connected components of size >= 2. The coverage of any answer is the WEAKEST coverage among the modules involved — a grep-only edge makes the answer a FLOOR, never a proven-complete set (M6). Unparsed files are NO-DATA, never a silent absence-of-edges.",
+  "provenance": {
+    "authored_by": "collab-code-graph:CLAUDE-A1",
+    "created": "2026-07-07T00:00:00Z",
+    "spec_refs": [
+      "A1",
+      "A4",
+      "M6"
+    ],
+    "note": "Scrutiny ADD proposal A1 (AMEND verdict): a module-level dependency-graph query oracle that WRAPS the existing per-stack tooling behind ONE envelope + the pluggable per-project edge-extractor contract (M6) — NO bespoke parser fleet. It does not derive edges itself; it reuses the SAME dependencyDrift.edgeExtractor seam the dependency-drift check defines, by shelling `dependency-drift.py --emit-edges` (the additive graph-emit mode) and computing the query verbs (--deps/--consumers/--impact/--cycles) over the resulting module DAG. Language-agnostic grep-grade fallback makes it dogfoodable on THIS bash/PS/markdown repo. The MANDATORY coverage field carries M6 honesty end-to-end: full (extractor-covered) / grep-only (lossy FLOOR) / none (NO-DATA, never a silent absence-of-edges). --impact is the transitive consumer closure Arc 3 A4 injects into worker briefs + finalize Phase 3. Advisory: exits 0 always; the briefing line fires only when cycles are present (the cycle detection prose never mechanized before). NO-DATA honesty: not-a-repo / no modules / target-not-found -> status:no-data with a reason, never an empty-but-ok that reads as 'no dependencies'."
+  },
+  "config": {
+    "config_keys": ".claude/config.json -> dependencyDrift: {edgeExtractor, edgeExtractorMode} (SHARED with the dependency-drift check — the same seam raises a module's coverage from grep-only to full)",
+    "resultCap": 500,
+    "comment": "code-graph adds no config of its own; it inherits the dependencyDrift edge-extractor contract. Configure a per-stack extractor (dependency-cruiser / madge / import-linter / jdeps behind a `<from>\\t<to>` adapter) to promote coverage from grep-only to full. Absent extractor => honest grep-only (a FLOOR), never a silent full pass (M6)."
+  }
+}

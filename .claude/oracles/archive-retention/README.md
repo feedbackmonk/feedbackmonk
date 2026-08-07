@@ -11,7 +11,7 @@ Project-state oracle (cleanup category) that lists archived PODS sessions under 
 **Category**: cleanup
 **Kind**: `project-state`
 **Spec**: `docs/specs/SPECIFICATION.md` § Archive Retention (RETENTION-01..06)
-**Design lineage**: CSI-05 registry hygiene oracle (`claude-template/oracles/dispatchable-sessions/`)
+**Design lineage**: CSI-05 registry hygiene oracle (`~/.claude/oracles/dispatchable-sessions/`)
 
 ## Purpose
 
@@ -35,7 +35,7 @@ Without this oracle, every converged PODS session leaks an archive dir indefinit
 | Mode | Invocation | Purpose | Budget |
 |---|---|---|---|
 | (default) | `run.sh` / `run.ps1` | List archived dirs with metadata + sweepability flags | ~120ms |
-| `--gc-cheap` | `run.sh --gc-cheap` | Session-start hygiene sweep, defers if over budget | ~100ms |
+| `--gc-cheap` | `run.sh --gc-cheap` | Session-start hygiene sweep, defers if over budget | ~1000ms |
 | `--gc` | `run.sh --gc` | On-demand full sweep with summary output | unbounded |
 
 ## Sweep Criteria
@@ -121,7 +121,7 @@ Per-dir delete is sequential. `_summary.jsonl` writes use POSIX-atomic append (e
 | `.claude/collaboration/archived/` does not exist | Empty briefing JSON; `--gc` reports zero with `note:"no archived dir"` |
 | Summary write fails | Dir is NOT deleted; warning to stderr |
 | Delete fails after summary write | Summary entry persists; warning to stderr (rare; no data loss) |
-| `--gc-cheap` exceeds 100ms budget mid-loop | Sweep aborts cleanly; defers to next session-start |
+| `--gc-cheap` exceeds 1000ms budget mid-loop | Sweep aborts cleanly; defers to next session-start |
 | Unparseable basename | Skipped (failure-open) |
 
 ## Surfaces (where the sweep fires)
@@ -147,6 +147,35 @@ Validates:
 - T6: `.claude/config.json` `archiveRetention.threshold` is honored.
 - T7: `--gc-cheap` is silent on success and performs the sweep.
 - T8: `_summary.jsonl` receives one JSON line per swept dir BEFORE delete.
+- T9: `--gc-cheap` never starves — a backlog drains to zero across invocations (DEFER-019).
+- T10: the whole sandbox phase is green under a clock shifted **+1 year** (time-invariance).
+- T11: the `ULDF_FAKE_NOW` seam rejects non-numeric values and is honored for numeric ones.
+
+### The `ULDF_FAKE_NOW` test seam (DEFER-072)
+
+`run.{sh,ps1}` and `validate.{sh,ps1}` both read `ULDF_FAKE_NOW` — epoch seconds
+standing in for `now`.
+
+| | |
+|---|---|
+| **Honored when** | the value is *strictly* `[0-9]+`. Anything else (empty, trailing garbage, words) is ignored and the real clock is used — it must fail **safe**, because this value moves an `rm -rf` cutoff. |
+| **Visibility** | while active, `--gc` / `--dry-run` / briefing output carries `"clockSource":"fake"`. An accidental activation is loud, not silent. `--gc-cheap` stays byte-silent (T7). |
+| **In production** | unset, and the entire mechanism is inert. |
+| **Why it exists** | the fixtures are directory *names*, and the oracle derives its own `now`. Faking only the validator dates fixtures into the future and the test measures that skew instead of time-invariance. Validator and oracle must shift together. |
+
+**Why fixtures are relative at all.** Fixture `collab-20260420-130000` was "~10 days"
+old when authored (2026-04-30), crossed the P90D default on **2026-07-19**, and left
+this validator red for 15 days until an unrelated finalize tripped over it. The
+properties under test — *older than threshold*, *younger than threshold* — are
+relative by definition; a calendar literal additionally encodes the authoring day,
+which is not part of the contract. T10 is what stops that recurring: a literal that
+is perfectly green today goes red under the shifted clock, so the bomb is caught at
+authoring time rather than on the day it detonates.
+
+**Direction matters when auditing this class.** An *aged* fixture written as a past
+literal is monotonically safe — it only gets older. Only the *too-young* fixture is a
+time bomb. Both are still written relative here, because a reader cannot tell the
+safe one from the bomb without doing the arithmetic.
 
 ## Constraints
 
@@ -161,11 +190,13 @@ Validates:
 - **Pre-delete `_summary.jsonl` is mandatory**: Probandurgy invariant — never lose audit data. Summary write failure halts the delete.
 - **No directory-level lock**: race-tolerant by idempotent delete; audit-tolerant by duplicate-OK summary appends.
 - **Stand-alone in spec**, not under § CSI: different scope (filesystem dirs vs. registry), different consumers (forensic readers vs. dispatch). Cross-references CSI-05 as design lineage.
+- **Fixture dates are computed from `now`, never written as literals** (DEFER-072). Rejected alternative: keep the literals and simply re-date them — that resets the same fuse rather than removing it, and the re-dating would fall to whoever next trips over the red.
+- **The clock seam lives in `run.{sh,ps1}`, not only in the validator** (DEFER-072). Rejected alternatives: `libfaketime` (absent on MSYS, so the cell would SKIP — a vacuous pass); patching a copy of `run.sh` inside the sandbox (then the cell tests a mutant, not the shipped oracle). The residual risk — a clock override on a destructive sweeper — is bought down by the strict-numeric guard (T11) and the `clockSource` self-declaration, not by trust.
 
 ## Cross-References
 
 - Manifest: `oracle.json`
 - Spec: `docs/specs/SPECIFICATION.md` § Archive Retention
-- Design lineage: `claude-template/oracles/dispatchable-sessions/` (CSI-05)
+- Design lineage: `~/.claude/oracles/dispatchable-sessions/` (CSI-05)
 - Foundation: `FOUNDATIONS/ORACULURGY_DESIGN.md` Part 11 (Verification Oracles, sibling category) and § 2.12 of `PRINCIPLES_OF_LLM_AGENT_ORCHESTRATION.md`
 - Probandurgy positioning: this is NOT a Probandurgy mechanism per se — it's a project-state oracle that protects the substrate (archive dirs) which downstream Probandurgy mechanisms (PODS Critic dogfood reviews) depend on. CSI-05 is its closest sibling.

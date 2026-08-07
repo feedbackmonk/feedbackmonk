@@ -1,0 +1,62 @@
+{
+  "name": "background-job-status",
+  "version": "1.1.0",
+  "question": "Of the jobs launched via the tracked-background-run wrapper, which are running / done / failed / stalled, and which finished but are not yet acknowledged?",
+  "category": "environment",
+  "kind": "project-state",
+  "expected_runtime_ms": 1500,
+  "cost_provenance": "Reads small JSON sentinels under .claude/session-state/jobs/ and computes status/stall from timestamps. No process spawning, no network. Declared pessimistically for a handful of jobs.",
+  "invocation": {
+    "unix": ".claude/oracles/background-job-status/run.sh",
+    "windows": ".claude/oracles/background-job-status/run.ps1"
+  },
+  "args": {
+    "selector": "(positional) 'all' (default) | 'latest' | '<job_id>'",
+    "ack": "--ack <job_id|all> marks finished jobs acknowledged so they drop off the session-start enforcement line"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "ok": "boolean",
+      "jobs": [
+        {
+          "job_id": "string",
+          "label": "string",
+          "session_id": "string|null (SACT-03: the Claude session that launched the job; null for pre-SACT sentinels or jobs launched outside a session; additive v1.1.0)",
+          "status": "string (running|done|failed)",
+          "done": "boolean",
+          "exit_code": "integer|null",
+          "stalled": "boolean",
+          "seconds_since_heartbeat": "integer|null",
+          "started_at": "string (iso8601)",
+          "ended_at": "string|null",
+          "last_heartbeat_at": "string (iso8601)",
+          "acknowledged": "boolean",
+          "log_path": "string",
+          "cmd": "string"
+        }
+      ],
+      "count": "integer",
+      "total": "integer",
+      "pending": "array (job_ids still running)",
+      "unacknowledged": "array (job_ids done/failed but not acked)",
+      "stall_seconds": "integer (heartbeat-age threshold for the stalled flag)",
+      "briefing": "string (non-empty only when jobs are pending or finished-unacknowledged; surfaced as the [background-job-status] session-start line; empty suppresses the line)",
+      "summary": "string"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 1500
+  },
+  "fallback": "Read the sentinel JSONs directly under .claude/session-state/jobs/<job_id>.json — each carries {status, exit_code, started_at, ended_at, last_heartbeat_at, log_path, cmd}. The wrapper that writes them is scripts/jobs/Invoke-TrackedRun.ps1.",
+  "provenance": {
+    "authored_by": "session:2026-06-24 (framework baseline staged from GitCellar tracked-background-run mechanism)",
+    "created": "2026-06-24T00:00:00Z",
+    "rationale": "tracked-background-run mechanism. Replaces advisory CLAUDE.md prose ('arm a condition-watcher', 'monitor for stall') with a deterministic program: completion/failure/stall of long/background work is answered by reading the wrapper's terminal sentinel, never inferred from the unreliable Bash background completion notification (which never fires when the command spawns detached children). The 'every'-session + briefing-field convention makes a finished-but-unnoticed job impossible to silently miss at the next turn.",
+    "revision_1_1_0": "2026-08-03 (SACT-03, DEC-240). Sentinels gain session_id attribution (wrapper writes it env-first; null outside a session) and the oracle surfaces it per job plus an @owner tag on running jobs in the briefing. Trigger: DEFER-069 — a 41-minute Docker build was killed by invisible sibling contention and could not even be attributed afterward; and the 2026-07-30 GitCellar 30x contention pre-flight failed by hand-filtering jobs[] while the oracle's own pending/briefing fields named the peer run. Consumers MUST read summary/pending/briefing, never hand-filter jobs[]. Ack/reap stay session-scoped by discipline: acking a peer's records erases their completion signal (GitCellar lesson #41)."
+  }
+}

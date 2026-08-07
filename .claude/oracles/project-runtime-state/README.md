@@ -1,9 +1,5 @@
 # project-runtime-state Oracle
 
-## Synopsis
-
-Project-state oracle (WT-05, DEC-61) answering whether this project has live dev servers, shared build artifacts, file watchers, or stateful runtimes that would conflict under PODS worktree isolation. Consulted by `/0-uldf-pods-parallelize --worktrees` before deciding worktree-per-worker isolation is safe. Come here for the worktree-safety signal, not for general runtime status.
-
 **Kind**: project-state
 **Spec**: WT-05 in `docs/specs/SPECIFICATION.md`
 **Decision**: DEC-61 in `docs/specs/DECISIONS.md`
@@ -15,7 +11,7 @@ Project-state oracle (WT-05, DEC-61) answering whether this project has live dev
 
 ## Consumer
 
-`claude-template/segments/-pods/parallelize_analysis.md` Step 6 (the WT-06 proactive heuristic) calls this oracle to compute `antiFitScore` and surface an opt-in/anti-fit recommendation when a user runs `/0-uldf-pods-parallelize`. Suggestion-only — the heuristic never auto-flips `--worktrees` based on this oracle's output.
+`~/.claude/segments/-pods/parallelize_analysis.md` Step 6 (the WT-06 proactive heuristic) calls this oracle to compute `antiFitScore` and surface an opt-in/anti-fit recommendation when a user runs `/0-uldf-pods-parallelize`. Suggestion-only — the heuristic never auto-flips `--worktrees` based on this oracle's output.
 
 Not surfaced at session-start. Compute cost is ~150ms (port probes + filesystem globs); paying that on every session-start would be wasteful when most sessions never invoke `/0-uldf-pods-parallelize`.
 

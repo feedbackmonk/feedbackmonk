@@ -35,18 +35,24 @@ function Mk-Sandbox {
     $oracleSub = Join-Path $proj ".claude/oracles/stranded-dirty-files"
     New-Item -ItemType Directory -Path $oracleSub -Force | Out-Null
     # Canonicalize to long path form. $env:TEMP often resolves to a DOS 8.3
-    # short name (e.g. C:\Users\SOMEUS~1\...) on Windows, but the spawned
-    # oracle's (Get-Location).Path returns the long form (C:\Users\someuser\...).
+    # short name (e.g. C:\Users\CARBON~1\...) on Windows, but the spawned
+    # oracle's (Get-Location).Path returns the long form (C:\Users\Carbonadmin\...).
     # If we don't canonicalize, T5's workDir comparison (registry vs. oracle's
     # Get-Location) silently mismatches. Push-Location + Get-Location resolves
     # the long form via the filesystem.
-    Push-Location $rawSandbox
+    # DEFER-077: -ErrorAction Stop is load-bearing here even though nothing is
+    # written inside the push/pop window -- a FAILED Push-Location would leave
+    # the REAL repo as cwd and $script:Sandbox would silently become the real
+    # repo root, so every later fixture write would land in the live tree.
+    if (-not $rawSandbox) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $rawSandbox -ErrorAction Stop
     $script:Sandbox = (Get-Location).Path
     Pop-Location
     Copy-Item (Join-Path $oracleDir "run.ps1")      (Join-Path $oracleSub "run.ps1")      -Force
     Copy-Item (Join-Path $oracleDir "oracle.json")  (Join-Path $oracleSub "oracle.json")  -Force
 
-    Push-Location $proj
+    if (-not $proj) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $proj -ErrorAction Stop   # DEFER-077
     try {
         & git init -q -b main 2>$null
         if ($LASTEXITCODE -ne 0) { & git init -q 2>$null | Out-Null }

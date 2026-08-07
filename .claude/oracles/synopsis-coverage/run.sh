@@ -10,6 +10,80 @@ set -e
 
 EXCLUDES='node_modules|target|\.git|\.vscode|\.idea|dist|build|out|coverage|__pycache__|\.venv|venv|\.claude/oracles/cache|\.claude/checkpoints'
 
+# Walk-time prune (WinDirFul 2026-07-10, DEFER-windirful § 2): EXCLUDES used to
+# be applied via grep AFTER find had walked the full tree, so both walks
+# descended node_modules / Rust target/ etc. — 7+ min on a built project vs
+# ~130s cold / <1s cached with pruning. Name-based excludes prune here; the two
+# path-based excludes (.claude/oracles/cache, .claude/checkpoints) remain
+# grep-filtered below (their parent trees must still be descended). Output set
+# is identical to the grep-only behavior.
+_SC_PRUNE=( \( -name node_modules -o -name target -o -name .git -o -name .vscode -o -name .idea -o -name dist -o -name build -o -name out -o -name coverage -o -name __pycache__ -o -name .venv -o -name venv \) -prune -o )
+
+# =============================================================================
+# Trigger-invalidate cache — implements the freshness contract the manifest
+# declares (previously declared-but-unimplemented; ~65s recompute per call was
+# why DEC-86 deferred this oracle from the briefing budget). Contract and
+# rationale: see the twin block in module-tree-map/run.sh — set-level digest
+# (path+mtime+size of every **/README.md, EXCLUDES-filtered) so edits, adds,
+# deletes, AND renames all invalidate; store-only-when-pre/post-digests-agree
+# guards mid-compute mutation. Briefing context (ULDF_BRIEFING=1): a COLD
+# cache spawns ONE detached background refresh (stampede-guarded) and emits a
+# minimal valid-schema object with empty briefing — graceful absence this
+# session, warm line next session; stale cache is never served (absent beats
+# wrong). --refresh / --no-cache force a synchronous recompute.
+# =============================================================================
+_SC_ORACLE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
+_SC_CACHE_DIR="$_SC_ORACLE_DIR/cache"
+_SC_CACHE_FILE="$_SC_CACHE_DIR/latest.json"
+_SC_DIGEST_FILE="$_SC_CACHE_DIR/trigger-digest.txt"
+_SC_REFRESH_MARK="$_SC_CACHE_DIR/refresh-in-progress"
+
+_SC_FORCE=""
+for _a in "$@"; do
+    case "$_a" in --refresh|--no-cache) _SC_FORCE=1 ;; esac
+done
+
+_sc_trigger_digest() {
+    {
+        find . "${_SC_PRUNE[@]}" -type f -name 'README.md' -printf '%p\t%T@\t%s\n' 2>/dev/null \
+        || find . "${_SC_PRUNE[@]}" -type f -name 'README.md' -print 2>/dev/null \
+            | while IFS= read -r _f; do
+                _m=$(stat -f '%m %z' "$_f" 2>/dev/null || echo 0)
+                printf '%s\t%s\n' "$_f" "$_m"
+              done
+    } \
+        | grep -vE "(^\./|/)($EXCLUDES)(/|$)" \
+        | LC_ALL=C sort \
+        | { md5sum 2>/dev/null || shasum 2>/dev/null || cksum; } \
+        | awk '{print $1}'
+}
+
+_SC_DIGEST_PRE="$(_sc_trigger_digest)"
+if [ -z "$_SC_FORCE" ] && [ -n "$_SC_DIGEST_PRE" ] \
+    && [ -f "$_SC_CACHE_FILE" ] && [ -f "$_SC_DIGEST_FILE" ] \
+    && [ "$(cat "$_SC_DIGEST_FILE" 2>/dev/null)" = "$_SC_DIGEST_PRE" ]; then
+    cat "$_SC_CACHE_FILE"
+    exit 0
+fi
+
+# Cold cache in briefing context: detached refresh + graceful absence.
+if [ -z "$_SC_FORCE" ] && [ "${ULDF_BRIEFING:-}" = "1" ]; then
+    _SC_SPAWN_REFRESH=1
+    if [ -f "$_SC_REFRESH_MARK" ]; then
+        _SC_MARK_AGE=$(( $(date +%s) - $(stat -c '%Y' "$_SC_REFRESH_MARK" 2>/dev/null || stat -f '%m' "$_SC_REFRESH_MARK" 2>/dev/null || echo 0) ))
+        [ "$_SC_MARK_AGE" -lt 600 ] && _SC_SPAWN_REFRESH=""
+    fi
+    if [ -n "$_SC_SPAWN_REFRESH" ]; then
+        mkdir -p "$_SC_CACHE_DIR" 2>/dev/null || true
+        : > "$_SC_REFRESH_MARK" 2>/dev/null || true
+        ( ULDF_BRIEFING="" nohup bash -c \
+            "cd \"$(pwd)\" && bash \"$_SC_ORACLE_DIR/run.sh\" --refresh >/dev/null 2>&1; rm -f \"$_SC_REFRESH_MARK\"" \
+            >/dev/null 2>&1 & ) 2>/dev/null
+    fi
+    printf '{"coverage_pct":100,"conformant_count":0,"total_modules":0,"missing":[],"over_length":[],"briefing_summary":"","briefing":"","cache":"cold-refreshing"}\n'
+    exit 0
+fi
+
 json_escape() {
     local s="$1"
     s="${s//\\/\\\\}"
@@ -93,7 +167,7 @@ while IFS= read -r dir; do
     else
         conformant=$((conformant + 1))
     fi
-done < <(find . -type d 2>/dev/null | sort)
+done < <(find . "${_SC_PRUNE[@]}" -type d -print 2>/dev/null | sort)
 
 # Coverage_pct (integer floor 0-100); 100 when total == 0 (graceful absence)
 if [ "$total" -eq 0 ]; then
@@ -131,6 +205,20 @@ ol_json+="]"
 
 briefing_esc="$(json_escape "$briefing")"
 
-cat <<EOF
+# Emit via tmp so the cache stores exactly what is emitted; store only when
+# the trigger set didn't mutate mid-compute (see cache block header).
+_SC_OUT="$(mktemp 2>/dev/null || echo "/tmp/oracle-sc-$$.json")"
+cat > "$_SC_OUT" <<EOF
 {"coverage_pct":$coverage_pct,"conformant_count":$conformant,"total_modules":$total,"missing":$ms_json,"over_length":$ol_json,"briefing_summary":"$briefing_esc","briefing":"$briefing_esc"}
 EOF
+
+_SC_DIGEST_POST="$(_sc_trigger_digest)"
+if [ -n "$_SC_DIGEST_POST" ] && [ "$_SC_DIGEST_POST" = "$_SC_DIGEST_PRE" ]; then
+    mkdir -p "$_SC_CACHE_DIR" 2>/dev/null || true
+    cp "$_SC_OUT" "$_SC_CACHE_FILE" 2>/dev/null \
+        && printf '%s' "$_SC_DIGEST_POST" > "$_SC_DIGEST_FILE" 2>/dev/null \
+        || true
+fi
+
+cat "$_SC_OUT"
+rm -f "$_SC_OUT" 2>/dev/null || true

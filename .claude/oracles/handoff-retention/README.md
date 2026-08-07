@@ -11,7 +11,7 @@ Project-state oracle (cleanup category) that lists handoff briefs in `.claude/ha
 **Category**: cleanup
 **Kind**: `project-state`
 **Spec**: `docs/specs/SPECIFICATION.md` § SWEEP-01, § SWEEP-07, § SWEEP-08
-**Design lineage**: `claude-template/oracles/archive-retention/` (RETENTION-01..06 substrate per DEC-52); HANDOFF-01 (sibling-`.KEEP` substrate consumed verbatim)
+**Design lineage**: `~/.claude/oracles/archive-retention/` (RETENTION-01..06 substrate per DEC-52); HANDOFF-01 (sibling-`.KEEP` substrate consumed verbatim)
 **Discoveries closed**: DISC-HYGIENE-03 (retention-without-sweep asymmetry)
 
 ## Purpose
@@ -34,8 +34,9 @@ Caps unbounded growth of `.claude/handoff/handoff-*.md` by sweeping briefs older
 | Mode | Invocation | Purpose | Budget |
 |---|---|---|---|
 | (default) | `run.sh` / `run.ps1` | Full inventory JSON with `briefing` field | ~100ms |
-| `--gc-cheap` | `run.sh --gc-cheap` | Silent no-op (read-only per SWEEP-01); symmetry with archive-retention wiring | ~100ms |
+| `--gc-cheap` | `run.sh --gc-cheap` | **AUTO-SWEEP (DEC-79)**: performs the sweep (TTL-expired, KEEP-exempt, pre-delete audit) + emits sweep-report JSON with `briefing` field (empty when nothing swept) | ~1000ms (defers remainder via `budgetExceeded`; calibrated for MSYS per-file spawn cost ~0.5s) |
 | `--gc` | `run.sh --gc` | Destructive sweep with `_summary.jsonl` audit; emits sweep summary JSON | unbounded |
+| `--dry-run` | `run.sh --dry-run` | Identical candidate computation, zero mutation (SWEEPER-05) | unbounded |
 
 ## Frozen Output Schema
 
@@ -72,15 +73,23 @@ Caps unbounded growth of `.claude/handoff/handoff-*.md` by sweeping briefs older
 - `threshold_source` — `"default"` (no config) or `"config"` (from `.claude/config.json`).
 - `briefing` — frozen-format briefing line. **Empty string suppresses the session-start line gracefully** (parallel to `stale-ltads-state` pattern).
 
-**Briefing-line format (frozen)**:
+**Briefing-line formats (frozen)**:
+
+Default mode (would-be-swept inventory — post-DEC-79 this only surfaces briefs the auto-sweep could not remove, e.g. budget-deferred remainder):
 
 ```
 [handoff-retention] N brief(s) older than 30d, run /0-uldf-oracle handoff-retention --gc to sweep
 ```
 
-Empty string when `swept[]` (would-be-swept candidates) is empty.
+`--gc-cheap` sweep report (DEC-79; empty string — silent line — when nothing swept):
 
-### `--gc` mode summary (single-line JSON on stdout)
+```
+[handoff-retention] swept N expired handoff brief(s) (>30d, KEEP-pinned exempt) -- audit: .claude/handoff/_summary.jsonl
+```
+
+Empty string when nothing to report in either mode.
+
+### `--gc` / `--gc-cheap` mode summary (single-line JSON on stdout)
 
 ```json
 {
@@ -94,7 +103,7 @@ Empty string when `swept[]` (would-be-swept candidates) is empty.
 }
 ```
 
-`sweptFiles` omitted when zero swept. `--gc` does NOT emit the inventory JSON of the default mode — only the sweep summary.
+`sweptFiles` omitted when zero swept. Neither sweep mode emits the inventory JSON of the default mode — only the sweep summary. `--gc-cheap` additionally appends `"budgetExceeded":true` when its ~100ms budget deferred part of the sweep set, and a `"briefing"` field (the sweep report above; empty when `swept` is 0).
 
 ## Sweep Criteria
 
@@ -186,11 +195,11 @@ Per-file delete is sequential. `_summary.jsonl` writes use POSIX-atomic append (
 
 ## Surfaces (where the sweep / detection fires)
 
-1. **Session-start hook iteration loop** — default-mode JSON read; `briefing` field surfaced when drift detected.
-2. **Session-start hook hygiene block** — `--gc-cheap` fired alongside `archive-retention --gc-cheap` and `dispatchable-sessions --gc-cheap`; silent on success per the symmetric wiring contract.
-3. **`/0-uldf-oracle handoff-retention --gc`** — explicit operator-initiated sweep; the only destructive path.
+1. **Session-start hook hygiene block** — `--gc-cheap` fired alongside `archive-retention --gc-cheap` and `dispatchable-sessions --gc-cheap`; **performs the sweep** (DEC-79) and its `briefing` field becomes the `[handoff-retention]` sweep-report line (silent when nothing swept).
+2. **Session-start hook iteration loop** — default-mode JSON read; `briefing` field surfaced only when would-be-swept briefs remain (post-DEC-79: budget-deferred remainder, or sweep failures).
+3. **`/0-uldf-oracle handoff-retention --gc`** — explicit operator-initiated sweep (no budget).
 
-The agent does NOT auto-invoke `--gc` from the briefing line. Handoff content may have audit value the agent shouldn't auto-delete; the explicit operator command IS the safety valve (per SWEEP-07 design rationale).
+Pre-DEC-79, `--gc-cheap` was read-only and the nag line asked the operator to run `--gc`; the Arc 2.5 retrospective showed that nag was never acted on once in ~a month. The KEEP-pin (HANDOFF-01) + pre-delete audit (SWEEP-08) rails are the consent surface now — retroactive pinning was always the contract, and the audit line preserves first-line context for reconstruction.
 
 ## Testing
 
@@ -207,7 +216,7 @@ Validates (≥5 cases each, per SWEEP-01 acceptance):
 - T4: `--gc` is idempotent (re-run on post-sweep dir sweeps zero).
 - T5: `--gc` emits JSON summary `{swept, before, after, threshold, thresholdSource, summarized}`.
 - T6: `.claude/config.json` `handoffRetention.threshold` is honored (both numeric and `PnD` form).
-- T7: `--gc-cheap` is silent on success; default mode emits inventory JSON.
+- T7: `--gc-cheap` (DEC-79 auto-sweep) emits summary JSON with empty `briefing` when nothing is sweepable. (Sweep-path coverage — audit-before-delete ordering, KEEP exemption, TTL boundary, idempotency, budget — lives in `~/.claude/scripts/csi-tests/handoff-retention-sweep-smoke.sh`.)
 - T8: `_summary.jsonl` receives one valid JSON line per swept brief BEFORE delete (SWEEP-08 invariant).
 - T9: Malformed config falls back to default 30 days with `threshold_source:"default"`.
 
@@ -224,7 +233,7 @@ Validates (≥5 cases each, per SWEEP-01 acceptance):
 - **mtime-based age**, not filename-timestamp parsing: mtime reflects last meaningful edit; filename timestamps may be stale if a brief was authored, then later edited or amended. mtime is the load-bearing signal.
 - **Sibling `.KEEP` substrate consumed verbatim from HANDOFF-01**: zero new mechanism — KEEP-pin is the established escape hatch for default-gitignored briefs (HYGIENE-01 baseline + HANDOFF-01 retention).
 - **Pre-delete `_summary.jsonl` is mandatory** (SWEEP-08): Probandurgy invariant — never lose audit data without a recovery surface. Summary write failure halts the delete.
-- **`--gc-cheap` is silent / read-only** (per SWEEP-01 spec): handoff content may have unrecognized audit value; no autonomous sweep at session-start. The drift surfaces via the iteration-loop briefing line; only explicit `/0-uldf-oracle handoff-retention --gc` performs the delete.
+- **`--gc-cheap` auto-sweeps (DEC-79, supersedes the original read-only rule)**: the original caution ("handoff content may have unrecognized audit value; no autonomous sweep") produced a nag line that fired every session for ~a month and was never acted on — pure attention cost. The rails that justify auto-sweep were proven by `archive-retention`'s clean audited sweeps: KEEP-pin exemption (HANDOFF-01) is the retention consent surface, and the pre-delete `_summary.jsonl` line (SWEEP-08) is the recovery surface. Briefing line is now a sweep report, silent when idle.
 - **No directory-level lock**: race-tolerant by idempotent delete; audit-tolerant by duplicate-OK summary appends.
 - **Independent of archive-retention** (DEC-52, rule-of-three): the substrate similarity is acknowledged but extraction is deferred until a 4th application appears.
 
@@ -232,9 +241,9 @@ Validates (≥5 cases each, per SWEEP-01 acceptance):
 
 - Manifest: `oracle.json`
 - Spec: `docs/specs/SPECIFICATION.md` § SWEEP (SWEEP-01, SWEEP-07, SWEEP-08)
-- Decisions: DEC-52 (three-independent-oracles substrate model), DEC-54 (30d surface-specific TTL), DEC-55 (three-leg defense — handoff-retention is the single-leg / no-sessionEnd case)
+- Decisions: DEC-52 (three-independent-oracles substrate model), DEC-54 (30d surface-specific TTL), DEC-55 (three-leg defense — handoff-retention is the single-leg / no-sessionEnd case), DEC-79 (`--gc-cheap` auto-sweeps instead of nagging)
 - Discovery: DISC-HYGIENE-03 (retention-without-sweep asymmetry)
-- Substrate precedent: `claude-template/oracles/archive-retention/` (RETENTION-01..06)
+- Substrate precedent: `~/.claude/oracles/archive-retention/` (RETENTION-01..06)
 - KEEP-pin substrate: `CLAUDE.md` § "Handoff Brief Lifecycle — KEEP-Pin Convention"; HANDOFF-01 + HANDOFF-02 in spec
 - Foundation: `FOUNDATIONS/ORACULURGY_DESIGN.md` (oracle authoring discipline); `FOUNDATIONS/PROBANDURGY_MECHANISMS.md` audit-trail subsection (SWEEP-08 invariant)
 - Probandurgy positioning: this is NOT a Probandurgy mechanism per se — it's a project-state oracle whose `--gc` mode satisfies the SWEEP-08 audit-trail invariant. The invariant itself is the Probandurgy generalization.

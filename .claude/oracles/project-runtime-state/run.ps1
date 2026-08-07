@@ -28,54 +28,31 @@ function Test-PortBound {
 }
 
 # ---- Step 1: Parse Dev Port Registry from MACHINE_CONFIG.md ----
-$machineConfig = $null
-if ($env:USERPROFILE -and (Test-Path (Join-Path $env:USERPROFILE ".claude/MACHINE_CONFIG.md"))) {
-    $machineConfig = Join-Path $env:USERPROFILE ".claude/MACHINE_CONFIG.md"
-} elseif ($env:HOME -and (Test-Path (Join-Path $env:HOME ".claude/MACHINE_CONFIG.md"))) {
-    $machineConfig = Join-Path $env:HOME ".claude/MACHINE_CONFIG.md"
-}
-
+# The parse itself lives in scripts/lib/dev-port-registry.ps1 (QUIESCE-01,
+# DEC-208) — one owner, one fix. It was previously inlined here and in the .sh
+# twin with a regex that could not match a single real row (markdown emphasis +
+# code spans), so `hasLiveDevServer` was structurally incapable of returning
+# true from 2026-05-10 to 2026-07-29. Never re-inline it.
 $currentProject = ""
 try { $currentProject = (Split-Path -Leaf (Get-Location).Path) } catch {}
-$currentProjectLc = $currentProject.ToLowerInvariant()
 
-if ($machineConfig -and (Test-Path $machineConfig)) {
-    $lines = Get-Content -LiteralPath $machineConfig -Encoding UTF8 -ErrorAction SilentlyContinue
-    $inSection = $false
-    foreach ($raw in $lines) {
-        if ($raw -match '^##\s+Dev Port Registry') { $inSection = $true; continue }
-        if ($inSection -and $raw -match '^##\s') { $inSection = $false }
-        if (-not $inSection) { continue }
-        $line = $raw -replace '^\s*[-*+|]\s*', ''
-
-        $proj = $null; $port = 0
-        if ($line -match '^([A-Za-z0-9._/\-\s]+):\s*([1-9][0-9]{3,4})(\s|$)') {
-            $proj = $matches[1].Trim()
-            $port = [int]$matches[2]
-        } elseif ($line -match '^\|?\s*([A-Za-z0-9._/\-]+)\s*\|\s*([1-9][0-9]{3,4})\s*\|') {
-            $proj = $matches[1].Trim()
-            $port = [int]$matches[2]
-        } else {
-            continue
+$dprLib = Join-Path $PSScriptRoot "../../scripts/lib/dev-port-registry.ps1"
+if (Test-Path -LiteralPath $dprLib -PathType Leaf) {
+    . $dprLib
+    foreach ($row in (Get-DprPortsForProject -Name $currentProject)) {
+        $devPortEntries += [pscustomobject]@{
+            project = $row.project
+            port    = $row.port
+            source  = "MACHINE_CONFIG.md"
         }
-        if ($port -lt 1024 -or $port -gt 65535) { continue }
-
-        $projLc = $proj.ToLowerInvariant()
-        $matched = (-not $currentProjectLc) -or ($projLc -eq $currentProjectLc) -or `
-                   ($currentProjectLc -and $projLc.Contains($currentProjectLc)) -or `
-                   ($currentProjectLc -and $currentProjectLc.Contains($projLc))
-        if ($matched) {
-            $devPortEntries += [pscustomobject]@{
-                project = $proj
-                port    = $port
-                source  = "MACHINE_CONFIG.md"
-            }
-            if (Test-PortBound -Port $port) {
-                $hasLiveDevServer = $true
-                $antiFitReasons += "port $port assigned to '$proj' is currently bound (live dev server)"
-            }
+        if (Test-PortBound -Port $row.port) {
+            $hasLiveDevServer = $true
+            $antiFitReasons += "port $($row.port) assigned to '$($row.project)' is currently bound (live dev server)"
         }
     }
+} else {
+    # Degraded, and say so: an absent parser must not read as "no ports assigned".
+    $antiFitReasons += "dev-port-registry lib unavailable - Dev Port Registry not consulted (this is NO-DATA, not 'no assignments')"
 }
 
 # ---- Step 2: Glob shared build artifacts ----

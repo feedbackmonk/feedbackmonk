@@ -1,0 +1,83 @@
+{
+  "name": "machine-quiescence",
+  "version": "1.1.0",
+  "question": "Is this machine clean enough that a number taken now means anything — and if not, exactly what residue (which port, which PID, which process) would contaminate it?",
+  "category": "environment",
+  "kind": "verification",
+  "assertion": {
+    "asserts": "nothing is present on this machine that would silently corrupt a number taken right now -- no listener on a port this run needs, no foreign agent session or build/watch process whose existence the caller should weigh before publishing a figure",
+    "measures": "a single instantaneous snapshot, taken before the measurement rather than during it, of (a) listening TCP sockets whose port falls in the --port set / Dev Port Registry assignments / reserved bands / common dev defaults, and (b) live processes whose image name is `claude` or whose command line matches a build/watch token as an anchored command word -- COUNTS OF PROCESSES THAT EXIST, never how much CPU, memory, disk or I/O any of them is consuming",
+    "known_gaps": [
+      "PRESENCE IS NOT UTILISATION, and the divergence is several-fold. The oracle counts processes that exist; what a timing measurement is actually exposed to is processes doing work. Measured 2026-08-06 (DEFER-133): the same script on the same repo returned `noisy` twice with comparable counts (22-28 vs 18 agent sessions, 6-9 vs 5 builds) and wall clocks ~5x apart (4.62-7.90s vs 1.26-1.43s) -- with the LARGER corpus on the FASTER side. The first machine's sessions were running smoke suites; the second's were idle at their prompts. Nothing in this output distinguishes those two states. Treat a `noisy` verdict as a floor on suspicion, never as a magnitude of contention.",
+      "No utilisation field is emitted, and that is a decision with a measurement behind it, not an omission (DEC-297). Cost was affordable against the 12000ms budget (270ms-1460ms across five candidates); STABILITY was not. The machine-wide reference CPU% varies 46.3pp range / 14.9pp stddev across ten consecutive reads, and count-shaped variants 28-47% relative stddev. A single pre-measurement sample of a quantity that volatile either reports sampling noise or is stale before the measurement it qualifies begins -- so emitting it would install a second undeclared proxy inside the fix for the first. A load figure must be integrated OVER the measured window by whatever takes the number, not sampled before it by this oracle.",
+      "It is a snapshot with no duration. Residue that starts one second after the call is invisible, and residue that ends one second after the call still counts against the verdict. The `always-fresh` strategy bounds staleness at call time only.",
+      "`quiet` means no residue IN THE DETECTION SET (QUIESCE-03), not an idle machine. Ports outside the --port set, registry assignments, reserved bands and common defaults are ignored by design; a saturating compile whose tool is not in the QUIESCE-07 word list is not counted. A quiet verdict is a statement about the scanned set, not about the OS.",
+      "Attribution is best-effort and never gates detection (QUIESCE-02): residue that no registry claims is reported with `attributedTo: null` rather than dropped, so `attributedTo` may be null for a process that certainly belongs to someone.",
+      "On a host without CIM the probe degrades to process names with no command lines and says so; the run becomes `unknown` (fails closed). A `degraded` array is therefore part of the answer, not a warning to skim.",
+      "The self-tests cannot see any of the above. `validate.{sh,ps1}` assert exit-code/verdict agreement, schema conformance, the fail-closed invariant and the absence of an actuation verb -- every cell written in the vocabulary of what this oracle MEASURES, so all four pass unchanged whether or not presence stands for contention (OVALID-03, Self-Test-as-Validity-Claim)."
+    ]
+  },
+  "expected_runtime_ms": 12000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-07-29 on the ULDF framework repo under Git Bash (win32; slowest supported environment): ~4.9s wall for one Get-NetTCPConnection sweep plus one Win32_Process CIM enumeration over ~690 processes. Declared pessimistically per ORACLE-COST-01 -- under-declaration causes timeout kills. NOT a session-start oracle: the question is asked at a measurement seam, not every session.",
+  "invocation": {
+    "unix": ".claude/oracles/machine-quiescence/run.sh",
+    "windows": ".claude/oracles/machine-quiescence/run.ps1"
+  },
+  "args": {
+    "port": "--port N (repeatable; PowerShell: -Port N,M) -- a port this measurement needs free. A live listener on one is BLOCKING.",
+    "timing": "--timing (PowerShell: -Timing) -- this measurement is load-sensitive, so ANY residue becomes BLOCKING."
+  },
+  "exit_codes": {
+    "0": "quiet -- no residue in the detection set",
+    "1": "noisy -- residue present, none of it definitively invalidates this run",
+    "2": "unknown -- probe degraded; FAILS CLOSED, treat as a refusal, never as quiet",
+    "3": "blocking -- residue that definitively invalidates this run"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "schemaVersion": "integer (frozen at 1)",
+      "verdict": "string (quiet|noisy|blocking|unknown) -- 1:1 with the exit code",
+      "checkedAt": "string (iso8601 UTC)",
+      "requiredPorts": "array of integers (the --port set this run declared)",
+      "timingSensitive": "boolean (whether --timing was passed)",
+      "counts": "object {devPortListeners, agentSessions, buildProcesses} (integers)",
+      "residue": "array of objects, deterministically ordered. dev-port-listener: {kind, port, pid, process, attributedTo (string|null), via (required|registry|band|default)}. agent-session: {kind, pid, process}. build-process: {kind, pid, process, matched}",
+      "blockingReasons": "array of strings (empty unless verdict==blocking)",
+      "degraded": "array of strings (non-empty implies verdict==unknown)",
+      "summary": "string (one line, human-readable, leads with the verdict)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "rare",
+    "estimated_token_savings_per_call": 1500,
+    "_note": "Consumed at measurement seams via segments/_measurement-quiescence-guard.md (/0-uldf-test ui, /0-uldf-test mobile, and any LD authorizing a measurement window). Deliberately NOT wired into the session-start briefing: a warning every session is a warning nobody reads, and the question only has an answer worth paying for at the moment a number is about to be taken."
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/machine-quiescence/validate.sh",
+    "self_test_windows": ".claude/oracles/machine-quiescence/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Enumerate listening sockets by hand (Get-NetTCPConnection -State Listen / lsof -nP -iTCP -sTCP:LISTEN), cross-reference ~/.claude/MACHINE_CONFIG.md Dev Port Registry for reserved bands and project attribution, and count live `claude` processes and dev-server/watcher command lines. Then decide by hand whether the number you are about to take can be vouched for -- which is exactly the hand-work this oracle replaces.",
+  "provenance": {
+    "authored_by": "shared-pack:uldf-common",
+    "created": "2026-07-29T00:00:00Z",
+    "spec_refs": [
+      "QUIESCE-01",
+      "QUIESCE-02",
+      "QUIESCE-03",
+      "QUIESCE-04",
+      "QUIESCE-05",
+      "QUIESCE-06",
+      "QUIESCE-07"
+    ],
+    "decision_refs": [
+      "DEC-208"
+    ],
+    "note": "Verification Oracle (ORACULURGY_DESIGN.md Part 11). Trigger: DEFER-043 (inject <- Table, 2026-07-29) -- three silent-wrong-answer incidents in one session, all process residue: an orphaned preview server made Playwright skip its build and grade new code against an old bundle; four idle-but-alive PODS workers moved an incumbent renderer's own figures by ~20-25%; stale registry PIDs reported false liveness. GROUND TRUTH IS THE OS -- detection is listening sockets and live processes; MACHINE_CONFIG.md and the session registries only ATTRIBUTE what was found (leg 3 is why a registry must never be the detector). NEVER ACTUATES: warm worker sessions stay warm by design."
+  }
+}

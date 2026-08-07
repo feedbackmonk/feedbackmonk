@@ -36,12 +36,37 @@ MODE="briefing"
 case "${1:-}" in
     --gc)        MODE="gc" ;;
     --gc-cheap)  MODE="gc-cheap" ;;
+    --dry-run)   MODE="dry-run" ;;
     "")          MODE="briefing" ;;
     *)
         echo "pid-orphan-detector: unknown mode: $1" >&2
-        echo "  usage: run.sh [--gc|--gc-cheap]" >&2
+        echo "  usage: run.sh [--gc|--gc-cheap|--dry-run]" >&2
         exit 1
         ;;
+esac
+
+# ---- OLOG fire record (ORA-FIRE-01, DEC-166 / DISC-ORA-02) ------------------
+# This oracle FIRES at every session start as a --gc-cheap sweep and is silent on
+# success BY DESIGN (DEC-54/55) -- so it wrote nothing to oracle-consultations.jsonl,
+# and DEC-82's "zero consultations => retire" criterion read a mechanism running in
+# ~109 sessions as dead. It was named the STRONGEST retire candidate of cycle 1 and
+# withdrawn one keystroke from deletion. Logging the fire (never a "consultation" --
+# nobody asked a question) makes the mechanism visible to the instrument that judges
+# it. Append-failure is swallowed: telemetry must never break the sweep.
+case "$MODE" in
+  gc|gc-cheap)
+    _OFL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for _ofl_cand in \
+        "$_OFL_DIR/../../scripts/lib/oracle-fire-log.sh" \
+        "$_OFL_DIR/../../../claude-template/scripts/lib/oracle-fire-log.sh" \
+        "$HOME/.claude/scripts/lib/oracle-fire-log.sh"; do
+        if [ -f "$_ofl_cand" ]; then
+            # shellcheck source=/dev/null
+            . "$_ofl_cand" && oracle_fire_log "pid-orphan-detector" "sweep"
+            break
+        fi
+    done
+    ;;
 esac
 
 # ---- Source the shared liveness helper -------------------------------------
@@ -84,7 +109,7 @@ fi
 
 # ---- Locate the exec dir; absent => graceful nothing-to-do -----------------
 if [ ! -d "$EXEC_DIR" ]; then
-    if [ "$MODE" = "briefing" ] || [ "$MODE" = "gc" ]; then
+    if [ "$MODE" = "briefing" ] || [ "$MODE" = "gc" ] || [ "$MODE" = "dry-run" ]; then
         emit_empty
     else
         # --gc-cheap is silent on graceful absence
@@ -123,6 +148,18 @@ except Exception:
 }
 
 _ms_now() {
+    # Zero-fork fast path (DEFER-064 rule 2, propagated by DEC-250): a forked
+    # clock costs ~300-500ms per call on a busy MSYS host, so the budget
+    # measurement consumes the budget it is measuring.
+    if [ -n "${EPOCHREALTIME:-}" ]; then
+        local _er_s="${EPOCHREALTIME%%[.,]*}" _er_f="${EPOCHREALTIME#*[.,]}"
+        case "$_er_s$_er_f" in (*[!0-9]*) : ;; *)
+            _er_f="${_er_f}000"
+            echo "$(( _er_s * 1000 + 10#${_er_f:0:3} ))"
+            return 0
+            ;;
+        esac
+    fi
     local ms
     ms=$(date -u +%s%3N 2>/dev/null)
     if [ -n "$ms" ]; then
@@ -209,15 +246,27 @@ BUDGET_MS=0
 # already-pre-filtered candidate list, not a fresh enumeration; this oracle's
 # cost profile is fundamentally different.
 if [ "$MODE" = "gc-cheap" ]; then BUDGET_MS=500; fi
+# ULDF_POD_GC_BUDGET_MS: test seam (DEC-250), mirroring ULDF_DS_GC_BUDGET_MS --
+# without it the minimum-progress guarantee is only assertable by waiting for a
+# machine loaded enough to starve the sweep. Non-numeric/empty keeps the default.
+case "${ULDF_POD_GC_BUDGET_MS:-}" in
+    ''|*[!0-9]*) : ;;
+    *) [ "$MODE" = "gc-cheap" ] && BUDGET_MS="$ULDF_POD_GC_BUDGET_MS" ;;
+esac
 
 START_MS=$(_ms_now)
 BUDGET_EXCEEDED=""
+PROBED_ANY=""   # minimum-progress guarantee (DEFER-064 rule 3)
 
 while IFS= read -r pid_file; do
     [ -n "$pid_file" ] || continue
     [ -f "$pid_file" ] || continue
 
-    if [ "$BUDGET_MS" -gt 0 ]; then
+    # Budget check, but NEVER before one unit of real work (DEFER-064 rule 3,
+    # propagated by DEC-250). The expensive step here is the liveness PROBE, so
+    # cheap skips (unreadable/malformed pid files) are not progress and must not
+    # let a prefix of them starve the sweep -- the same shape as setup cost.
+    if [ "$BUDGET_MS" -gt 0 ] && [ -n "$PROBED_ANY" ]; then
         NOW_MS=$(_ms_now)
         if [ -n "$START_MS" ] && [ -n "$NOW_MS" ] && [ "$((NOW_MS - START_MS))" -gt "$BUDGET_MS" ]; then
             BUDGET_EXCEEDED=1
@@ -238,6 +287,9 @@ while IFS= read -r pid_file; do
         continue
     fi
 
+    # Past every cheap filter: this file gets a real probe, so from here on the
+    # invocation has done work and the budget may bind again.
+    PROBED_ANY=1
     if pid_is_alive "$raw"; then
         ALIVE_ITEMS="$ALIVE_ITEMS$pid_file"$'\t'"$raw"$'\n'
     else
@@ -247,6 +299,8 @@ while IFS= read -r pid_file; do
 done < <(_list_pid_files)
 
 # In sweep modes, perform the deletes (with pre-delete JSONL append).
+# --dry-run never enters this block: identical candidate computation (the probe
+# loop above), ZERO mutation (SWEEPER-05); swept[] below is the would-sweep set.
 if [ "$MODE" = "gc" ] || [ "$MODE" = "gc-cheap" ]; then
     NEW_SWEPT=""
     while IFS=$'\t' read -r pid_file pid mt; do
@@ -341,6 +395,9 @@ _emit_array_malformed
 printf '],"briefing":"%s"' "$(_json_esc "$BRIEFING")"
 if [ -n "$BUDGET_EXCEEDED" ] && [ "$MODE" = "gc" ]; then
     printf ',"budgetExceeded":true'
+fi
+if [ "$MODE" = "dry-run" ]; then
+    printf ',"dryRun":true'
 fi
 printf '}\n'
 

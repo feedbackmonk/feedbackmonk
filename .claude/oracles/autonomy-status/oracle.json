@@ -1,9 +1,12 @@
 {
   "name": "autonomy-status",
-  "version": "1.0.0",
-  "question": "What is the resolved autonomy level for this session, and what is its source?",
+  "version": "1.2.0",
+  "question": "What is the resolved autonomy level for this session, what is its source, and what is the resolved per-domain consultation vector?",
   "category": "session-context",
   "kind": "project-state",
+  "expected_runtime_ms": 800,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/autonomy-status/run.sh",
     "windows": ".claude/oracles/autonomy-status/run.ps1"
@@ -12,27 +15,31 @@
     "format": "json",
     "schema": {
       "level": "one of: autopilot, supervised, collaborative, controlled, manual",
-      "source": "one of: session-override, ltads-session, task-arc-autonomy, config, default",
+      "submode": "autopilot submode when the resolved level is autopilot: one of continuous, phase, session, task, director; null otherwise (AUTODEF-01)",
+      "source": "one of: session-override, ltads-session, task-arc-autonomy, config, config-cap, machine-default, default",
       "arc_id": "string|null",
       "expires_at": "ISO-8601 string|null",
       "source_detail": "human-readable description of source location and resolution path",
-      "briefing": "string for [autonomy] briefing line; empty when level==collaborative"
+      "briefing": "string for [autonomy] briefing line; empty when level==collaborative AND no domain override is active. ALWAYS non-empty when source is machine-default or config-cap (AUTODEF-04: an ambient standing grant must be unmissable), carrying submode and, for a cap, capped_from",
+      "domains": "object; ALL SIX keys always present (spec, plan, delegate, decide, quality, commit). The resolved per-domain consultation setting = level default (frozen AUTODOM-03 matrix), tightened by any honored override. THIS is the field consumers read (AUTODOM-02)",
+      "domain_overrides": "array of domain names whose explicit override was HONORED (i.e. it tightened the level default)",
+      "domain_clamped": "array of {domain, requested, clamped_to} — overrides that would LOOSEN the level default. Tighten-only (AUTODOM-04): the level default stands and the attempt is reported, never silently honored",
+      "domain_invalid": "array of {domain, requested} — unrecognized option values. Level default stands; reported so a typo'd tightening request is never silently dropped"
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 60
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",
     "estimated_token_savings_per_call": 300,
-    "rationale": "Cascade resolution otherwise duplicated across session-start.{sh,ps1}, /0-uldf-autonomy-set status display, and ad-hoc consumers. One oracle call per session-start; zero per follow-up consumer."
+    "rationale": "Cascade resolution otherwise duplicated across session-start.{sh,ps1}, /0-uldf-autonomy-set status display, and ad-hoc consumers. One oracle call per session-start; zero per follow-up consumer. Since v1.1.0 this oracle is also the SOLE mechanical consumer of autonomy domain settings (AUTODOM-02) \u2014 before it, nothing on disk read a domain override and setting one did literally nothing."
   },
-  "fallback": "Treat resolved level as 'collaborative'. The cascade's documented default is collaborative; agents falling through to default carry no risk beyond the existing default behavior.",
+  "fallback": "Treat resolved level as 'collaborative' and the domain vector as the collaborative row of the AUTODOM-03 matrix. The cascade's documented default is collaborative; agents falling through to default carry no risk beyond the existing default behavior. A missing domain vector means 'no domain override is in effect', which is the common case.",
   "provenance": {
-    "authored_by": "AUTONOMY-02 plan arc",
+    "authored_by": "AUTONOMY-02 plan arc; domain vector added by the AUTODOM arc (2026-07-13); machine-default cascade source + director submode by the AUTODEF arc (2026-07-20)",
     "created": "2026-05-04T00:00:00Z",
-    "spec_ref": "docs/specs/SPECIFICATION.md § AUTONOMY-02",
-    "decision_ref": "DEC-39 (cascade is canonical consent gate), DEC-40 (task-arc-autonomy.json schema)"
+    "spec_ref": "docs/specs/SPECIFICATION.md § AUTONOMY-02, § AUTODOM (AUTODOM-01..05), § AUTODEF (AUTODEF-01..04)",
+    "decision_ref": "DEC-39 (cascade is canonical consent gate), DEC-40 (task-arc-autonomy.json schema), DEC-172 (wire domain settings rather than retire them; tighten-only clamp), DEC-189 (machine-default cascade source, autopilot:director, downward cap)"
   }
 }

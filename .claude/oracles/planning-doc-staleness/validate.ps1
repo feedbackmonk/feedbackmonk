@@ -28,7 +28,12 @@ function New-Sandbox {
     New-Item -ItemType Directory -Path (Join-Path $sb "docs/planning/intakes") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $sb "docs/planning/plans") -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $sb "docs/specs") -Force | Out-Null
-    Push-Location $sb
+    # DEFER-077: -ErrorAction Stop is load-bearing. $ErrorActionPreference is
+    # 'Continue' file-wide, so a FAILED Push-Location would leave the REAL repo
+    # as cwd and the `git config` / `git add -A` / `git commit` below would run
+    # against it.
+    if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+    Push-Location -LiteralPath $sb -ErrorAction Stop
     try {
         & git init -q 2>$null
         & git config user.email "t@t" 2>$null
@@ -77,7 +82,8 @@ $sb = New-Sandbox
 $file = Join-Path $sb "docs/planning/intakes/20260101T000000-feature-foo.md"
 "stub" | Out-File -LiteralPath $file -Encoding utf8
 Set-Backdate $file 30
-Push-Location $sb
+if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sb -ErrorAction Stop   # DEFER-077
 & git add -A 2>$null
 & git commit -q -m "feat(foo): ship feature-foo" --allow-empty 2>$null
 Pop-Location
@@ -100,7 +106,8 @@ $spec = Join-Path $sb "docs/specs/SPECIFICATION.md"
 $file = Join-Path $sb "docs/planning/plans/20260201T000000-bar.md"
 "# Plan`nReferences: TEST-01 and TEST-02.`n" | Out-File -LiteralPath $file -Encoding utf8
 Set-Backdate $file 60
-Push-Location $sb; & git commit -q --allow-empty -m "unrelated commit message" 2>$null; Pop-Location
+if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sb -ErrorAction Stop; & git commit -q --allow-empty -m "unrelated commit message" 2>$null; Pop-Location   # DEFER-077
 $out = Run-Oracle $sb
 Assert-Json $out '$obj.stale[0].staleness_signal' "all-spec-entries-done" "T2: all-spec-entries-done signal"
 Assert-Json $out '@($obj.stale).Count' "1" "T2: exactly one stale entry"
@@ -113,7 +120,8 @@ $spec = Join-Path $sb "docs/specs/SPECIFICATION.md"
 $file = Join-Path $sb "docs/planning/intakes/20260101T000000-baz-feature.md"
 "# Intake`nRefs: XYZ-01`n" | Out-File -LiteralPath $file -Encoding utf8
 Set-Backdate $file 60
-Push-Location $sb
+if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sb -ErrorAction Stop   # DEFER-077
 & git add -A 2>$null
 & git commit -q -m "ship baz-feature work" --allow-empty 2>$null
 Pop-Location
@@ -128,7 +136,8 @@ $spec = Join-Path $sb "docs/specs/SPECIFICATION.md"
 $file = Join-Path $sb "docs/planning/plans/20260601T000000-active-arc.md"
 "in-flight work" | Out-File -LiteralPath $file -Encoding utf8
 Set-Backdate $file 3
-Push-Location $sb; & git commit -q --allow-empty -m "unrelated" 2>$null; Pop-Location
+if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sb -ErrorAction Stop; & git commit -q --allow-empty -m "unrelated" 2>$null; Pop-Location   # DEFER-077
 $out = Run-Oracle $sb
 Assert-Json $out '@($obj.stale).Count' "0" "T4: no stale entries"
 Assert-Json $out '@($obj.fresh).Count' "1" "T4: one fresh entry"
@@ -151,7 +160,8 @@ Set-Backdate $freshFile 2
 $unknownFile = Join-Path $sb "docs/planning/plans/20260101T000000-unknown-doc.md"
 "stale-no-signal" | Out-File -LiteralPath $unknownFile -Encoding utf8
 Set-Backdate $unknownFile 60
-Push-Location $sb; & git commit -q --allow-empty -m "unrelated" 2>$null; Pop-Location
+if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sb -ErrorAction Stop; & git commit -q --allow-empty -m "unrelated" 2>$null; Pop-Location   # DEFER-077
 $out = Run-Oracle $sb
 Assert-Json $out '@($obj.stale).Count' "1" "T5: one stale"
 Assert-Json $out '@($obj.fresh).Count' "1" "T5: one fresh"
@@ -174,7 +184,8 @@ $sb = New-Sandbox
 $file = Join-Path $sb "docs/planning/intakes/20260101T000000-empty.md"
 "" | Out-File -LiteralPath $file -Encoding utf8 -NoNewline
 Set-Backdate $file 60
-Push-Location $sb; & git commit -q --allow-empty -m "unrelated" 2>$null; Pop-Location
+if (-not $sb) { throw 'DEFER-077: empty sandbox path -- refusing to run git in the CWD' }
+Push-Location -LiteralPath $sb -ErrorAction Stop; & git commit -q --allow-empty -m "unrelated" 2>$null; Pop-Location   # DEFER-077
 $out = Run-Oracle $sb
 Assert-Json $out '@($obj.stale).Count' "0" "T7: malformed not stale"
 Assert-Json $out '@($obj.unknown).Count' "1" "T7: malformed -> unknown"

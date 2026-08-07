@@ -89,40 +89,52 @@ fi
 
 # Heuristic 2 batch: ONE awk pass across all planning docs.
 # Prints "<filepath>|<refs_found>|<refs_done>" per file.
-# The spec_lookup table is built in BEGIN; per-file state resets on FNR==1.
+#
+# The spec_lookup table is a multiline (newline-separated) string. It CANNOT be
+# passed via `awk -v lookup=...`: macOS ships BWK awk (one-true-awk), which
+# rejects an embedded newline in a -v assignment ("awk: newline in string").
+# Instead we write the table to a temp file and load it with the classic
+# two-file FNR==NR idiom (first file = lookup table, rest = planning docs).
 sig2_table=""
 if [ -n "$spec_lookup" ] && [ "${#files[@]}" -gt 0 ]; then
-    sig2_table=$(awk -v lookup="$spec_lookup" '
-        BEGIN {
-            n = split(lookup, lines, "\n")
-            for (i=1; i<=n; i++) {
-                if (split(lines[i], pair, "|") == 2 && pair[1] != "") {
+    lookup_tmp=$(mktemp 2>/dev/null || mktemp -t plandocstale 2>/dev/null || true)
+    if [ -n "$lookup_tmp" ]; then
+        trap 'rm -f "$lookup_tmp"' EXIT
+        printf '%s\n' "$spec_lookup" > "$lookup_tmp"
+        sig2_table=$(awk '
+            # First file: the ID|STATUS lookup table.
+            FNR == NR {
+                if (split($0, pair, "|") == 2 && pair[1] != "") {
                     statuses[pair[1]] = pair[2]
                 }
+                next
             }
-        }
-        FNR == 1 {
-            if (current != "") print current "|" found "|" done
-            current = FILENAME
-            found = 0; done = 0
-            delete seen
-        }
-        {
-            rest = $0
-            while (match(rest, /[A-Z][A-Z0-9]*-[0-9]+/)) {
-                id = substr(rest, RSTART, RLENGTH)
-                if ((id in statuses) && !(id in seen)) {
-                    seen[id] = 1
-                    found++
-                    if (statuses[id] == "DONE" || statuses[id] == "DELIVERED") done++
+            # New planning doc begins: flush the previous one, reset state.
+            FNR == 1 {
+                if (current != "") print current "|" found "|" done
+                current = FILENAME
+                found = 0; done = 0
+                delete seen
+            }
+            {
+                rest = $0
+                while (match(rest, /[A-Z][A-Z0-9]*-[0-9]+/)) {
+                    id = substr(rest, RSTART, RLENGTH)
+                    if ((id in statuses) && !(id in seen)) {
+                        seen[id] = 1
+                        found++
+                        if (statuses[id] == "DONE" || statuses[id] == "DELIVERED") done++
+                    }
+                    rest = substr(rest, RSTART + RLENGTH)
                 }
-                rest = substr(rest, RSTART + RLENGTH)
             }
-        }
-        END {
-            if (current != "") print current "|" found "|" done
-        }
-    ' "${files[@]}" 2>/dev/null || true)
+            END {
+                if (current != "") print current "|" found "|" done
+            }
+        ' "$lookup_tmp" "${files[@]}" 2>/dev/null || true)
+        rm -f "$lookup_tmp"
+        trap - EXIT
+    fi
 fi
 
 stale_json=""
@@ -140,12 +152,12 @@ for f in "${files[@]}"; do
             ;;
     esac
 
-    # Heuristic 1: commit-hash-found. Use bash 4 ${,,} for lowercasing
-    # to avoid per-file `tr` forks.
+    # Heuristic 1: commit-hash-found. Lowercase via tr for bash 3.2
+    # compatibility (macOS default bash lacks ${,,} expansion).
     sig1=false
     if [ -n "$commit_log_lower" ]; then
-        slug_lower="${slug,,}"
-        base_lower="${base,,}"
+        slug_lower="$(printf '%s' "$slug" | tr '[:upper:]' '[:lower:]')"
+        base_lower="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')"
         if [ "${#slug_lower}" -ge 4 ]; then
             case "$commit_log_lower" in
                 *"$slug_lower"*) sig1=true ;;

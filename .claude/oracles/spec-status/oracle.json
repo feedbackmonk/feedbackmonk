@@ -2,7 +2,11 @@
   "name": "spec-status",
   "version": "1.0.0",
   "question": "What is the status of project specification items: done, pending, in-progress, removed?",
+  "kind": "project-state",
   "category": "spec",
+  "expected_runtime_ms": 1500,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/spec-status/run.sh",
     "windows": ".claude/oracles/spec-status/run.ps1"
@@ -22,8 +26,10 @@
   },
   "freshness": {
     "strategy": "trigger-invalidate",
-    "triggers": ["docs/specs/SPECIFICATION.md", "docs/specs/**/*.md"],
-    "compute_cost_ms": 100
+    "triggers": [
+      "docs/specs/SPECIFICATION.md",
+      "docs/specs/**/*.md"
+    ]
   },
   "consultation": {
     "typical_sessions_using": "most",

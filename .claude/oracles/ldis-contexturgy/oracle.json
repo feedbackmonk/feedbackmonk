@@ -1,0 +1,48 @@
+{
+  "name": "ldis-contexturgy",
+  "version": "1.0.0",
+  "question": "Did recent LDIS invocations in this project actually crystallize planning artifacts (new file under docs/planning/{intakes,plans,ideations}/ or a docs/specs/ mtime bump) -- or did Ephemeral Planning occur?",
+  "category": "workflow",
+  "kind": "verification",
+  "expected_runtime_ms": 2000,
+  "lane": "fast",
+  "cost_provenance": "measured <1s 2026-07-02 on the ULDF framework repo under Git Bash (win32; slowest supported environment) against a ~4k-record usage ledger -- declared 2000ms pessimistic-honest per ORACLE-COST-01 (fast-lane ceiling)",
+  "invocation": {
+    "unix": ".claude/oracles/ldis-contexturgy/run.sh",
+    "windows": ".claude/oracles/ldis-contexturgy/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "string: pass | warn (NEVER fail -- advisory by design, CTXY-01: an unverified Contexturgy mandate is a hope, but a false positive must not block a commit)",
+      "details": {
+        "checked": "number (LDIS invocations found in the window for this project)",
+        "window_hours": "number (lookback window, default 24)",
+        "gaps": "array of {skill, at, expected} -- invocations with no artifact newer than the invocation time in the expected location",
+        "note": "string (NO-DATA and degrade explanations; empty otherwise)"
+      },
+      "briefing": "string (empty on pass; one-line advisory naming the gap count on warn)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "finalize",
+    "estimated_token_savings_per_call": 300
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/ldis-contexturgy/validate.sh",
+    "self_test_windows": ".claude/oracles/ldis-contexturgy/validate.ps1",
+    "last_validated": "2026-07-02"
+  },
+  "fallback": "Read the command-usage ledger (~/.claude/command-usage/*.jsonl; framework repo: claude-usage/*.jsonl) for type:skill records of 0-uldf-ldis-{intake,plan,ideate,spec} in this project within the last 24h; for each, confirm a file exists under the expected artifact home (intakes/plans/ideations under docs/planning/, or any docs/specs/*.md) with mtime >= the invocation time. Absence = Ephemeral Planning (advisory).",
+  "provenance": {
+    "authored_by": "skill-corpus-scrutiny-arc4",
+    "created": "2026-07-02T00:00:00Z",
+    "spec_refs": [
+      "CTXY-01"
+    ],
+    "note": "Scrutiny 03 ADD-1: the LDIS family's 'This step is MANDATORY. Do not skip it.' crystallization blocks were pure instruction-enforcement of a property code can check (Enforcement Placement step 1). Advisory leg consumed by /0-uldf-finalize Phase 1a via the standard verification-oracle runner; warn-only so a ledger/mtime false positive can never block a commit."
+  }
+}

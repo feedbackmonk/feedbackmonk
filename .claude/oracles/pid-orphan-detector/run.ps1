@@ -29,6 +29,7 @@ foreach ($a in $args) {
     switch ($a) {
         "--gc"        { $mode = "gc" }
         "--gc-cheap"  { $mode = "gc-cheap" }
+        "--dry-run"   { $mode = "dry-run" }
         default {
             if ($a -is [string] -and $a.StartsWith("--")) {
                 Write-Error "pid-orphan-detector: unknown mode: $a"
@@ -78,7 +79,7 @@ if (-not (Get-Command -Name Test-UldfPidAlive -CommandType Function -ErrorAction
 
 # ---- Locate the exec dir; absent => graceful nothing-to-do ---------------------
 if (-not (Test-Path $execDir)) {
-    if ($mode -eq "briefing" -or $mode -eq "gc") { Emit-Empty }
+    if ($mode -eq "briefing" -or $mode -eq "gc" -or $mode -eq "dry-run") { Emit-Empty }
     # --gc-cheap silent on graceful absence
     exit 0
 }
@@ -155,9 +156,12 @@ $budgetMs = 0
 # variability on slow disks / antivirus. Worker-shell .pid populations are
 # typically <5 entries; budget absorbs the realistic worst case.
 if ($mode -eq "gc-cheap") { $budgetMs = 500 }
+# ULDF_POD_GC_BUDGET_MS: test seam (DEC-250), parity with the sh twin.
+if ($mode -eq "gc-cheap" -and $env:ULDF_POD_GC_BUDGET_MS -match '^[0-9]+$') { $budgetMs = [int]$env:ULDF_POD_GC_BUDGET_MS }
 $startTicks = [System.Diagnostics.Stopwatch]::GetTimestamp()
 $ticksPerMs = [System.Diagnostics.Stopwatch]::Frequency / 1000.0
 $budgetExceeded = $false
+$probedAny = $false   # minimum-progress guarantee (DEFER-064 rule 3, DEC-250)
 
 foreach ($f in (Get-PidFiles)) {
     if (-not $f) { continue }
@@ -168,7 +172,10 @@ foreach ($f in (Get-PidFiles)) {
         $relPath = $relPath.Substring($cwdNorm.Length + 1)
     }
 
-    if ($budgetMs -gt 0) {
+    # NEVER before one unit of real work: the expensive step is the liveness
+    # probe, so cheap skips (unreadable/malformed pid files) are not progress
+    # and a prefix of them must not starve the sweep (DEFER-064 rule 3, DEC-250).
+    if ($budgetMs -gt 0 -and $probedAny) {
         $elapsedMs = ([System.Diagnostics.Stopwatch]::GetTimestamp() - $startTicks) / $ticksPerMs
         if ($elapsedMs -gt $budgetMs) { $budgetExceeded = $true; break }
     }
@@ -192,6 +199,9 @@ foreach ($f in (Get-PidFiles)) {
         continue
     }
 
+    # Past every cheap filter: this file gets a real probe, so from here on the
+    # invocation has done work and the budget may bind again.
+    $probedAny = $true
     if (Test-UldfPidAlive $pidVal) {
         $aliveList += [pscustomobject]@{
             pid_file       = $relPath
@@ -208,6 +218,8 @@ foreach ($f in (Get-PidFiles)) {
 }
 
 # ---- Sweep modes: pre-delete summary append + delete ---------------------------
+# --dry-run never enters this block: identical candidate computation (the probe
+# loop above), ZERO mutation (SWEEPER-05); swept[] below is the would-sweep set.
 if ($mode -eq "gc" -or $mode -eq "gc-cheap") {
     $newSwept = @()
     foreach ($e in $swept) {
@@ -281,6 +293,9 @@ $out += "`"malformed`":[" + (Emit-MalformedArray -items $malformed) + "],"
 $out += "`"briefing`":`"" + (ConvertTo-JsonStringEscaped $briefing) + "`""
 if ($budgetExceeded -and $mode -eq "gc") {
     $out += ",`"budgetExceeded`":true"
+}
+if ($mode -eq "dry-run") {
+    $out += ",`"dryRun`":true"
 }
 $out += "}"
 Write-Output $out

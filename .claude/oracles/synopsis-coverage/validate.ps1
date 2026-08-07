@@ -13,6 +13,14 @@ $runScript = Join-Path $oracleDir "run.ps1"
 $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $tmpRoot | Out-Null
 
+# Cache isolation: run.ps1 keeps its trigger-invalidate cache in a cache/ dir
+# NEXT TO ITSELF -- copy the script into the sandbox so validation never
+# touches the production cache.
+$sandboxOracle = Join-Path $tmpRoot "oracle"
+New-Item -ItemType Directory -Path $sandboxOracle | Out-Null
+Copy-Item $runScript (Join-Path $sandboxOracle "run.ps1")
+$runScript = Join-Path $sandboxOracle "run.ps1"
+
 try {
     # T4: empty project
     $t4 = Join-Path $tmpRoot "t4-empty"
@@ -143,9 +151,54 @@ Line 7.
         if ($d.coverage_pct -ne 50) { throw "T3 coverage_pct expected 50 got $($d.coverage_pct)" }
         if ($d.briefing -notmatch '1 over-length') { throw "T3 briefing should report over-length got '$($d.briefing)'" }
         Write-Output "PASS T3: over-length surfaced in over_length[] and briefing"
+
+        # ---- T7: cache warm-hit (freshness contract) ----
+        $cacheFile = Join-Path $sandboxOracle "cache/latest.json"
+        if (-not (Test-Path $cacheFile)) { throw "T7 cache not stored after compute" }
+        $outWarm = (& powershell -NoProfile -File $runScript) -join "`n"
+        if (($outWarm | ConvertFrom-Json).total_modules -ne 2) { throw "T7 warm-hit content wrong" }
+        Write-Output "PASS T7: cache warm-hit serves stored output"
+
+        # ---- T8: invalidation -- edit / add / delete all recompute ----
+        Start-Sleep -Seconds 1
+        (Get-Item "src/big/README.md").LastWriteTime = Get-Date
+        $d8 = ((& powershell -NoProfile -File $runScript) -join "`n") | ConvertFrom-Json
+        if ($d8.total_modules -ne 2) { throw "T8a recompute total" }
+        Write-Output "PASS T8a: mtime edit invalidates"
+        New-Item -ItemType Directory -Path "src/newmod" -Force | Out-Null
+        Set-Content -Path "src/newmod/README.md" -Value "# New`n`n## Synopsis`n`nNew module." -Encoding UTF8
+        $d8b = ((& powershell -NoProfile -File $runScript) -join "`n") | ConvertFrom-Json
+        if ($d8b.total_modules -ne 3) { throw "T8b add not seen: $($d8b.total_modules)" }
+        Write-Output "PASS T8b: added README invalidates"
+        Remove-Item -Force "src/newmod/README.md"
+        $d8c = ((& powershell -NoProfile -File $runScript) -join "`n") | ConvertFrom-Json
+        if ($d8c.total_modules -ne 2) { throw "T8c delete not seen: $($d8c.total_modules)" }
+        Write-Output "PASS T8c: deleted README invalidates"
+
+        # ---- T9: briefing-context cold cache -- graceful absence + detached warm ----
+        Remove-Item -Recurse -Force (Join-Path $sandboxOracle "cache")
+        $env:ULDF_BRIEFING = "1"
+        try {
+            $d9 = ((& powershell -NoProfile -File $runScript) -join "`n") | ConvertFrom-Json
+            if ($d9.briefing -ne "") { throw "T9 cold briefing must be empty (graceful absence)" }
+            if ($d9.cache -ne "cold-refreshing") { throw "T9 cache marker missing" }
+            Write-Output "PASS T9: briefing-context cold cache gracefully absents (no stale serve)"
+            $warmed = $false
+            foreach ($i in 1..15) {
+                if (Test-Path $cacheFile) { $warmed = $true; break }
+                Start-Sleep -Seconds 1
+            }
+            if (-not $warmed) { throw "T9b detached refresh did not warm the cache" }
+            Start-Sleep -Seconds 1
+            $d9b = ((& powershell -NoProfile -File $runScript) -join "`n") | ConvertFrom-Json
+            if ($d9b.total_modules -ne 2) { throw "T9b warmed briefing serve wrong: $($d9b.total_modules)" }
+            Write-Output "PASS T9b: detached refresh warmed the cache; next briefing serves it"
+        } finally {
+            $env:ULDF_BRIEFING = $null
+        }
     } finally { Pop-Location }
 
-    Write-Output "PASS: synopsis-coverage oracle validates (T1, T2, T3, T4)"
+    Write-Output "PASS: synopsis-coverage oracle validates (T1, T2, T3, T4, T7, T8a-c, T9)"
     exit 0
 } catch {
     Write-Error "FAIL: $_"

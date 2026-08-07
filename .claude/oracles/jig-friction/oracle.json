@@ -1,0 +1,59 @@
+{
+  "name": "jig-friction",
+  "version": "1.0.0",
+  "question": "Is this session GRINDING — hand-repeating N structurally-similar invocations instead of building a Development Jig (Fabricator, scenario-replayer, oracle, …) that would do it once?",
+  "category": "workflow",
+  "kind": "verification",
+  "expected_runtime_ms": 1500,
+  "lane": "fast",
+  "cost_provenance": "estimated 2026-07-05 -- one jq pass over command-usage/*.jsonl (session-scoped normalize + group-by) on the ULDF framework repo under Git Bash (win32; slowest supported environment); pessimistic-honest per ORACLE-COST-01. The fast-lane timeout floor (2000ms) covers Git Bash jq latency.",
+  "invocation": {
+    "unix": ".claude/oracles/jig-friction/run.sh",
+    "windows": ".claude/oracles/jig-friction/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "string (ok | signal) -- signal when >=1 repetition cluster reached minRepeats in the scoped session",
+      "signals": [
+        {
+          "pattern": "string (normalized shape signature: type|cmd|arg1|flags, lowercased, digit-runs->N, trailing empty fields trimmed)",
+          "count": "integer (cluster size -- the number of structurally-similar invocations)",
+          "evidence": "array of string (the verbatim invocations, '<at> <cmd> [<arg1>] [<flags>]', each truncated to ~200 chars; capped at 20 with a '...(+K more)' tail)",
+          "suggestedArchetype": "string (a slug from the FROZEN jig-catalog list: fabricator | state-fabricator | scenario-replayer | log-distiller | diff-summarizer | environment-resetter | corpus-harvester)"
+        }
+      ],
+      "briefing": "string (empty when status=ok -- QUIET-PATH INVARIANT; one-liner suitable for ORACLE BRIEFING when status=signal -- the session-start hook prepends the [jig-friction] tag)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh"
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 400
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/jig-friction/validate.sh",
+    "self_test_windows": ".claude/oracles/jig-friction/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run .claude/oracles/jig-friction/run.sh (or run.ps1) with no args -- it scopes to $CLAUDE_SESSION_ID (the current session) over ~/.claude/command-usage/*.jsonl, normalizes each invocation to a shape signature (type|cmd|arg1|flags, digit-runs->N), clusters within the session, and reports every cluster of >=minRepeats (default 5) with its verbatim evidence + a suggested jig archetype. Empty signals => status:ok, empty briefing (nothing to surface). Advisory ONLY -- the finalize retrospective jig audit (JIG-05) is the hindsight backstop; the demand log (JIG-06) is where a recognized candidate is recorded.",
+  "provenance": {
+    "authored_by": "development-jigs-arc",
+    "created": "2026-07-05T00:00:00Z",
+    "spec_refs": [
+      "JIG-04"
+    ],
+    "note": "The 'manufactured boredom' signal of the Development Jigs arc (DEC-142) -- an oracle that gets annoyed on the agent's behalf. Reads the EXISTING command-usage registry (no new store, RECENCY precedent); v1 detector = deterministic-cheap signatures only (repeated NAMED invocations within one session), per Q-JIG-01 -- fuzzy content-similarity over Write/Edit is deferred to the catalog + finalize audit where hindsight judgment is cheap. HIGH-threshold bias: EPP-02 bounded-false-positive applies to the recognizer itself (a nagging detector is attention pollution). Emits nothing on the common path (no cluster reaches minRepeats) and is gracefully absent on NO-DATA (no registry). Advisory -- never blocks a commit or a session."
+  },
+  "config": {
+    "config_file": ".claude/config.json",
+    "config_key": "jigFriction",
+    "keys": {
+      "minRepeats": "integer (default 5) -- cluster size at/above which a repetition fires. HIGH by design; lower ONLY with evidence that real grinding is being missed.",
+      "windowMinutes": "integer (default 0 = whole session) -- optional tightening: when >0, only invocations within the last N minutes of the scoped session's activity are considered."
+    },
+    "comment": "Defaults (minRepeats:5, windowMinutes:0) are baked into run.sh / run.ps1 for the no-config case. Precedence: CLI (--min-repeats/--window-minutes) > .claude/config.json jigFriction.* > default. Scope resolution: --session > $CLAUDE_SESSION_ID > most-recent session in the data."
+  }
+}

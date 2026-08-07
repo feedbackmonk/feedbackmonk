@@ -2,7 +2,11 @@
   "name": "pending-followups",
   "version": "1.0.0",
   "question": "What pending follow-ups are in CLAUDE.md, and which are overdue?",
+  "kind": "project-state",
   "category": "followup",
+  "expected_runtime_ms": 8000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/pending-followups/run.sh",
     "windows": ".claude/oracles/pending-followups/run.ps1"
@@ -18,8 +22,7 @@
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 40
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",

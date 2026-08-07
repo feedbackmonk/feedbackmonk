@@ -2,7 +2,11 @@
   "name": "workflow-position",
   "version": "1.0.0",
   "question": "Where is this project in the LDIS/LTADS workflow, and what is the next /0-uldf-proceed step?",
+  "kind": "project-state",
   "category": "workflow",
+  "expected_runtime_ms": 1300,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "invocation": {
     "unix": ".claude/oracles/workflow-position/run.sh",
     "windows": ".claude/oracles/workflow-position/run.ps1"
@@ -21,8 +25,7 @@
     }
   },
   "freshness": {
-    "strategy": "always-fresh",
-    "compute_cost_ms": 80
+    "strategy": "always-fresh"
   },
   "consultation": {
     "typical_sessions_using": "every",
@@ -33,7 +36,7 @@
     "self_test_windows": ".claude/oracles/workflow-position/validate.ps1",
     "last_validated": null
   },
-  "fallback": "Inspect docs/planning/intakes/, docs/planning/plans/, docs/specs/SPECIFICATION.md, and ltads/sessions/current-session.md to manually derive position. See /0-uldf-proceed.md Phase 1 Step 1.2 for the resolution rule.",
+  "fallback": "Inspect docs/planning/intakes/, docs/planning/plans/, docs/specs/SPECIFICATION.md, and ltads/arc-state.json (topmost arc status) to manually derive position. See /0-uldf-proceed.md Phase 1 Step 1.2 for the resolution rule.",
   "provenance": {
     "authored_by": "shared-pack:uldf-common",
     "created": "2026-04-17T00:00:00Z",

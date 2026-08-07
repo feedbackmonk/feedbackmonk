@@ -25,6 +25,7 @@ set -e
 
 DEFAULT_ENDPOINT="http://127.0.0.1:14550/aria/health"
 ARIA_CONFIG=".claude/aria.json"
+ARIA_MANIFEST=".claude/aria-manifest.json"   # AOR capabilities disk companion (ARIA-17)
 TELEMETRY_LOG=".claude/aria-telemetry.jsonl"
 PROBE_TIMEOUT="0.3"  # seconds (300ms)
 
@@ -113,20 +114,76 @@ if [ "$ENDPOINT_REACHABLE" = "true" ]; then
     fi
 fi
 
-# ---- Compute query_count_24h from telemetry log ----
+# ---- Compute query_count_24h from telemetry log (v1+v2 capture contract, ARIA-13) ----
+# NO-DATA semantics (DISC-ARIA-09 / DEC-81): a missing log file is NO-DATA, never zero;
+# a 24h window with zero heartbeats AND zero query events is NO-DATA for the window.
+# Counting rules: v2 lines ("schemaVersion" present) count when event=="query";
+# heartbeats (event=="telemetry-armed") tracked separately; probe:true lines excluded;
+# v1 legacy lines (no "schemaVersion", {tool,timestamp,...}) count as query events.
 QUERY_COUNT_24H=""
+HEARTBEAT_COUNT_24H=""
+TELEMETRY_STATE="no-data"
 if [ -f "$TELEMETRY_LOG" ]; then
-    # Compute UTC ISO8601 cutoff: now - 24h. Rough lexicographic comparison works for ISO 8601.
     if command -v date >/dev/null 2>&1; then
         CUTOFF=$(date -u -d '24 hours ago' +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
                  || date -u -v-24H +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null \
                  || echo "")
         if [ -n "$CUTOFF" ]; then
-            # Extract timestamp values and count those >= CUTOFF
-            QUERY_COUNT_24H=$(grep -oE '"timestamp"[[:space:]]*:[[:space:]]*"[^"]+"' "$TELEMETRY_LOG" 2>/dev/null \
-                              | grep -oE '"[^"]+"$' | tr -d '"' \
-                              | awk -v cutoff="$CUTOFF" 'BEGIN{n=0} $0>=cutoff{n++} END{print n}')
+            # awk (not grep -P — MSYS locale portability) single pass: per-line ts extraction
+            # (v2 "ts" preferred, v1 "timestamp" fallback), lexicographic ISO-8601 cutoff filter,
+            # then classify heartbeat / probe / query.
+            COUNTS=$(awk -v cutoff="$CUTOFF" '
+                BEGIN { q = 0; hb = 0 }
+                {
+                    tsfield = ""
+                    if (match($0, /"ts"[ \t]*:[ \t]*"[^"]+"/)) tsfield = substr($0, RSTART, RLENGTH)
+                    else if (match($0, /"timestamp"[ \t]*:[ \t]*"[^"]+"/)) tsfield = substr($0, RSTART, RLENGTH)
+                    if (tsfield == "") next
+                    if (!match(tsfield, /"[^"]*"$/)) next
+                    ts = substr(tsfield, RSTART + 1, RLENGTH - 2)
+                    if (ts < cutoff) next
+                    if ($0 ~ /"probe"[ \t]*:[ \t]*true/) next
+                    if ($0 ~ /"event"[ \t]*:[ \t]*"telemetry-armed"/) { hb++; next }
+                    if ($0 ~ /"event"[ \t]*:[ \t]*"query"/) { q++; next }
+                    if ($0 !~ /"schemaVersion"/ && $0 ~ /"timestamp"/) { q++ }
+                }
+                END { print q, hb }
+            ' "$TELEMETRY_LOG" 2>/dev/null)
+            QUERY_COUNT_24H=$(printf '%s' "$COUNTS" | awk '{print $1}')
+            HEARTBEAT_COUNT_24H=$(printf '%s' "$COUNTS" | awk '{print $2}')
+            if [ -n "$QUERY_COUNT_24H" ]; then
+                if [ "$QUERY_COUNT_24H" -gt 0 ] || [ "${HEARTBEAT_COUNT_24H:-0}" -gt 0 ]; then
+                    TELEMETRY_STATE="measured"
+                else
+                    # zero heartbeats AND zero queries in window -> NO-DATA, not zero
+                    QUERY_COUNT_24H=""
+                fi
+            fi
         fi
+    fi
+fi
+
+# ---- AOR capabilities disk companion (ARIA-17) ----
+# Static, value-free projection of the runtime manifest (AOR_CONTRACTS.md §4),
+# committed by an AOR-conformant app so an agent learns the surface shape BEFORE
+# the app is running. Source of truth is the runtime manifest()/GET /aor/capabilities;
+# this is its committed projection. NO-DATA semantics: absent/malformed -> field
+# omitted, NEVER an empty-capabilities claim. Emitted verbatim (compacted+validated
+# via a working python; the WindowsApps `python3` shim is skipped).
+CAPABILITIES_JSON=""
+if [ -f "$ARIA_MANIFEST" ] && [ -s "$ARIA_MANIFEST" ]; then
+    _aor_py=""
+    for _c in python python3 py; do
+        if command -v "$_c" >/dev/null 2>&1 && "$_c" -c 'import json,sys' >/dev/null 2>&1; then _aor_py="$_c"; break; fi
+    done
+    if [ -n "$_aor_py" ]; then
+        CAPABILITIES_JSON=$("$_aor_py" -c 'import json,sys
+try:
+    d=json.load(open(sys.argv[1], encoding="utf-8-sig"))
+    assert isinstance(d,dict) and "verbs" in d
+    sys.stdout.write(json.dumps(d,separators=(",",":")))
+except Exception:
+    pass' "$ARIA_MANIFEST" 2>/dev/null)
     fi
 fi
 
@@ -134,12 +191,13 @@ fi
 BRIEFING=""
 if [ "$ENDPOINT_REACHABLE" = "true" ]; then
     if [ "$FL_ERRORS" = "true" ] && [ "$FL_ASYNC" = "true" ] && [ "$FL_NAV" = "true" ]; then
-        # Healthy. qph (queries-per-hour) = query_count_24h / 24
-        if [ -n "$QUERY_COUNT_24H" ] && [ "$QUERY_COUNT_24H" -gt 0 ]; then
-            QPH=$(( QUERY_COUNT_24H / 24 ))
+        # Healthy. qph (queries-per-hour) = query_count_24h / 24.
+        # NO-DATA is never presented as qph=0 (DISC-ARIA-09).
+        if [ "$TELEMETRY_STATE" = "measured" ]; then
+            QPH=$(( ${QUERY_COUNT_24H:-0} / 24 ))
             BRIEFING="ARIA: errors+async+navigation healthy (qph=$QPH)"
         else
-            BRIEFING="ARIA: errors+async+navigation healthy (qph=0)"
+            BRIEFING="ARIA: errors+async+navigation healthy (qph=no-data; telemetry meter not armed, see ARIA-13)"
         fi
     else
         # Degraded — list healthy and degraded categories
@@ -186,8 +244,38 @@ OUT="${OUT}\"foundation_layer\":{\"errors\":$FL_ERRORS,\"async\":$FL_ASYNC,\"nav
 if [ -n "$RECENT_SUCCESS_AT" ]; then
     OUT="${OUT},\"recent_success_at\":\"$RECENT_SUCCESS_AT\""
 fi
-if [ -n "$QUERY_COUNT_24H" ]; then
+if [ "$TELEMETRY_STATE" = "measured" ] && [ -n "$QUERY_COUNT_24H" ]; then
     OUT="${OUT},\"query_count_24h\":$QUERY_COUNT_24H"
+fi
+OUT="${OUT},\"telemetry_state\":\"$TELEMETRY_STATE\""
+# AOR capabilities (ARIA-17) — emitted verbatim only when the disk companion is
+# present + valid; omitted (NO-DATA) otherwise, never an empty-capabilities claim.
+if [ -n "$CAPABILITIES_JSON" ]; then
+    OUT="${OUT},\"capabilities\":$CAPABILITIES_JSON"
+    # Operability Ladder surface (OPER-05, DEC-133) — additive top-level
+    # convenience projection of the capabilities' optional operabilityTier /
+    # switchboard fields (AOR_CONTRACTS.md Appendix A). Consumers: the
+    # Testability Gate Q6 (OPER-04) and /0-uldf-verify-fast's AOR consultation.
+    # NO-DATA: fields omitted when the companion does not declare them —
+    # never inferred, never defaulted to "T0".
+    if [ -n "$_aor_py" ]; then
+        OPER_FRAGMENT=$("$_aor_py" -c 'import json,sys
+try:
+    d=json.load(open(sys.argv[1], encoding="utf-8-sig"))
+    out=[]
+    t=d.get("operabilityTier")
+    if isinstance(t,str) and t in ("T0","T1","T2","T3"):
+        out.append("\"operability_tier\":%s"%json.dumps(t))
+    s=d.get("switchboard")
+    if isinstance(s,list) and all(isinstance(x,str) and x.startswith("aor.") for x in s):
+        out.append("\"switchboard\":%s"%json.dumps(s,separators=(",",":")))
+    sys.stdout.write(",".join(out))
+except Exception:
+    pass' "$ARIA_MANIFEST" 2>/dev/null)
+        if [ -n "$OPER_FRAGMENT" ]; then
+            OUT="${OUT},$OPER_FRAGMENT"
+        fi
+    fi
 fi
 OUT="${OUT},\"briefing\":\"$ESC_BRIEFING\"}"
 
