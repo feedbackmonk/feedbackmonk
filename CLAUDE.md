@@ -141,6 +141,8 @@ Verification Oracles built so far + scheduled:
 
 <!-- /0-uldf-schedule writes here -->
 
+- **Unpin stranded-dirty-files oracle (trigger: ULDF DEFER-221 lands in the synced baseline)**: full detail in PF-UNPIN-01 below. Test: `grep -c Carbonadmin ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> 0.
+
 ### PF-PHASEA-01: GitCellar feedback-consolidation contract build-out ("Phase A") — CODE DONE; DEPLOY (A6) is the remaining GATE
 
 **Status (2026-07-01): all five Phase-A contract surfaces BUILT + verified locally (CI-parity green); crate → v0.3.0. The only remaining item is the deploy+verify GATE (A6), which is GitCellar-Railway ops, not this repo.** Phase A adds the end-user capabilities GitCellar's feedback consolidation depends on (its Phases B/C — delete the internal Cloud-API feedback backend, unify the two feedback screens — do NOT start until these are live + capability-verified on `feedback.gitcellar.com`). Source program: `../GitCellar/docs/planning/plans/20260701-feedback-consolidation-onto-feedbackmonk.md`. This repo's intake+plan: `docs/planning/intakes/20260701T160735-*.md` + `docs/planning/plans/20260701T161200-*.md`.
@@ -236,6 +238,19 @@ The separate Astro **marketing site** (`feedbackmonk.com` landing page, FR-FBR-1
 - **Stale fake-API mock** (surfaced once the locator was fixed): the mock routed `/auth/login`, but the app moved to `POST /api/v1/login` (DEC-FBR-IMPL-10), so the login POST fell through to the absent backend and `waitForURL('**/feedback')` timed out. Fix: mock matcher → `/\/api\/v1\/login$/`.
 
 Full e2e a11y suite green: **13/13 passed**, including the previously-failing login spec and the two new board specs (`moderation-a11y.spec.ts`, `public-board-a11y.spec.ts`). No regressions.
+
+### PF-UNPIN-01: Unpin `stranded-dirty-files` once ULDF DEFER-221 lands
+
+**Trigger**: the framework baseline no longer ships the developer's Windows account name — i.e. ULDF DEFER-221 is fixed *and* synced to this machine. One-command test:
+`grep -c Carbonadmin ~/.claude/oracles/stranded-dirty-files/validate.ps1` → `0`.
+
+**Why the pin exists**: commit `5bf9878` (2026-05-17) scrubbed that account name to `someuser` in `validate.ps1` lines 38-39, ahead of this repo's first public push. The framework baseline still carries the unscrubbed form, so a blanket `/0-uldf-migrate-oracles` refresh reverts it — **observed twice**: `d71c35a` (2026-08-06) and again during the DEC-405 refresh (`de297c3`, 2026-08-21). The oracle was refreshed to current baseline *first*, the scrub re-applied, then pinned via `.claude/oracles/stranded-dirty-files/.local-customized` — so it carries the DEC-405 InvariantCulture date fix and diverges from baseline by 2 comment lines only.
+
+**Action when triggered**: delete `.claude/oracles/stranded-dirty-files/.local-customized`, then confirm a refresh no longer reverts the scrub. Leaving the pin after DEFER-221 lands is the real cost — it blocks every future framework fix to this oracle from reaching this project.
+
+**Upstream**: `DEFER-221` in the ULDF repo (`docs/planning/deferred/`).
+
+Remove this entry once the pin is removed.
 
 ---
 
