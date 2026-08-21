@@ -212,11 +212,11 @@ function Convert-DsNormalizeDates {
     if ($Node -is [datetime]) {
         if ($Node.Kind -eq [System.DateTimeKind]::Local) { $Node = $Node.ToUniversalTime() }
         if ($Node.Kind -eq [System.DateTimeKind]::Utc) {
-            if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fffZ") }
-            return $Node.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", [System.Globalization.CultureInfo]::InvariantCulture) }
+            return $Node.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
         }
-        if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fff") }
-        return $Node.ToString("yyyy-MM-ddTHH:mm:ss")
+        if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fff", [System.Globalization.CultureInfo]::InvariantCulture) }
+        return $Node.ToString("yyyy-MM-ddTHH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
     }
     if ($Node -is [System.Array]) {
         for ($i = 0; $i -lt $Node.Count; $i++) { $Node[$i] = Convert-DsNormalizeDates -Node $Node[$i] }
@@ -286,7 +286,7 @@ if ($data.PSObject.Properties.Name -contains "sessions") {
 #   or {"arc":"<arc>","driver":{"sessionId","arc","consentScope","boundUntil",
 #       "entryId","claudeShellPid"}}
 if ($mode -eq "driver-of") {
-    $dofNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $dofNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
     $cand = $null
     foreach ($s in $sessions) {
         if ($null -eq $s) { continue }
@@ -483,7 +483,7 @@ if ($mode -eq "gc" -or $mode -eq "gc-cheap" -or $mode -eq "dry-run") {
 
     $now       = (Get-Date).ToUniversalTime()
     $cutoff    = $now.AddHours(-1 * $thresholdHours)
-    $nowIso    = $now.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $nowIso    = $now.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
 
     # 1000ms (was 100ms): the per-entry liveness probe loop is self-consuming on
     # Windows — each Get-Process probe + the candidate parse could exceed 100ms
@@ -1131,6 +1131,29 @@ $selfSessionId = ""
 if ($env:ULDF_SELF_SESSION_ID) { $selfSessionId = [string]$env:ULDF_SELF_SESSION_ID }
 elseif ($env:CLAUDE_SESSION_ID) { $selfSessionId = [string]$env:CLAUDE_SESSION_ID }
 
+# ---- SACT-09 (DEC-365): the intent-freshness cutoff, computed ONCE ----------
+# Twin of the .sh leg. Default 6h, overridable via .claude/config.json
+# `sact.intentStaleAfterHours`. An empty cutoff means "could not compute", and
+# the gate then OPENS -- a degraded clock must not silently erase coordination
+# data, and the liveness filter below is still in force either way.
+$IntentStaleHours = 6
+try {
+    if (Test-Path ".claude/config.json") {
+        $sactCfg = Get-Content ".claude/config.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ($sactCfg -and $sactCfg.PSObject.Properties.Name -contains 'sact' -and
+            $sactCfg.sact -and $sactCfg.sact.PSObject.Properties.Name -contains 'intentStaleAfterHours') {
+            $v = 0
+            if ([int]::TryParse([string]$sactCfg.sact.intentStaleAfterHours, [ref]$v) -and $v -gt 0) {
+                $IntentStaleHours = $v
+            }
+        }
+    }
+} catch { }
+$IntentFreshAfter = ""
+try {
+    $IntentFreshAfter = (Get-Date).ToUniversalTime().AddHours(-$IntentStaleHours).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
+} catch { $IntentFreshAfter = "" }
+
 # ---- Filter + liveness check ----
 $peers = @()
 foreach ($s in $sessions) {
@@ -1165,11 +1188,31 @@ foreach ($s in $sessions) {
         $peerObj.siblingGroup = [string]$s.siblingGroup
     }
     # SACT-06 (DEC-240): additively include intent + unexpired resourceClaim.
+    # SACT-09 (DEC-365): only while FRESH. A stale intent renders as NOTHING,
+    # never as a fact — the trigger specimen was a seven-day-old "IDLE... Safe to
+    # sweep in parallel" sitting on a DEAD session. An intent with NO intentSetAt
+    # is STALE, not fresh: unstamped is unaged, not young (fail closed). When the
+    # cutoff could not be computed the gate OPENS, because a degraded clock must
+    # not silently erase coordination data.
+    #
+    # DISC-ARC-01: the stamp is forced through [string] before comparison —
+    # ConvertFrom-Json coerces ISO-8601 to [DateTime] on pwsh 6+ and not on 5.1,
+    # so an uncoerced lexical compare reads every intent as stale on one engine
+    # and fresh on the other.
     if ($s.PSObject.Properties.Name -contains 'intent' -and $s.intent) {
-        $peerObj.intent = [string]$s.intent
+        $stamp = ''
+        if ($s.PSObject.Properties.Name -contains 'intentSetAt' -and $null -ne $s.intentSetAt) {
+            $stamp = [string](Convert-DsNormalizeDates -Node $s.intentSetAt)
+        }
+        if ((-not $IntentFreshAfter) -or ($stamp -and ($stamp -ge $IntentFreshAfter))) {
+            $peerObj.intent = [string]$s.intent
+            if ($s.PSObject.Properties.Name -contains 'intentSource' -and $s.intentSource) {
+                $peerObj.intentSource = [string]$s.intentSource
+            }
+        }
     }
     if ($s.PSObject.Properties.Name -contains 'resourceClaim' -and $null -ne $s.resourceClaim) {
-        $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
         $bu = ''
         if ($s.resourceClaim.PSObject.Properties.Name -contains 'boundUntil' -and $null -ne $s.resourceClaim.boundUntil) { $bu = [string]$s.resourceClaim.boundUntil }
         if ((-not $bu) -or ($bu -ge $nowIso)) {

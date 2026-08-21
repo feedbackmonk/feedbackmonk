@@ -99,7 +99,7 @@ if ($endpointReachable) {
             switch ($parsed.oracleStatus) {
                 "healthy" {
                     $flErrors = $true; $flAsync = $true; $flNav = $true
-                    $recentSuccessAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                    $recentSuccessAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
                 }
                 "degraded" {
                     $flErrors = $true; $flAsync = $true; $flNav = $true
@@ -108,7 +108,7 @@ if ($endpointReachable) {
                     if ($degraded -contains "errors") { $flErrors = $false }
                     if ($degraded -contains "async") { $flAsync = $false }
                     if ($degraded -contains "navigation") { $flNav = $false }
-                    $recentSuccessAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+                    $recentSuccessAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
                 }
                 default {
                     # Unknown oracleStatus
@@ -132,7 +132,7 @@ $heartbeatCount24h = 0
 $telemetryState = "no-data"
 if (Test-Path $TelemetryLog) {
     try {
-        $cutoff = (Get-Date).ToUniversalTime().AddHours(-24).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $cutoff = (Get-Date).ToUniversalTime().AddHours(-24).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
         $count = 0
         Get-Content $TelemetryLog -Encoding UTF8 -ErrorAction SilentlyContinue | ForEach-Object {
             $line = $_

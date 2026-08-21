@@ -70,12 +70,32 @@ if [ "${ULDF_SLS_REPORT_PID_IDENTITY:-}" = "1" ]; then
     exit 0
 fi
 
+# ---- JSON string escaping (used by every emitter below) ---------------------
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+
 # ---- Default empty/consistent output ---------------------------------------
 emit_consistent() {
     local status_json="$1"   # JSON string for current_session_status (e.g. '"ACTIVE"' or 'null')
     local sid_json="$2"      # JSON string for current_session_id
     cat <<EOF
-{"stale":false,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"active","registry_pid_alive":null,"inconsistency_kind":"none"},"briefing":""}
+{"evaluable":true,"stale":false,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"active","registry_pid_alive":null,"inconsistency_kind":"none","unevaluable_reason":null},"briefing":""}
+EOF
+    exit 0
+}
+
+# ---- CANNOT-EVALUATE output (DEFER-204) ------------------------------------
+# An unresolvable DEPENDENCY is not a graceful absence: graceful absence means
+# "asked, and there is nothing to compare"; this means "could not ask at all".
+# Rendering it as stale:false published a clean bill of health earned by no
+# measurement -- the reassuring direction, which is worse than a plainly absent
+# check because the briefing line is byte-identical to a real all-clear. Mirrors
+# concurrent-mutation's evaluable:false contract (CSI-36/DEC-342) and OVALID-05:
+# an oracle DEFERS an assertion it cannot make, it never weakens it.
+emit_unevaluable() {
+    local reason="$1"      # short machine-readable reason
+    local briefing="$2"    # human line for the ORACLE BRIEFING (never empty)
+    cat <<EOF
+{"evaluable":false,"stale":null,"details":{"current_session_status":null,"current_session_id":null,"registry_status":null,"registry_pid_alive":null,"inconsistency_kind":null,"unevaluable_reason":"$(esc "$reason")"},"briefing":"$(esc "$briefing")"}
 EOF
     exit 0
 }
@@ -86,14 +106,16 @@ if [ ! -f "$ARC_STATE" ]; then
     emit_consistent "null" "null"
 fi
 
-esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-
 # ---- Read topmost arc status via the ARC-02 lib -----------------------------
-# Absent lib or malformed document -> empty status -> degrade to consistent
-# rather than emit a stale verdict we cannot verify.
+# There IS an arc record here (checked above), so the question is live and the
+# lib is the only way to read it. Unresolvable lib -> UNEVALUABLE, never
+# "consistent" (see emit_unevaluable's header). The remedy is named in the
+# briefing because the witnessed instance (SessionHelm, 2026-08-18) was a
+# project whose installed .claude/oracles/ still dot-sourced the parser lib
+# retired by ARC-04 -- a stale install, fixed by refreshing the oracles.
 if ! command -v ast_get_status >/dev/null 2>&1; then
-    echo "stale-ltads-state: arc-state.sh not found; degrading to consistent" >&2
-    emit_consistent "null" "null"
+    echo "stale-ltads-state: arc-state.sh could not be resolved" >&2
+    emit_unevaluable "arc-state-lib-unresolvable"         "stale-ltads-state could not evaluate: the arc-state lib (scripts/lib/arc-state.sh) could not be resolved, so LTADS/registry consistency is UNKNOWN -- not clear. Refresh this project's oracles (/0-uldf-migrate-oracles) or re-sync ~/.claude."
 fi
 status_value=$(ast_get_status "$ARC_STATE")
 
@@ -123,7 +145,7 @@ sid_json="\"$(esc "$session_id")\""
 # ---- No registry -> session never registered; emit missing ------------------
 if [ ! -f "$REGISTRY" ]; then
     cat <<EOF
-{"stale":true,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"missing","registry_pid_alive":null,"inconsistency_kind":"registry-missing-state-active"},"briefing":"arc-state.json topmost arc: $status_value (arc owner $session_id) but active-sessions.json missing"}
+{"evaluable":true,"stale":true,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"missing","registry_pid_alive":null,"inconsistency_kind":"registry-missing-state-active","unevaluable_reason":null},"briefing":"arc-state.json topmost arc: $status_value (arc owner $session_id) but active-sessions.json missing"}
 EOF
     exit 0
 fi
@@ -275,6 +297,6 @@ case "$inconsistency_kind" in
 esac
 
 cat <<EOF
-{"stale":true,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"$reg_status","registry_pid_alive":$pid_alive_json,"inconsistency_kind":"$inconsistency_kind"},"briefing":"$(esc "$briefing")"}
+{"evaluable":true,"stale":true,"details":{"current_session_status":$status_json,"current_session_id":$sid_json,"registry_status":"$reg_status","registry_pid_alive":$pid_alive_json,"inconsistency_kind":"$inconsistency_kind","unevaluable_reason":null},"briefing":"$(esc "$briefing")"}
 EOF
 exit 0

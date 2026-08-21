@@ -121,7 +121,7 @@ if (Test-Path ".claude/config.json") {
 
 $now    = (Get-Date).ToUniversalTime()
 $cutoff = $now.AddDays(-1 * $thresholdDays)
-$nowIso = $now.ToString('yyyy-MM-ddTHH:mm:ssZ')
+$nowIso = $now.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
 
 # ---- Helpers ----
 

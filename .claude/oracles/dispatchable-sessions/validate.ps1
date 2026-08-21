@@ -102,9 +102,9 @@ try {
     while (Get-Process -Id $deadPid -ErrorAction SilentlyContinue) { $deadPid++ }
 
     $now      = (Get-Date).ToUniversalTime()
-    $oldIso    = $now.AddHours(-25).ToString("yyyy-MM-ddTHH:mm:ssZ")
-    $recentIso = $now.AddSeconds(-60).ToString("yyyy-MM-ddTHH:mm:ssZ")
-    $thirteenIso = $now.AddHours(-13).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $oldIso    = $now.AddHours(-25).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
+    $recentIso = $now.AddSeconds(-60).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
+    $thirteenIso = $now.AddHours(-13).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
 
     function Write-Fixture {
         param([string]$Path, [object[]]$Sessions)

@@ -19,7 +19,7 @@ $script:pass = 0; $script:fail = 0
 function Ok([string]$label)  { Write-Output "PASS: $label"; $script:pass++ }
 function Bad([string]$label) { Write-Output "FAIL: $label"; $script:fail++ }
 
-$atRecent = (Get-Date).AddHours(-1).ToString('yyyy-MM-ddTHH:mm:ss')
+$atRecent = (Get-Date).AddHours(-1).ToString('yyyy-MM-ddTHH:mm:ss', [System.Globalization.CultureInfo]::InvariantCulture)
 
 function Write-Ledger([string]$At, [string]$Project, [string]$Cmd) {
     Set-Content -Path (Join-Path $ledger 'test.jsonl') -Value ('{"at":"' + $At + '","cmd":"' + $Cmd + '","project":"' + $Project + '","type":"skill","machine":"T","session":"s"}') -Encoding Ascii

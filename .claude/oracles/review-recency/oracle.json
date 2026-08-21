@@ -4,9 +4,9 @@
   "question": "Did I already run a heavy periodic review/refactor skill (e.g. /0-uldf-scrutinize, /0-uldf-uladp-compliance) on THIS project recently — such that re-running it now would be redundant?",
   "kind": "project-state",
   "category": "workflow",
-  "expected_runtime_ms": 1500,
-  "lane": "fast",
-  "cost_provenance": "estimated 2026-07-03 -- one review-recency.sh reader pass (jq over command-usage/*.jsonl, project-scoped) on the ULDF framework repo under Git Bash (win32; slowest supported environment); pessimistic-honest per ORACLE-COST-01",
+  "expected_runtime_ms": 16000,
+  "lane": "slow",
+  "cost_provenance": "measured 2026-08-11 on DESKTOP-CARBON (17-project portfolio, win32) under the REAL session-start fan-out -- the environment this oracle actually runs in -- via Invoke-BriefingOracles over the full 56-oracle corpus at budget 15000ms: killed at 15000 / killed at 15000 / ok 13839 across 3 runs. Standalone and uncontended it is 2.1-2.6s; the 4-7x gap is concurrency with ~25 sibling oracles, not the reader itself. The prior 1500 was ESTIMATED, not measured, and yielded clamp(3x1500,2000,15000)=4500ms, under which this oracle was tree-killed every session and could never deliver a line (witnessed in ULDF's own startup briefing, 2026-08-11: `review-recency(killed at 4500ms)`). 16000 is deliberately ABOVE the 15000ms briefing budget: see consultation.notes.",
   "invocation": {
     "unix": ".claude/oracles/review-recency/run.sh",
     "windows": ".claude/oracles/review-recency/run.ps1"
@@ -28,6 +28,7 @@
   },
   "consultation": {
     "typical_sessions_using": "every",
+    "notes": "Declared above the briefing budget ON PURPOSE, so the runner records this oracle `deferred` and the hook names it in the aggregated [oracle-budget] line with its on-demand pointer. There is no honest declaration that would let it deliver a briefing line instead: the maximum timeout any oracle can receive is the budget itself (clamp(3x declared, 2000, budget)), and at that ceiling it still failed 2 of 3 measured runs. Deferred is strictly better than the pre-DEC-346 state, where it burned 4500ms of the window every session AND delivered nothing. `typical_sessions_using` stays \"every\" because the question genuinely is every-session -- what changed is the honest cost, and the budget contract is what excludes it. Cost scales with the number of projects on the machine, not with the consuming repo, so on a small portfolio this may be over-declared; over-declaration only defers, never lies. The direct 'don't re-run' defense was always the in-skill RECENCY-05 guard, not this line.",
     "estimated_token_savings_per_call": 300
   },
   "validation": {

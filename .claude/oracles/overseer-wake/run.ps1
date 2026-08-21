@@ -52,11 +52,11 @@ function Convert-OwNormalizeDates {
     if ($Node -is [datetime]) {
         if ($Node.Kind -eq [System.DateTimeKind]::Local) { $Node = $Node.ToUniversalTime() }
         if ($Node.Kind -eq [System.DateTimeKind]::Utc) {
-            if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fffZ") }
-            return $Node.ToString("yyyy-MM-ddTHH:mm:ssZ")
+            if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", [System.Globalization.CultureInfo]::InvariantCulture) }
+            return $Node.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
         }
-        if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fff") }
-        return $Node.ToString("yyyy-MM-ddTHH:mm:ss")
+        if ($Node.Millisecond -ne 0) { return $Node.ToString("yyyy-MM-ddTHH:mm:ss.fff", [System.Globalization.CultureInfo]::InvariantCulture) }
+        return $Node.ToString("yyyy-MM-ddTHH:mm:ss", [System.Globalization.CultureInfo]::InvariantCulture)
     }
     if ($Node -is [System.Array]) {
         for ($i = 0; $i -lt $Node.Count; $i++) { $Node[$i] = Convert-OwNormalizeDates -Node $Node[$i] }
@@ -293,7 +293,7 @@ if ($wsrRun) {
     if ($sharedPaths.Count -gt 0) {
         $sourcesSeen.Add("shared-foreign-claim") | Out-Null
         $mySid = if ($env:CLAUDE_SESSION_ID) { [string]$env:CLAUDE_SESSION_ID } else { "" }
-        $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $nowIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
         foreach ($repo in $sharedPaths) {
             if ([string]::IsNullOrEmpty($repo)) { continue }
             $sreg = Join-Path $repo ".claude/collaboration/active-sessions.json"
@@ -462,7 +462,7 @@ function Sort-RcOrdinal {
 $rcJobsDir = Join-Path $_owPwd ".claude/session-state/jobs"
 if ($registry) {
     $sourcesSeen.Add("resource-contention") | Out-Null
-    $rcNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $rcNow = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
 
     # --- live resource claims -> resource => claimant ids, and a kind per resource
     $rcClaims = @{}    # resource -> List[string] of claimant session ids
@@ -511,7 +511,7 @@ if ($registry) {
     if (Test-Path -LiteralPath $rcJobsDir) {
         $rcStall = 90
         if ($env:GC_JOB_STALL_SECONDS -and ($env:GC_JOB_STALL_SECONDS -as [int])) { $rcStall = [int]$env:GC_JOB_STALL_SECONDS }
-        $rcCutoff = (Get-Date).ToUniversalTime().AddSeconds(-1 * $rcStall).ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $rcCutoff = (Get-Date).ToUniversalTime().AddSeconds(-1 * $rcStall).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
         $rcJobFiles = @()
         try { $rcJobFiles = @(Get-ChildItem -Path (Join-Path $rcJobsDir "*.json") -File -ErrorAction SilentlyContinue) } catch { $rcJobFiles = @() }
         foreach ($jf in $rcJobFiles) {

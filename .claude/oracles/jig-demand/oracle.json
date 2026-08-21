@@ -1,0 +1,93 @@
+{
+  "name": "jig-demand",
+  "version": "1.0.0",
+  "question": "Has the SAME capability been asked for across several separate sessions and still not been built — i.e. is there recurring, undrained Development-Jig demand in this project's log?",
+  "category": "workflow",
+  "kind": "verification",
+  "expected_runtime_ms": 900,
+  "lane": "fast",
+  "cost_provenance": "measured 2026-08-14 under Git Bash (win32; slowest supported environment) against the largest real corpus on this machine (SquirrelMaid, 51 records): 623/777/787/888/1313 ms, min-of-5 = 623 ms. Min-of-N needs no quiet verdict -- load can only inflate, so an observed minimum UPPER-BOUNDS the clean time (QUIESCE-09). The machine-quiescence verdict at measurement time was NOISY (15 dev-port listeners, 15 live agent sessions, 24 build/watch processes); that residue is named here rather than cleared, per the measurement-quiescence guard, and it is why the spread reaches 1313. Python interpreter startup dominates: the O(n^2) similarity pass over 51 records is 1275 set intersections and is not measurable against it. Declared 900 rather than 623 because the sibling runtime-perception-questions oracle -- same python-startup shape -- measured 1378-2054 ms on this machine during a load burst, and a declaration that only holds on a quiet machine is a false one. The fast-lane kill is clamp(3x declared, 2000, 5000) = 2700 ms.",
+  "assertion": {
+    "asserts": "Every cluster reported here is a capability this project asked for on at least `minOccasions` separate occasions and has neither built nor dispositioned -- so an agent may treat it as live, undrained demand and route it (JIG-07) without re-reading the log.",
+    "measures": "Records in .claude/session-state/aria-probe-candidates.jsonl, minus every record covered by a disposition in .claude/session-state/jig-demand-dispositions.jsonl or carrying an in-record `triage` object, single-link clustered by IDF-weighted token overlap of `question` + `capability` at a similarity threshold (default 0.20), keeping clusters with >= minCandidates members drawn from >= minOccasions distinct occasions, where an occasion is the record's `sessionId` when present and its `ts` calendar date when not.",
+    "known_gaps": [
+      "P says 'the same capability'; Q says 'lexically similar free text'. The `capability` field is prose and never repeats verbatim -- measured 3 exact-duplicate groups in 223 records across 12 projects -- so exact keying was rejected as useless and a lexical proxy taken instead. The proxy both over-merges (two unrelated asks sharing rare jargon) and under-merges (one capability described in two vocabularies). It is bounded, not closed: every cluster ships its member questions verbatim in `sample`, so a reader can reject a bad merge in one glance, and the threshold is configurable per project. Do NOT read a cluster as a verified same-capability claim.",
+      "P says 'separate occasions'; Q counts distinct sessionId values, falling back to the ts calendar date when sessionId is null. 57 of 223 records in the measured corpus carry a null sessionId (the ARIA-25/DEFER-179 legacy backlog), so for those the proxy is a DATE, and several candidates logged by one session on one day count as ONE occasion -- deliberately conservative, since the failure this gate exists to avoid is escalating a single session's enumeration of gaps as if it were recurrence. Measured instance: RecoveryJourney's 7-member and 6-member clusters are both one session and are correctly withheld. The converse error -- two sessions on one day with null ids counting as one occasion -- suppresses a real escalation and is accepted.",
+      "P says 'has not been built'; Q says 'no disposition record covers it'. A jig built without anyone writing a disposition is invisible to this oracle and its demand keeps escalating. Nothing detects a built-but-undeclared jig, and no attempt is made to infer one from the filesystem -- an inferred build would silence real demand on a guess. The remedy is procedural: `scripts/aria/jig-demand-triage.sh` is one command and the briefing line names it.",
+      "P is about this PROJECT's demand; Q reads only this project's log. Demand for one capability spread thinly across several projects (measured: 'drive the app's UI and observe what rendered' recurs in quiqpic, SquirrelMaid, MarkdownMax and SessionHelm independently) never accumulates anywhere and is invisible to every per-project run. The cross-project roll-up is `/0-uldf-portfolio jigs`, which is human-invoked; this oracle does not fan out and does not claim to.",
+      "The similarity metric is IDF-weighted, so its scale depends on CORPUS SIZE and it is degenerate on a small log: with n records, a term shared by all of them scores log((n+1)/(n+0.5)), which at n=3 is 0.13 -- nothing can reach threshold. Measured: three records phrased three ways do not merge when they are the whole corpus, and do merge at the shipped threshold once eight unrelated records sit alongside them (validate.sh T9). So a project whose log holds only a handful of candidates gets no clustering at all, and its recurrence is invisible here regardless of how real it is. This is DECLARED rather than tuned away: the loosenings that fix it (smoothed IDF, stemming) were measured over-merging the largest real corpus from a 9-member cluster into an 18-member blob, which is worse -- a wrong cluster costs the reader's trust in every other one. Threshold 0.20-0.25 is the measured band on 39-51-record corpora.",
+      "Word forms are not stemmed, so 'renders' and 'rendered' are different tokens and two records describing one capability in different tenses lose that overlap. Stemming was measured and rejected on the same over-merge evidence as the entry above; the cost is under-merging, which withholds an escalation rather than manufacturing one.",
+      "The archetype hint in `suggestedArchetype` is keyword-matched against JIG_CATALOG.md recognition signatures, not derived. It is a starting point for the route, never a verdict on what to build; a null hint means no keyword matched, never 'no archetype fits'.",
+      "When no working python interpreter is available the oracle performs NO clustering at all: it reports `clustered:false`, `status:ok`, empty clusters and a briefing that says so. That output is honest but is NOT the assertion above -- a consumer that reads `status:ok` without reading `clustered` will read 'no undrained recurrence' out of 'not measured'. `clustered` is the field that distinguishes them.",
+      "A missing or empty log yields status:ok with zero clusters. That is a legitimate zero (the log is created on first candidate, everywhere ARIA-22 ships) and NOT NO-DATA -- but it is equally what a project whose agents never log candidates looks like. This oracle measures the log; it cannot measure demand that was never written down."
+    ]
+  },
+  "invocation": {
+    "unix": ".claude/oracles/jig-demand/run.sh",
+    "windows": ".claude/oracles/jig-demand/run.ps1"
+  },
+  "output": {
+    "format": "json",
+    "schema": {
+      "status": "string (ok | signal) -- signal when >=1 cluster meets both thresholds",
+      "clusters": [
+        {
+          "label": "string (the cluster's most distinctive shared terms, joined -- a human-readable handle, not an identifier)",
+          "clusterKey": "string (stable 12-hex digest of the cluster's member ts values, sorted -- the join key jig-demand-triage.sh --cluster consumes)",
+          "candidates": "integer (records in the cluster)",
+          "occasions": "integer (distinct sessionId values, or ts dates where sessionId is null)",
+          "firstSeen": "string (YYYY-MM-DD of the earliest member)",
+          "lastSeen": "string (YYYY-MM-DD of the latest member)",
+          "sample": "array of string (member questions verbatim, truncated to ~140 chars, capped at 3 with a '(+K more)' tail) -- present so a reader can reject a bad lexical merge",
+          "memberTs": "array of string (every member's ts, so a disposition can name them explicitly)",
+          "suggestedArchetype": "string|null (a slug from JIG_CATALOG.md, keyword-matched; null when nothing matched)"
+        }
+      ],
+      "totals": {
+        "candidates": "integer (records in the log)",
+        "dispositioned": "integer (records covered by a disposition record or an in-record triage object)",
+        "undispositioned": "integer (candidates - dispositioned -- the population actually clustered)"
+      },
+      "clustered": "boolean (false when no python interpreter was available and NO grouping was performed -- status:ok then means 'not measured', never 'nothing found')",
+      "briefing": "string (empty when status=ok -- QUIET-PATH INVARIANT; when status=signal, one line naming the top cluster, its occasion count, and the route that drains it)"
+    }
+  },
+  "freshness": {
+    "strategy": "always-fresh",
+    "note": "Reads two append-only marker logs that mutate within a session; no caching. Read-only and idempotent -- writes nothing, including no disposition (that is a separate, explicit act)."
+  },
+  "consultation": {
+    "typical_sessions_using": "every",
+    "estimated_token_savings_per_call": 500,
+    "note": "Deliberately an every-session-start oracle, and that placement IS the fix. The demand's existing consumer -- /0-uldf-finalize Phase 11 step 4c -- is session-scoped, advisory, and fires when the session is already shipping something else; an advisory line at the end of a finalize is what was measured failing (223 candidates, 199 never triaged). Muted on the common path: 8 of the 12 measured project corpora produce no line at all."
+  },
+  "validation": {
+    "self_test_unix": ".claude/oracles/jig-demand/validate.sh",
+    "self_test_windows": ".claude/oracles/jig-demand/validate.ps1",
+    "last_validated": null
+  },
+  "fallback": "Run .claude/oracles/jig-demand/run.sh (or run.ps1) with no args. It reads .claude/session-state/aria-probe-candidates.jsonl, subtracts anything already dispositioned in .claude/session-state/jig-demand-dispositions.jsonl, clusters the remainder by lexical similarity, and reports clusters recurring across >= minOccasions separate occasions. Empty clusters => status:ok, empty briefing. Drain a cluster with `scripts/aria/jig-demand-triage.sh --cluster <clusterKey> --verdict built|superseded|covered|declined --reason '<why>'`, which is what stops it re-escalating. Advisory ONLY -- never blocks a commit or a session.",
+  "provenance": {
+    "authored_by": "defer-drain-wave15-CLAUDE-D",
+    "created": "2026-08-14T00:00:00Z",
+    "spec_refs": [
+      "JIG-09",
+      "JIG-05",
+      "JIG-06",
+      "JIG-07",
+      "ARIA-22"
+    ],
+    "note": "The conversion side of the Development Jig doctrine (JIG-09, DEC-362; brief DEFER-quiqpic-20260811). The doctrine was instrumented on collection only: log-probe-candidate is cheap and reflexive (223 candidates across 12 projects), and the only reader -- runtime-perception-questions -- is session-scoped BY CONSTRUCTION (ARIA-25/DEC-356), while jig-friction clusters within one session and /0-uldf-portfolio jigs reports the log as a raw line count. Nothing anywhere computed recurrence ACROSS sessions, which is the only signal that justifies building. Three of the brief's four proposed remedies were measured and rejected: exact capability-keyed dedup finds 3 duplicate groups in 223 records; making finalize step 4c blocking is the wrong LOCATION before it is the wrong strength (the demand is cross-session, finalize is session-scoped) and DEC-142's advisory-only design is left intact; a portfolio backlog leg alone stays human-invoked. HIGH-threshold bias inherited from jig-friction (JIG-04): a nagging detector is attention pollution, so the defaults withhold on one-session enumerations."
+  },
+  "config": {
+    "config_file": ".claude/config.json",
+    "config_key": "jigDemand",
+    "keys": {
+      "minCandidates": "integer (default 3) -- cluster size at/above which recurrence is considered. Measured: 3 fires on 6 clusters across 4 of 12 project corpora; 2 fires on 20 across 7 and is attention pollution.",
+      "minOccasions": "integer (default 3) -- distinct sessions/dates the cluster must span. THIS is the discriminator, not size: it is what withholds a single session's enumeration of its own gaps (measured: RecoveryJourney's 7- and 6-member one-session clusters).",
+      "similarity": "number (default 0.20) -- IDF-weighted cosine threshold for single-link clustering. Measured on the real corpus: 0.35+ yields all singletons (nothing merges), 0.15 over-merges into blobs, 0.20-0.25 produces semantically coherent clusters. Raise it if clusters read as unrelated; lower it only with evidence that real recurrence is being missed.",
+      "topN": "integer (default 5) -- maximum clusters reported. Excess is counted in the briefing, never silently dropped."
+    },
+    "comment": "Defaults (minCandidates:3, minOccasions:3, similarity:0.20, topN:5) are baked into run.sh / run.ps1 and cluster.py for the no-config case. Precedence: CLI (--min-candidates/--min-occasions/--similarity/--top-n) > .claude/config.json jigDemand.* > default."
+  }
+}

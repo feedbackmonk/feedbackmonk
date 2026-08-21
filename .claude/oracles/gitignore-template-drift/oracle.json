@@ -7,6 +7,17 @@
   "cost_provenance": "measured 2026-06-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; under-declaration causes timeout kills",
   "question": "Does this project's .gitignore lack any framework-managed patterns from the current claude-template baseline?",
   "category": "workflow",
+  "assertion": {
+    "asserts": "this project's .gitignore covers every ephemeral framework artifact class that must never be committed",
+    "measures": "line-trimmed exact string equality between the non-comment, non-blank lines following the '# Claude Code (session artifacts - never commit)' header of the RESOLVED baseline (~/.claude/.gitignore when deployed, else claude-template/.gitignore) and the lines of ./.gitignore. No path is tested against git; git check-ignore is never run.",
+    "known_gaps": [
+      "THE CENTRAL GAP (DISC-PRO-38 / DEC-378): a class that SHOULD be ignored but is absent from the baseline is invisible by construction, because drift is measured against the baseline -- a detector of divergence FROM a list cannot see that the list is short. Witnessed: live .claude/collaboration/collab-*/ dirs were committable in every ULDF project while this oracle reported drifted=false in all of them; 173 such files were committed by a950aaec and untracked by 98e920f2, and 32 remain tracked in three projects as of 2026-08-17. Nothing is done about it and nothing can be: baseline completeness is a judgment question, excluded from mechanization by Oraculurgy's Four-Part Qualification Test (OVALID-04). The bound is stated, not closed.",
+      "Exact-line matching measures SPELLINGS, not effective ignore status. A project that ignores the same paths under a different but equivalent pattern is reported drifted (false positive); a project whose baseline line is present while an earlier negation re-includes the path is reported covered (false negative). git check-ignore is the effective test and is not run.",
+      "Baseline resolution prefers the DEPLOYED ~/.claude/.gitignore over claude-template/.gitignore, so a pattern added to the template baseline is invisible to every project -- including the framework repo itself -- until sync. Measured 2026-08-17: immediately after HYGIENE-06 landed in the template, this oracle still reported drifted=false with baseline_patterns=19 here, while the same run against the template reported 20.",
+      "Only lines under the framework header are managed. A baseline pattern added elsewhere in the file is silently uncounted, so the header is load-bearing and a correct pattern in the wrong section reads as no pattern at all.",
+      "Says nothing about TRACKED state. gitignore is not retroactive, so a path already committed stays committed after its pattern lands; /0-uldf-migrate-hygiene owns that half and this oracle cannot see it."
+    ]
+  },
   "invocation": {
     "unix": ".claude/oracles/gitignore-template-drift/run.sh",
     "windows": ".claude/oracles/gitignore-template-drift/run.ps1"

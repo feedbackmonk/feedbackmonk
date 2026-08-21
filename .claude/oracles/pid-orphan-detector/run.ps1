@@ -100,7 +100,7 @@ function Get-IsoMtime {
     param([string]$Path)
     try {
         $ut = (Get-Item -LiteralPath $Path -ErrorAction Stop).LastWriteTimeUtc
-        return $ut.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        return $ut.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
     } catch {
         return ""
     }
@@ -143,7 +143,7 @@ function Get-PidFiles {
     return $files
 }
 
-$nowIso = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$nowIso = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
 
 $swept     = @()  # array of pscustomobject {pid_file, referenced_pid, mtime}
 $aliveList = @()  # array of pscustomobject {pid_file, referenced_pid}

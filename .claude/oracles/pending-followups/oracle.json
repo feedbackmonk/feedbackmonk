@@ -1,6 +1,6 @@
 {
   "name": "pending-followups",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "question": "What pending follow-ups are in CLAUDE.md, and which are overdue?",
   "kind": "project-state",
   "category": "followup",
@@ -14,12 +14,31 @@
   "output": {
     "format": "json",
     "schema": {
+      "briefing": "string. The session-start line. Empty means 'suppress the line' (graceful absence -- no follow-ups section at all). FOLLOWUP-02: before v1.1.0 this field did not exist, so session-start fell back to dumping the whole JSON and DROPPED it silently whenever that exceeded its 3000-char cap -- measured 3824 chars on the ULDF repo and 75081 on a sibling project, i.e. the line went dark on exactly the projects that have follow-ups. Carries no `\"` and nothing copied from an entry title: the consumer extracts it with a `\"[^\"]*\"` regex.",
       "has_followups_section": "boolean",
+      "status": "string. \"ok\" = the sources were read and the count is trustworthy. \"no-data\" = a section or pointer exists that could NOT be turned into entries (pointer target missing, or a section carrying content that yielded no parseable entry). NO-DATA IS NEVER ZERO (DEC-346): a consumer MUST NOT read total==0 as an all-clear unless status==\"ok\".",
       "total": "integer",
-      "overdue": "integer",
-      "items": "array of {title, due, overdue, days_overdue, detail_path}",
-      "_detail_path": "string|null. Path to the externalized full body, extracted from a `Details: `docs/pending/<slug>.md`` token in the bullet line. Null when the entry's full body remains inline. Lets a triggered consumer go straight to the detail file without re-reading CLAUDE.md."
+      "overdue": "integer. The number of DECLARED date triggers proven past. When `overdue_evaluable` is false this is a FLOOR, not a magnitude (QUIESCE-09's shape) -- more entries may be due among the `unevaluable` ones.",
+      "sources": "array of string. Every file actually parsed, in read order. Empty when nothing was found.",
+      "unresolved": "array of string. Pointer targets referenced but not readable; non-empty forces status=\"no-data\".",
+      "items": "array of {title, due, overdue, days_overdue, detail_path, scope}. `overdue` is `true`/`false` for an evaluated date trigger, `false` for a non-dated label, and `null` for a DECLARED date trigger whose date could not be read -- never `false` for that last case.",
+      "_detail_path": "string|null. Path to the externalized full body, extracted from a `Details: `docs/pending/<slug>.md`` token in the bullet line. Null when the entry's full body remains inline. Lets a triggered consumer go straight to the detail file without re-reading CLAUDE.md.",
+      "overdue_evaluable": "boolean. False when at least one entry DECLARED a date trigger whose date this oracle could not turn into a comparison. FOLLOWUP-02: a consumer MUST NOT read `overdue: 0` as 'nothing is due' when this is false. Mirrors the CSI-36/DEC-342 rendering (unknown is `null` + an evaluability flag, never `false`).",
+      "unevaluable": "integer. How many items carry `overdue: null` / `days_overdue: null`. Zero on every corpus measured 2026-08-19."
     }
+  },
+  "assertion": {
+    "asserts": "Every pending follow-up this project has recorded is in `items`, and `overdue` counts the ones whose trigger date has passed -- or, when `overdue_evaluable` is false, at least that many.",
+    "measures": "Bullet lines matching `- **<date-declaration>**` or `- **<label>**` inside the `## Pending Follow-Ups` section of the project CLAUDE.md, of the extracted file that section points at (or that `.claude/config.json` `pendingFollowups.path` names), and of ~/.claude/MACHINE_CONFIG.md. FOLLOWUP-01: a DATE DECLARATION is the ISO date opening the bold prefix, optionally behind one leading word (`After`, `On`, ...) and followed by anything up to the closing `**` -- which is what /0-uldf-schedule mandates. Everything else is a label.",
+    "known_gaps": [
+      "The referent is 'what this project owes'; the proxy is 'bullets in the places we know to look'. A project can record follow-ups somewhere this oracle has no pointer to (an issue tracker, a wiki, a file named by no link). DEC-346: when a section exists but yields no entries, or a pointer does not resolve, the oracle now returns `status: \"no-data\"` rather than a zero -- so the gap degrades to a visible NO-DATA instead of a false all-clear. A consumer reading `total` without `status` re-opens the gap.",
+      "Only the two documented bullet shapes parse. A follow-up written as a table row, a task-list checkbox, or an unbolded bullet is invisible, and if it is the ONLY content of the section the result is `status: \"no-data\"` (correct) rather than a count (unavailable).",
+      "Trigger-based entries carry no date, so `overdue` is structurally blind to them: it counts only date-triggered items. A long-overdue trigger-based entry reports `overdue: 0` truthfully-but-uselessly.",
+      "`total` merges project and machine-global scopes. A consumer wanting one scope must filter `items[].scope`; the top-line count alone cannot answer 'what does THIS project owe'.",
+      "FOLLOWUP-01, the reason POSITION is the declaration test and not 'contains a date': measured 2026-08-19 over 15 projects with a follow-ups section, 61 of 142 bold prefixes carry a YYYY-MM-DD somewhere and only 2 declare a trigger with it. The other 59 are status labels mentioning a date (`... Phase 3 SHIPPED 2026-08-14 ...`, `[ACTIVE, added 2026-07-30]`). Matching on containment would produce 59 wrong verdicts and rendering them unknown would produce 59 false unknowns, so they stay labels. The residual gap runs the other way: an entry that genuinely declares a date trigger in some OTHER position (a date at the end of the prefix, a non-ISO spelling like `Aug 12 2026`) is still read as a label and still reports `overdue: false`. That class is unmeasured -- zero instances exist today.",
+      "FOLLOWUP-01's leading-word slot is one word of [A-Za-z], not a list of trigger words (DEC-343: a list that could never be finished). It therefore also accepts a label that happens to open `<word> <ISO-date>` -- e.g. `**Wave 2026-08-14 residue**` would be read as a date trigger and could report a spurious overdue. Zero such prefixes exist in the measured corpus, and the failure direction is loud and correctable where the one it replaces was a silent constant.",
+      "Before v1.1.0 `overdue` was not a measurement at all: the date regex required the date to be immediately followed by `**`, which NO entry written by /0-uldf-schedule can satisfy. Measured machine-wide, 0 of 142 entries matched it, so every dated entry fell to the label branch and was reported `overdue: false`. Any historical claim that this oracle reported `overdue: 0` is a claim about a constant, not about the corpus."
+    ]
   },
   "freshness": {
     "strategy": "always-fresh"

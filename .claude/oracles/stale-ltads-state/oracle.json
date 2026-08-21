@@ -1,6 +1,6 @@
 {
   "name": "stale-ltads-state",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "question": "Is ltads/arc-state.json inconsistent with the active-sessions.json registry (topmost arc ACTIVE/PAUSED but registry says closed/expired/missing/PID-dead)?",
   "kind": "verification",
   "category": "workflow",
@@ -14,15 +14,17 @@
   "output": {
     "format": "json",
     "schema": {
-      "stale": "boolean",
+      "evaluable": "boolean (false when the oracle CANNOT answer -- its arc-state lib dependency could not be resolved; consumers treat false as 'defer the assertion', never as green -- CSI-36/DEC-342, OVALID-05)",
+      "stale": "boolean|null (null when evaluable=false -- NEVER false for unknown, the 2026-08-18 witnessed wrong verdict; false only when the comparison actually ran)",
       "details": {
-        "current_session_status": "string|null (ACTIVE | PAUSED | CONCLUDED; topmost arc status)",
+        "current_session_status": "string|null (ACTIVE | PAUSED | CONCLUDED; topmost arc status; null when evaluable=false)",
         "current_session_id": "string|null",
-        "registry_status": "string (active | closed | expired | missing)",
+        "registry_status": "string|null (active | closed | expired | missing; null when evaluable=false)",
         "registry_pid_alive": "boolean|null (true/false when status=active and PID is non-null; null otherwise)",
-        "inconsistency_kind": "string (none | registry-closed-state-active | registry-expired-state-active | registry-pid-dead-state-active | registry-missing-state-active)"
+        "inconsistency_kind": "string|null (none | registry-closed-state-active | registry-expired-state-active | registry-pid-dead-state-active | registry-missing-state-active; null when evaluable=false -- an unmeasured state is not 'none')",
+        "unevaluable_reason": "string|null (machine-readable reason the oracle could not answer; null when evaluable=true. Today the only value is arc-state-lib-unresolvable)"
       },
-      "briefing": "string (empty when stale=false; one-liner suitable for ORACLE BRIEFING when stale=true)"
+      "briefing": "string (empty when evaluable=true and stale=false; NON-empty when stale=true AND when evaluable=false -- an oracle that could not answer says so on the briefing, because silence there is indistinguishable from an all-clear)"
     }
   },
   "freshness": {
@@ -35,7 +37,7 @@
   "validation": {
     "self_test_unix": ".claude/oracles/stale-ltads-state/validate.sh",
     "self_test_windows": ".claude/oracles/stale-ltads-state/validate.ps1",
-    "last_validated": "2026-07-22"
+    "last_validated": "2026-08-18"
   },
   "fallback": "Read ltads/arc-state.json (schema: templates/ARC_STATE_SCHEMA.md). The topmost arc is arcs[0]; its status field is the arc state. The registry-correlation id is the MOST-RECENT checkpoints[].by of the topmost arc (NOT the arc id, which is never a registry key). Read .claude/collaboration/active-sessions.json and find the entry whose .id == that sessionId. If the topmost arc status is ACTIVE/PAUSED but that entry is in closed[] / absent / its PID is not alive, that's a stale-state inconsistency. No checkpoints -> treat as consistent (stale:false). Legacy prose-only projects (no arc-state.json) -> consistent; the ltads-state oracle's legacy verdict surfaces the migration (ARC-11).",
   "provenance": {
@@ -48,6 +50,18 @@
     "discoveries_closed": [
       "DISC-CSI-11"
     ],
-    "note": "Third leg of CSI Phase 1.6's three-leg session-end cleanup defense. CSI-12 (SessionEnd hook) is proactive; CSI-13 (GC coupling) is reactive at next-session-start; CSI-14 is reflective -- it surfaces inconsistencies that slipped through both. Briefing-line emission gracefully absent when state is consistent. v1.1.0 (2026-07-22): re-anchored on ltads/arc-state.json via the ARC-02 lib (DEC-199); output schema unchanged."
+    "note": "Third leg of CSI Phase 1.6's three-leg session-end cleanup defense. CSI-12 (SessionEnd hook) is proactive; CSI-13 (GC coupling) is reactive at next-session-start; CSI-14 is reflective -- it surfaces inconsistencies that slipped through both. Briefing-line emission gracefully absent when state is consistent. v1.1.0 (2026-07-22): re-anchored on ltads/arc-state.json via the ARC-02 lib (DEC-199); output schema unchanged. v1.2.0 (2026-08-18, DEFER-204): an unresolvable arc-state lib no longer degrades to stale:false -- it emits evaluable:false / stale:null with a non-empty briefing (CSI-36/DEC-342 rendering, OVALID-05), and the OVALID assertion block this kind:verification oracle had always lacked is now present."
+  },
+  "assertion": {
+    "asserts": "The topmost arc recorded in ltads/arc-state.json is consistent with the active-sessions.json registry -- i.e. no arc is left ACTIVE/PAUSED by a session that has closed, expired, died, or never registered",
+    "measures": "The topmost arc's status field, correlated against the registry entry whose id equals the MOST-RECENT checkpoints[].by of that arc, plus a liveness probe of that entry's claudeShellPid",
+    "known_gaps": [
+      "the correlation id comes from checkpoints[].by, so an arc with ZERO mid-arc finalizes carries no checkpoint, yields no id, and is reported consistent -- DISC-CSI-11's 'committed but never closed' shape is therefore invisible until the first checkpoint exists. This is a deliberate no-false-positives trade, not an oversight, and it is the widest gap on this oracle",
+      "the arc-state lib is a runtime dependency, and an installed oracle whose lib cannot be resolved can measure NOTHING. Until v1.2.0 that path emitted stale:false -- a clean bill of health earned by no measurement (witnessed on SessionHelm 2026-08-18, where a pre-ARC-04 installed copy dot-sourced a lib retired in a205c389 and printed an unearned all-clear every session). It now emits evaluable:false / stale:null (CSI-36/DEC-342 rendering), and no consumer may read that as green",
+      "liveness is existence-only when lib/pid-liveness.sh is unavailable: a RECYCLED owner pid then defends a stale ACTIVE arc, which is the exact staleness this oracle exists to surface (SWEEP-10/DEFER-095). The degradation is byte-identical in the verdict and reportable via ULDF_SLS_REPORT_PID_IDENTITY, so it is declared rather than visible",
+      "a MALFORMED arc-state.json yields empty getters and lands on the consistent path, so document corruption is reported as consistency rather than as unevaluable -- the ltads-state oracle's arc_state verdict is the surface that grades validity, and this one defers to it",
+      "prose-only projects that predate the ARC-11 conversion have no arc-state.json at all and are reported consistent by design; staleness detection resumes at conversion, and ltads-state's 'legacy' verdict is what surfaces the pending migration",
+      "scope is the TOPMOST arc only -- a lower arc left ACTIVE by an older session is out of scope by construction"
+    ]
   }
 }

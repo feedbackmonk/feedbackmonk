@@ -1,0 +1,18 @@
+Pinned: this project's copy of validate.ps1 carries a deliberate local edit.
+
+Commit 5bf9878 (2026-05-17) replaced the developer's Windows account name with
+`someuser` / `SOMEUS~1` in the sandbox-canonicalization comment (lines 38-39),
+ahead of this repo's first public push. The framework baseline still carries the
+unscrubbed form, so a blanket refresh reverts it -- observed twice: d71c35a
+(2026-08-06) and again during the DEC-405 refresh on 2026-08-21.
+
+Filed upstream as ULDF DEFER-221 (baseline carries the identifier in 9 files,
+2 tracked; 12 projects on this machine already carry it under .claude/oracles/).
+
+REMOVE THIS PIN once DEFER-221 lands in the framework baseline -- at that point
+the baseline is clean and the divergence is gone, and keeping the pin would only
+block future fixes to this oracle from reaching the project.
+
+Divergence from baseline while pinned: 2 comment lines in validate.ps1. Nothing
+functional. The oracle was refreshed to the current baseline before pinning, so
+it carries the DEC-405 InvariantCulture date-render fix.

@@ -21,10 +21,46 @@ if (-not $LatestIntake -and (Test-Path "docs/planning/intake-assessment.md")) {
     $LatestIntake = (Resolve-Path "docs/planning/intake-assessment.md").Path
 }
 
-$LatestPlan = Get-NewestInDir "docs/planning/plans"
+# PLANKIND-01 (DEC-327) -- twin of the sh leg. docs/planning/plans/ holds two
+# artifact classes (ldis-plan program plans and ltads-start analyses) under one
+# "newest wins" rule; a start-analysis stub shadowed a program plan, and
+# finalize phase 0.6 resolves its active plan from `latest_plan`, so the
+# testability gate armed against a stub with no findings table and silently did
+# not fire. `latest_plan` now names the PLAN OF RECORD; POSITION still keys on
+# the newest artifact of either class so nothing regresses to POST-SPEC.
+function Test-StartAnalysis {
+    param([string]$Path)
+    if ([System.IO.Path]::GetFileName($Path) -like "*-start-analysis.md") { return $true }
+    $head = Get-Content -LiteralPath $Path -TotalCount 10 -ErrorAction SilentlyContinue
+    foreach ($line in @($head)) {
+        if ($line -match '^kind:\s*start-analysis\s*$') { return $true }
+    }
+    return $false
+}
+
+function Get-PlansSortedDesc {
+    param([string]$Dir)
+    if (-not (Test-Path $Dir)) { return @() }
+    return @(Get-ChildItem -Path $Dir -File -ErrorAction SilentlyContinue |
+             Where-Object { $_.Name -ne "README.md" -and -not $_.Name.StartsWith(".") } |
+             Sort-Object Name -Descending)
+}
+
+$LatestPlan = $null
+$LatestStartAnalysis = $null
+$NewestPlanningArtifact = Get-NewestInDir "docs/planning/plans"
+foreach ($item in (Get-PlansSortedDesc "docs/planning/plans")) {
+    $isAnalysis = Test-StartAnalysis $item.FullName
+    if ($isAnalysis) {
+        if (-not $LatestStartAnalysis) { $LatestStartAnalysis = $item.FullName }
+    } else {
+        if (-not $LatestPlan) { $LatestPlan = $item.FullName }
+    }
+}
 if (-not $LatestPlan -and (Test-Path "docs/planning/execution-plan.md")) {
     $LatestPlan = (Resolve-Path "docs/planning/execution-plan.md").Path
 }
+if (-not $NewestPlanningArtifact) { $NewestPlanningArtifact = $LatestPlan }
 
 $SpecExists = Test-Path "docs/specs/SPECIFICATION.md"
 
@@ -60,7 +96,7 @@ $Hint = ""
 function Get-PathNormalized { param($p) if ($p) { return [string]$p } else { return "" } }
 
 $intakeForCompare = Get-PathNormalized $LatestIntake
-$planForCompare = Get-PathNormalized $LatestPlan
+$planForCompare = Get-PathNormalized $NewestPlanningArtifact
 
 if ($LtadsActive) {
     $Position = "IN-EXECUTION"
@@ -70,7 +106,7 @@ if ($LtadsActive) {
     $Position = "POST-IMPLEMENTATION"
     $NextCmd = "/0-uldf-finalize"
     $Hint = "Prior LTADS session is finalized. /0-uldf-proceed routes to /0-uldf-finalize (if not already run) or the next phase."
-} elseif ($LatestPlan -and (-not $LatestIntake -or $planForCompare -gt $intakeForCompare)) {
+} elseif ($NewestPlanningArtifact -and (-not $LatestIntake -or $planForCompare -gt $intakeForCompare)) {
     $Position = "POST-PLAN"
     $NextCmd = "/0-uldf-pods-parallelize or /0-uldf-ltads-start (per plan)"
     $Hint = "Plan is newest artifact. /0-uldf-proceed will read the plan's execution strategy and route to PODS or LTADS."
@@ -112,6 +148,7 @@ $result = [ordered]@{
     position = $Position
     latest_intake = Relativize $LatestIntake
     latest_plan = Relativize $LatestPlan
+    latest_start_analysis = Relativize $LatestStartAnalysis
     spec_exists = $SpecExists
     ltads_active = $LtadsActive
     ltads_session_status = if ($LtadsStatus) { $LtadsStatus } else { $null }

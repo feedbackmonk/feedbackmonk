@@ -78,3 +78,56 @@ When `stale=false`, the `briefing` field is the empty string and the session-sta
 - **PID liveness only checked when `registry_status=="active"`**: when the registry already shows `closed`/`expired`, the GC has already determined the PID is dead — re-probing wastes the budget. The PID-alive field is `null` in those cases.
 - **Correlation key is the arc-owner CSI sessionId from the Mid-arc Checkpoint, not the LTADS `**ID**:`** (DISC-HOOK-01, 2026-06-01). The original implementation parsed a `Session:` field (status) and `^Status:` (plain) that do not exist in canonical `current-session.md` files — it read nothing on every real file and always returned `stale:false` (dead in production). The fix: (1) read the canonical `**Status**:` field in all three documented line forms, EOL-anchored to exclude Arc-Terminus prose; (2) recover the registry key from the most-recent `**Mid-arc Checkpoint**: <ts>, by <sessionId>` of the active arc — empirically the only owner-id any real file carries, and the LTADS `**ID**:` (`S042`) is the *arc* id which is never a registry key. This made a **writer-side change load-bearing**: the finalize Mid-arc Checkpoint writer must always emit the `, by <sessionId>` token (real agents had been writing prose-only checkpoints that dropped it). The design was chosen over a workDir-liveness correlation because id-correlation self-resolves the compaction case (the owner's own live registry entry → consistent) with no self-exclusion edge. Rationale chain: DISC-HOOK-01 forward-use; this oracle's `run.{sh,ps1}`; writer `~/.claude/segments/-finalize/phase9-mid-arc-checkpoint.md`; prose-era schema retired with the parser lib (ARC-04; successor: `~/.claude/templates/ARC_STATE_SCHEMA.md` § Checkpoint object).
 - **awk over `grep -P` for parsing**: MSYS/Git-Bash `grep` rejects `-P` under empty/non-UTF-8 locales (`grep: -P supports only unibyte and UTF-8 locales`), so the status and checkpoint matchers use locale-independent `awk` rather than the PCRE `\K`/lookahead form used by `session-detect.sh`. Same three-form + value-at-EOL semantics, more portable.
+
+## v1.2.0 (2026-08-18, DEFER-204 / DEC-379) — an unresolvable dependency is UNKNOWN, not "consistent"
+
+This oracle used to answer `stale:false` — a clean bill of health — whenever the ARC-02 arc-state lib
+could not be resolved. It had measured nothing. The briefing line it produced was byte-identical to a
+real all-clear, which is why it went unnoticed on the machine that reported it: the warning scrolled
+past every session and the verdict underneath it looked fine.
+
+It now emits `evaluable:false` / `stale:null` / `inconsistency_kind:null` with a **non-empty**
+briefing naming the remedy. That is deliberately the same rendering `concurrent-mutation` uses for the
+same proposition (CSI-36 / DEC-342): **consumers treat `evaluable:false` as "defer the assertion",
+never as green** (OVALID-05).
+
+**Graceful absence is a different thing and is unchanged.** No `arc-state.json`, a legacy prose-only
+project, a CONCLUDED topmost arc, an arc with no checkpoints — all still report `stale:false`, because
+the oracle asked and there was genuinely nothing to compare. The dependency check sits *after* the
+absence branch on purpose, so the refusal can only fire where a live question existed. All 15
+pre-existing smoke cells are unchanged.
+
+**Schema delta** (additive, except `stale`, which widens):
+
+| field | before | after |
+|---|---|---|
+| `evaluable` | — | `boolean` — new |
+| `stale` | `boolean` | `boolean\|null` (null when `evaluable:false`) |
+| `details.unevaluable_reason` | — | `string\|null` — new |
+
+Nothing outside `csi-14-smoke.{sh,ps1}` reads `.stale` programmatically; the briefing renderer reads
+`.briefing`, whose shape is unchanged.
+
+**The `assertion` block** (asserts / measures / six `known_gaps[]`) was added in the same version.
+This is a `kind: verification` oracle that had shipped without one — and presence is the only part of
+validity that is mechanizable, so nothing would ever have flagged its absence. Read the gaps before
+trusting a pass. The widest is **not** this defect: it is the correlation key, which comes from
+`checkpoints[].by`, so an arc with zero mid-arc finalizes yields no id and is reported consistent.
+That is a deliberate no-false-positives trade, and `bounded` is the healthy steady state for this
+dimension — not something to drive to zero.
+
+**The guard that would have caught this**: `~/.claude/scripts/oracle-lib-dependency-audit.sh`
+asks whether every `scripts/lib/*` dependency any oracle names actually resolves, at the three probe
+roots the oracles themselves use. Fixing consumers fixes today's list; the condition regenerates on
+every rename or retirement where an installed copy is not refreshed. Run it against any project:
+
+```bash
+bash ~/.claude/scripts/oracle-lib-dependency-audit.sh --corpus <project>/.claude/oracles
+```
+
+**Origin.** The filed brief (DEFER-204) asked for the *retired* `current-session-parse` lib to be
+rewritten. That premise was falsified: ARC-04 (`a205c389`) deleted it deliberately, and
+`ltads-deletion-sweep-smoke.sh` asserts zero surviving references — writing it would redden a
+HALT-class gate. The reporting project's real problem was a stale `.claude/oracles/` install
+(`/0-uldf-migrate-oracles`); the framework's real problem was this fail direction, which had survived
+the ARC-03 migration intact because only the dependency's *name* changed.

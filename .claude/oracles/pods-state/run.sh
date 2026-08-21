@@ -32,7 +32,7 @@ NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
 emit_inactive() {
-    printf '{"active":false,"podsSession":null,"sessionDir":null,"agents":[],"counts":{"total":0,"complete":0,"blocked":0,"unspawned":0},"allComplete":false,"open":{"alerts":[],"messagesToLead":[],"decisions":[]},"monitor":{"pidFileExists":false,"pid":null,"live":false},"generatedAt":"%s"}\n' "$NOW"
+    printf '{"active":false,"podsSession":null,"sessionDir":null,"agents":[],"counts":{"total":0,"complete":0,"blocked":0,"unspawned":0},"allComplete":false,"rosterMissing":[],"open":{"alerts":[],"messagesToLead":[],"decisions":[]},"monitor":{"pidFileExists":false,"pid":null,"live":false},"generatedAt":"%s"}\n' "$NOW"
     exit 0
 }
 
@@ -233,8 +233,10 @@ ids_to_json() { # newline-separated ids -> "a","b" (empty -> empty string)
 # ---- Aggregate ---------------------------------------------------------------
 TOTAL=0; COMPLETE=0; BLOCKED=0; UNSPAWNED=0
 AGENTS_JSON=""
+PARSED_IDS=""
 while IFS=$'\t' read -r id status spawned progress role; do
     [ -n "$id" ] || continue
+    PARSED_IDS="$PARSED_IDS $id "
     [ "$status" = $'\001' ] && status=""
     [ "$progress" = $'\001' ] && progress=""
     [ "$role" = $'\001' ] && role=""
@@ -252,8 +254,36 @@ done <<EOF
 $(parse_agents)
 EOF
 
+# ---- PODSSTATUS-08 (DEC-348): roster provenance -----------------------------
+# `allComplete` was `COMPLETE == TOTAL`, both from the status parser above -- the
+# same shared-source defect DEC-348 fixes in monitor-pods, in the sibling surface
+# this oracle's own provenance note declares parity-locked to it. A parser that
+# sees fewer agents than exist shrinks the denominator with the numerator and
+# still reports unanimity.
+#
+# workers/<AGENT>/ is the independent enumeration (the spawn surface's own
+# artifact). LEAD is excluded BY NAME, never by pattern -- it is COORDINATING,
+# never COMPLETE (DISC-MON-09), and counting it would make allComplete false
+# forever.
+#
+# `rosterMissing` is emitted ALWAYS and is informative, not an alarm: before a
+# worker's first status publish it legitimately names who has not checked in yet
+# (since DEC-306 status.md is DERIVED and starts empty). It gates allComplete
+# only in the one state where the wrong answer is acted on.
+ROSTER_MISSING_JSON=""
+if [ -d "$WORKERS_DIR" ]; then
+    for _wd in "$WORKERS_DIR"/*/; do
+        [ -d "$_wd" ] || continue
+        _wid="${_wd%/}"; _wid="${_wid##*/}"
+        [ "$_wid" = "LEAD" ] && continue
+        case "$PARSED_IDS" in *" $_wid "*) continue ;; esac
+        if [ -z "$ROSTER_MISSING_JSON" ]; then ROSTER_MISSING_JSON="\"$(esc "$_wid")\""
+        else ROSTER_MISSING_JSON="$ROSTER_MISSING_JSON,\"$(esc "$_wid")\""; fi
+    done
+fi
+
 ALL_COMPLETE="false"
-[ "$TOTAL" -gt 0 ] && [ "$COMPLETE" -eq "$TOTAL" ] && ALL_COMPLETE="true"
+[ "$TOTAL" -gt 0 ] && [ "$COMPLETE" -eq "$TOTAL" ] && [ -z "$ROSTER_MISSING_JSON" ] && ALL_COMPLETE="true"
 
 ALERTS_JSON="$(scan_channel "$SESSION_DIR/channels/alerts.md"    "ALERT" "ACTIVE" ""  | ids_to_json)"
 MSGS_JSON="$(scan_channel   "$SESSION_DIR/channels/messages.md"  "MSG"   "OPEN"   "1" | ids_to_json)"
@@ -275,9 +305,9 @@ if [ -f "$MON_PID_FILE" ]; then
     esac
 fi
 
-printf '{"active":true,"podsSession":"%s","sessionDir":"%s","agents":[%s],"counts":{"total":%d,"complete":%d,"blocked":%d,"unspawned":%d},"allComplete":%s,"open":{"alerts":[%s],"messagesToLead":[%s],"decisions":[%s]},"monitor":{"pidFileExists":%s,"pid":%s,"live":%s},"generatedAt":"%s"}\n' \
+printf '{"active":true,"podsSession":"%s","sessionDir":"%s","agents":[%s],"counts":{"total":%d,"complete":%d,"blocked":%d,"unspawned":%d},"allComplete":%s,"rosterMissing":[%s],"open":{"alerts":[%s],"messagesToLead":[%s],"decisions":[%s]},"monitor":{"pidFileExists":%s,"pid":%s,"live":%s},"generatedAt":"%s"}\n' \
     "$(esc "$PODS_ID")" "$(esc "$SESSION_DIR")" "$AGENTS_JSON" \
-    "$TOTAL" "$COMPLETE" "$BLOCKED" "$UNSPAWNED" "$ALL_COMPLETE" \
+    "$TOTAL" "$COMPLETE" "$BLOCKED" "$UNSPAWNED" "$ALL_COMPLETE" "$ROSTER_MISSING_JSON" \
     "$ALERTS_JSON" "$MSGS_JSON" "$DECS_JSON" \
     "$MON_EXISTS" "$MON_PID" "$MON_LIVE" "$NOW"
 exit 0

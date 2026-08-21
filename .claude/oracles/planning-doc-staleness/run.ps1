@@ -135,7 +135,7 @@ foreach ($file in $files) {
     $ageSeconds = [int][Math]::Max(0, $ageSpan.TotalSeconds)
     $ageDays = [int][Math]::Floor($ageSpan.TotalDays)
     if ($ageDays -lt 0) { $ageDays = 0 }
-    $isoMtime = $mtimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $isoMtime = $mtimeUtc.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
 
     if (-not [string]::IsNullOrEmpty($signal)) {
         $staleEntries += [pscustomobject]@{

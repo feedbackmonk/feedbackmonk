@@ -68,6 +68,7 @@ function Emit-Json($obj) {
 
 function Emit-Consistent($statusValue, $sessionId) {
     $obj = [ordered]@{
+        evaluable = $true
         stale   = $false
         details = [ordered]@{
             current_session_status = $statusValue
@@ -75,8 +76,34 @@ function Emit-Consistent($statusValue, $sessionId) {
             registry_status        = "active"
             registry_pid_alive     = $null
             inconsistency_kind     = "none"
+            unevaluable_reason     = $null
         }
         briefing = ""
+    }
+    Emit-Json $obj
+}
+
+# ---- CANNOT-EVALUATE output (DEFER-204) ------------------------------------
+# An unresolvable DEPENDENCY is not a graceful absence: graceful absence means
+# "asked, and there is nothing to compare"; this means "could not ask at all".
+# Rendering it as stale:$false published a clean bill of health earned by no
+# measurement -- the reassuring direction, which is worse than a plainly absent
+# check because the briefing line is byte-identical to a real all-clear. Mirrors
+# concurrent-mutation's evaluable:false contract (CSI-36/DEC-342) and OVALID-05:
+# an oracle DEFERS an assertion it cannot make, it never weakens it.
+function Emit-Unevaluable($reason, $briefing) {
+    $obj = [ordered]@{
+        evaluable = $false
+        stale   = $null
+        details = [ordered]@{
+            current_session_status = $null
+            current_session_id     = $null
+            registry_status        = $null
+            registry_pid_alive     = $null
+            inconsistency_kind     = $null
+            unevaluable_reason     = $reason
+        }
+        briefing = $briefing
     }
     Emit-Json $obj
 }
@@ -87,11 +114,16 @@ if (-not (Test-Path $arcState)) {
 }
 
 # ---- Read topmost arc via the ARC-02 lib ------------------------------------
-# If the lib could not be sourced, degrade to consistent rather than emit a
-# stale verdict we cannot verify. Malformed documents yield $null getters.
+# There IS an arc record here (checked above), so the question is live and the
+# lib is the only way to read it. Unresolvable lib -> UNEVALUABLE, never
+# "consistent" (see Emit-Unevaluable's header). The remedy is named in the
+# briefing because the witnessed instance (SessionHelm, 2026-08-18) was a
+# project whose installed .claude/oracles/ still dot-sourced the parser lib
+# retired by ARC-04 -- a stale install, fixed by refreshing the oracles.
+# Malformed documents still yield $null getters and stay on the consistent path.
 if (-not (Get-Command Get-ArcStateStatus -ErrorAction SilentlyContinue)) {
-    Write-Warning "stale-ltads-state: arc-state.ps1 not found; degrading to consistent"
-    Emit-Consistent $null $null
+    Write-Warning "stale-ltads-state: arc-state.ps1 could not be resolved"
+    Emit-Unevaluable "arc-state-lib-unresolvable" "stale-ltads-state could not evaluate: the arc-state lib (scripts/lib/arc-state.ps1) could not be resolved, so LTADS/registry consistency is UNKNOWN -- not clear. Refresh this project's oracles (/0-uldf-migrate-oracles) or re-sync ~/.claude."
 }
 
 $statusValue = Get-ArcStateStatus -Path $arcState
@@ -112,6 +144,7 @@ if ([string]::IsNullOrEmpty($sessionId)) {
 # ---- Registry missing -> stale (registry-missing-state-active) -------------
 if (-not (Test-Path $registry)) {
     $obj = [ordered]@{
+        evaluable = $true
         stale   = $true
         details = [ordered]@{
             current_session_status = $statusValue
@@ -119,6 +152,7 @@ if (-not (Test-Path $registry)) {
             registry_status        = "missing"
             registry_pid_alive     = $null
             inconsistency_kind     = "registry-missing-state-active"
+            unevaluable_reason     = $null
         }
         briefing = "arc-state.json topmost arc: $statusValue (arc owner $sessionId) but active-sessions.json missing"
     }
@@ -228,6 +262,7 @@ if ($inconsistencyKind -eq "none") {
 }
 
 $obj = [ordered]@{
+    evaluable = $true
     stale   = $true
     details = [ordered]@{
         current_session_status = $statusValue
@@ -235,6 +270,7 @@ $obj = [ordered]@{
         registry_status        = $regStatus
         registry_pid_alive     = $pidAlive
         inconsistency_kind     = $inconsistencyKind
+        unevaluable_reason     = $null
     }
     briefing = $briefing
 }

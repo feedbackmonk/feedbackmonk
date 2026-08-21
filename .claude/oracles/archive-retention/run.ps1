@@ -142,7 +142,7 @@ if ($env:ULDF_FAKE_NOW -match '^[0-9]+$') {
 }
 if ($null -eq $now) { $now = (Get-Date).ToUniversalTime() }
 $cutoff = $now.AddDays(-1 * $thresholdDays)
-$nowIso = $now.ToString('yyyy-MM-ddTHH:mm:ssZ')
+$nowIso = $now.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
 
 # ---- Helpers ----
 
@@ -263,7 +263,7 @@ function Build-SummaryLine {
     $base = Split-Path -Leaf $DirPath
     $createdAtDt = Parse-CollabBasename -Base $base
     if ($null -ne $createdAtDt) {
-        $createdAt = $createdAtDt.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $createdAt = $createdAtDt.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
         $ageDays = [int][Math]::Floor(($now - $createdAtDt).TotalDays)
     } else {
         $createdAt = $null
@@ -428,7 +428,7 @@ foreach ($d in $allDirs) {
     $dirPath = $d.FullName
     $createdAtDt = Parse-CollabBasename -Base $base
     if ($null -ne $createdAtDt) {
-        $createdAt = $createdAtDt.ToString('yyyy-MM-ddTHH:mm:ssZ')
+        $createdAt = $createdAtDt.ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
         $ageDays = [int][Math]::Floor(($now - $createdAtDt).TotalDays)
     } else {
         $createdAt = $null

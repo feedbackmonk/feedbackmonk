@@ -272,7 +272,17 @@ NEG
 fi
 
 # ---------------------------------------------------------------------- main
-repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
+# Repo root. The three-level climb is correct for a PROJECT install
+# (<proj>/.claude/oracles/<name>/run.sh -> <proj>) and for this repo's template
+# copy (<repo>/claude-template/oracles/<name>/run.sh -> <repo>), and WRONG for
+# the deployed global copy (~/.claude/oracles/<name>/run.sh -> $HOME), where it
+# scanned the home directory and returned files_scanned:0 as a clean `pass`.
+# A green that measured nothing is the failure class this framework treats as
+# worse than no oracle at all, so resolve the CALLER's repo first and keep the
+# climb only as the fallback. Measured 2026-08-09: deployed copy 0 files /
+# status pass, template copy 195 files / 401 candidates, same cwd.
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+[ -n "$repo_root" ] || repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$repo_root" || exit 0
 start_ms=$(($(date +%s%N)/1000000))
 
@@ -283,13 +293,17 @@ else
   globs="$DEFAULT_CORPUS"
 fi
 
-raw=""; nraw=0
+raw=""; nraw=0; truncated=0
 while IFS= read -r g; do
   [ -z "$g" ] && continue
   for f in $g; do
     [ -f "$f" ] || continue
     nraw=$((nraw + 1))
-    [ "$nraw" -gt "$MAX_FILES" ] && break 2
+    # The cap is a cost bound, and silently hitting it under-reports the very
+    # worklist this oracle exists to produce -- a shorter list reads exactly
+    # like a cleaner corpus. Record it so truncation is LOUD; never raise the
+    # cap to make a red go away (OVALID-05). Measured 2026-08-09: 195 of 200.
+    [ "$nraw" -gt "$MAX_FILES" ] && { truncated=1; break 2; }
     raw="${raw}${f}
 "
   done
@@ -447,15 +461,27 @@ fi
 
 dur=$(( $(($(date +%s%N)/1000000)) - start_ms ))
 
-if [ "$ncand" -eq 0 ]; then
-  status=pass
-  briefing=""
-else
-  status=warn
-  briefing="RETIREMENT: $ncand candidate passage(s) across $nfiles living artifact(s) carry a deterministic retirement signal. These are a WORKLIST, not a delete list -- judge each against segments/_retirement-test.md. Acted on by /0-uldf-finalize Phase 8.8; sweep with /0-uldf-context-audit --retire."
+trunc_note=""
+if [ "$truncated" -eq 1 ]; then
+  trunc_note=" TRUNCATED: the corpus hit the ${MAX_FILES}-file scan cap, so this worklist is a FLOOR, not a census -- files past the cap were never opened. Narrow the corpus (CLAUDE_RETIREMENT_CORPUS) or archive terminal artifacts; do not read a shorter list as a cleaner one."
 fi
 
-printf '{"status":"%s","details":{"files_scanned":%d,"candidate_count":%d,"surfaced_count":%d,"by_signal":{%s},"scan_duration_ms":%d,"contract":"worklist -- the oracle never deletes and never recommends deletion; every signal is a proxy for utility, which is not machine-visible"},"candidates":[%s],"surfaced":[%s],"briefing":"%s"}\n' \
-  "$status" "$nfiles" "$ncand" "$nsurf" "$by_signal" "$dur" "$cand_json" "$surf_json" "$briefing"
+if [ "$ncand" -eq 0 ]; then
+  # A truncated scan that found nothing has not established anything, so it must
+  # not render as an unqualified clean pass.
+  if [ "$truncated" -eq 1 ]; then
+    status=warn
+    briefing="RETIREMENT: 0 candidates, but the scan was capped at $MAX_FILES files.$trunc_note"
+  else
+    status=pass
+    briefing=""
+  fi
+else
+  status=warn
+  briefing="RETIREMENT: $ncand candidate passage(s) across $nfiles living artifact(s) carry a deterministic retirement signal. These are a WORKLIST, not a delete list -- judge each against segments/_retirement-test.md. Acted on by /0-uldf-finalize Phase 8.8 and /1-uldf-finalize Phase 3.5; sweep with /0-uldf-context-audit --retire.$trunc_note"
+fi
+
+printf '{"status":"%s","details":{"files_scanned":%d,"candidate_count":%d,"surfaced_count":%d,"truncated":%s,"scan_cap":%d,"by_signal":{%s},"scan_duration_ms":%d,"contract":"worklist -- the oracle never deletes and never recommends deletion; every signal is a proxy for utility, which is not machine-visible"},"candidates":[%s],"surfaced":[%s],"briefing":"%s"}\n' \
+  "$status" "$nfiles" "$ncand" "$nsurf" "$([ "$truncated" -eq 1 ] && echo true || echo false)" "$MAX_FILES" "$by_signal" "$dur" "$cand_json" "$surf_json" "$briefing"
 
 exit 0

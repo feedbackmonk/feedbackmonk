@@ -115,15 +115,22 @@ NOW_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
 
 # Preserve original sessionStart when the existing baseline is THIS session's
 # (so baseline_age_seconds accumulates across the session); else start now.
+# CSI-37: prefer this session's slot in the csi10Baselines map, legacy fallback.
 SESSION_START="$ARG_START"
 if [ -z "$SESSION_START" ] && [ -f "$BASELINE_FILE" ]; then
     if command -v jq >/dev/null 2>&1; then
-        prev_sid=$(jq -r '.csi10Baseline.sessionId // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
-        prev_start=$(jq -r '.csi10Baseline.sessionStart // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
+        prev_sid=$(jq -r --arg sid "$MY_SID" '(.csi10Baselines[$sid] // .csi10Baseline) | .sessionId // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
+        prev_start=$(jq -r --arg sid "$MY_SID" '(.csi10Baselines[$sid] // .csi10Baseline) | .sessionStart // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
         if [ "$prev_sid" = "$MY_SID" ] && [ -n "$prev_start" ]; then SESSION_START="$prev_start"; fi
     fi
 fi
 [ -n "$SESSION_START" ] || SESSION_START="$NOW_ISO"
+
+# CSI-37 prune cutoff: map entries whose capturedAt is older than 14 days are
+# dead-session residue (advisory bound; empty cutoff = no prune, fail-open).
+CUTOFF_ISO=$(date -u -d '14 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+[ -n "$CUTOFF_ISO" ] || CUTOFF_ISO=$(date -u -v-14d +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)
+[ -n "$CUTOFF_ISO" ] || CUTOFF_ISO=""
 
 # ---- Compose the csi10Baseline object --------------------------------------
 B_OBJ="{\"sessionId\":\"$(esc "$MY_SID")\",\"sessionStart\":\"$(esc "$SESSION_START")\",\"capturedAt\":\"$(esc "$NOW_ISO")\",\"headSha\":\"$(esc "$HEAD_SHA")\",\"mtimes\":$MT_OBJ}"
@@ -140,10 +147,15 @@ else
     PYBIN=""
 fi
 
+# CSI-37: write BOTH the per-session map slot (csi10Baselines[<sid>], what the
+# new reader prefers) and the legacy single slot (what an unsynced reader still
+# reads -- last-writer-wins there, as before). Foreign map keys are preserved;
+# entries older than the 14-day cutoff are pruned as dead-session residue.
 if [ -n "$PYBIN" ]; then
-    CSI10_B="$B_OBJ" CSI10_F="$BASELINE_FILE" CSI10_T="$TMP" "$PYBIN" - <<'PY' 2>/dev/null
+    CSI10_B="$B_OBJ" CSI10_F="$BASELINE_FILE" CSI10_T="$TMP" CSI10_CUT="$CUTOFF_ISO" "$PYBIN" - <<'PY' 2>/dev/null
 import json, os, sys
 f = os.environ["CSI10_F"]; t = os.environ["CSI10_T"]
+cut = os.environ.get("CSI10_CUT") or ""
 b = json.loads(os.environ["CSI10_B"])
 d = {}
 try:
@@ -153,6 +165,15 @@ try:
         d = {}
 except Exception:
     d = {}
+m = d.get("csi10Baselines")
+if not isinstance(m, dict):
+    m = {}
+if cut:
+    m = {k: v for k, v in m.items()
+         if isinstance(v, dict) and str(v.get("capturedAt", "")) >= cut}
+sid = str(b.get("sessionId") or "unknown")
+m[sid] = b
+d["csi10Baselines"] = m
 d["csi10Baseline"] = b
 try:
     with open(t, "w", encoding="utf-8") as fh:
@@ -164,20 +185,22 @@ except Exception:
 PY
 elif command -v jq >/dev/null 2>&1; then
     if [ -f "$BASELINE_FILE" ]; then
-        if jq --argjson b "$B_OBJ" '.csi10Baseline = $b' "$BASELINE_FILE" > "$TMP" 2>/dev/null; then
+        if jq --argjson b "$B_OBJ" --arg sid "$MY_SID" --arg cut "$CUTOFF_ISO" \
+            '.csi10Baselines = (((.csi10Baselines // {}) | with_entries(select($cut == "" or ((.value.capturedAt // "") >= $cut)))) + {($sid): $b}) | .csi10Baseline = $b' \
+            "$BASELINE_FILE" > "$TMP" 2>/dev/null; then
             mv -f "$TMP" "$BASELINE_FILE" 2>/dev/null || rm -f "$TMP" 2>/dev/null
         else
             rm -f "$TMP" 2>/dev/null
         fi
     else
-        printf '{"csi10Baseline":%s}\n' "$B_OBJ" > "$TMP" 2>/dev/null && mv -f "$TMP" "$BASELINE_FILE" 2>/dev/null
+        printf '{"csi10Baseline":%s,"csi10Baselines":{"%s":%s}}\n' "$B_OBJ" "$(esc "$MY_SID")" "$B_OBJ" > "$TMP" 2>/dev/null && mv -f "$TMP" "$BASELINE_FILE" 2>/dev/null
         rm -f "$TMP" 2>/dev/null
     fi
 else
     # No JSON parser: only safe to write when the file is absent (no key to
     # preserve). If it exists, skip rather than risk clobbering legacy fields.
     if [ ! -f "$BASELINE_FILE" ]; then
-        printf '{"csi10Baseline":%s}\n' "$B_OBJ" > "$TMP" 2>/dev/null && mv -f "$TMP" "$BASELINE_FILE" 2>/dev/null
+        printf '{"csi10Baseline":%s,"csi10Baselines":{"%s":%s}}\n' "$B_OBJ" "$(esc "$MY_SID")" "$B_OBJ" > "$TMP" 2>/dev/null && mv -f "$TMP" "$BASELINE_FILE" 2>/dev/null
         rm -f "$TMP" 2>/dev/null
     fi
 fi

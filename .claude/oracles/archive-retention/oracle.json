@@ -34,7 +34,8 @@
     "strategy": "always-fresh"
   },
   "consultation": {
-    "typical_sessions_using": "every (cheap mode in session-start hook); on-demand for full sweep",
+    "typical_sessions_using": "on-demand",
+    "notes": "Deliberately NOT a briefing-fan-out member. The session-start hook does invoke this oracle every session, but as `--gc-cheap` on its sweep chain -- and both hooks state in their own comments that sweep-mode invocations are hygiene, not consultations. `typical_sessions_using` declares briefing-fan-out membership only, so the honest token here is on-demand (that is the full sweep). Until DEC-346 this field read \"every (cheap mode in session-start hook); on-demand for full sweep\", which is true prose but was compared as an exact token, so it neither admitted nor visibly excluded this oracle.",
     "estimated_token_savings_per_call": 200
   },
   "validation": {

@@ -1,6 +1,6 @@
 {
   "name": "stranded-dirty-files",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "question": "Which dirty files in this project have no live owner and predate the most recent finalize commit?",
   "category": "workflow",
   "kind": "project-state",
@@ -19,14 +19,21 @@
       "oldest_mtime": "string|null (ISO-8601 UTC mtime of the oldest stranded file; null when count == 0 OR detection skipped)",
       "sample": "array (capped at 10) of {path: string, mtime: ISO-8601 UTC, age_days: int}",
       "live_peer_count": "integer (number of live peers consulted for ownership; 0 when registry missing)",
+      "provably_unowned": "integer (of the `count` reported strands, how many are proved un-owned by the STRAND-02 mtime-ordering test -- mtime older than the earliest live peer's spawnedAt. Equals `count` when live_peer_count == 0, since with no live peer the proposition is vacuously true. 0 when the proof could not run at all -- a live peer with an absent or unparseable spawnedAt disables it for the whole run. Added in 1.3.0 -- DEFER-193 / DEC-372; ADDITIVE to the frozen schema per its own change rule.)",
+      "attribution": "string enum: 'measured' (a live peer published a dirtyFiles array -- complete by construction, so an absent path is evidence of non-ownership. RESERVED, NOT PRODUCED: nothing in the framework writes registry dirtyFiles[] -- DISC-ORA-12 -- so this grade cannot occur anywhere today; kept because it is authoritative if a producer ever appears and because already-deployed consumers map it) | 'predates-peers' (STRAND-02: EVERY reported strand file's mtime is older than the earliest live peer's spawnedAt, so no visible live peer can have written any of them -- a peer that had would have set the mtime at or after its own start. This is the reachable top of the ladder and the grade a sweep-with-peers-present is earned by. All-or-nothing over the reported set, because the sweep it gates is all-or-nothing) | 'journal-partial' (attribution came only from live peers' write journals, which record TOOL CALLS and cannot see script or external writes, so a journal MISS is not evidence -- hits still filter, but the sweep recommendation is withheld) | 'unavailable' (live peers exist and supplied neither) | 'no-peers' (no live peer in this project) | 'not-measured' (detection skipped). Added in 1.2.0 -- DEFER-039/DEFER-190; 'predates-peers' added in 1.3.0 -- DEFER-193/DEC-372; both ADDITIVE to the frozen schema per its own change rule (DEC-366, DEC-372).",
       "last_finalize_at": "string|null (ISO-8601 UTC commit timestamp of HEAD; null when not in a git repo OR no commits)",
       "briefing": "string (empty when no stranded files; populated when count > 0 OR count == -1)"
     },
     "_briefingForms": {
       "no_stranded": "\"\"  (empty -> session-start hook suppresses the line, parallel to stale-ltads-state)",
-      "small_stranded_<50": "\"stranded-dirty-files: <N> files (oldest <D> days; no live owner) \u2014 run /0-uldf-finalize --include-stranded for cleanup\"",
+      "small_stranded_<50_measured": "\"stranded-dirty-files: <N> files (oldest <D> days; no live owner per <P> attributing peer(s)) \u2014 run /0-uldf-finalize --include-stranded for cleanup\"  (attribution == 'measured')",
+      "small_stranded_<50_no_peers": "\"stranded-dirty-files: <N> files (oldest <D> days; no live owner \u2014 no live peers in this project) \u2014 run /0-uldf-finalize --include-stranded for cleanup\"  (attribution == 'no-peers'; worded so it never claims an attribution measurement that did not run)",
+      "small_stranded_<50_predates_peers": "\"stranded-dirty-files: <N> files (oldest <D> days; no live owner — every one predates all <P> live peer(s)' session start) — run /0-uldf-finalize --include-stranded for cleanup\"  (attribution == 'predates-peers'; 1.3.0)",
       "large_stranded_>=50": "\"stranded-dirty-files: <N> files (oldest <D> days) \u2014 significant accumulation; see /0-uldf-oracle stranded-dirty-files for full sample\"",
-      "detection_skipped": "\"stranded-dirty-files: detection skipped \u2014 too many dirty files (>2000); run /0-uldf-finalize --include-stranded for full audit\""
+      "detection_skipped": "\"stranded-dirty-files: detection skipped \u2014 too many dirty files (>2000); run /0-uldf-finalize --include-stranded for full audit\"",
+      "ownership_unknown": "\"stranded-dirty-files: <N> pre-finalize dirty file(s) (oldest <D> days) - OWNERSHIP UNKNOWN: <P> live peer(s) and none publishes attribution, so none of these is shown to be un-owned. Do NOT sweep; inspect with /0-uldf-oracle stranded-dirty-files\"  (attribution == 'unavailable'; takes precedence over the small/large forms)",
+      "ownership_unproven": "\"stranded-dirty-files: <N> pre-finalize dirty file(s) (oldest <D> days) - OWNERSHIP UNPROVEN: attribution came only from <J> write journal(s), which record tool calls and cannot see script or external writes, so a miss is not evidence of non-ownership. Do NOT sweep; inspect with /0-uldf-oracle stranded-dirty-files\"  (attribution == 'journal-partial'; takes precedence over the small/large forms)",
+      "_withheld_proved_clause": "Both withholding forms carry an extra sentence when the STRAND-02 proof could run: \" <P> of <N> predate every live peer's session start; <U> do not.\" -- so a refusal says how much of the list IS proved instead of refusing opaquely (DEC-360's escape-chain requirement applied to the report). Absent when the proof could not run at all (no live peers, or a peer with no spawnedAt)."
     }
   },
   "freshness": {
@@ -42,8 +49,20 @@
     "rationale": "Above 2000 dirty files, mtime stat + per-file ownership probe blows the briefing budget. Oracle returns count: -1 sentinel; user runs /0-uldf-finalize --include-stranded for the full audit."
   },
   "consultation": {
-    "typical_sessions_using": "every (cheap; gracefully absent on clean projects); also consumed by /0-uldf-finalize --include-stranded flag handling",
+    "typical_sessions_using": "every",
+    "notes": "Cheap, and gracefully absent on clean projects. Also consumed by /0-uldf-finalize --include-stranded flag handling. This prose lived in typical_sessions_using until DEC-346; that field is compared as an exact token by briefing-oracles.{sh,ps1}, so the sentence silently cost this oracle its briefing admission and its CSI-15 line never fired in any project that installed it. DELIBERATE DIVERGENCE from the GitCellar reference (DEFER-190 port): GitCellar demoted its copy to on-demand for briefing-budget reasons; the template keeps 'every' because oracle-manifest-admission-smoke.sh B7 asserts this manifest is ADMITTED, and post-hardening the briefing line is honest in every branch (the trust reason for demotion is gone).",
     "estimated_token_savings_per_call": 400
+  },
+  "assertion": {
+    "asserts": "Every file this oracle counts as stranded is dirty, predates the most-recent-finalize boundary, and is not the in-flight work of any live session in this project -- and the briefing recommends a sweep only when that last clause is actually evidenced.",
+    "measures": "git status --porcelain x file mtime vs HEAD's commit timestamp, minus paths found in live peers' registry dirtyFiles[] arrays (never written by any current session -- measured GitCellar 2026-08-12, ULDF 2026-08-16) and live peers' write journals (.claude/session-state/write-journal/<sessionId>.jsonl, tool-call records only); plus, since 1.3.0, each reported file's mtime against the EARLIEST live peer's registry spawnedAt (STRAND-02: a peer that had written the file would have set its mtime at or after its own start). The 'attribution' field grades which of those inputs actually supplied evidence, and 'provably_unowned' reports how much of the list the mtime proof covers.",
+    "known_gaps": [
+      "Write journals are POSITIVE-ONLY: a script write or an external editor leaves no record, so a journal miss is not evidence of non-ownership. Handled: journals alone yield attribution 'journal-partial' and the sweep recommendation is withheld (never 'measured' and never 'predates-peers' -- the mtime proof is computed independently of journals precisely so this blindness cannot promote a grade).",
+      "attribution 'measured' is RESERVED AND UNPRODUCED framework-wide: nothing writes the registry dirtyFiles[] field (DISC-ORA-12), and as of DEC-372 nothing is planned to -- the file's owner refused the edit-path writer on cost, and no low-frequency seam can publish a COMPLETE set because a session knows its own tool calls, not its own writes (DEC-359: 158 of 244 spec-doc commits with no journal record from any session). The grade is kept because it is authoritative if a producer ever appears and because deployed consumers map it; the reachable top of the ladder is 'predates-peers' (STRAND-02). Read this as a declared ceiling on 'measured', not as pending work.",
+      "STRAND-02's proof is sound only against peers this oracle can SEE, and only while mtime tracks authorship. Three residuals, all narrower than the state it replaces: (a) a session that never registered, registered late, or whose workDir is spelled in a third form is invisible, so the earliest-start floor is computed over a subset -- the same registry-visibility bound 'no-peers' has always carried; (b) an mtime-preserving write (cp -p, tar/rsync with preserved times, touch -t) can leave an mtime older than the write, which is the same proxy caveat the boundary gate below already declares; (c) a peer whose FIRST registration happened after it had already written files would have a spawnedAt later than those writes. spawnedAt is preserved across RE-registration (hooks/session-start.sh) and a PODS roster row predates its worker's boot, so both ordinary paths err early -- the conservative direction.",
+      "A live peer registered with a workDir spelled in a third form this oracle's two-form (POSIX + Windows) case-insensitive comparison does not cover (e.g. a subst'd drive alias) would be invisible, driving the grade toward 'no-peers'/'unavailable'. Direction: 'no-peers' with an actually-live-but-unmatched peer is the residual wrong-sweep window; the two-form match covers every form the registry writers on this platform are known to produce.",
+      "mtime is a proxy for authorship time: a pre-boundary file touch-ed after the boundary escapes detection entirely (undercount, never a wrong sweep)."
+    ]
   },
   "validation": {
     "self_test_unix": ".claude/oracles/stranded-dirty-files/validate.sh",
@@ -54,8 +73,8 @@
   "detectionContract": {
     "summary": "Stranded = (file in `git status --porcelain` dirty set) AND (mtime < HEAD's commit timestamp) AND (no live peer claims via dirtyFiles[] registry field).",
     "ownership": {
-      "source": ".claude/collaboration/active-sessions.json sessions[] entries where status=='active' AND PID alive AND workDir matches this project root",
-      "field": "dirtyFiles[] (forward-compatible \u2014 defaults to empty array; until peers publish ownership, default = 'no live peer' which is the correct default-to-strand behavior)"
+      "source": ".claude/collaboration/active-sessions.json sessions[] entries where status=='active' AND PID alive AND workDir matches this project root (POSIX or Windows form, case-insensitive -- DEFER-190: the bash twin's single-form match read 0 peers on Git Bash), plus each live peer's write journal .claude/session-state/write-journal/<sessionId>.jsonl",
+      "field": "dirtyFiles[] (authoritative when present; never written by any current session -- DISC-ORA-12) + journal path records (positive-only) + each peer's spawnedAt as the STRAND-02 mtime-ordering floor (1.3.0). The 'attribution' output field grades which source supplied evidence; consumers gate sweep behavior on it (STRAND-01)."
     },
     "boundary": {
       "source": "git log -1 --format=%aI HEAD (commit timestamp of HEAD; the most-recent-finalize boundary per spec acceptance \u00a73)",
@@ -68,11 +87,19 @@
     "created": "2026-05-07T08:30:00Z",
     "spec_refs": [
       "CSI-15",
-      "FINALIZE-04"
+      "FINALIZE-04",
+      "STRAND-01",
+      "STRAND-02",
+      "STRAND-03"
     ],
-    "decision_refs": [],
+    "decision_refs": [
+      "DEC-366",
+      "DEC-372"
+    ],
     "discovery_refs": [
-      "DISC-HYGIENE-01"
+      "DISC-HYGIENE-01",
+      "DISC-ORA-12",
+      "DISC-ORA-13"
     ],
     "design_lineage": [
       "stale-ltads-state (CSI-14) \u2014 same briefing-line silence pattern, same always-fresh + ~250ms budget shape",

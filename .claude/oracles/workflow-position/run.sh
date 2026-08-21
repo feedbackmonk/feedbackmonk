@@ -34,14 +34,59 @@ if [ -z "$LATEST_INTAKE" ] && [ -f "docs/planning/intake-assessment.md" ]; then
     LATEST_INTAKE="docs/planning/intake-assessment.md"
 fi
 
+# PLANKIND-01 (DEC-327): docs/planning/plans/ holds TWO artifact classes --
+# /0-uldf-ldis-plan program plans (the plan of record) and /0-uldf-ltads-start
+# analyses -- under one "newest wins" rule with no type distinction. A
+# 4KB start-analysis stub therefore shadowed a 13KB program plan written the
+# same day, and finalize's phase 0.6 testability gate resolves ITS active plan
+# from this same `latest_plan` field: it armed against the stub, found no
+# Testability Gate Findings table, and silently did not fire. A false GREEN in
+# verification machinery, not a cosmetic mis-label.
+#
+# A start-analysis is identified EITHER by `kind: start-analysis` front matter
+# (mandated at write time by segments/-ltads/start_analysis.md) OR by a
+# `-start-analysis.md` filename suffix -- the second arm exists because the
+# existing corpus predates the mandate and must not need migrating.
+is_start_analysis() {
+    case "$1" in
+        *-start-analysis.md) return 0 ;;
+    esac
+    head -n 10 "$1" 2>/dev/null | grep -qE '^kind:[[:space:]]*start-analysis[[:space:]]*$'
+}
+
+newest_plan_of_record() {
+    dir="$1"
+    [ -d "$dir" ] || return 1
+    ls -1 "$dir" 2>/dev/null | grep -vE '^(README\.md|\..*)$' | sort -r | while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        is_start_analysis "$dir/$n" || { printf '%s\n' "$n"; break; }
+    done | head -1
+}
+
+newest_start_analysis() {
+    dir="$1"
+    [ -d "$dir" ] || return 1
+    ls -1 "$dir" 2>/dev/null | grep -vE '^(README\.md|\..*)$' | sort -r | while IFS= read -r n; do
+        [ -n "$n" ] || continue
+        is_start_analysis "$dir/$n" && { printf '%s\n' "$n"; break; }
+    done | head -1
+}
+
 LATEST_PLAN=""
+LATEST_START_ANALYSIS=""
+NEWEST_PLANNING_ARTIFACT=""
 if [ -d "docs/planning/plans" ]; then
-    name=$(newest_in_dir "docs/planning/plans" || true)
+    name=$(newest_plan_of_record "docs/planning/plans" || true)
     if [ -n "$name" ]; then LATEST_PLAN="docs/planning/plans/$name"; fi
+    name=$(newest_start_analysis "docs/planning/plans" || true)
+    if [ -n "$name" ]; then LATEST_START_ANALYSIS="docs/planning/plans/$name"; fi
+    name=$(newest_in_dir "docs/planning/plans" || true)
+    if [ -n "$name" ]; then NEWEST_PLANNING_ARTIFACT="docs/planning/plans/$name"; fi
 fi
 if [ -z "$LATEST_PLAN" ] && [ -f "docs/planning/execution-plan.md" ]; then
     LATEST_PLAN="docs/planning/execution-plan.md"
 fi
+[ -n "$NEWEST_PLANNING_ARTIFACT" ] || NEWEST_PLANNING_ARTIFACT="$LATEST_PLAN"
 
 SPEC_EXISTS=false
 if [ -f "docs/specs/SPECIFICATION.md" ]; then SPEC_EXISTS=true; fi
@@ -79,7 +124,11 @@ elif [ -n "$LTADS_STATUS" ] && { [ "$LTADS_STATUS" = "COMPLETED" ] || [ "$LTADS_
     POSITION="POST-IMPLEMENTATION"
     NEXT_CMD="/0-uldf-finalize"
     HINT="Prior LTADS session is finalized. /0-uldf-proceed routes to /0-uldf-finalize (if not already run) or the next phase."
-elif [ -n "$LATEST_PLAN" ] && { [ -z "$LATEST_INTAKE" ] || [ "$LATEST_PLAN" \> "$LATEST_INTAKE" ]; }; then
+elif [ -n "$NEWEST_PLANNING_ARTIFACT" ] && { [ -z "$LATEST_INTAKE" ] || [ "$NEWEST_PLANNING_ARTIFACT" \> "$LATEST_INTAKE" ]; }; then
+    # POSITION deliberately keys on the newest artifact of EITHER class: a
+    # project holding only start-analyses is still past planning, so narrowing
+    # `latest_plan` must not silently regress it to POST-SPEC. Only the
+    # plan-of-record FIELD narrows (PLANKIND-01).
     POSITION="POST-PLAN"
     NEXT_CMD="/0-uldf-pods-parallelize or /0-uldf-ltads-start (per plan)"
     HINT="Plan is newest artifact. /0-uldf-proceed will read the plan's execution strategy and route to PODS or LTADS."
@@ -113,10 +162,11 @@ jsonval() {
 
 intake_json=$(jsonval "$LATEST_INTAKE")
 plan_json=$(jsonval "$LATEST_PLAN")
+start_analysis_json=$(jsonval "$LATEST_START_ANALYSIS")
 ltads_status_json=$(jsonval "$LTADS_STATUS")
 next_cmd_json=$(jsonval "$NEXT_CMD")
 [ "$NEXT_CMD" = "null" ] && next_cmd_json="null"
 
 cat <<EOF
-{"position":"$POSITION","latest_intake":$intake_json,"latest_plan":$plan_json,"spec_exists":$SPEC_EXISTS,"ltads_active":$LTADS_ACTIVE,"ltads_session_status":$ltads_status_json,"suggested_next_command":$next_cmd_json,"proceed_hint":"$(esc "$HINT")"}
+{"position":"$POSITION","latest_intake":$intake_json,"latest_plan":$plan_json,"latest_start_analysis":$start_analysis_json,"spec_exists":$SPEC_EXISTS,"ltads_active":$LTADS_ACTIVE,"ltads_session_status":$ltads_status_json,"suggested_next_command":$next_cmd_json,"proceed_hint":"$(esc "$HINT")"}
 EOF

@@ -18,13 +18,25 @@
 #                    paths -> committed external mutations.
 # Either signal firing reports external_mutation:true.
 #
-# Output: single-line JSON, CSI-10 domain schema:
-#   {external_mutation, mutations:[{path,source,since,by_session}],
+# Output: single-line JSON, CSI-10 domain schema (CSI-36 tri-state, DEC-342):
+#   {evaluable, external_mutation, mutations:[{path,source,since,by_session}],
 #    baseline_age_seconds, summary, briefing}
-# The briefing field is empty when external_mutation=false (the session-start
-# hook then emits no line -- gracefully absent, same convention as
-# stale-ltads-state). Failure-open: any unparseable/absent baseline ->
-# external_mutation:false, baseline_age_seconds:null, log + continue.
+# The briefing field is empty when evaluable=true and external_mutation=false
+# (the session-start hook then emits no line -- gracefully absent, same
+# convention as stale-ltads-state).
+#
+# UNEVALUABLE IS NOT A CLEAN VERDICT (CSI-36, DEC-342; witnessed wrong verdict
+# 2026-08-10, DEFER-168): when the baseline is absent, foreign, or unparseable
+# the oracle CANNOT answer, and the honest output is evaluable:false +
+# external_mutation:null -- never false. A foreign or unparseable baseline is
+# affirmative evidence (a peer started after you / corruption) and carries a
+# NON-EMPTY briefing; plain absence (fresh project) stays quiet in briefing
+# but still honest in the verdict fields. Consumers treat evaluable:false as
+# "defer the assertion", never as green (OVALID-05).
+#
+# Baseline slots (CSI-37): per-session map csi10Baselines[<sessionId>] is
+# preferred; the legacy single csi10Baseline slot is read as fallback so a
+# pre-CSI-37 baseline still evaluates for its own author.
 
 set +e
 
@@ -35,9 +47,11 @@ MAX_MUT=50
 
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 
-emit_absent() {
-    # external_mutation false, baseline_age_seconds null (cannot deduce).
-    printf '{"external_mutation":false,"mutations":[],"baseline_age_seconds":null,"summary":"%s","briefing":""}\n' "$(esc "$1")"
+emit_unevaluable() {
+    # CSI-36: cannot deduce -> evaluable:false, external_mutation:null.
+    # $2 (optional) = briefing; non-empty for foreign/unparseable (affirmative
+    # evidence worth a line), empty for plain absence (no news, quiet).
+    printf '{"evaluable":false,"external_mutation":null,"mutations":[],"baseline_age_seconds":null,"summary":"%s","briefing":"%s"}\n' "$(esc "$1")" "$(esc "${2:-}")"
     exit 0
 }
 
@@ -88,7 +102,7 @@ fi
 
 # ---- Graceful absence: no baseline file ------------------------------------
 if [ ! -f "$BASELINE_FILE" ]; then
-    emit_absent "no baseline (this-session.json absent)"
+    emit_unevaluable "no baseline (this-session.json absent)"
 fi
 
 # ---- Pick a JSON parser (jq preferred, python fallback) --------------------
@@ -100,26 +114,44 @@ elif command -v python3 >/dev/null 2>&1 && python3 -c "import sys" >/dev/null 2>
 elif command -v python >/dev/null 2>&1 && python -c "import sys" >/dev/null 2>&1; then
     PARSER="python"
 fi
-[ -n "$PARSER" ] || emit_absent "no json parser (jq/python) for baseline"
+[ -n "$PARSER" ] || emit_unevaluable "no json parser (jq/python) for baseline"
 
-# ---- Read csi10Baseline scalar fields + mtimes map -------------------------
+# ---- Unparseable baseline is affirmative evidence, not absence (CSI-36) ----
+if [ "$PARSER" = "jq" ]; then
+    jq -e . "$BASELINE_FILE" >/dev/null 2>&1 \
+        || emit_unevaluable "baseline unparseable" "concurrent-mutation could not evaluate: baseline file unparseable -- LTADS-state mutation status UNKNOWN; reconcile by hand before lifecycle writes"
+else
+    "$PARSER" -c "import json,sys; json.load(open(sys.argv[1], encoding='utf-8-sig'))" "$BASELINE_FILE" >/dev/null 2>&1 \
+        || emit_unevaluable "baseline unparseable" "concurrent-mutation could not evaluate: baseline file unparseable -- LTADS-state mutation status UNKNOWN; reconcile by hand before lifecycle writes"
+fi
+
+# ---- Read this session's baseline slot (CSI-37: map first, legacy fallback) -
 B_SID=""; B_START=""; B_HEAD=""; MTIMES=""
 if [ "$PARSER" = "jq" ]; then
     # Native Windows jq emits CRLF; strip CR or numeric/sha compares break
     # (the native-jq CRLF class guarded by the SHARED-CSI-07 smoke).
-    B_SID=$(jq -r '.csi10Baseline.sessionId // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
-    B_START=$(jq -r '.csi10Baseline.sessionStart // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
-    B_HEAD=$(jq -r '.csi10Baseline.headSha // ""' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
-    MTIMES=$(jq -r '.csi10Baseline.mtimes // {} | to_entries[] | "\(.key)\t\(.value)"' "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
+    _JQ_SLOT='(.csi10Baselines[$sid] // .csi10Baseline)'
+    B_SID=$(jq -r --arg sid "$MY_SID" "$_JQ_SLOT.sessionId // \"\"" "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
+    B_START=$(jq -r --arg sid "$MY_SID" "$_JQ_SLOT.sessionStart // \"\"" "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
+    B_HEAD=$(jq -r --arg sid "$MY_SID" "$_JQ_SLOT.headSha // \"\"" "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
+    MTIMES=$(jq -r --arg sid "$MY_SID" "$_JQ_SLOT.mtimes // {} | to_entries[] | \"\(.key)\t\(.value)\"" "$BASELINE_FILE" 2>/dev/null | tr -d '\r')
 else
-    OUT=$("$PARSER" - "$BASELINE_FILE" <<'PY' 2>/dev/null
-import json, sys
+    OUT=$(CSI10_SID="$MY_SID" "$PARSER" - "$BASELINE_FILE" <<'PY' 2>/dev/null
+import json, os, sys
 try:
     with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         d = json.load(f)
 except Exception:
     sys.exit(0)
-b = d.get("csi10Baseline") if isinstance(d, dict) else None
+if not isinstance(d, dict):
+    sys.exit(0)
+sid = os.environ.get("CSI10_SID") or ""
+b = None
+m = d.get("csi10Baselines")
+if isinstance(m, dict) and sid and isinstance(m.get(sid), dict):
+    b = m[sid]
+if b is None:
+    b = d.get("csi10Baseline")
 if not isinstance(b, dict):
     sys.exit(0)
 print("SID\t%s" % (b.get("sessionId") or ""))
@@ -137,16 +169,17 @@ PY
     MTIMES=$(printf '%s\n' "$OUT" | awk -F'\t' '$1=="MT"{print $2 "\t" $3}')
 fi
 
-# No baseline object at all -> graceful absence.
+# No baseline object at all -> honest absence (quiet briefing: no news).
 if [ -z "$B_SID" ] && [ -z "$B_START" ] && [ -z "$MTIMES" ]; then
-    emit_absent "no csi10 baseline recorded for this workdir"
+    emit_unevaluable "no csi10 baseline recorded for this workdir"
 fi
 
 # Per-session keying: a baseline authored by a DIFFERENT session is not mine
-# (the shared this-session.json may carry a peer's or a prior session's
-# snapshot). Mismatch -> graceful absence (cannot attribute; failure-open).
+# (the legacy single slot may carry a peer's or a prior session's snapshot).
+# CSI-36: this is affirmative evidence a peer started after you -- unevaluable
+# WITH a briefing line, never a clean verdict.
 if [ -n "$B_SID" ] && [ -n "$MY_SID" ] && [ "$B_SID" != "$MY_SID" ]; then
-    emit_absent "baseline belongs to another session ($B_SID)"
+    emit_unevaluable "baseline belongs to another session ($B_SID)" "concurrent-mutation could not evaluate: baseline belongs to another session ($B_SID) -- a peer session started after you; LTADS-state mutation status UNKNOWN"
 fi
 
 # ---- baseline_age_seconds --------------------------------------------------
@@ -228,6 +261,6 @@ else
     briefing=""
 fi
 
-printf '{"external_mutation":%s,"mutations":[%s],"baseline_age_seconds":%s,"summary":"%s","briefing":"%s"}\n' \
+printf '{"evaluable":true,"external_mutation":%s,"mutations":[%s],"baseline_age_seconds":%s,"summary":"%s","briefing":"%s"}\n' \
     "$ext" "$mut_json" "$AGE_JSON" "$(esc "$summary")" "$(esc "$briefing")"
 exit 0

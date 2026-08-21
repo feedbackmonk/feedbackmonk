@@ -16,7 +16,7 @@
 $ErrorActionPreference = 'SilentlyContinue'
 
 $registry = '.claude/collaboration/active-sessions.json'
-$now = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$now = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture)
 
 function Esc([string]$s) {
     if ($null -eq $s) { return '' }
@@ -24,7 +24,7 @@ function Esc([string]$s) {
 }
 
 function Emit-Inactive {
-    Write-Output ('{"active":false,"podsSession":null,"sessionDir":null,"agents":[],"counts":{"total":0,"complete":0,"blocked":0,"unspawned":0},"allComplete":false,"open":{"alerts":[],"messagesToLead":[],"decisions":[]},"monitor":{"pidFileExists":false,"pid":null,"live":false},"generatedAt":"' + $now + '"}')
+    Write-Output ('{"active":false,"podsSession":null,"sessionDir":null,"agents":[],"counts":{"total":0,"complete":0,"blocked":0,"unspawned":0},"allComplete":false,"rosterMissing":[],"open":{"alerts":[],"messagesToLead":[],"decisions":[]},"monitor":{"pidFileExists":false,"pid":null,"live":false},"generatedAt":"' + $now + '"}')
     exit 0
 }
 
@@ -226,7 +226,27 @@ foreach ($a in $agents) {
     $spJson = if ($a.spawned) { 'true' } else { 'false' }
     $agentParts += ('{"id":"' + (Esc $a.id) + '","role":"' + (Esc $a.role) + '","status":' + $stJson + ',"progress":' + $pgJson + ',"isComplete":' + $icJson + ',"spawned":' + $spJson + '}')
 }
-$allComplete = if ($total -gt 0 -and $complete -eq $total) { 'true' } else { 'false' }
+# ---- PODSSTATUS-08 (DEC-348): roster provenance -----------------------------
+# Twin of the block in run.sh; see that file for the full rationale. `allComplete`
+# was `complete == total`, BOTH from the status parser above -- the shared-source
+# defect DEC-348 fixes in monitor-pods, in the surface this oracle's provenance
+# note declares parity-locked to it. workers/<AGENT>/ is the independent
+# enumeration; LEAD is excluded BY NAME (DISC-MON-09), never by pattern.
+# `rosterMissing` is emitted always and is informative, not an alarm; it gates
+# allComplete only where the wrong answer would be acted on.
+# DISC-PRO-29: locals are `rm`-prefixed (PowerShell names are case-insensitive).
+$rmMissing = @()
+if (Test-Path $workersDir -PathType Container) {
+    $rmParsed = @($agents | ForEach-Object { $_.id })
+    foreach ($rmDir in (Get-ChildItem -Path $workersDir -Directory -ErrorAction SilentlyContinue)) {
+        if ($rmDir.Name -eq 'LEAD') { continue }
+        if ($rmParsed -contains $rmDir.Name) { continue }
+        $rmMissing += $rmDir.Name
+    }
+}
+$rmMissingJson = (($rmMissing | ForEach-Object { '"' + (Esc $_) + '"' }) -join ',')
+
+$allComplete = if ($total -gt 0 -and $complete -eq $total -and $rmMissing.Count -eq 0) { 'true' } else { 'false' }
 
 $alertsJson = Ids-ToJson (Scan-Channel "$sessionDir/channels/alerts.md"    'ALERT' 'ACTIVE' $false)
 $msgsJson   = Ids-ToJson (Scan-Channel "$sessionDir/channels/messages.md"  'MSG'   'OPEN'   $true)
@@ -248,5 +268,5 @@ if (Test-Path $monPidFile) {
     }
 }
 
-Write-Output ('{"active":true,"podsSession":"' + (Esc $podsId) + '","sessionDir":"' + (Esc $sessionDir) + '","agents":[' + ($agentParts -join ',') + '],"counts":{"total":' + $total + ',"complete":' + $complete + ',"blocked":' + $blocked + ',"unspawned":' + $unspawned + '},"allComplete":' + $allComplete + ',"open":{"alerts":[' + $alertsJson + '],"messagesToLead":[' + $msgsJson + '],"decisions":[' + $decsJson + ']},"monitor":{"pidFileExists":' + $monExists + ',"pid":' + $monPid + ',"live":' + $monLive + '},"generatedAt":"' + $now + '"}')
+Write-Output ('{"active":true,"podsSession":"' + (Esc $podsId) + '","sessionDir":"' + (Esc $sessionDir) + '","agents":[' + ($agentParts -join ',') + '],"counts":{"total":' + $total + ',"complete":' + $complete + ',"blocked":' + $blocked + ',"unspawned":' + $unspawned + '},"allComplete":' + $allComplete + ',"rosterMissing":[' + $rmMissingJson + '],"open":{"alerts":[' + $alertsJson + '],"messagesToLead":[' + $msgsJson + '],"decisions":[' + $decsJson + ']},"monitor":{"pidFileExists":' + $monExists + ',"pid":' + $monPid + ',"live":' + $monLive + '},"generatedAt":"' + $now + '"}')
 exit 0

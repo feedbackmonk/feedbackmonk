@@ -225,7 +225,7 @@ $residueJson = "[" + (($sorted | ForEach-Object { $_.json }) -join ",") + "]"
 $reqJson = "[" + (($Port | ForEach-Object { [int]$_ }) -join ",") + "]"
 
 $out = '{"schemaVersion":1,"verdict":"' + $verdict + '"' +
-       ',"checkedAt":"' + (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") + '"' +
+       ',"checkedAt":"' + (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", [System.Globalization.CultureInfo]::InvariantCulture) + '"' +
        ',"requiredPorts":' + $reqJson +
        ',"timingSensitive":' + $(if ($Timing) { "true" } else { "false" }) +
        ',"counts":{"devPortListeners":' + $nListeners + ',"agentSessions":' + $nAgents + ',"buildProcesses":' + $nBuilds + '}' +

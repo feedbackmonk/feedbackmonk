@@ -36,7 +36,8 @@
     ]
   },
   "consultation": {
-    "typical_sessions_using": "every (cheap, gracefully absent on single-project setups); also consumed by /0-uldf-finalize setup phase and session-start hook",
+    "typical_sessions_using": "every",
+    "notes": "Cheap, and gracefully absent on single-project setups. Also consumed by the /0-uldf-finalize setup phase and directly by the session-start hook (Invoke-CsiSharedOracle) outside the briefing fan-out. This prose lived in typical_sessions_using until DEC-346; that field is compared as an exact token by briefing-oracles.{sh,ps1}, so the sentence silently cost this oracle its briefing admission.",
     "estimated_token_savings_per_call": 600
   },
   "validation": {

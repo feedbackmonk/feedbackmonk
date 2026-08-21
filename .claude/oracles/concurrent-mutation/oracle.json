@@ -1,6 +1,6 @@
 {
   "name": "concurrent-mutation",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "question": "Have LTADS lifecycle files or ltads/execution/<arc>/ been externally mutated since this session's last known-good snapshot?",
   "category": "ltads",
   "kind": "verification",
@@ -14,7 +14,8 @@
   "output": {
     "format": "json",
     "schema": {
-      "external_mutation": "boolean (true when >=1 tracked LTADS path was externally mutated since the baseline)",
+      "evaluable": "boolean (false when the oracle CANNOT answer -- absent, foreign, or unparseable baseline; consumers treat false as 'defer the assertion', never as green -- CSI-36/DEC-342, OVALID-05)",
+      "external_mutation": "boolean|null (true when >=1 tracked LTADS path was externally mutated since the baseline; false when evaluated clean; null when evaluable=false -- NEVER false for unknown, the 2026-08-10 witnessed wrong verdict)",
       "mutations": [
         {
           "path": "string (repo-relative tracked LTADS path)",
@@ -23,9 +24,9 @@
           "by_session": "string|null (attributed sessionId when derivable; null for uncommitted writes and human-authored commits -- never this session, that is why it is reported)"
         }
       ],
-      "baseline_age_seconds": "integer|null (seconds since the baseline snapshot was captured; null when no baseline exists for this session -- graceful absence)",
+      "baseline_age_seconds": "integer|null (seconds since the baseline snapshot was captured; null when evaluable=false)",
       "summary": "string (one-line headline)",
-      "briefing": "string (empty when external_mutation=false; one-liner suitable for ORACLE BRIEFING when true -- the session-start hook prepends the [concurrent-mutation] tag)"
+      "briefing": "string (empty when evaluable=true and external_mutation=false, and for plain baseline absence; NON-empty for external_mutation=true AND for the foreign/unparseable unevaluable cases -- affirmative evidence carries a line; the session-start hook prepends the [concurrent-mutation] tag)"
     }
   },
   "freshness": {
@@ -40,7 +41,7 @@
     "self_test_windows": ".claude/oracles/concurrent-mutation/validate.ps1",
     "last_validated": null
   },
-  "fallback": "Read .claude/session-state/this-session.json csi10Baseline (sessionId + mtimes map + headSha + sessionStart). For each tracked LTADS path (ltads/arc-state.json, ltads/arc-state.archive.json, ltads/sessions/session-history.md, ltads/sessions/blockers.md, and every file under ltads/execution/) compare the current file mtime against csi10Baseline.mtimes[path]; a current mtime later than the baseline that this session did not author is an uncommitted external write. Then git diff --name-only <baseline.headSha>..HEAD over the same paths catches committed external mutations. Either signal firing means another session mutated the arc state. No baseline / baseline.sessionId != your sessionId -> cannot deduce mutation, report external_mutation:false (failure-open).",
+  "fallback": "Read .claude/session-state/this-session.json csi10Baseline (sessionId + mtimes map + headSha + sessionStart). For each tracked LTADS path (ltads/arc-state.json, ltads/arc-state.archive.json, ltads/sessions/session-history.md, ltads/sessions/blockers.md, and every file under ltads/execution/) compare the current file mtime against csi10Baseline.mtimes[path]; a current mtime later than the baseline that this session did not author is an uncommitted external write. Then git diff --name-only <baseline.headSha>..HEAD over the same paths catches committed external mutations. Either signal firing means another session mutated the arc state. Prefer csi10Baselines[<your sessionId>]; fall back to the legacy csi10Baseline slot. No usable baseline, or baseline.sessionId != your sessionId -> you CANNOT deduce mutation: report evaluable:false with external_mutation:null (CSI-36) -- never a clean false; a foreign baseline additionally means a peer session started after you.",
   "provenance": {
     "authored_by": "csi-phase-3",
     "created": "2026-06-25T00:00:00Z",
@@ -64,8 +65,19 @@
       "ltads/execution"
     ],
     "baseline_file": ".claude/session-state/this-session.json",
-    "baseline_key": "csi10Baseline",
+    "baseline_key": "csi10Baselines[<sessionId>] (per-session map, CSI-37); legacy single-slot csi10Baseline written/read as fallback",
     "max_mutations": 50,
-    "comment": "Tracked path set per CSI-10. Keep these aligned with run.sh / run.ps1 / update-baseline.{sh,ps1} (the scripts hardcode the same defaults for the <2s speed contract). Extend tracked_files/tracked_dirs to widen scope."
+    "comment": "Tracked path set per CSI-10. Keep these aligned with run.sh / run.ps1 / update-baseline.{sh,ps1} (the scripts hardcode the same defaults for the <2s speed contract). Extend tracked_files/tracked_dirs to widen scope.",
+    "baseline_prune_days": 14
+  },
+  "assertion": {
+    "asserts": "No peer session has mutated LTADS lifecycle state (the tracked_files/tracked_dirs set) since this session's snapshot",
+    "measures": "mtime + git-log delta of the tracked path set against a baseline slot THIS session wrote into .claude/session-state/this-session.json (csi10Baselines[<sessionId>], legacy csi10Baseline fallback)",
+    "known_gaps": [
+      "scope excludes the working tree by design: co-edited SOURCE files are invisible to this oracle -- peer awareness at that scale is the [dispatchable-sessions] briefing line's job (the DEFER-168 incident's co-edited .svelte file was out of scope, a fact the oracle's name invites readers to miss)",
+      "legacy single-slot baselines are last-writer-wins, so a pre-CSI-37 peer can still render this session unevaluable (reported honestly as evaluable:false since CSI-36, never as a clean verdict)",
+      "unevaluable defers the assertion rather than weakening it (OVALID-05): evaluable:false means UNKNOWN, and no consumer may read it as green",
+      "mtime leg sees only files that existed at baseline time; a tracked file created after the baseline is invisible until the next baseline refresh"
+    ]
   }
 }

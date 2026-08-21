@@ -61,6 +61,8 @@ This schema is **frozen at first commit**. The session-start hook reads `.briefi
   "oldest_mtime": null,
   "sample": [],
   "live_peer_count": 0,
+  "provably_unowned": 0,
+  "attribution": "no-peers",
   "last_finalize_at": null,
   "briefing": ""
 }
@@ -72,15 +74,22 @@ This schema is **frozen at first commit**. The session-start hook reads `.briefi
 - `count` (int): number of stranded files detected. `-1` means "detection skipped — too many dirty files (>2000)" per spec acceptance.
 - `oldest_mtime` (ISO-8601 UTC string OR `null`): mtime of the oldest stranded file. `null` when `count == 0` OR detection skipped. Format: `"yyyy-MM-ddTHH:mm:ssZ"`.
 - `sample` (array, capped at 10): each entry `{path: string, mtime: ISO-8601 UTC string, age_days: int}`. Path is repo-relative (forward slashes regardless of platform). `age_days` = floor((now − mtime) / 86400). Empty when `count == 0` OR detection skipped.
-- `live_peer_count` (int): number of live peers (per `dispatchable-sessions` registry filter — `status: "active"` AND PID alive AND `workDir` matches this project root) consulted for ownership. `0` when registry missing.
+- `live_peer_count` (int): number of live peers (per `dispatchable-sessions` registry filter — `status: "active"` AND PID alive AND `workDir` matches this project root in POSIX or Windows form, case-insensitive) consulted for ownership. `0` when registry missing.
+- `provably_unowned` (integer — **additive in 1.3.0**, DEFER-193/DEC-372): of the `count` reported strands, how many the STRAND-02 mtime-ordering test proves un-owned (mtime older than the earliest live peer's `spawnedAt`). Equals `count` when `live_peer_count == 0`; `0` when the proof could not run at all (a live peer with an absent or unparseable `spawnedAt` disables it for the whole run). A *withheld* run reports it so the refusal says how much of the list IS proved rather than refusing opaquely.
+- `attribution` (string enum — **additive in 1.2.0**, DEFER-039/DEFER-190/DEC-366; `predates-peers` added in **1.3.0**, DEFER-193/DEC-372): the evidence grade behind the "no live owner" clause. `measured` — a live peer published a `dirtyFiles[]` array (complete by construction; absence from it IS evidence). **RESERVED AND UNPRODUCED**: nothing in the framework writes that field (DISC-ORA-12) and nothing is planned to (DEC-372) — kept because it is authoritative if a producer ever appears and because deployed consumers map it. `predates-peers` — **the reachable top of the ladder**: every reported file's mtime is older than the earliest live peer's session start, so no visible live peer can have written any of them (a peer that had would have set the mtime at or after its own start). All-or-nothing over the reported set, because the sweep it gates is all-or-nothing. `journal-partial` — attribution came only from live peers' write journals, which record tool calls and are **positive-only** (a hit filters, a miss proves nothing) → sweep recommendation withheld. `unavailable` — live peers exist and supplied neither → withheld. `no-peers` — no live peer, no owner to miss. `not-measured` — detection skipped. Consumers gate sweep behavior through `~/.claude/scripts/lib/stranded-evidence-gate.{sh,ps1}` (STRAND-01) and treat an **absent** field as unknown evidence (withhold), never as license to sweep.
 - `last_finalize_at` (ISO-8601 UTC string OR `null`): commit timestamp of `HEAD` (the most-recent-finalize boundary per spec §3 acceptance). `null` when not in a git repo OR no commits.
 - `briefing` (string): empty `""` when no stranded files. Populated when `count > 0` OR `count == -1`.
 
-**Briefing-line forms** (the hook reads `.briefing` literally):
+**Briefing-line forms** (the hook reads `.briefing` literally; withholding forms take precedence over the small/large split):
 
 - `count == 0` → `""` (line suppressed by hook — parallel to `stale-ltads-state`)
-- `0 < count < 50` → `"stranded-dirty-files: <N> files (oldest <D> days; no live owner) — run /0-uldf-finalize --include-stranded for cleanup"`
-- `count >= 50` → `"stranded-dirty-files: <N> files (oldest <D> days) — significant accumulation; see /0-uldf-oracle stranded-dirty-files for full sample"`
+- `attribution == "journal-partial"` → `"stranded-dirty-files: <N> pre-finalize dirty file(s) (oldest <D> days) - OWNERSHIP UNPROVEN: attribution came only from <J> write journal(s), ... Do NOT sweep; inspect with /0-uldf-oracle stranded-dirty-files"`
+- `attribution == "unavailable"` → `"stranded-dirty-files: <N> pre-finalize dirty file(s) (oldest <D> days) - OWNERSHIP UNKNOWN: <P> live peer(s) and none publishes attribution, ... Do NOT sweep; inspect with /0-uldf-oracle stranded-dirty-files"`
+- `0 < count < 50`, `attribution == "predates-peers"` → `"stranded-dirty-files: <N> files (oldest <D> days; no live owner — every one predates all <P> live peer(s)' session start) — run /0-uldf-finalize --include-stranded for cleanup"`
+- Both withholding forms carry an extra sentence when the proof could run: `" <P> of <N> predate every live peer's session start; <U> do not."`
+- `0 < count < 50`, `attribution == "measured"` → `"stranded-dirty-files: <N> files (oldest <D> days; no live owner per <P> attributing peer(s)) — run /0-uldf-finalize --include-stranded for cleanup"`
+- `0 < count < 50`, `attribution == "no-peers"` → `"stranded-dirty-files: <N> files (oldest <D> days; no live owner — no live peers in this project) — run /0-uldf-finalize --include-stranded for cleanup"`
+- `count >= 50` (attribution `measured`/`no-peers`) → `"stranded-dirty-files: <N> files (oldest <D> days) — significant accumulation; see /0-uldf-oracle stranded-dirty-files for full sample"`
 - `count == -1` → `"stranded-dirty-files: detection skipped — too many dirty files (>2000); run /0-uldf-finalize --include-stranded for full audit"`
 
 **Empty-result form** (graceful absence — clean tree, no commits, or not in a git repo):
@@ -108,9 +117,31 @@ This is the **graceful-absence contract** — consumers detect "no strands to su
 3. For each dirty file: stat mtime; if `mtime < last_finalize_at` AND `file_owned_by_live_peer == false` → strand candidate.
 4. Live-peer ownership: a registry entry exists with `status: "active"` AND `workDir` matches this project root AND PID alive AND a `dirtyFiles[]` registry field declares the file.
 
-### Forward-compatible ownership claim field
+### Ownership attribution — three sources, graded (1.3.0; DEFER-039/DEFER-190/DEFER-193)
 
-The `dirtyFiles[]` registry field is a **forward-compatible** ownership-claim mechanism. Until peers actively publish ownership claims (CSI Phase 2 territory — claims + soft-gates ship downstream), the field defaults to `[]` (empty), which yields the correct default-to-strand classification given the trigger pattern: stranded files arise *because* nothing is actively owning them. When CSI Phase 2 ships, peers will populate `dirtyFiles[]` with the files they've touched in this session, and the oracle will automatically respect those claims without schema changes.
+The `dirtyFiles[]` registry field is authoritative when present (complete by construction → grade
+`measured`) — but **nothing writes it** (measured GitCellar 2026-08-12, ULDF 2026-08-16;
+DISC-ORA-12), so on its own the owned-set was empty on every run and "no live owner" was asserted
+over zero evidence — the DEFER-039 witnessed wrong verdict, whose briefing string invited sweeping
+a live sibling's in-flight working set. Since 1.2.0 the oracle ALSO reads each live peer's write
+journal (`.claude/session-state/write-journal/<sessionId>.jsonl` — the same input
+`lib/file-owner.sh` resolves ownership from). The journal is **positive-only** evidence: it records
+tool calls, so a script write or an external editor leaves no record — a journal hit rescues a file
+from the strand list, a miss proves nothing. The `attribution` field grades which source actually
+supplied evidence, and the briefing withholds the sweep recommendation whenever ownership is
+unproven (`journal-partial` / `unavailable`).
+
+**Third source (1.3.0, STRAND-02 / DEC-372) — the mtime-ordering proof, which needs no writer at
+all.** A live peer that had written file F would have set F's mtime at or after its own start, so
+`mtime(F) < min over live peers of spawnedAt` *proves* F is not any visible live peer's in-flight
+work. That is the proposition `measured` was defined to deliver, from data every registry already
+carries. It is sound because `spawnedAt` is preserved across re-registration (`hooks/session-start.sh`),
+because a PODS roster row is written before its worker boots (erring early, the conservative
+direction), and because the framework already trusts this anchor for the same class of reasoning
+(`commit-scoped.sh` `_sw_session_ts`). It fails **closed**: one live peer with an absent or
+unparseable `spawnedAt` disables the proof for the whole run, since dropping that peer from the
+minimum would *raise* the floor and prove more. A future registry writer would restore `measured` with no
+schema change.
 
 ### Boundary policy (the "most-recent-finalize" definition)
 
@@ -153,7 +184,7 @@ When `briefing == ""`, the session-start hook MUST NOT emit a `[stranded-dirty-f
 | Consumer | Where | What it reads |
 |---|---|---|
 | Session-start hook briefing | `~/.claude/hooks/session-start.{sh,ps1}` | `.briefing` field — emitted as-is when non-empty |
-| `/0-uldf-finalize --include-stranded` | `~/.claude/segments/-finalize/_stranded-flag-handling.md` + `_stranded-partition.md` | `.sample[].path` (preview); on opt-in, oracle re-invocation collects the full set; `.count` and `.last_finalize_at` for summary block |
+| `/0-uldf-finalize --include-stranded` | `~/.claude/segments/-finalize/_stranded-flag-handling.md` + `_stranded-partition.md` | `.sample[].path` (preview); on opt-in, oracle re-invocation collects the full set; `.count` and `.last_finalize_at` for summary block; **`.attribution` through `~/.claude/scripts/lib/stranded-evidence-gate.{sh,ps1}`** — Set 2 is staged only on a `sweep` verdict (STRAND-01; absent field withholds) |
 | Spec reconciliation | `/0-uldf-finalize` Phase 4.5 | Indirect — when stranded files include spec docs, finalize surfaces them for explicit user decision |
 
 ### Sibling oracles
@@ -195,14 +226,21 @@ bash .claude/oracles/stranded-dirty-files/validate.sh                           
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .claude/oracles/stranded-dirty-files/validate.ps1   # Windows
 ```
 
-Validates five scenarios:
+Validates eight scenarios:
 
 | Test | What it asserts |
 |---|---|
 | **T1** | no-stranded — clean of pre-finalize dirty files; `count==0`, `briefing==""` |
-| **T2** | small-stranded — three pre-finalize dirty files; `count==3`, briefing references "no live owner" |
+| **T2** | small-stranded, no registry — `count==3`, `attribution=="no-peers"`, sweep still recommended |
 | **T3** | large-stranded — 55 pre-finalize dirty files; `count==55`, briefing references "significant accumulation" |
 | **T4** | detection-skipped-too-many — 2001+ dirty files; `count==-1`, briefing references "detection skipped" |
-| **T5** | live-peer-owns-file — peer claims one of two stranded files via `dirtyFiles[]`; only the unclaimed file appears in `sample` |
+| **T5** | live-peer-owns-file — peer claims one of two via `dirtyFiles[]`; only the unclaimed file counts; `attribution=="measured"`; sweep advice survives (anti-vacuity control) |
+| **T6** | live peer publishing nothing — `attribution=="unavailable"`; briefing says OWNERSHIP UNKNOWN and the sweep recommendation is WITHHELD (sh cell also pins the two-form workDir match — DEFER-190's Git Bash zero-peers defect) |
+| **T7** | falsification pair (from GitCellar's `selftest.ps1`) — a write journal claiming one of two files filters exactly that one; `attribution=="journal-partial"`; still withheld |
+| **T8** | STRAND-02 — the live peer started AFTER the files were written; `attribution=="predates-peers"`, `provably_unowned==2`, sweep RECOMMENDED. Pre-1.3.0 this fixture graded `unavailable` and withheld forever |
+| **T8b** | anti-vacuity + the tool-calls-only caveat — one more file written after the peer's start by a route the journal cannot see; the grade drops back to `unavailable` and the WHOLE stage is withheld, while `provably_unowned` still reports 2 of 3 |
+| **T8c** | fail-closed — a live peer with **no** `spawnedAt` disables the proof for the whole run (never silently dropped from the earliest-start floor, which would prove *more*) |
+| **T9** | the identity-keying caveat (FINALIZE-SCOPE-11 / DEC-337) — a journal keyed under a different id than the registry `sessionId` misses, and the verdict degrades toward withholding, never toward the sweep. **T9b** re-keys the identical journal and the file filters, proving T9 measured the key |
+| **T7b** | inverted control — journal deleted → both files stranded again, grade drops to `unavailable`; proves the filter was doing the work, not the arithmetic agreeing |
 
 The full hygiene smoke harness at `~/.claude/scripts/hygiene-tests/hygiene-csi15-stranded-smoke.{sh,ps1}` adds three flag-wiring smoke cases (without-flag, with-flag, composable-with-shared) on top of the oracle T1-T5 set.

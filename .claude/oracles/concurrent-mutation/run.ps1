@@ -1,14 +1,21 @@
 # concurrent-mutation oracle (Windows PowerShell) -- CSI-10, CSI Phase 3.
 #
 # Verification Oracle (kind: "verification", ORACULURGY_DESIGN.md Part 11).
-# Byte-compatible verdict contract with run.sh (CSI-10 domain schema):
-#   {external_mutation, mutations:[{path,source,since,by_session}],
+# Byte-compatible verdict contract with run.sh (CSI-10 domain schema, CSI-36
+# tri-state per DEC-342):
+#   {evaluable, external_mutation, mutations:[{path,source,since,by_session}],
 #    baseline_age_seconds, summary, briefing}
 #
 # READ-ONLY by contract: this script NEVER writes. The per-session baseline is
-# persisted by the sibling update-baseline.ps1. Failure-open on every input
-# fault (absent/foreign/unparseable baseline -> external_mutation:false,
-# baseline_age_seconds:null, empty briefing).
+# persisted by the sibling update-baseline.ps1.
+#
+# UNEVALUABLE IS NOT A CLEAN VERDICT (CSI-36, DEC-342; witnessed wrong verdict
+# 2026-08-10, DEFER-168): absent/foreign/unparseable baseline -> evaluable:
+# $false + external_mutation:null, NEVER false. Foreign/unparseable carry a
+# NON-EMPTY briefing (affirmative evidence: a peer started after you, or
+# corruption); plain absence stays quiet in briefing but honest in the verdict.
+# Baseline slots (CSI-37): per-session map csi10Baselines[<sessionId>]
+# preferred; legacy single csi10Baseline read as fallback.
 
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
@@ -25,13 +32,16 @@ $trackedDirs = @("ltads/execution")
 $maxMut = 50
 $epoch0 = [datetime]::new(1970, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
 
-function Emit-Absent($summary) {
+function Emit-Unevaluable($summary, $briefing = "") {
+    # CSI-36: cannot deduce -> evaluable:false, external_mutation:null.
+    # $briefing non-empty for foreign/unparseable, empty for plain absence.
     $obj = [ordered]@{
-        external_mutation    = $false
+        evaluable            = $false
+        external_mutation    = $null
         mutations            = @()
         baseline_age_seconds = $null
         summary              = [string]$summary
-        briefing             = ""
+        briefing             = [string]$briefing
     }
     Write-Output ($obj | ConvertTo-Json -Compress -Depth 6)
     exit 0
@@ -54,24 +64,31 @@ if (-not $mySid -and $env:CLAUDE_SESSION_ID) { $mySid = $env:CLAUDE_SESSION_ID }
 
 # ---- Graceful absence: no baseline file ------------------------------------
 if (-not (Test-Path -LiteralPath $baselineFile)) {
-    Emit-Absent "no baseline (this-session.json absent)"
+    Emit-Unevaluable "no baseline (this-session.json absent)"
 }
 
-# ---- Parse baseline ---------------------------------------------------------
+# ---- Parse baseline (CSI-37: per-session map first, legacy slot fallback) ---
 $baseline = $null
 try {
     $raw = [System.IO.File]::ReadAllText($baselineFile, [System.Text.UTF8Encoding]::new($false))
     if (-not [string]::IsNullOrWhiteSpace($raw)) {
         $doc = $raw | ConvertFrom-Json -ErrorAction Stop
-        if ($doc.PSObject.Properties.Name -contains 'csi10Baseline') {
+        if ($mySid -and ($doc.PSObject.Properties.Name -contains 'csi10Baselines')) {
+            $map = $doc.csi10Baselines
+            if ($map -and ($map.PSObject.Properties.Name -contains $mySid)) {
+                $baseline = $map.$mySid
+            }
+        }
+        if (($null -eq $baseline) -and ($doc.PSObject.Properties.Name -contains 'csi10Baseline')) {
             $baseline = $doc.csi10Baseline
         }
     }
 } catch {
-    Emit-Absent "baseline unparseable"
+    # CSI-36: corruption is affirmative evidence, not absence.
+    Emit-Unevaluable "baseline unparseable" "concurrent-mutation could not evaluate: baseline file unparseable -- LTADS-state mutation status UNKNOWN; reconcile by hand before lifecycle writes"
 }
 if ($null -eq $baseline) {
-    Emit-Absent "no csi10 baseline recorded for this workdir"
+    Emit-Unevaluable "no csi10 baseline recorded for this workdir"
 }
 
 $bSid   = if ($baseline.PSObject.Properties.Name -contains 'sessionId')   { [string]$baseline.sessionId }   else { "" }
@@ -79,8 +96,10 @@ $bStart = if ($baseline.PSObject.Properties.Name -contains 'sessionStart') { [st
 $bHead  = if ($baseline.PSObject.Properties.Name -contains 'headSha')     { [string]$baseline.headSha }     else { "" }
 
 # Per-session keying: a baseline authored by a different session is not mine.
+# CSI-36: affirmative evidence a peer started after you -- unevaluable WITH a
+# briefing line, never a clean verdict.
 if ($bSid -and $mySid -and ($bSid -ne $mySid)) {
-    Emit-Absent "baseline belongs to another session ($bSid)"
+    Emit-Unevaluable "baseline belongs to another session ($bSid)" "concurrent-mutation could not evaluate: baseline belongs to another session ($bSid) -- a peer session started after you; LTADS-state mutation status UNKNOWN"
 }
 
 # ---- baseline_age_seconds --------------------------------------------------
@@ -119,7 +138,7 @@ if ($baseline.PSObject.Properties.Name -contains 'mtimes' -and $baseline.mtimes)
             $cur = [int64](((Get-Item -LiteralPath $bpath).LastWriteTimeUtc) - $epoch0).TotalSeconds
         } catch { continue }
         if ($cur -gt $bmt) {
-            $since = $epoch0.AddSeconds($cur).ToString("yyyy-MM-ddTHH:mm:ssZ")
+            $since = $epoch0.AddSeconds($cur).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
             if (-not $since) { $since = $bStart }
             Add-Mut $bpath "mtime" $since
             $mtimeHits++
@@ -167,6 +186,7 @@ if ($mutations.Count -gt 0) {
 }
 
 $result = [ordered]@{
+    evaluable            = $true
     external_mutation    = $ext
     mutations            = [object[]]$mutations.ToArray()
     baseline_age_seconds = $ageJson

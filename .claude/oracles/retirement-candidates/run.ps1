@@ -79,7 +79,7 @@ $SupersedeRe = '(^|[^A-Za-z])(SUPERSEDED|TOMBSTONE|OBSOLETE|DEPRECATED)([^A-Za-z
 $ProvHeadRe  = '[Pp]ending [Ff]ollow-?[Uu]ps?'
 $CheckMark   = [char]0x2705
 
-$Today = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd')
+$Today = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd', [System.Globalization.CultureInfo]::InvariantCulture)
 
 function Trunc([string]$s) {
     if ($null -eq $s) { return "" }
@@ -292,7 +292,17 @@ It serialized the writer, which is the whole point of the module.
 }
 
 # ---------------------------------------------------------------------- main
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
+# Repo root -- TWIN-01 mirror of run.sh. The three-level climb is correct for a
+# PROJECT install and for this repo's template copy, and WRONG for the deployed
+# global copy (~/.claude/oracles/<name>/ -> $HOME), where it scanned the home
+# directory and returned files_scanned:0 as a clean `pass`. Resolve the CALLER's
+# repo first; keep the climb as the fallback.
+$repoRoot = (& git rev-parse --show-toplevel 2>$null)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
+    $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "../../..")).Path
+} else {
+    $repoRoot = (Resolve-Path ($repoRoot.Trim())).Path
+}
 Push-Location $repoRoot
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 
@@ -300,12 +310,16 @@ try {
     $globs = $DefaultCorpus
     if ($env:CLAUDE_RETIREMENT_CORPUS) { $globs = $env:CLAUDE_RETIREMENT_CORPUS -split ':' }
 
+    $script:Truncated = $false
     $files = New-Object System.Collections.ArrayList
     foreach ($g in $globs) {
         if ([string]::IsNullOrWhiteSpace($g)) { continue }
         $matched = @(Get-ChildItem -Path $g -File -ErrorAction SilentlyContinue)
         foreach ($m in $matched) {
-            if ($files.Count -ge $MaxFiles) { break }
+            # TWIN-01 mirror of run.sh: hitting the cap silently under-reports the
+            # worklist, and a shorter list reads exactly like a cleaner corpus.
+            # Record it so truncation is LOUD; never raise the cap to clear a red.
+            if ($files.Count -ge $MaxFiles) { $script:Truncated = $true; break }
             if ($m.Length -gt $MaxFileBytes) { continue }
             $rel = $m.FullName.Substring($repoRoot.Length).TrimStart('\', '/') -replace '\\', '/'
             [void]$files.Add([PSCustomObject]@{ Rel = $rel; Full = $m.FullName })
@@ -384,15 +398,29 @@ try {
     $sw.Stop()
     $dur = [int]$sw.ElapsedMilliseconds
 
+    $truncNote = ""
+    if ($script:Truncated) {
+        $truncNote = " TRUNCATED: the corpus hit the $MaxFiles-file scan cap, so this worklist is a FLOOR, not a census -- files past the cap were never opened. Narrow the corpus (CLAUDE_RETIREMENT_CORPUS) or archive terminal artifacts; do not read a shorter list as a cleaner one."
+    }
+
     if ($candidates.Count -eq 0) {
-        $status = "pass"; $briefing = ""
+        # A truncated scan that found nothing has established nothing, so it must
+        # not render as an unqualified clean pass.
+        if ($script:Truncated) {
+            $status = "warn"
+            $briefing = "RETIREMENT: 0 candidates, but the scan was capped at $MaxFiles files.$truncNote"
+        } else {
+            $status = "pass"; $briefing = ""
+        }
     } else {
         $status = "warn"
-        $briefing = "RETIREMENT: $($candidates.Count) candidate passage(s) across $($files.Count) living artifact(s) carry a deterministic retirement signal. These are a WORKLIST, not a delete list -- judge each against segments/_retirement-test.md. Acted on by /0-uldf-finalize Phase 8.8; sweep with /0-uldf-context-audit --retire."
+        $briefing = "RETIREMENT: $($candidates.Count) candidate passage(s) across $($files.Count) living artifact(s) carry a deterministic retirement signal. These are a WORKLIST, not a delete list -- judge each against segments/_retirement-test.md. Acted on by /0-uldf-finalize Phase 8.8 and /1-uldf-finalize Phase 3.5; sweep with /0-uldf-context-audit --retire.$truncNote"
     }
 
     Write-Output ('{"status":"' + $status + '","details":{"files_scanned":' + $files.Count +
         ',"candidate_count":' + $candidates.Count + ',"surfaced_count":' + $surfaced.Count +
+        ',"truncated":' + $(if ($script:Truncated) { 'true' } else { 'false' }) +
+        ',"scan_cap":' + $MaxFiles +
         ',"by_signal":{' + $bySignalJson + '},"scan_duration_ms":' + $dur +
         ',"contract":"worklist -- the oracle never deletes and never recommends deletion; every signal is a proxy for utility, which is not machine-visible"},"candidates":[' +
         $candJson + '],"surfaced":[' + $surfJson + '],"briefing":"' + (ConvertTo-JsonString $briefing) + '"}')

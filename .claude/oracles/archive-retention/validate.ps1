@@ -52,7 +52,7 @@ if ($null -eq $nowEpochFixture) {
 function Get-FixtureName {
     param([int]$DaysAgo, [string]$Hms)
     $dt = $epochBase.AddSeconds([double]($nowEpochFixture - ([int64]$DaysAgo * 86400)))
-    return "collab-" + $dt.ToString('yyyyMMdd') + "-" + $Hms
+    return "collab-" + $dt.ToString('yyyyMMdd', [System.Globalization.CultureInfo]::InvariantCulture) + "-" + $Hms
 }
 
 $pass = 0

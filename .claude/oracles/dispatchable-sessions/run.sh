@@ -1658,6 +1658,35 @@ done < <(candidate_pids)
 
 [ -n "$LIVE_PIDS" ] || emit_empty
 
+# ---- SACT-09 (DEC-365): the intent-freshness cutoff, computed ONCE ------------
+# Deliberately computed BEFORE the parser branch so both legs share one clock and
+# one config read. Computing it inside the jq arm would leave the python arm with
+# an unset cutoff -- which, given the fail-open rule below, degrades silently to
+# "every intent is fresh" on exactly the leg that has no jq to notice.
+INTENT_STALE_HOURS=6
+INTENT_STALE_SOURCE="default"
+_ISH_CONFIG=""
+[ -f ".claude/config.json" ] && _ISH_CONFIG=".claude/config.json"
+if [ -n "$_ISH_CONFIG" ]; then
+    if [ "$PARSER" = "jq" ]; then
+        _ISH=$(jq -r '.sact.intentStaleAfterHours // empty' "$_ISH_CONFIG" 2>/dev/null)
+    else
+        _ISH=$("$PARSER" -c 'import json,sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8-sig"))
+except Exception:
+    sys.exit(0)
+v = (d.get("sact") or {}).get("intentStaleAfterHours")
+print(v if v is not None else "")' "$_ISH_CONFIG" 2>/dev/null)
+    fi
+    case "$_ISH" in
+        ''|*[!0-9]*) ;;
+        *) INTENT_STALE_HOURS="$_ISH"; INTENT_STALE_SOURCE="config" ;;
+    esac
+fi
+INTENT_FRESH_AFTER="$(date -u -d "-${INTENT_STALE_HOURS} hours" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -v-"${INTENT_STALE_HOURS}"H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "")"
+
 # ---- Step 3: emit final JSON, with the parser doing all the JSON-aware work ----
 if [ "$PARSER" = "jq" ]; then
     # WT-03: peer object additively gains siblingGroup when present in the
@@ -1668,8 +1697,23 @@ if [ "$PARSER" = "jq" ]; then
     # the briefing answers WHO AND WHAT. Fixtures without the fields render
     # the v1 briefing byte-identically. Expired claims (boundUntil < now) are
     # not surfaced at all.
+    #
+    # SACT-09 (DEC-365): an intent is rendered only while it is FRESH, and a
+    # stale one renders as nothing rather than as a fact. The trigger specimen:
+    # the only `intent` on this machine when SACT-08 was written was seven days
+    # old, sat on a DEAD session still marked active, and asserted "IDLE... Safe
+    # to sweep in parallel." It was harmless solely because the liveness filter
+    # above dropped the entry first -- the READ side saved it, not the write
+    # side -- and SACT-08 is about to make intent common enough that liveness
+    # stops being sufficient cover. Precedent for the shape is [review-recency]'s
+    # "never = NO-DATA, never a false never".
+    #
+    # An entry carrying `intent` with NO `intentSetAt` is treated as STALE, not
+    # fresh: unstamped is unaged, not young. That is the fail-closed direction.
     NOW_ISO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    jq -c --arg pids "$LIVE_PIDS" --arg self "$SELF_SESSION_ID" --arg now "$NOW_ISO" '
+
+    jq -c --arg pids "$LIVE_PIDS" --arg self "$SELF_SESSION_ID" --arg now "$NOW_ISO" \
+          --arg freshAfter "$INTENT_FRESH_AFTER" '
         ($pids | split(" ")) as $live
         | .sessions // []
         | map(select(
@@ -1680,7 +1724,14 @@ if [ "$PARSER" = "jq" ]; then
             and ($self == "" or (.id // "") != $self)
           ))
         | map(
-            ({
+            # SACT-09: freshness gate. When $freshAfter could not be computed
+            # (no usable `date -d`), the gate opens rather than blanking every
+            # intent -- a degraded clock must not silently erase coordination
+            # data, and the liveness filter above is still in force.
+            (((.intent // "") | length > 0)
+             and (($freshAfter == "")
+                  or (((.intentSetAt // "") != "") and (.intentSetAt >= $freshAfter)))) as $intentFresh
+            | ({
                 sessionId: (.id // ""),
                 sessionRole: (.sessionRole // ""),
                 role: (.role // ""),
@@ -1690,7 +1741,9 @@ if [ "$PARSER" = "jq" ]; then
                 spawnedAt: (.spawnedAt // "")
             })
             + (if (.siblingGroup // "") | length > 0 then {siblingGroup: .siblingGroup} else {} end)
-            + (if (.intent // "") | length > 0 then {intent: .intent} else {} end)
+            + (if $intentFresh then {intent: .intent} else {} end)
+            + (if $intentFresh and ((.intentSource // "") | length > 0)
+                 then {intentSource: .intentSource} else {} end)
             + (if ((.resourceClaim // null) != null)
                   and (((.resourceClaim.boundUntil // "") == "") or (.resourceClaim.boundUntil >= $now))
                  then {resourceClaim: .resourceClaim} else {} end)
@@ -1713,8 +1766,11 @@ if [ "$PARSER" = "jq" ]; then
           }
     ' "$REGISTRY" 2>/dev/null || emit_empty
 else
+    ULDF_INTENT_FRESH_AFTER="$INTENT_FRESH_AFTER" \
     "$PARSER" - "$REGISTRY" "$LIVE_PIDS" "$SELF_SESSION_ID" <<'PY' 2>/dev/null || emit_empty
-import json, sys
+import json, os, sys
+# SACT-09 freshness cutoff, computed by the shell so both legs share one clock.
+_INTENT_FRESH_AFTER = os.environ.get("ULDF_INTENT_FRESH_AFTER") or ""
 try:
     with open(sys.argv[1], "r", encoding="utf-8-sig") as f:
         data = json.load(f)
@@ -1751,9 +1807,20 @@ for s in (data.get("sessions") or []):
     if isinstance(sg, str) and sg:
         peer_obj["siblingGroup"] = sg
     # SACT-06 (DEC-240): additively include intent + unexpired resourceClaim.
+    # SACT-09 (DEC-365): only while FRESH. A stale intent renders as NOTHING,
+    # never as a fact -- the trigger specimen was a seven-day-old "IDLE... Safe
+    # to sweep in parallel" on a dead session. An intent with NO intentSetAt is
+    # STALE, not fresh: unstamped is unaged, not young (fail closed). When the
+    # cutoff could not be computed the gate OPENS, because a degraded clock must
+    # not silently erase coordination data.
     intent = s.get("intent")
     if isinstance(intent, str) and intent:
-        peer_obj["intent"] = intent
+        _stamp = s.get("intentSetAt") or ""
+        if (not _INTENT_FRESH_AFTER) or (_stamp and _stamp >= _INTENT_FRESH_AFTER):
+            peer_obj["intent"] = intent
+            _src = s.get("intentSource")
+            if isinstance(_src, str) and _src:
+                peer_obj["intentSource"] = _src
     rc = s.get("resourceClaim")
     if isinstance(rc, dict):
         import datetime

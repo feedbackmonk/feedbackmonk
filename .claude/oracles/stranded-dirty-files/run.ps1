@@ -51,28 +51,44 @@ function Emit-Json($obj) {
     exit 0
 }
 
-function Emit-Empty([string]$lastFinalize, [int]$livePeerCount) {
+function Emit-Empty([string]$lastFinalize, [int]$livePeerCount, [string]$attribution) {
     $obj = [ordered]@{
         has_stranded     = $false
         count            = 0
         oldest_mtime     = $null
         sample           = @()
         live_peer_count  = $livePeerCount
+        provably_unowned = 0
+        attribution      = $attribution
         last_finalize_at = $lastFinalize
         briefing         = ""
     }
     Emit-Json $obj
 }
 
+# TWIN-01 / DEC-263: ConvertFrom-Json coerces ISO-8601 strings to [DateTime] on
+# pwsh 6+ and leaves them as strings on powershell.exe 5.1, so a registry
+# timestamp read here is EITHER type depending on the engine. Normalize at this
+# parse boundary (the Convert-*NormalizeDates pattern), never downstream.
+# Returns $null when the value is absent or unparseable -- and $null is what
+# disables the STRAND-02 proof for the whole run (fail closed).
+function ConvertTo-SdfUtcOrNull($v) {
+    if ($null -eq $v) { return $null }
+    if ($v -is [datetime]) { return ([datetime]$v).ToUniversalTime() }
+    $s = [string]$v
+    if ([string]::IsNullOrWhiteSpace($s)) { return $null }
+    try { return ([DateTimeOffset]::Parse($s, [System.Globalization.CultureInfo]::InvariantCulture)).UtcDateTime } catch { return $null }
+}
+
 function Iso-Utc([datetime]$dt) {
     $u = $dt.ToUniversalTime()
-    return $u.ToString("yyyy-MM-ddTHH:mm:ssZ")
+    return $u.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
 }
 
 # ---- Graceful absence: not in a git repo -----------------------------------
 & git rev-parse --git-dir 2>$null | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    Emit-Empty $null 0
+    Emit-Empty $null 0 'no-peers'
 }
 
 # ---- last_finalize_at = HEAD's commit timestamp ----------------------------
@@ -125,6 +141,8 @@ if ($dirtyCount -gt $scopeGuardMax) {
         oldest_mtime     = $null
         sample           = @()
         live_peer_count  = 0
+        provably_unowned = 0
+        attribution      = 'not-measured'
         last_finalize_at = $lastFinalizeIso
         briefing         = $briefing
     }
@@ -133,7 +151,7 @@ if ($dirtyCount -gt $scopeGuardMax) {
 
 # ---- Empty dirty set -> graceful empty -------------------------------------
 if ($dirtyCount -eq 0) {
-    Emit-Empty $lastFinalizeIso 0
+    Emit-Empty $lastFinalizeIso 0 'no-peers'
 }
 
 # ---- Build live-peer ownership set -----------------------------------------
@@ -141,7 +159,18 @@ $projRoot = (Get-Location).Path
 $projRootNorm = ($projRoot -replace '\\', '/').TrimEnd('/')
 
 $livePeerCount = 0
+$attributingPeerCount = 0
+$journalPeerCount = 0
 $ownedSet = New-Object System.Collections.Generic.HashSet[string]
+
+# STRAND-02 (DEC-372): the mtime-ordering proof. A live peer that had written
+# file F would have set F's mtime at or after its OWN start, so a file older
+# than every live peer's `spawnedAt` cannot be any visible live peer's in-flight
+# work. Full rationale (why spawnedAt is a sound lower bound, and why an absent
+# one disables the proof for the whole run rather than dropping that peer from
+# the min) is in the sh twin -- it is the same three checked facts.
+$earliestPeerStartUtc = $null
+$peerStartUnknown = $false
 
 if (Test-Path $registry) {
     $reg = $null
@@ -195,14 +224,107 @@ if (Test-Path $registry) {
             if (-not $alive) { continue }
 
             $livePeerCount++
+            $sPublished = $false      # STRONG: a peer-published dirtyFiles array
+            $sJournalled = $false     # POSITIVE-ONLY: the peer's write journal
+
+            # STRAND-02: fold this peer into the earliest-start floor. An absent
+            # or unparseable spawnedAt disables the proof for the WHOLE run --
+            # dropping this peer from the min() would RAISE the floor and prove
+            # more, which is the unsafe direction.
+            $sStartUtc = $null
+            if ($s.PSObject.Properties.Name -contains 'spawnedAt') {
+                $sStartUtc = ConvertTo-SdfUtcOrNull $s.spawnedAt
+            }
+            if ($null -eq $sStartUtc) {
+                $peerStartUnknown = $true
+            } elseif ($null -eq $earliestPeerStartUtc -or $sStartUtc -lt $earliestPeerStartUtc) {
+                $earliestPeerStartUtc = $sStartUtc
+            }
+
+            # Source 1 (original): the peer's published dirtyFiles array.
+            # DEFER-039/DEFER-190: measured (GitCellar 2026-08-12, ULDF 2026-08-16),
+            # NO session writes this field, so on its own the owned-set was empty
+            # on every run and "no live owner" was asserted over zero data. Kept
+            # because it is authoritative when present, and costs nothing when
+            # absent.
             if ($s.PSObject.Properties.Name -contains 'dirtyFiles' -and $null -ne $s.dirtyFiles) {
+                $sPublished = $true
                 foreach ($df in @($s.dirtyFiles)) {
                     if ($null -eq $df) { continue }
                     [void]$ownedSet.Add([string]$df)
                 }
             }
+
+            # Source 2 (DEFER-039 option 2): the peer's WRITE JOURNAL, which is
+            # actually written -- the post-tool-use hook appends {ts, path, op}
+            # per Edit/Write to .claude/session-state/write-journal/<sessionId>.jsonl.
+            # This is the same input lib/file-owner.sh resolves ownership from, so
+            # the oracle now asks the question the rest of the shared-tree
+            # machinery already answers.
+            #
+            # THE JOURNAL IS POSITIVE-ONLY EVIDENCE, and this is load-bearing.
+            # It records TOOL CALLS, so a write made any other way -- a script
+            # the agent ran, an external editor -- leaves no record (same bound
+            # DEC-359 measured on the append-only docs: 65% of spec-doc commits
+            # had no journal record at all). So a journal HIT rescues a file
+            # from the strand list, but a journal MISS proves nothing. Treating
+            # journal coverage as completeness is how this oracle would go
+            # straight back to recommending a sweep over a live peer's work --
+            # with a confident 'measured' next to it.
+            $sId = ""
+            if ($s.PSObject.Properties.Name -contains 'sessionId' -and $null -ne $s.sessionId) {
+                $sId = [string]$s.sessionId
+            }
+            if (-not [string]::IsNullOrWhiteSpace($sId)) {
+                $jPath = Join-Path ".claude/session-state/write-journal" ($sId + ".jsonl")
+                if (Test-Path -LiteralPath $jPath) {
+                    $sJournalled = $true
+                    try {
+                        foreach ($jLine in [System.IO.File]::ReadLines((Resolve-Path -LiteralPath $jPath))) {
+                            if ([string]::IsNullOrWhiteSpace($jLine)) { continue }
+                            $rec = $null
+                            try { $rec = $jLine | ConvertFrom-Json -ErrorAction Stop } catch { continue }
+                            if ($null -eq $rec -or -not ($rec.PSObject.Properties.Name -contains 'path')) { continue }
+                            $jp = ([string]$rec.path -replace '\\', '/')
+                            if ([string]::IsNullOrWhiteSpace($jp)) { continue }
+                            # Journal paths are absolute; keep only this project's,
+                            # and store them repo-relative to match git status output.
+                            if ($jp.StartsWith(($projRootNorm + "/"), [StringComparison]::OrdinalIgnoreCase)) {
+                                [void]$ownedSet.Add($jp.Substring($projRootNorm.Length + 1))
+                            }
+                        }
+                    } catch { }
+                }
+            }
+
+            if ($sPublished)  { $attributingPeerCount++ }
+            if ($sJournalled) { $journalPeerCount++ }
         }
     }
+}
+
+# ---- Attribution verdict (DEFER-039 / DEFER-190) ----------------------------
+# 'measured'        -- at least one live peer published a dirtyFiles array
+#                      (complete by construction), so an absent path is evidence
+#                      of non-ownership.
+# 'journal-partial' -- attribution came only from write journals, which are
+#                      positive-only: hits filter, a miss proves nothing, so the
+#                      sweep recommendation is withheld.
+# 'unavailable'     -- live peers exist but NONE supplied attribution by either
+#                      route. Silence is not evidence: nothing here can be
+#                      called un-owned, so the sweep recommendation is withheld.
+# 'no-peers'        -- no live peer in this project, so there is no owner to miss.
+# 'predates-peers'  -- STRAND-02: decided AFTER the walk (a property of the
+#                      reported set), below. 'measured' is RESERVED: no producer
+#                      exists anywhere in the framework (DISC-ORA-12).
+if ($livePeerCount -eq 0) {
+    $attribution = 'no-peers'
+} elseif ($attributingPeerCount -gt 0) {
+    $attribution = 'measured'
+} elseif ($journalPeerCount -gt 0) {
+    $attribution = 'journal-partial'
+} else {
+    $attribution = 'unavailable'
 }
 
 # ---- Walk dirty files, classify, build sample ------------------------------
@@ -210,6 +332,8 @@ $nowUtc = [DateTime]::UtcNow
 $strandCount = 0
 $oldestUtc = $null
 $sample = New-Object System.Collections.Generic.List[object]
+$provedCount = 0     # STRAND-02: reported strands proved un-owned by mtime ordering
+$unprovedCount = 0   # STRAND-02: reported strands the proof does NOT cover
 
 foreach ($f in $dirtyFiles) {
     if ([string]::IsNullOrEmpty($f)) { continue }
@@ -226,6 +350,15 @@ foreach ($f in $dirtyFiles) {
     if ($mtimeUtc -ge $lastFinalizeUtc) { continue }
 
     $strandCount++
+    # STRAND-02: proved un-owned by every live peer? With zero live peers the
+    # proposition is vacuously true (there is no owner to miss).
+    if ($livePeerCount -eq 0) {
+        $provedCount++
+    } elseif ((-not $peerStartUnknown) -and $null -ne $earliestPeerStartUtc -and $mtimeUtc -lt $earliestPeerStartUtc) {
+        $provedCount++
+    } else {
+        $unprovedCount++
+    }
     if ($null -eq $oldestUtc -or $mtimeUtc -lt $oldestUtc) { $oldestUtc = $mtimeUtc }
 
     if ($strandCount -le $sampleCap) {
@@ -241,14 +374,47 @@ foreach ($f in $dirtyFiles) {
 
 # ---- Emit results ----------------------------------------------------------
 if ($strandCount -eq 0) {
-    Emit-Empty $lastFinalizeIso $livePeerCount
+    Emit-Empty $lastFinalizeIso $livePeerCount $attribution
 }
 
 $oldestIso  = Iso-Utc $oldestUtc
 $oldestAge  = [int][Math]::Floor(($nowUtc - $oldestUtc).TotalDays)
 
-if ($strandCount -lt $largeThreshold) {
-    $briefing = "stranded-dirty-files: $strandCount files (oldest $oldestAge days; no live owner) - run /0-uldf-finalize --include-stranded for cleanup"
+# ---- Attribution verdict, part 2: the STRAND-02 mtime proof ------------------
+# All-or-nothing over the reported set, because the sweep it gates is
+# all-or-nothing. Sits BELOW 'measured' and ABOVE the withholding grades.
+$proofUsable = ((-not $peerStartUnknown) -and $null -ne $earliestPeerStartUtc)
+if ($livePeerCount -gt 0 -and $attributingPeerCount -eq 0 -and $proofUsable -and $unprovedCount -eq 0) {
+    $attribution = 'predates-peers'
+}
+
+# A withheld run states how much of the list IS proved, so the refusal is
+# actionable rather than opaque (DEC-360 applied to the report).
+$provedClause = ""
+if ($livePeerCount -gt 0 -and $proofUsable) {
+    $provedClause = " $provedCount of $strandCount predate every live peer's session start; $unprovedCount do not."
+}
+
+if ($attribution -eq 'journal-partial') {
+    # Journal hits removed what they could from the list above; what remains is
+    # unproven, not un-owned. Same withholding as 'unavailable', different reason.
+    $briefing = "stranded-dirty-files: $strandCount pre-finalize dirty file(s) (oldest $oldestAge days) - OWNERSHIP UNPROVEN: attribution came only from $journalPeerCount write journal(s), which record tool calls and cannot see script or external writes, so a miss is not evidence of non-ownership.$provedClause Do NOT sweep; inspect with /0-uldf-oracle stranded-dirty-files"
+} elseif ($attribution -eq 'unavailable') {
+    # DEFER-039: OVALID -- an oracle that cannot see its subject says so instead
+    # of asserting over it. With no live peer publishing attribution there is NO
+    # evidence any of these files is un-owned, so the sweep recommendation is
+    # withheld: acting on it would mean finalizing a live peer's in-flight work,
+    # which is exactly what DEC-239 exists to prevent.
+    $briefing = "stranded-dirty-files: $strandCount pre-finalize dirty file(s) (oldest $oldestAge days) - OWNERSHIP UNKNOWN: $livePeerCount live peer(s) and none publishes attribution, so none of these is shown to be un-owned.$provedClause Do NOT sweep; inspect with /0-uldf-oracle stranded-dirty-files"
+} elseif ($attribution -eq 'predates-peers' -and $strandCount -lt $largeThreshold) {
+    $briefing = "stranded-dirty-files: $strandCount files (oldest $oldestAge days; no live owner - every one predates all $livePeerCount live peer(s)' session start) - run /0-uldf-finalize --include-stranded for cleanup"
+} elseif ($strandCount -lt $largeThreshold) {
+    if ($attribution -eq 'measured') {
+        $briefing = "stranded-dirty-files: $strandCount files (oldest $oldestAge days; no live owner per $attributingPeerCount attributing peer(s)) - run /0-uldf-finalize --include-stranded for cleanup"
+    } else {
+        # no-peers: trivially true "no live owner" -- there is no owner to miss.
+        $briefing = "stranded-dirty-files: $strandCount files (oldest $oldestAge days; no live owner - no live peers in this project) - run /0-uldf-finalize --include-stranded for cleanup"
+    }
 } else {
     $briefing = "stranded-dirty-files: $strandCount files (oldest $oldestAge days) - significant accumulation; see /0-uldf-oracle stranded-dirty-files for full sample"
 }
@@ -259,6 +425,8 @@ $obj = [ordered]@{
     oldest_mtime     = $oldestIso
     sample           = $sample
     live_peer_count  = $livePeerCount
+    provably_unowned = $provedCount
+    attribution      = $attribution
     last_finalize_at = $lastFinalizeIso
     briefing         = $briefing
 }

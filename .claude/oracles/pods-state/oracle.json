@@ -1,6 +1,6 @@
 {
   "name": "pods-state",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "question": "Is a PODS session active in this project, who is on the roster, what is each worker's status, and are there open alerts / messages-to-LEAD / decisions?",
   "category": "workflow",
   "kind": "project-state",
@@ -12,10 +12,11 @@
   },
   "assertion": {
     "asserts": "A PODS collaboration session is active in this project, and this is its roster, per-worker status, and set of open alerts / messages-to-LEAD / decisions.",
-    "measures": "That the registry's top-level podsSession value yields a collab id (the canonical STRING form directly; the legacy dict form via its sessionId, then id, read only from inside the podsSession value itself), that .claude/collaboration/<id>/ exists as a directory, and the parse of that directory's channels/*.md under the monitor-pods parsing conventions.",
+    "measures": "That the registry's top-level podsSession value yields a collab id (the canonical STRING form directly; the legacy dict form via its sessionId, then id, read only from inside the podsSession value itself), that .claude/collaboration/<id>/ exists as a directory, and the parse of that directory's channels/*.md under the monitor-pods parsing conventions, cross-checked for roster completeness against the independent workers/<AGENT>/ enumeration (PODSSTATUS-08).",
     "known_gaps": [
       "OVALID / DEFER-096, the drift this declaration was added to close: until 2026-08-05 this oracle measured 'a STRING-form podsSession row exists' while asserting 'a PODS session is active', so an LD who wrote the dict form got active:false for a demonstrably live session (converge collab-20260804-230108 Phase 2). Both shapes are read now; the declaration exists so the next shape change is noticed before it ships, not after.",
       "Liveness is DIRECTORY-and-pointer-shaped, not process-shaped: a converged-but-uncleared podsSession pointer whose session directory still exists reports active:true. No pid is probed here (that is csi_arc_conclude_eligibility's job) -- converge clearing the pointer to null is what makes this answer go false.",
+      "rosterMissing is DIRECTIONAL by design: it reports workers/ members the parser missed, never status sections with no worker directory -- the latter is the normal deferred-reviewer pattern (a PENDING roster entry never spawned), and flagging it would fire on every session that uses it.",
       "Worker status is whatever channels/status.md SAYS. A worker that died mid-turn without updating its section reports its last written status indefinitely; the field measures the self-report, not the process.",
       "The extractor is bounded to the podsSession value by a brace walk, so a sessions[] entry's sessionId/siblingGroup/podsWindow cannot be mistaken for the active collab -- but the walk assumes well-formed JSON. A registry truncated mid-publish can leave the object unterminated, in which case the walk consumes the remainder and the object regex may find nothing, yielding active:false (the gracefully-absent direction, never a wrong id)."
     ]
@@ -33,7 +34,8 @@
         "blocked": "number",
         "unspawned": "number"
       },
-      "allComplete": "boolean",
+      "allComplete": "boolean (complete==total AND total>0 AND rosterMissing is empty -- PODSSTATUS-08/DEC-348: the denominator may not share its source with the numerator)",
+      "rosterMissing": "array of worker ids present as workers/<AGENT>/ but absent from the status parse (LEAD excluded). Informative, not an alarm: before a worker's first status publish it names who has not checked in yet. Non-empty forces allComplete false.",
       "open": {
         "alerts": "array of ACTIVE alert ids (ALERT-*)",
         "messagesToLead": "array of OPEN QUESTION/REQUEST message ids addressed to LEAD/ALL (MSG-*)",

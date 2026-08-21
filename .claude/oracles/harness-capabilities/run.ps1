@@ -19,7 +19,7 @@
 $ErrorActionPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$now = if ($env:HARNESS_CAPS_NOW) { $env:HARNESS_CAPS_NOW } else { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+$now = if ($env:HARNESS_CAPS_NOW) { $env:HARNESS_CAPS_NOW } else { (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ', [System.Globalization.CultureInfo]::InvariantCulture) }
 
 # ---- 1. Harness detection ---------------------------------------------------
 $harness = 'unknown'

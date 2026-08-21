@@ -1,12 +1,24 @@
 {
   "name": "runtime-perception-questions",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "kind": "project-state",
-  "expected_runtime_ms": 400,
+  "expected_runtime_ms": 600,
   "lane": "fast",
-  "cost_provenance": "estimated 2026-06-29 on the ULDF framework repo under Git Bash (win32; slowest supported environment) -- pessimistic-honest per ORACLE-COST-01; the read is a single JSONL scan of a per-session marker log (typically <50 lines)",
+  "cost_provenance": "re-measured 2026-08-12 on the ULDF framework repo under Git Bash (win32; slowest supported environment), interleaved against the pre-ARIA-25 script on the same machine in the same minute: pre-fix 182/186/187/191/192/194 ms, post-fix 248/253/256/268/277/278 ms -- the session-id ladder adds ~66 ms (min-of-N, which upper-bounds the clean time per QUIESCE-09). Declared 600 rather than 320 because the same script measured 1378-2054 ms during a load burst minutes earlier; the machine-quiescence verdict at measurement time was NOISY (13 dev-port listeners, 12 agent sessions, 13 build processes -- GitCellar/SessionHelm/Table/RepoFleet/Docker), and that residue is named here rather than cleared, per the measurement-quiescence guard. The fast-lane kill is clamp(3x declared, 2000, 5000) and is 2000 ms at both 400 and 600, so this declaration loosens nothing -- it is honesty, not headroom.",
   "question": "In this session, did the agent ask a human to run-and-report a runtime-perception question that an AOR surface should have answered itself (the Human-as-I/O-Relay anti-pattern)?",
   "category": "workflow",
+  "assertion": {
+    "asserts": "Every runtime question surfaced here was relayed through a human BY THIS SESSION -- so /0-uldf-finalize Phase 11.5 may treat the list as this session's own AOR gaps and promote them.",
+    "measures": "JSONL records in .claude/session-state/aria-probe-candidates.jsonl whose sessionId field equals one of the ids THIS process can claim from its environment (CLAUDE_SESSION_ID, else CLAUDE_CODE_SESSION_ID, else pid-<CLAUDE_PID>), as computed by scripts/lib/aria-session-id.{sh,ps1} -- the same ladder the writer log-probe-candidate.{sh,ps1} stamps with. A record with a null, absent or empty sessionId is EXCLUDED whenever this process can claim any id, and the whole log is reported unfiltered (with scoped:false) when it can claim none.",
+    "known_gaps": [
+      "P says 'this session'; Q says 'a record whose stamped id matches an env-derived id of this process'. A session whose environment changes between the write and the read -- e.g. one process sees CLAUDE_SESSION_ID and another does not -- can stamp under one rung and read under another. Mitigated, not closed: the reader compares the whole ALIAS SET (every rung it can claim), not just its top rung. Residual: a record stamped at a rung the reader cannot reach at all is invisible to its own session.",
+      "Rung 3 ids are pid-<CLAUDE_PID>, and pids are RECYCLED while this log is append-only -- a months-old record could match a new session that happens to draw the same pid. Bounded by rung order (rung 2's UUID is collision-free and outranks it) and by the ts field on every record, which makes the join auditable by hand. Not detected automatically.",
+      "LEGACY BACKLOG: records written before this fix carry sessionId:null and are now out of scope for EVERY identified session -- they are descoped, not deleted, and stay in the log. Reach them with `run.sh --all` / `run.ps1 --all` (or ARIA_PROBE_SCOPE=all), which reports the whole log and sets scoped:false. Measured 2026-08-12 on SessionHelm's specimen log: 11 of 18 records (indices 1 and 9-18).",
+      "When no id can be claimed at all, no filter is applied and the whole log is returned. This is honest but NOT the assertion above: `scoped:false` and an explicit briefing suffix mark it, and a consumer that ignores those two fields will re-create the DEFER-179 defect. Phase 11.5 is the consumer of record.",
+      "The no-python fallback path counts non-empty lines and applies NO session filter (faithful JSON parsing is required to read sessionId at all). It always reports scoped:false and says so in the briefing rather than passing an unscoped count off as a scoped one.",
+      "If scripts/lib/aria-session-id.{sh,ps1} is not found on any of the three search paths, both writer and reader degrade to CLAUDE_SESSION_ID alone -- exactly the pre-fix identity. The reader reports it in idSource; a second inline ladder was deliberately NOT written, because two copies drifting apart is the defect this oracle exists to have stopped having."
+    ]
+  },
   "invocation": {
     "unix": ".claude/oracles/runtime-perception-questions/run.sh",
     "windows": ".claude/oracles/runtime-perception-questions/run.ps1"
@@ -25,6 +37,9 @@
           "surface_present": "bool (optional; whether an AOR surface existed at all when the relay occurred)"
         }
       ],
+      "scoped": "bool (ARIA-25: true when the 'this session' filter was actually applied; false when this process could claim no session id, when --all/ARIA_PROBE_SCOPE=all was given, or on the no-python fallback path. A consumer that treats scoped:false output as 'this session's candidates' re-creates DEFER-179)",
+      "idSource": "string (which rung of the aria-session-id ladder named this session: env | harness | claude-pid | none | unscoped (--all), with a suffix when the lib was missing or python was unavailable)",
+      "skippedUnlabelled": "integer (optional; present only when >0 -- records excluded because they carry no sessionId while this session has one. A non-zero value on a fresh log means a writer could not name itself)",
       "briefing": "string (<=200 chars; what a [runtime-perception] line would carry; empty string suppresses the line)"
     }
   },
@@ -49,7 +64,8 @@
     "spec_refs": [
       "ARIA-09",
       "ARIA-10",
-      "ARIA-22"
+      "ARIA-22",
+      "ARIA-25"
     ],
     "note": "Universal Starter Set member (Phase 2+). Leg-D substrate of ARIA's four-leg detection machinery: the deterministic reader of the probe-candidate marker log the Leg-C pre-ask reflex appends to (claude-template/CLAUDE.template.md AOR section). Consumed by /0-uldf-finalize Phase 11.5 (the ARIA-Candidate Audit, ARIA-10) to surface Human-as-I/O-Relay probe candidates. Advisory only -- never blocks a commit."
   }

@@ -79,17 +79,24 @@ try {
         }
     }
 } catch { $headSha = "" }
-$nowIso = [datetime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+$nowIso = [datetime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
 
-# ---- Determine sessionStart -------------------------------------------------
+# ---- Determine sessionStart (CSI-37: map slot first, legacy fallback) -------
 $start = $SessionStart
 if (-not $start -and (Test-Path -LiteralPath $baselineFile)) {
     try {
         $raw = [System.IO.File]::ReadAllText($baselineFile, [System.Text.UTF8Encoding]::new($false))
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
             $doc = $raw | ConvertFrom-Json -ErrorAction Stop
-            if ($doc.PSObject.Properties.Name -contains 'csi10Baseline') {
+            $pb = $null
+            if ($mySid -and ($doc.PSObject.Properties.Name -contains 'csi10Baselines')) {
+                $pm = $doc.csi10Baselines
+                if ($pm -and ($pm.PSObject.Properties.Name -contains $mySid)) { $pb = $pm.$mySid }
+            }
+            if (($null -eq $pb) -and ($doc.PSObject.Properties.Name -contains 'csi10Baseline')) {
                 $pb = $doc.csi10Baseline
+            }
+            if ($pb) {
                 $prevSid = if ($pb.PSObject.Properties.Name -contains 'sessionId') { [string]$pb.sessionId } else { "" }
                 $prevStart = if ($pb.PSObject.Properties.Name -contains 'sessionStart') { [string]$pb.sessionStart } else { "" }
                 if ($prevSid -eq $mySid -and $prevStart) { $start = $prevStart }
@@ -114,18 +121,45 @@ if ($dir -and -not (Test-Path -LiteralPath $dir)) {
 }
 
 # Read-merge: preserve all existing top-level keys.
+# CSI-37: write BOTH the per-session map slot (what the new reader prefers)
+# and the legacy single slot (what an unsynced reader still reads). Foreign
+# map keys are preserved; entries older than 14 days are pruned (dead-session
+# residue; advisory bound, fail-open).
 $mergedDoc = [ordered]@{}
+$existingMap = $null
 if (Test-Path -LiteralPath $baselineFile) {
     try {
         $raw = [System.IO.File]::ReadAllText($baselineFile, [System.Text.UTF8Encoding]::new($false))
         if (-not [string]::IsNullOrWhiteSpace($raw)) {
             $existing = $raw | ConvertFrom-Json -ErrorAction Stop
             foreach ($p in $existing.PSObject.Properties) {
-                if ($p.Name -ne 'csi10Baseline') { $mergedDoc[$p.Name] = $p.Value }
+                if ($p.Name -ne 'csi10Baseline' -and $p.Name -ne 'csi10Baselines') { $mergedDoc[$p.Name] = $p.Value }
             }
+            if ($existing.PSObject.Properties.Name -contains 'csi10Baselines') { $existingMap = $existing.csi10Baselines }
         }
-    } catch { $mergedDoc = [ordered]@{} }
+    } catch { $mergedDoc = [ordered]@{}; $existingMap = $null }
 }
+$cutoffIso = ([datetime]::UtcNow.AddDays(-14)).ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture)
+$newMap = [ordered]@{}
+if ($existingMap) {
+    foreach ($p in $existingMap.PSObject.Properties) {
+        if ($p.Name -eq $mySid) { continue }
+        # DISC-ARC-01 class: pwsh 6+ ConvertFrom-Json coerces ISO strings to
+        # [DateTime]; normalize back to ISO at the parse boundary or the
+        # lexical cutoff compare silently prunes LIVE foreign entries.
+        $cap = ""
+        try {
+            if ($p.Value.PSObject.Properties.Name -contains 'capturedAt') {
+                $capRaw = $p.Value.capturedAt
+                if ($capRaw -is [datetime]) { $cap = $capRaw.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", [System.Globalization.CultureInfo]::InvariantCulture) }
+                else { $cap = [string]$capRaw }
+            }
+        } catch { $cap = "" }
+        if ($cap -and ([string]::CompareOrdinal($cap, $cutoffIso) -ge 0)) { $newMap[$p.Name] = $p.Value }
+    }
+}
+$newMap[$mySid] = $b
+$mergedDoc['csi10Baselines'] = $newMap
 $mergedDoc['csi10Baseline'] = $b
 
 $tmp = "$baselineFile.csi10.tmp.$PID"
