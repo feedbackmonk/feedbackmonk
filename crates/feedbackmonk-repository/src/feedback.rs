@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use feedbackmonk_core::{
     event_type_for_target, Feedback, FeedbackId, FeedbackKind, FeedbackStatus, ModerationStatus,
-    Sentiment, Severity,
+    Rating, Sentiment, Severity,
 };
 
 use crate::error::Result;
@@ -124,6 +124,11 @@ pub trait FeedbackRepo: Send + Sync {
         // `severity` — optional 4-point impact signal (Phase A A4a, migration
         // 00020). First-class column, valid in BOTH submit modes. `None` ⇒ NULL.
         severity: Option<Severity>,
+        // Optional 1-5 rating (migration 00029). Additive sibling of
+        // `sentiment`, NOT a replacement: when a caller supplies a rating
+        // the API also derives and stores the 3-point `sentiment`, so every
+        // existing reader and the sentiment-trend aggregation keep working.
+        rating: Option<Rating>,
         kind: FeedbackKind,
         // `idempotency_key` — client-supplied `Idempotency-Key` header value
         // (A4b, migration 00021). `None` ⇒ byte-identical to pre-A4 behavior.
@@ -143,6 +148,11 @@ pub trait FeedbackRepo: Send + Sync {
         body: &str,
         sentiment: Option<Sentiment>,
         severity: Option<Severity>,
+        // Optional 1-5 rating (migration 00029). Additive sibling of
+        // `sentiment`, NOT a replacement: when a caller supplies a rating
+        // the API also derives and stores the 3-point `sentiment`, so every
+        // existing reader and the sentiment-trend aggregation keep working.
+        rating: Option<Rating>,
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
     ) -> Result<SubmitOutcome>;
@@ -175,6 +185,7 @@ pub trait FeedbackRepo: Send + Sync {
                 body,
                 sentiment,
                 None,
+                None,
                 kind,
                 None,
             )
@@ -194,7 +205,7 @@ pub trait FeedbackRepo: Send + Sync {
         kind: FeedbackKind,
     ) -> Result<FeedbackId> {
         Ok(self
-            .submit_anonymous_full(scope, anon_token_hash, optional_email, body, sentiment, None, kind, None)
+            .submit_anonymous_full(scope, anon_token_hash, optional_email, body, sentiment, None, None, kind, None)
             .await?
             .feedback_id)
     }
@@ -710,6 +721,10 @@ pub struct EndUserFeedback {
     /// Optional 4-point impact signal (Phase A A4, migration 00020). `None`
     /// when the submission carried no severity.
     pub severity: Option<Severity>,
+    /// Optional 1-5 rating (migration 00029). `None` when the submission
+    /// carried no rating — including every row predating the column, which
+    /// is why this is additive rather than a widened `sentiment`.
+    pub rating: Option<Rating>,
     pub submitted_at: chrono::DateTime<chrono::Utc>,
     /// Count of PUBLIC replies only (Phase A A3). Internal replies are never
     /// counted — the count must not leak triage activity.
@@ -826,6 +841,7 @@ fn submit_content_hash(
     body: &str,
     sentiment_str: Option<&str>,
     severity_str: Option<&str>,
+    rating_val: Option<i16>,
     kind_str: &str,
 ) -> [u8; 32] {
     let mut hasher = blake3::Hasher::new();
@@ -834,6 +850,11 @@ fn submit_content_hash(
     hasher.update(sentiment_str.unwrap_or("").as_bytes());
     hasher.update(&[0x1F]);
     hasher.update(severity_str.unwrap_or("").as_bytes());
+    hasher.update(&[0x1F]);
+    // Rating participates: two submissions identical but for the rating are
+    // DIFFERENT content, so reusing one key across them must raise
+    // IdempotencyKeyReuse rather than silently collapsing to the first.
+    hasher.update(rating_val.map_or(String::new(), |v| v.to_string()).as_bytes());
     hasher.update(&[0x1F]);
     hasher.update(kind_str.as_bytes());
     *hasher.finalize().as_bytes()
@@ -1055,6 +1076,11 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         body: &str,
         sentiment: Option<Sentiment>,
         severity: Option<Severity>,
+        // Optional 1-5 rating (migration 00029). Additive sibling of
+        // `sentiment`, NOT a replacement: when a caller supplies a rating
+        // the API also derives and stores the 3-point `sentiment`, so every
+        // existing reader and the sentiment-trend aggregation keep working.
+        rating: Option<Rating>,
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
     ) -> Result<SubmitOutcome> {
@@ -1066,6 +1092,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // Phase A A4a: optional 4-point impact signal, first-class column
         // (migration 00020). `None` ⇒ NULL; the CHECK constraint is the backstop.
         let severity_str: Option<&str> = severity.map(Severity::as_db_str);
+        // Migration 00029: 1-5 rating as SMALLINT. `None` => NULL; the
+        // CHECK (1..=5) mirrors `Rating::MIN`/`MAX` and is the backstop.
+        let rating_val: Option<i16> = rating.map(Rating::value);
         // FR-FBR-30: stamp `pending` for the translate-after-accept worker ONLY
         // when translation is enabled AND the row carries body text. Else NULL
         // (lazy backfill: untouched). Computed here, off the public submit path's
@@ -1093,10 +1122,10 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 INSERT INTO feedback (
                     short_code, project_id, tenant_id,
                     end_user_sub, end_user_email, end_user_name,
-                    external_metadata, crash_event_id, body, sentiment, severity, kind,
+                    external_metadata, crash_event_id, body, sentiment, severity, rating, kind,
                     translation_status
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                 RETURNING id AS "id!"
                 "#,
                 short_code.as_str(),
@@ -1110,6 +1139,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 body_opt,
                 sentiment_str,
                 severity_str,
+                rating_val,
                 kind_str,
                 translation_status,
             )
@@ -1132,7 +1162,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             // Dedupe is scoped per submitter (P1-3): auth-mode submitter is the
             // JWT `sub`. content_hash guards against same-key/different-content
             // reuse (M6).
-            let content_hash = submit_content_hash(body, sentiment_str, severity_str, kind_str);
+            let content_hash = submit_content_hash(body, sentiment_str, severity_str, rating_val, kind_str);
             match self
                 .claim_idempotency_key(scope, tx, key, end_user_sub, &content_hash, feedback_row_id)
                 .await?
@@ -1164,6 +1194,11 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         body: &str,
         sentiment: Option<Sentiment>,
         severity: Option<Severity>,
+        // Optional 1-5 rating (migration 00029). Additive sibling of
+        // `sentiment`, NOT a replacement: when a caller supplies a rating
+        // the API also derives and stores the 3-point `sentiment`, so every
+        // existing reader and the sentiment-trend aggregation keep working.
+        rating: Option<Rating>,
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
     ) -> Result<SubmitOutcome> {
@@ -1174,6 +1209,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // Phase A A4a: severity is tenant-generic — valid in the anonymous
         // mode too (unlike crash_event_id, which is auth-only).
         let severity_str: Option<&str> = severity.map(Severity::as_db_str);
+        // Migration 00029: 1-5 rating as SMALLINT. `None` => NULL; the
+        // CHECK (1..=5) mirrors `Rating::MIN`/`MAX` and is the backstop.
+        let rating_val: Option<i16> = rating.map(Rating::value);
         // FR-FBR-30: see submit_authenticated_full — stamp `pending` only when
         // translation is enabled AND the row carries body text.
         let translation_status: Option<&str> =
@@ -1194,10 +1232,10 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 r#"
                 INSERT INTO feedback (
                     short_code, project_id, tenant_id,
-                    end_user_email, anon_token_hash, body, sentiment, severity, kind,
+                    end_user_email, anon_token_hash, body, sentiment, severity, rating, kind,
                     translation_status
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING id AS "id!"
                 "#,
                 short_code.as_str(),
@@ -1208,6 +1246,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 body_opt,
                 sentiment_str,
                 severity_str,
+                rating_val,
                 kind_str,
                 translation_status,
             )
@@ -1231,7 +1270,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             // hex of the anon token hash (the same identity the row is
             // attributed to). content_hash guards against reuse (M6).
             let submitter_id = hex_lower(token);
-            let content_hash = submit_content_hash(body, sentiment_str, severity_str, kind_str);
+            let content_hash = submit_content_hash(body, sentiment_str, severity_str, rating_val, kind_str);
             match self
                 .claim_idempotency_key(scope, tx, key, &submitter_id, &content_hash, feedback_row_id)
                 .await?
@@ -1894,12 +1933,13 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                    body,
                    sentiment,
                    severity,
+                   rating,
                    accepted_at AS "accepted_at!",
                    reply_count AS "reply_count!",
                    updated_at AS "updated_at!"
             FROM (
                 SELECT f.short_code, f.kind, f.status, f.body, f.sentiment,
-                       f.severity, f.accepted_at,
+                       f.severity, f.rating, f.accepted_at,
                        (SELECT count(*) FROM feedback_replies r
                          WHERE r.feedback_id = f.id AND r.visibility = 'public') AS reply_count,
                        GREATEST(
@@ -1960,6 +2000,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 body: r.body.unwrap_or_default(),
                 sentiment: r.sentiment.as_deref().and_then(Sentiment::parse),
                 severity: r.severity.as_deref().and_then(Severity::parse),
+                rating: r.rating.and_then(Rating::new),
                 submitted_at: r.accepted_at,
                 reply_count: r.reply_count,
                 updated_at: r.updated_at,
@@ -1983,7 +2024,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         let row = sqlx::query!(
             r#"
             SELECT f.short_code, f.kind, f.status, f.body, f.sentiment,
-                   f.severity, f.accepted_at,
+                   f.severity, f.rating, f.accepted_at,
                    (SELECT count(*) FROM feedback_replies r
                      WHERE r.feedback_id = f.id AND r.visibility = 'public') AS "reply_count!",
                    GREATEST(
@@ -2013,6 +2054,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             body: row.body.unwrap_or_default(),
             sentiment: row.sentiment.as_deref().and_then(Sentiment::parse),
             severity: row.severity.as_deref().and_then(Severity::parse),
+            rating: row.rating.and_then(Rating::new),
             submitted_at: row.accepted_at,
             reply_count: row.reply_count,
             updated_at: row.updated_at,
@@ -2742,6 +2784,7 @@ mod tests {
                 "auth body",
                 None,
                 Some(Severity::High),
+                None,
                 FeedbackKind::Bug,
                 None,
             )
@@ -2756,6 +2799,7 @@ mod tests {
                 "anon body",
                 None,
                 Some(Severity::Blocker),
+                None,
                 FeedbackKind::Other,
                 None,
             )
@@ -2806,6 +2850,7 @@ mod tests {
                 "first body",
                 None,
                 None,
+                None,
                 FeedbackKind::Other,
                 Some("key-1"),
             )
@@ -2822,6 +2867,7 @@ mod tests {
                 &[2u8; 32],
                 None,
                 "first body",
+                None,
                 None,
                 None,
                 FeedbackKind::Other,
@@ -2841,6 +2887,7 @@ mod tests {
                 &[2u8; 32],
                 None,
                 "retry body (different)",
+                None,
                 None,
                 None,
                 FeedbackKind::Other,
@@ -2890,6 +2937,7 @@ mod tests {
                     "auth retry body",
                     None,
                     Some(Severity::Low),
+                    None,
                     FeedbackKind::Bug,
                     Some(key),
                 )
@@ -2913,11 +2961,11 @@ mod tests {
 
         // Different keys in the same project → two rows.
         let a = repo
-            .submit_anonymous_full(&s1, &[3u8; 32], None, "a", None, None, FeedbackKind::Other, Some("k-a"))
+            .submit_anonymous_full(&s1, &[3u8; 32], None, "a", None, None, None, FeedbackKind::Other, Some("k-a"))
             .await
             .unwrap();
         let b = repo
-            .submit_anonymous_full(&s1, &[3u8; 32], None, "b", None, None, FeedbackKind::Other, Some("k-b"))
+            .submit_anonymous_full(&s1, &[3u8; 32], None, "b", None, None, None, FeedbackKind::Other, Some("k-b"))
             .await
             .unwrap();
         assert!(!a.deduped && !b.deduped);
@@ -2927,7 +2975,7 @@ mod tests {
         // The SAME key in a DIFFERENT project → no cross-project dedupe (the
         // PK is (project_id, idempotency_key)).
         let c = repo
-            .submit_anonymous_full(&s2, &[4u8; 32], None, "c", None, None, FeedbackKind::Other, Some("k-a"))
+            .submit_anonymous_full(&s2, &[4u8; 32], None, "c", None, None, None, FeedbackKind::Other, Some("k-a"))
             .await
             .unwrap();
         assert!(!c.deduped);

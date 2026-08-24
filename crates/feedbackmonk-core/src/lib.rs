@@ -12,6 +12,7 @@ pub mod action_type;
 pub mod ids;
 pub mod models;
 pub mod moderation;
+pub mod rating;
 pub mod roadmap;
 pub mod sentiment;
 pub mod severity;
@@ -29,6 +30,7 @@ pub use models::{
 pub use moderation::{
     event_type_for_target, legal_moderation_transitions_from, ModerationError, ModerationStatus,
 };
+pub use rating::{Rating, RatingOutOfRange};
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};
 pub use sentiment::Sentiment;
 pub use severity::Severity;

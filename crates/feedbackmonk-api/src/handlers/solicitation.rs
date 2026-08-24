@@ -54,16 +54,54 @@ use feedbackmonk_repository::{
 use crate::error::ApiError;
 use crate::state::AppState;
 
-/// Default cooldown between prompts (≈ twice a year). Override with
+/// Default cooldown after a prompt the user ENGAGED with — answered, or
+/// explicitly ended (≈ twice a year). Override with
 /// `FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS`.
 pub const DEFAULT_SOLICITATION_COOLDOWN_DAYS: i64 = 182;
 
+/// Default cooldown after a prompt the user set aside rather than answered
+/// (`dismissed` — the ✕, or an explicit "ask me later" control). Override with
+/// `FEEDBACKMONK_SOLICITATION_SNOOZE_DAYS`.
+///
+/// WHY THIS IS SEPARATE: until now the cooldown was status-BLIND — every
+/// non-opt-out outcome waited the same 182 days, so closing the prompt because
+/// you were busy was indistinguishable from having answered it. That makes a
+/// consumer-side "ask me later" affordance impossible to honour: the control
+/// would say "later" and mean "in six months". Setting it aside is a much
+/// weaker signal than answering, so it earns a much shorter wait — while
+/// `opted_out` stays terminal and answering still rests for the full period.
+pub const DEFAULT_SOLICITATION_SNOOZE_DAYS: i64 = 14;
+
 fn cooldown_days() -> i64 {
-    std::env::var("FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS")
+    env_days(
+        "FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS",
+        DEFAULT_SOLICITATION_COOLDOWN_DAYS,
+    )
+}
+
+fn snooze_days() -> i64 {
+    env_days(
+        "FEEDBACKMONK_SOLICITATION_SNOOZE_DAYS",
+        DEFAULT_SOLICITATION_SNOOZE_DAYS,
+    )
+}
+
+fn env_days(var: &str, default: i64) -> i64 {
+    std::env::var(var)
         .ok()
         .and_then(|s| s.parse::<i64>().ok())
         .filter(|d| *d >= 1)
-        .unwrap_or(DEFAULT_SOLICITATION_COOLDOWN_DAYS)
+        .unwrap_or(default)
+}
+
+/// The cooldown that applies to a record, given the outcome it last recorded.
+/// `dismissed` (set aside) gets the short snooze; everything else gets the full
+/// period. `opted_out` never consults this — it is terminal.
+fn cooldown_for(status: SolicitationStatus) -> i64 {
+    match status {
+        SolicitationStatus::Dismissed => snooze_days(),
+        _ => cooldown_days(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +116,16 @@ pub struct EventRequest {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SolicitationPolicy {
+    /// Days a consumer must wait after a prompt the user engaged with.
     pub cooldown_days: i64,
+    /// Days a consumer must wait after a prompt the user merely set aside
+    /// (`dismissed`). Shorter than `cooldown_days` — this is what makes an
+    /// "ask me later" control mean what it says.
+    pub snooze_days: i64,
+    /// The cooldown ACTUALLY applied to this record, in days — i.e. whichever
+    /// of the two above matches the recorded status. Sent so a consumer never
+    /// has to re-derive the policy branch to explain the wait.
+    pub applied_cooldown_days: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -166,10 +213,16 @@ pub async fn post_solicitation_event(
 
 /// Build the wire response from a record (or its absence = default `eligible`).
 fn build_response(record: Option<&SolicitationRecord>) -> SolicitationResponse {
+    // The applied cooldown depends on the recorded status (a set-aside prompt
+    // rests briefly; an answered one rests the full period), so it is resolved
+    // per-record below rather than once up front.
+    let applied = record.map_or_else(cooldown_days, |r| cooldown_for(r.status));
     let policy = SolicitationPolicy {
         cooldown_days: cooldown_days(),
+        snooze_days: snooze_days(),
+        applied_cooldown_days: applied,
     };
-    let cooldown = Duration::days(policy.cooldown_days);
+    let cooldown = Duration::days(applied);
 
     let Some(r) = record else {
         // No record yet: the sub is eligible and has never been prompted.
@@ -352,5 +405,70 @@ mod tests {
         )));
         assert!(r.eligible);
         assert!(r.next_eligible_at.is_none());
+    }
+
+    // ---- status-aware cooldown -------------------------------------------
+    // A prompt SET ASIDE rests briefly; one the user ANSWERED rests the full
+    // period. Before this split the cooldown was status-blind, so an
+    // "ask me later" control could only ever mean "in six months".
+
+    #[test]
+    fn a_set_aside_prompt_becomes_eligible_again_after_the_short_snooze() {
+        let elapsed = DEFAULT_SOLICITATION_SNOOZE_DAYS + 1;
+        // Sanity: the window must sit strictly inside the full cooldown, or
+        // this test would pass for the wrong reason.
+        assert!(elapsed < DEFAULT_SOLICITATION_COOLDOWN_DAYS);
+
+        let r = build_response(Some(&rec(
+            SolicitationStatus::Dismissed,
+            Some(Utc::now() - Duration::days(elapsed)),
+        )));
+        assert!(
+            r.eligible,
+            "a dismissed prompt must be re-askable after the snooze, not the full cooldown"
+        );
+        assert_eq!(r.policy.applied_cooldown_days, DEFAULT_SOLICITATION_SNOOZE_DAYS);
+    }
+
+    #[test]
+    fn an_answered_prompt_still_rests_the_full_cooldown() {
+        // The SAME elapsed time that frees a dismissed prompt must NOT free an
+        // answered one -- this is the invertible half of the test above.
+        let elapsed = DEFAULT_SOLICITATION_SNOOZE_DAYS + 1;
+        let r = build_response(Some(&rec(
+            SolicitationStatus::GaveFeedback,
+            Some(Utc::now() - Duration::days(elapsed)),
+        )));
+        assert!(
+            !r.eligible,
+            "answering must not re-arm the prompt on the snooze window"
+        );
+        assert_eq!(r.policy.applied_cooldown_days, DEFAULT_SOLICITATION_COOLDOWN_DAYS);
+    }
+
+    #[test]
+    fn opting_out_is_terminal_regardless_of_elapsed_time() {
+        // Opt-out outranks every cooldown branch, including the short one.
+        let r = build_response(Some(&rec(
+            SolicitationStatus::OptedOut,
+            Some(Utc::now() - Duration::days(DEFAULT_SOLICITATION_COOLDOWN_DAYS * 10)),
+        )));
+        assert!(!r.eligible);
+        assert!(r.next_eligible_at.is_none());
+    }
+
+    #[test]
+    fn policy_reports_both_windows_and_the_one_applied() {
+        let r = build_response(Some(&rec(
+            SolicitationStatus::Dismissed,
+            Some(Utc::now() - Duration::days(1)),
+        )));
+        assert_eq!(r.policy.cooldown_days, DEFAULT_SOLICITATION_COOLDOWN_DAYS);
+        assert_eq!(r.policy.snooze_days, DEFAULT_SOLICITATION_SNOOZE_DAYS);
+        assert_eq!(r.policy.applied_cooldown_days, DEFAULT_SOLICITATION_SNOOZE_DAYS);
+        assert!(
+            DEFAULT_SOLICITATION_SNOOZE_DAYS < DEFAULT_SOLICITATION_COOLDOWN_DAYS,
+            "the snooze must be the shorter of the two, else the control is a lie"
+        );
     }
 }

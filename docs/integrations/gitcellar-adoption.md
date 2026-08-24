@@ -704,7 +704,73 @@ client that checks the array degrades gracefully.
 
 ---
 
+## 12. ✅ BUILT — 1-5 rating (`feedback.rating`) + a status-aware solicitation snooze
+
+Added 2026-08-24 at GitCellar's request, when the solicitation card moved from a
+3-point tap to a 1-5 scale and gained an "Ask me later" control. **Both changes are
+additive — nothing in §9 or §10 changed shape.**
+
+### 12.1 Rating — additive, never a widened `sentiment`
+
+`sentiment` is a published wire enum with more than one consumer (widget, admin UI,
+each adopting product), and both the stored rows and
+`…/admin/feedback/sentiment-trend` read exactly three buckets. Widening it would
+break every consumer at once and strand the history. So:
+
+- **New optional submit field** `rating`: integer `1..=5`. Out of range ⇒ `400`.
+- **A rating always populates `sentiment`.** With `rating` present and `sentiment`
+  absent, the server derives it — **1-2 ⇒ negative, 3 ⇒ neutral, 4-5 ⇒ positive**
+  (`feedbackmonk-core::rating::Rating::to_sentiment`). An explicit `sentiment`
+  always wins.
+- A **rating-only** submission is therefore valid and satisfies the existing
+  `body OR sentiment` invariant unchanged — no constraint was relaxed, and there
+  is no backfill.
+- `rating` is echoed on submit and appears on `me/feedback` items and threads
+  beside `sentiment` / `severity`.
+- Storage: `feedback.rating SMALLINT NULL CHECK (1..5)` + partial index
+  `feedback_project_rating_idx`, migration **`00029`**.
+
+```jsonc
+POST /api/v1/projects/{project_id}/feedback
+{ "rating": 4 }                       // -> 200; echo.sentiment == "positive", echo.rating == 4
+{ "rating": 5, "sentiment": "neutral" } // -> 200; explicit sentiment wins, rating still stored
+{ "rating": 6 }                       // -> 400
+```
+
+### 12.2 Solicitation cooldown is now status-aware
+
+Previously eligibility was `prompted_at + cooldown` and **ignored the recorded
+status**, so a prompt the user merely closed waited the same 182 days as one they
+answered — which made a truthful "ask me later" control impossible to build.
+
+| Recorded status | Rests for |
+|---|---|
+| `dismissed` (the ✕, or an explicit "ask me later") | `snooze_days`, default **14** (`FEEDBACKMONK_SOLICITATION_SNOOZE_DAYS`) |
+| `gave_feedback` | `cooldown_days`, default **182** (unchanged) |
+| `opted_out` | terminal — outranks both |
+
+The `policy` object gained `snooze_days` and `applied_cooldown_days` (whichever
+window matches this record) alongside the existing `cooldown_days`.
+
+**No schema change** — `dismissed` was already a valid status; this is policy in
+`handlers::solicitation::build_response` only.
+
+### 12.3 Capability
+
+`GET /api/v1/capabilities` now advertises **`feedback.rating`**, with a descriptor
+carrying `min` / `max` / `derives_sentiment: true`. A consumer that never sends a
+rating is entirely unaffected; one that does can feature-detect before sending.
+
+---
+
 ## Change log
+- 2026-08-24 (GitCellar solicitation-card redesign) — Added §12: optional 1-5 `rating` on submit
+  (capability `feedback.rating`, migration `00029`) with server-side derivation of the 3-point
+  `sentiment`, chosen ADDITIVELY over widening the `sentiment` enum so no existing consumer, stored
+  row or sentiment-trend bucket changes; and a status-aware solicitation cooldown where `dismissed`
+  rests for a short `snooze_days` (default 14) instead of the full 182, which is what makes the
+  card's new "Ask me later" control mean what it says. `policy` gained `snooze_days` +
+  `applied_cooldown_days`. No schema change for the snooze; `opted_out` stays terminal.
 - 2026-07-01 (scrutiny doc-honesty pass) — Corrected §8 parity-gap row #3 (admin full-text search):
   flipped from "**MISSING** — no search route, no tsvector/index" to **BUILT** ✅ (FR-FBR-PARITY-03 —
   `GET /api/v1/admin/feedback/search` + `00011_feedback_fts.sql` tsvector+GIN), action `build` → `done`.

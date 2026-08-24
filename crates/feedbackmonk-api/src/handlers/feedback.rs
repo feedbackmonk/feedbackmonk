@@ -56,7 +56,7 @@ use serde_json::json;
 use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
-use feedbackmonk_core::{FeedbackKind, KeyClass, ResourceKind, Sentiment, Severity};
+use feedbackmonk_core::{Rating, FeedbackKind, KeyClass, ResourceKind, Sentiment, Severity};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -113,6 +113,17 @@ pub struct FeedbackRequest {
     /// severity. An unrecognized value ⇒ `400`.
     #[serde(default)]
     pub severity: Option<String>,
+    /// Optional 1-5 satisfaction rating (migration 00029) — the
+    /// finer-grained sibling of `sentiment`, added for clients whose prompt
+    /// is a 5-point scale. Absent ⇒ no rating. Out of range ⇒ `400`.
+    ///
+    /// When a rating is present and `sentiment` is absent, the sentiment is
+    /// DERIVED from it (1-2 negative, 3 neutral, 4-5 positive) and both are
+    /// stored — so the published 3-point contract, every existing consumer
+    /// and the sentiment-trend aggregation keep working unchanged. An
+    /// explicit `sentiment` always wins over the derivation.
+    #[serde(default)]
+    pub rating: Option<i16>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -129,6 +140,8 @@ pub struct FeedbackEcho {
     pub sentiment: Option<Sentiment>,
     /// Echoes the stored severity, or `null` when none was given (Phase A A4a).
     pub severity: Option<Severity>,
+    /// Echoes the stored 1-5 rating, or `null` when none was given.
+    pub rating: Option<Rating>,
     pub kind: &'static str,
 }
 
@@ -157,8 +170,14 @@ pub async fn submit(
     // ----- 1. Body + sentiment + severity validation (Contract C3 /
     //          FR-FBR-28 / Phase A A4a) --------------------------------------
     let kind = parse_kind(req.kind.as_deref())?;
-    let sentiment = parse_sentiment(req.sentiment.as_deref())?;
+    let explicit_sentiment = parse_sentiment(req.sentiment.as_deref())?;
     let severity = parse_severity(req.severity.as_deref())?;
+    let rating = parse_rating(req.rating)?;
+    // A rating always populates `sentiment` — an explicit sentiment wins,
+    // otherwise it is derived. This is what keeps a rating-only submission
+    // satisfying the DB's `feedback_body_or_sentiment_check` and keeps the
+    // 3-point trend aggregation complete without a backfill.
+    let sentiment = explicit_sentiment.or_else(|| rating.map(Rating::to_sentiment));
     let body = req.body.as_deref().unwrap_or("");
     validate_submission(body, sentiment)?;
     // Scrutiny P2-6: cap the external crash-event correlation key (auth-mode
@@ -201,6 +220,7 @@ pub async fn submit(
             body,
             sentiment,
             severity,
+            rating,
             kind,
             idempotency_key.as_deref(),
         )
@@ -217,6 +237,7 @@ pub async fn submit(
             body,
             sentiment,
             severity,
+            rating,
             kind,
             idempotency_key.as_deref(),
         )
@@ -238,6 +259,7 @@ async fn submit_authenticated_path(
     body: &str,
     sentiment: Option<Sentiment>,
     severity: Option<Severity>,
+    rating: Option<Rating>,
     kind: FeedbackKind,
     idempotency_key: Option<&str>,
 ) -> Result<Response, ApiError> {
@@ -272,6 +294,7 @@ async fn submit_authenticated_path(
             body,
             sentiment,
             severity,
+            rating,
             kind,
             idempotency_key,
         )
@@ -289,6 +312,7 @@ async fn submit_authenticated_path(
         body,
         sentiment,
         severity,
+        rating,
         kind,
         None,
     ))
@@ -309,6 +333,7 @@ async fn submit_anonymous_path(
     body: &str,
     sentiment: Option<Sentiment>,
     severity: Option<Severity>,
+    rating: Option<Rating>,
     kind: FeedbackKind,
     idempotency_key: Option<&str>,
 ) -> Result<Response, ApiError> {
@@ -340,6 +365,7 @@ async fn submit_anonymous_path(
             body,
             sentiment,
             severity,
+            rating,
             kind,
             idempotency_key,
         )
@@ -356,6 +382,7 @@ async fn submit_anonymous_path(
         body,
         sentiment,
         severity,
+        rating,
         kind,
         set_cookie_header,
     ))
@@ -408,6 +435,18 @@ fn parse_kind(s: Option<&str>) -> Result<FeedbackKind, ApiError> {
             )));
         }
     })
+}
+
+/// Parse the optional `rating` field. Absent ⇒ `None`. A value outside
+/// `1..=5` ⇒ `400` (mirrors [`parse_sentiment`]; the DB CHECK on
+/// `feedback.rating` is the backstop).
+fn parse_rating(v: Option<i16>) -> Result<Option<Rating>, ApiError> {
+    match v {
+        None => Ok(None),
+        Some(n) => Rating::new(n).map(Some).ok_or_else(|| {
+            ApiError::BadRequest(format!("rating must be between 1 and 5; got {n}"))
+        }),
+    }
 }
 
 /// Parse the optional `sentiment` field. Absent / empty ⇒ `None`. An
@@ -552,6 +591,7 @@ fn success_response(
     body: &str,
     sentiment: Option<Sentiment>,
     severity: Option<Severity>,
+    rating: Option<Rating>,
     kind: FeedbackKind,
     set_cookie: Option<HeaderValue>,
 ) -> Response {
@@ -562,6 +602,7 @@ fn success_response(
             body: body.to_string(),
             sentiment,
             severity,
+            rating,
             kind: kind.as_str(),
         },
     };

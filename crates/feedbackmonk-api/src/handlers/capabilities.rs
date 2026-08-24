@@ -16,9 +16,11 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
-use feedbackmonk_core::{Sentiment, Severity};
+use feedbackmonk_core::{Rating, Sentiment, Severity};
 
-use crate::handlers::solicitation::DEFAULT_SOLICITATION_COOLDOWN_DAYS;
+use crate::handlers::solicitation::{
+    DEFAULT_SOLICITATION_COOLDOWN_DAYS, DEFAULT_SOLICITATION_SNOOZE_DAYS,
+};
 use crate::state::AppState;
 
 /// The API version (the `feedbackmonk-api` crate version at compile time).
@@ -41,6 +43,10 @@ pub const CAPABILITIES: &[&str] = &[
     "feedback.reply_state",  // A3: me/feedback items carry updated_at + reply_count (+ ?since=).
     "feedback.export",       // A5: GET …/me/feedback/export (portability companion to delete).
     "feedback.severity",     // A4a: first-class `severity` submit field (low|medium|high|blocker).
+    // Additive 1-5 rating (migration 00029). NOT a widening of `sentiment` —
+    // both fields coexist and a rating derives its sentiment, so a consumer
+    // that never sends a rating is completely unaffected.
+    "feedback.rating",
     "feedback.idempotency",  // A4b: `Idempotency-Key` header dedupe on submit.
     "feedback.attachments",  // A2: attachment list + tenant-scoped download (upload pre-existed).
     // P1-16 / M1: user-level "forget me" — DELETE …/me erases the caller's ENTIRE
@@ -65,6 +71,15 @@ pub async fn capabilities() -> Json<Value> {
             "severity": {
                 "field": "severity",
                 "values": severity_values,
+            },
+            // Additive 1-5 rating (migration 00029). `derives_sentiment` tells a
+            // consumer it may send ONLY a rating: the server fills `sentiment`
+            // from it, so the 3-point contract stays populated either way.
+            "rating": {
+                "field": "rating",
+                "min": Rating::MIN,
+                "max": Rating::MAX,
+                "derives_sentiment": true,
             },
             // A4b: submit dedupe on flaky-network retry.
             "idempotency": {
@@ -92,6 +107,10 @@ pub async fn capabilities() -> Json<Value> {
             "events": ["prompted", "dismissed", "gave_feedback", "opted_out"],
             "states": ["eligible", "prompted", "dismissed", "gave_feedback", "opted_out"],
             "cooldown_days_default": DEFAULT_SOLICITATION_COOLDOWN_DAYS,
+            // A prompt merely set aside (`dismissed`) rests for this much
+            // shorter period than one the user engaged with — which is what
+            // lets a consumer offer a truthful "ask me later" control.
+            "snooze_days_default": DEFAULT_SOLICITATION_SNOOZE_DAYS,
         }
     }))
 }
@@ -129,6 +148,7 @@ mod tests {
             "feedback.reply_state",
             "feedback.export",
             "feedback.severity",
+            "feedback.rating",
             "feedback.idempotency",
             "feedback.attachments",
             "feedback.erase_all",

@@ -59,7 +59,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
-use feedbackmonk_core::{FeedbackId, FeedbackKind, FeedbackStatus, KeyClass, Sentiment, Severity};
+use feedbackmonk_core::{FeedbackId, FeedbackKind, FeedbackStatus, KeyClass, Rating, Sentiment, Severity};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 use feedbackmonk_repository::{
     AttachmentRepo, FeedbackReplyRepo, FeedbackRepo, ProjectRepo, ProjectScope, RepoError,
@@ -98,6 +98,9 @@ pub struct MeFeedbackItem {
     pub sentiment: Option<Sentiment>,
     /// Optional 4-point impact signal (Phase A A4). `null` when not supplied.
     pub severity: Option<Severity>,
+    /// Optional 1-5 rating (migration 00029). `null` when not supplied --
+    /// including every row submitted before the field existed.
+    pub rating: Option<Rating>,
     pub submitted_at: DateTime<Utc>,
     /// Phase A A3: `greatest(submitted_at, latest PUBLIC reply, latest status
     /// transition)` — internal replies never move this.
@@ -131,6 +134,9 @@ pub struct MeThreadResponse {
     pub sentiment: Option<Sentiment>,
     /// Optional 4-point impact signal (Phase A A4). `null` when not supplied.
     pub severity: Option<Severity>,
+    /// Optional 1-5 rating (migration 00029). `null` when not supplied --
+    /// including every row submitted before the field existed.
+    pub rating: Option<Rating>,
     pub submitted_at: DateTime<Utc>,
     /// Phase A A3: same derived timestamp as the list items.
     pub updated_at: DateTime<Utc>,
@@ -163,6 +169,7 @@ pub struct ExportFeedbackItem {
     pub body: String,
     pub sentiment: Option<Sentiment>,
     pub severity: Option<Severity>,
+    pub rating: Option<Rating>,
     pub submitted_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub reply_count: i64,
@@ -214,6 +221,7 @@ pub async fn list_my_feedback(
             body: f.body,
             sentiment: f.sentiment,
             severity: f.severity,
+            rating: f.rating,
             submitted_at: f.submitted_at,
             updated_at: f.updated_at,
             reply_count: f.reply_count,
@@ -276,6 +284,7 @@ pub async fn my_feedback_thread(
             body: fb.body,
             sentiment: fb.sentiment,
             severity: fb.severity,
+            rating: fb.rating,
             submitted_at: fb.submitted_at,
             updated_at: fb.updated_at,
             reply_count: fb.reply_count,
@@ -520,6 +529,7 @@ pub async fn export_my_feedback(
             body: f.body,
             sentiment: f.sentiment,
             severity: f.severity,
+            rating: f.rating,
             submitted_at: f.submitted_at,
             updated_at: f.updated_at,
             reply_count: f.reply_count,
