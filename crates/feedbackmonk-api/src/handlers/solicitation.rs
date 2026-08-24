@@ -72,6 +72,14 @@ pub const DEFAULT_SOLICITATION_COOLDOWN_DAYS: i64 = 182;
 /// `opted_out` stays terminal and answering still rests for the full period.
 pub const DEFAULT_SOLICITATION_SNOOZE_DAYS: i64 = 14;
 
+/// Compile-time invariant: a prompt the user merely set aside must rest for a
+/// SHORTER period than one they answered. If these defaults are ever edited so
+/// the snooze meets or exceeds the full cooldown, "ask me later" silently starts
+/// meaning "ask me never" -- so this fails the BUILD rather than a test.
+const _SNOOZE_IS_SHORTER_THAN_COOLDOWN: () = assert!(
+    DEFAULT_SOLICITATION_SNOOZE_DAYS < DEFAULT_SOLICITATION_COOLDOWN_DAYS,
+);
+
 fn cooldown_days() -> i64 {
     env_days(
         "FEEDBACKMONK_SOLICITATION_COOLDOWN_DAYS",
@@ -466,9 +474,9 @@ mod tests {
         assert_eq!(r.policy.cooldown_days, DEFAULT_SOLICITATION_COOLDOWN_DAYS);
         assert_eq!(r.policy.snooze_days, DEFAULT_SOLICITATION_SNOOZE_DAYS);
         assert_eq!(r.policy.applied_cooldown_days, DEFAULT_SOLICITATION_SNOOZE_DAYS);
-        assert!(
-            DEFAULT_SOLICITATION_SNOOZE_DAYS < DEFAULT_SOLICITATION_COOLDOWN_DAYS,
-            "the snooze must be the shorter of the two, else the control is a lie"
-        );
+        // The snooze-shorter-than-cooldown invariant is enforced at COMPILE time
+        // (see SNOOZE_IS_SHORTER_THAN_COOLDOWN above) rather than asserted here:
+        // both values are constants, so a runtime assert never fails a test that
+        // a build would already have rejected.
     }
 }

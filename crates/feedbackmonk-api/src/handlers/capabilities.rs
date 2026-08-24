@@ -167,7 +167,7 @@ mod tests {
         // Each advertised feedback.* capability has a truthful descriptor.
         assert!(fb["severity"]["values"].as_array().is_some_and(|v| v.len() == 4));
         assert_eq!(fb["idempotency"]["header"], "Idempotency-Key");
-        assert!(fb["attachments"]["max_images"].as_i64() == Some(4));
+        assert_eq!(fb["attachments"]["max_images"].as_i64(), Some(4));
         assert!(fb["reply_state"]["fields"].as_array().is_some_and(|v| v.len() == 2));
         assert_eq!(fb["delete"], true);
         assert_eq!(fb["export"], true);
