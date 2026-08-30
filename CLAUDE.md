@@ -146,6 +146,10 @@ Verification Oracles built so far + scheduled:
 
 ### PF-HOSTING-ORACLE-01: install the staged `host-tenant-binding` oracle + 2 allow-list entries (BLOCKS every push)
 
+**Tracked as [`DEFER-006`](docs/planning/deferred/DEFER-006_host-tenant-binding-oracle-install.md)**
+so the `pending-ideas` oracle names it at every session start (this repo's `### PF-` headings are
+invisible to the `pending-followups` oracle — observations-ledger 2026-08-21).
+
 **Status (2026-08-30): BLOCKING.** `bash scripts/ci-local.sh` is RED on exactly one oracle —
 `multi-tenant-isolation-check` reports 2 offenders, both introduced by FR-FBR-32 and both legitimate
 (a pre-auth boundary and a pool constructor). CI runs the oracle suite, so **a push right now would go
@@ -184,7 +188,9 @@ Two items:
    **Recommendation: run it separately from GitCellar's Railway.** The vendor's SaaS living inside
    customer #1's infrastructure is precisely the arrangement DEC-FBR-14 exists to undo; reproducing it
    would leave the dogfooding gap where it was.
-2. **Cut GitCellar over** — `SAAS_HOSTING.md` § 4, ordered and reversible. **Coordinate with the
+2. **Cut GitCellar over** — `SAAS_HOSTING.md` § 4, ordered and reversible. The GitCellar side of
+   this is filed in that repo as **DEFER-084** (`feedbackmonk-saas-tenant-cutover`), which carries
+   the DNS/data/decommission/doc work and the measured stacked-redeploy finding below. **Coordinate with the
    GitCellar side before touching DNS**: live GitCellar sessions exist on this machine and may be
    measuring against `feedback.gitcellar.com`. **No GitCellar source file is edited by any step** —
    `triage.gitcellar.com` keeps working as an operator-registered admin alias that 301s to the
@@ -203,6 +209,16 @@ Delivered (all ADDITIVE to the frozen contract; each advertised via `GET /api/v1
 - **A5 `GET …/me/feedback/export`** GDPR portability. `feedback.export`.
 
 Decisions confirmed (were AFK-adopted, then user-confirmed): D-A1 hard-delete+byte-purge; D-A4 severity `low|medium|high|blocker` optional; D-A5 export included. Built at autopilot; implementation streams executed on the Fable model, coordinated/reviewed on Opus 4.8.
+
+> **Re-measured 2026-08-30 — still outstanding, and now THREE items stack on this one redeploy.**
+> `curl -sS https://feedback.gitcellar.com/api/v1/capabilities` returns `"version":"0.2.0"` with 5
+> capabilities (health/ready 200). Current code is **0.4.0 with 15**. Waiting on a redeploy of this
+> single service: **A6** (≥0.3.0 + migrations 00020/00021 → the six Phase-A capabilities),
+> **DEFER-004** (migration 00029 → `feedback.rating`), and **FR-FBR-32/33** (0.4.0 + migration 00030
+> → `hosting.*`). The **DEC-FBR-14 cutover retires all three at once** — a SaaS instance runs current
+> code with every migration applied — so weigh doing that instead of three separate Railway
+> redeploys. If the cutover is far off, A6 still stands on its own merits: it gates GitCellar's
+> Phases B/C. Filed to GitCellar as **DEFER-084**.
 
 **Remaining — A6 deploy GATE (NOT this repo's code; still OUTSTANDING as of scrutiny 2026-07-01):** the live instance runs **v0.2.0** with migrations `00020`+`00021` unapplied, so the six Phase-A capabilities are not yet live there. Redeploy `feedback.gitcellar.com` at ≥ v0.3.0 with migrations `00020`+`00021` applied (GitCellar Railway — ordered runbook in `docs/operations/RAILWAY_GITCELLAR.md` § 8), then verify `GET https://feedback.gitcellar.com/api/v1/capabilities` advertises `feedback.delete|reply_state|export|severity|idempotency|attachments` and smoke each new route. That verification unblocks GitCellar Phases B/C. Cannot be performed from this repo/session (needs Railway access).
 

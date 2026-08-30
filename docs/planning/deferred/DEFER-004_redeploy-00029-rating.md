@@ -14,6 +14,16 @@ content-hash: fbm-redeploy-00029-20260824
 
 # DEFER-004: Redeploy feedback.gitcellar.com with migration 00029, then arm the GitCellar rating E2E
 
+> **2026-08-30 — re-measured, and this now stacks with two other pending redeploys of the same
+> service.** `curl -sS https://feedback.gitcellar.com/api/v1/capabilities` → `"version":"0.2.0"`,
+> 5 capabilities, `/health/ready` 200. So migration 00029 is still undeployed *and* so is Phase-A A6
+> (≥0.3.0 + migrations 00020/00021) *and* now FR-FBR-32/33 (0.4.0 + migration 00030). The
+> **DEC-FBR-14 SaaS cutover would retire all three at once** by moving GitCellar onto an instance
+> running current code — see GitCellar's **DEFER-084** and this repo's `PF-SAAS-STANDUP-01`. Weigh
+> that against doing three separate Railway redeploys; this brief stays PROPOSED either way, since
+> the rating E2E still has to be armed once the capability is live.
+
+
 ## Idea
 
 Commits `73301e6` + `f4b7a61` are on `main` and add the additive 1-5 `rating` field
