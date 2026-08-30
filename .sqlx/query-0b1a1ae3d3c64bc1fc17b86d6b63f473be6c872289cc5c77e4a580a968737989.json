@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE tenant_domains\n            SET status = 'active', verified_at = COALESCE(verified_at, now())\n            WHERE id = $1 AND tenant_id = $2 AND status <> 'active'\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "0b1a1ae3d3c64bc1fc17b86d6b63f473be6c872289cc5c77e4a580a968737989"
+}

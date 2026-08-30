@@ -97,6 +97,25 @@ pub trait TenantRepo: Send + Sync {
         over: &WidgetBrandOverride,
     ) -> Result<()>;
 
+    // ==== Public hosting surface (FR-FBR-32, migration 00030) ==============
+
+    /// Read the tenant's public subdomain label, if it has one.
+    ///
+    /// A dedicated scope-bound accessor rather than a new field on `Tenant`,
+    /// for the same reason `get_brand` exists: `find_by_email` is allow-listed
+    /// as a PRE-AUTH exception, and widening it to carry hosting columns would
+    /// widen the pre-auth read surface for no benefit. Host resolution does not
+    /// go through here at all — it lives in `DomainRepo::resolve_host`.
+    async fn get_subdomain(&self, scope: &TenantScope) -> Result<Option<String>>;
+
+    /// Set (or clear, with `None`) the tenant's public subdomain label.
+    ///
+    /// The caller MUST have validated the label with
+    /// `feedbackmonk_core::hosting::validate_subdomain_label` first: this method
+    /// enforces only global uniqueness (the DB constraint), not policy. Returns
+    /// `RepoError::Conflict` when another tenant already holds the label.
+    async fn set_subdomain(&self, scope: &TenantScope, label: Option<&str>) -> Result<()>;
+
     /// Append an operator-mutation audit row for the target tenant `scope`
     /// (scrutiny P1-12). `action` names the ops action (e.g. `"patch_tenant"`)
     /// and `detail` carries the before/after JSON. Scope-bound so the
@@ -464,6 +483,38 @@ impl TenantRepo for SqlxTenantRepo {
             // NULL ⇒ widget resolves 'auto'.
             theme: row.widget_theme,
         })
+    }
+
+    async fn get_subdomain(&self, scope: &TenantScope) -> Result<Option<String>> {
+        let row = sqlx::query!(
+            "SELECT subdomain FROM tenants WHERE id = $1",
+            scope.tenant_id()
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+        Ok(row.subdomain)
+    }
+
+    async fn set_subdomain(&self, scope: &TenantScope, label: Option<&str>) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE tenants SET subdomain = $2, updated_at = now() WHERE id = $1",
+            scope.tenant_id(),
+            label
+        )
+        .execute(&self.pool)
+        .await
+        .map_err(|e| match e {
+            // Another tenant holds this label. The UNIQUE index is what makes
+            // host resolution single-valued, so a collision is a real conflict.
+            sqlx::Error::Database(ref db) if db.is_unique_violation() => RepoError::Conflict,
+            other => RepoError::Sqlx(other),
+        })?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepoError::NotFound);
+        }
+        Ok(())
     }
 
     async fn get_widget_brand_override(

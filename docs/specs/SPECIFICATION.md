@@ -306,6 +306,43 @@ See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (10 of 10 RESOLVED).
 
 ---
 
+## Capability extension — commercial hosting shape (FR-FBR-32, FR-FBR-33)
+
+> Added 2026-08-30 from [`DEFER-005`](../planning/deferred/DEFER-005_tenant-subdomain-hosting-shape.md)
+> (injected from GitCellar). Implements two owner decisions taken the same day:
+> [`DEC-FBR-13`](DECISIONS.md#dec-fbr-13-public-surface-url-shape--tenant-subdomain-by-default-customer-custom-domain-as-the-paid-upgrade)
+> (tenant subdomain by default; customer custom domain as the paid upgrade, covering the board **and**
+> the widget/API endpoint; admin permanently on one feedbackmonk-owned host) and
+> [`DEC-FBR-14`](DECISIONS.md#dec-fbr-14-first-party-products-become-saas-tenants-not-self-host-instances)
+> (first-party products become SaaS tenants; GitCellar's hosts CNAME at the SaaS). Supersedes the
+> path-based public-browse commitment inside DEC-FBR-06. Implementation decisions:
+> [`DEC-FBR-IMPL-27`](DECISIONS.md) (admin-alias 301), [`DEC-FBR-IMPL-28`](DECISIONS.md)
+> (host **binding**, additive, inert-when-unconfigured), [`DEC-FBR-IMPL-29`](DECISIONS.md)
+> (edge owns ACME, API owns authorisation). Contracts **C32** (host resolution) + **C33**
+> (custom-domain lifecycle). Migration `00030_tenant_hosting.sql`.
+>
+> **The load-bearing invariant is binding, not routing.** Resolving a host to a tenant is the easy
+> half; the half that DEC-FBR-13's decisive argument actually buys is that a request arriving on
+> tenant A's host **cannot reach tenant B's data**. Without that, every page still renders correctly
+> and the isolation is fictional. Guarded by the `host-tenant-binding` Verification Oracle.
+
+| ID | Requirement | Status | Implementation pointer |
+|---|---|---|---|
+| FR-FBR-32 | **Host-based tenant resolution + tenant subdomains.** Every tenant gets a globally-unique, DNS-legal `subdomain` label; `{subdomain}.{root_domain}` is the default public surface for that tenant's board, roadmap and widget/API endpoint. The API resolves the request `Host` (honouring `X-Forwarded-Host` behind a trusted proxy) to a **host scope**, and **binds** every public route to it: on a tenant-bound host, a `project_id` belonging to a different tenant returns **404**. The canonical admin host serves admin and is the **only** host that does; a tenant/custom host never serves the admin SPA or sets an admin session cookie. Operator-registered **admin aliases** 301 to the canonical admin host (DEC-FBR-IMPL-27) so first-party links survive the DEC-FBR-14 migration. A discovery endpoint returns the tenant + project list for the current host so the public SPA needs no `project_id` in the URL. **Unconfigured root domain ⇒ fully inert**: self-host (FR-FBR-17) behaviour is byte-identical to today. | **DONE** (2026-08-30) | Contract C32. Migration `00030_tenant_hosting.sql` (`tenants.subdomain` UNIQUE + shape CHECK; `tenant_domains` with `kind ∈ {public, admin_alias}`). Core vocabulary `crates/feedbackmonk-core/src/hosting.rs` (`normalize_host` — case/port/trailing-dot/IPv6-bracket reduction; `validate_subdomain_label`; `RESERVED_LABELS`; `subdomain_label_of`, single-level only). Repository `crates/feedbackmonk-repository/src/domains.rs` (`DomainRepo::resolve_host` — the SOLE host→tenant path, a pre-auth boundary allow-listed like `open_for_submission`; everything else `&TenantScope`-first) + `TenantRepo::{get,set}_subdomain`. API `crates/feedbackmonk-api/src/hosting.rs` — `HostConfig::from_env`, `HostScope`, and the two guards `bind_public_routes` / `bind_admin_routes` applied in `build_app` to every public / admin router respectively; `handlers/public_site.rs` `GET /api/v1/public/site`. Admin alias 301 per DEC-FBR-IMPL-27. `X-Forwarded-Host` honoured only when `FEEDBACKMONK_TRUSTED_PROXY_HOPS > 0`. Tests: `tests/host_tenant_binding.rs` (10, incl. the cross-tenant 404, the admin-on-tenant-host 404, the alias 301 with path+query preserved, Host-respelling normalisation, and `unconfigured_deployment_is_inert`) + `feedbackmonk-repository/tests/domains_repo.rs` (11) + 14 core unit tests. Oracle `host-tenant-binding` authored + adversarially self-tested; **install blocked by DEC-84**, staged at `scripts/oracles-pending/host-tenant-binding/`. |
+| FR-FBR-33 | **Custom domain as the tier-gated paid upgrade.** A tenant on a tier whose `tier_quotas().custom_domain` is `true` can claim their own domain (`feedback.customer.com`), CNAME it at their tenant subdomain, and have it serve **both** their public board **and** their widget/API endpoint — the "first-party endpoint" play that survives tracker blocklists and a strict CSP `connect-src`, and that DEC-FBR-13 identifies as the differentiator against the AGPL self-host alternative. The tier gate is enforced **server-side** at claim time (402) **and** at certificate-issuance time (the edge's on-demand-TLS `ask` endpoint refuses a domain whose tenant lost the capability), not only in the pricing card. Certificates are issued by the edge, never by `feedbackmonk-api` (DEC-FBR-IMPL-29). The widget needs **no code change** — `data-api-base` already exists. **Free-tier flywheel preserved**: default-tier tenants stay on a `{root_domain}` origin with the `footer_url` badge intact (DEC-FBR-IMPL-11); escaping the badge is what is being sold. | **DONE** (2026-08-30) | Contract C33. `crates/feedbackmonk-api/src/handlers/domains.rs` — `GET /api/v1/admin/hosting`, `PUT …/subdomain`, `POST|DELETE …/domains`, all behind `AdminSession` and wrapped in `bind_admin_routes`. **Two independent tier gates**: claim-time (`tier_quotas(tier).custom_domain` → 402 before the first write) and issuance-time (`handlers/public_site.rs::tls_authorize`, the edge's on-demand-TLS `ask` seam — a tenant who downgrades keeps the row but stops getting certificates). Reference edge `deploy/caddy/Caddyfile`. Admin UI `admin-ui/src/pages/settings/HostingSettings.tsx` at `/admin/settings/hosting` + `shared/hostingApi.ts`; `TierSettings.tsx` drops its `notImplemented` footnote on the custom-domain row — the pricing card's claim is now true. Widget unchanged (`data-api-base` already existed). Tests: 7 vitest + 6 Playwright/axe a11y specs; `tls_authorize_gates_issuance` in `tests/host_tenant_binding.rs` proves the Free→404 / Pro→200 flip. |
+
+> **ID note**: FR-FBR-26/27 = public board / moderation; FR-FBR-28/29 = sentiment / solicitation;
+> FR-FBR-30 = multilingual translation; FR-FBR-31 = inbound-email ingestion (deferred);
+> **FR-FBR-32/33 = host-based tenant resolution / custom domain**.
+>
+> **Explicitly out of scope** (deferred, not forgotten): custom email `From:` per tenant — DEC-FBR-13
+> defers it on its own terms (needs DKIM delegation and a separate decision). Splitting the public
+> board out of the admin bundle — host separation already puts the board on a different **origin**
+> from the admin console, which is the whole of DEC-FBR-13 reason #1; the split is bundle hygiene and
+> is tracked as an optional follow-on, not a prerequisite.
+
+---
+
 ## Spec session — COMPLETE ✅
 
 **Verdict**: READY FOR `/0-uldf-ldis-plan`.

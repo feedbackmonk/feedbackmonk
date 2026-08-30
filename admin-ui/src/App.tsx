@@ -8,6 +8,7 @@ import { PublicBoard } from "./pages/board/PublicBoard";
 import { TierSettings } from "./pages/settings/TierSettings";
 import { RunnerTokens } from "./pages/settings/RunnerTokens";
 import { BoardSettings } from "./pages/settings/BoardSettings";
+import { HostingSettings } from "./pages/settings/HostingSettings";
 import { ModerationQueue } from "./pages/moderation/ModerationQueue";
 import { AutopilotDigest } from "./pages/autopilot/AutopilotDigest";
 import { ClusterDetail } from "./pages/autopilot/ClusterDetail";
@@ -15,6 +16,7 @@ import { WorkOrderList } from "./pages/autopilot/WorkOrderList";
 import { WorkOrderDetail } from "./pages/autopilot/WorkOrderDetail";
 import { NewStory } from "./pages/autopilot/NewStory";
 import { Board } from "./pages/autopilot/Board";
+import { TenantHostLanding } from "./pages/public/TenantHostLanding";
 
 // Routes:
 //   /login                                   → Login
@@ -24,6 +26,7 @@ import { Board } from "./pages/autopilot/Board";
 //   /admin/settings/tier                     → TierSettings (P3 Stage 2 — plan & usage)
 //   /admin/settings/runner-tokens            → RunnerTokens (P5b — runner key + token lifecycle)
 //   /admin/settings/board                    → BoardSettings (public-board enable + moderation toggles, Contract C28/00016)
+//   /admin/settings/hosting                  → HostingSettings (tenant subdomain + custom domains, FR-FBR-32/33)
 //   /admin/moderation                        → ModerationQueue (owner approve/reject queue, Contract C28)
 //   /admin/autopilot                         → AutopilotDigest (P5a — digest + cluster list)
 //   /admin/autopilot/clusters/:clusterId     → ClusterDetail (members + rec cards)
@@ -33,6 +36,8 @@ import { Board } from "./pages/autopilot/Board";
 //   /admin/autopilot/work-orders/:id         → WorkOrderDetail (state + ledger + owner actions)
 //   /public/projects/:projectId/roadmap      → PublicRoadmap (no admin chrome; project-segmented per Contract C15)
 //   /public/projects/:projectId/board        → PublicBoard (no admin chrome; approved-only public board per Contract C29)
+//   /  and  /board                           → TenantHostLanding (board for THIS host's tenant, FR-FBR-32)
+//   /roadmap                                 → TenantHostLanding (roadmap for THIS host's tenant)
 //   anything else                            → redirect to /feedback (or /login when API 401s)
 //
 // `/admin/roadmap` deliberately omits the project segment to mirror the
@@ -81,6 +86,16 @@ export function App() {
     pathname === "/admin/settings/runner-tokens/"
   ) {
     return <RunnerTokens />;
+  }
+
+  // Public address — tenant subdomain + custom domains (FR-FBR-32/33).
+  // Tenant-level (not project-level), so no project segment: the subdomain
+  // addresses the TENANT, and every project under it shares that host.
+  if (
+    pathname === "/admin/settings/hosting" ||
+    pathname === "/admin/settings/hosting/"
+  ) {
+    return <HostingSettings />;
   }
 
   // Public Feedback Board admin surfaces (Contract C28 / migration 00016).
@@ -155,9 +170,29 @@ export function App() {
     );
   }
 
-  // Default redirect.
-  if (pathname !== "/feedback") {
-    queueMicrotask(() => navigate("/feedback", { replace: true }));
+  // Host-rooted public surfaces (FR-FBR-32). On a tenant subdomain or a claimed
+  // custom domain, `/` IS the board — the host already names the tenant, so no
+  // project id belongs in the URL (DEC-FBR-13).
+  //
+  // Checked LAST, and only for the three paths that would otherwise fall
+  // through to the admin redirect, so the admin app never pays for a discovery
+  // call it does not need. On the admin host (and on any self-host deployment)
+  // `/public/site` 404s and the fallback below runs — which is the ordinary
+  // behaviour, unchanged.
+  if (pathname === "/" || pathname === "/board" || pathname === "/board/") {
+    return <TenantHostLanding surface="board" fallback={defaultRedirect} />;
   }
-  return null;
+  if (pathname === "/roadmap" || pathname === "/roadmap/") {
+    return <TenantHostLanding surface="roadmap" fallback={defaultRedirect} />;
+  }
+
+  return defaultRedirect();
+
+  // Default redirect.
+  function defaultRedirect() {
+    if (pathname !== "/feedback") {
+      queueMicrotask(() => navigate("/feedback", { replace: true }));
+    }
+    return null;
+  }
 }

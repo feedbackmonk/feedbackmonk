@@ -1037,3 +1037,58 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Constraint — no user-visible change**: the GitCellar-branded hosts stay exactly as they are. GitCellar's `TRIAGE_URL` constant (`apps/gitcellar-cloud/admin-ui/src/featureFlags.ts:15`) is unchanged, no shared board or widget link breaks, and the cutover is a DNS/CNAME move plus a tenant migration — not a GitCellar code change. Any migration plan that requires editing GitCellar source has misread this decision.
 
 **Alternatives considered**: *Keep self-hosting our own products* — rejected on the dogfooding argument above; it is the status quo that produced the unimplemented flag. *Move our products onto the SaaS but under `{tenant}.feedbackmonk.com` hosts* — rejected: no reason to advertise the vendor to GitCellar's own users, and it would break existing links for no gain. Once feedbackmonk is publicly sold, "GitCellar runs on feedbackmonk" is a credibility signal that belongs in the badge and marketing copy, not in the hostname.
+
+---
+
+## Implementation-Discovered Decisions (Commercial hosting shape — DEC-FBR-13/14 build lane, 2026-08-30)
+
+### DEC-FBR-IMPL-27: `triage.gitcellar.com` resolves the DEC-FBR-13 / DEC-FBR-14 conflict by 301-redirecting to the canonical admin host — admin is *served* on exactly one host, but existing admin links keep working
+
+**Resolved**: 2026-08-30 (DEFER-005 build lane). Reconciles a genuine conflict between two same-day owner decisions; it does not re-open either.
+
+**The conflict**: [`DEC-FBR-13`](#dec-fbr-13-public-surface-url-shape--tenant-subdomain-by-default-customer-custom-domain-as-the-paid-upgrade) pins admin/triage to **one** feedbackmonk-owned host and marks custom-domain admin **"Never"**. [`DEC-FBR-14`](#dec-fbr-14-first-party-products-become-saas-tenants-not-self-host-instances) says to CNAME **both** existing GitCellar hosts — including `triage.gitcellar.com` — at the SaaS instance with **no user-visible change** and GitCellar's `TRIAGE_URL` constant untouched. If "CNAME at" meant "serve the admin SPA there", the two cannot both hold.
+
+**Decision**: a host that is registered as a tenant's **admin alias** is answered with **HTTP 301 to the canonical admin host** (`FEEDBACKMONK_ADMIN_HOST`), never with the admin SPA and never with an admin session cookie. So:
+
+- **DEC-FBR-13 is honoured in substance**: the admin console is *served* from exactly one origin. There is no per-domain session, no per-domain SSO surface, and no admin cookie ever set on a customer-controlled domain — which is precisely the cost DEC-FBR-13 refused to pay.
+- **DEC-FBR-14 is honoured in substance**: `triage.gitcellar.com` still resolves and still lands the operator on triage. `TRIAGE_URL` is never edited, no GitCellar source changes, and no link breaks.
+
+**Why a redirect rather than an exception**: an exception ("admin custom domains are allowed for first-party tenants") would create exactly the per-domain-session complexity DEC-FBR-13 rejected, and it would be a capability with one user and no test coverage. A redirect is three lines at the host layer, is impossible to get subtly wrong, and degrades safely — an unrecognised host that is *not* an admin alias simply 404s.
+
+**Consequence**: an admin alias is **operator-registered**, not tenant-registered. It is not a sellable feature and does not appear on the custom-domain surface; it exists to keep first-party links alive across the DEC-FBR-14 migration. `custom_domain` tier capability does not grant it.
+
+**Alternatives considered**: *Serve admin on `triage.gitcellar.com`* — rejected: reintroduces the per-domain session/SSO cost DEC-FBR-13 priced out, on a customer-controlled DNS record. *Break the link and edit `TRIAGE_URL`* — rejected: DEC-FBR-14 says explicitly that any plan requiring a GitCellar source edit has misread it.
+
+---
+
+### DEC-FBR-IMPL-28: Host resolution BINDS the existing `project_id` routes; it does not replace them. A tenant-bound host may only reach its own tenant's projects, and an unconfigured deployment is inert
+
+**Resolved**: 2026-08-30 (DEFER-005 build lane). Implements the mechanism DEC-FBR-13 assumes.
+
+**Decision**, three parts:
+
+1. **Additive, not migratory.** Every `/api/v1/projects/{project_id}/…` public route stays exactly where it is. Host resolution is a *guard layer* over them plus one new discovery endpoint (`GET /api/v1/public/site`), not a replacement route family. Rewriting the public URL space would break every shared board link and every deployed widget — the exact harm DEC-FBR-13 reason #2 was written to avoid.
+
+2. **Binding is the security property, and it is the deliverable.** When a request arrives on a host that resolves to a tenant, every public route on that request is restricted to **that tenant's** projects; a `project_id` belonging to another tenant returns **404** (not 403 — no existence oracle, matching the board moderation gate's posture). Without this, `a.feedbackmonk.com/api/v1/projects/{B's project}/board` would render tenant B's user-generated content on tenant A's origin and DEC-FBR-13's *decisive* argument would be silently unmet while every page looked correct. **Host routing without host binding is worse than no subdomains at all**, because it looks isolated.
+
+3. **Unconfigured ⇒ inert.** With no `FEEDBACKMONK_ROOT_DOMAIN` set, no host resolves to a tenant, the guard is a pass-through, and behaviour is byte-identical to today. This is what keeps FR-FBR-17 self-host (`docker compose up`, one tenant, any hostname, often an IP) working untouched, and it is why the new Verification Oracle vacuous-PASSes on a self-host tree rather than failing it.
+
+**Why 404 and not 403**: consistent with `public-board-moderation-gate` — a cross-tenant probe must not learn whether the project exists.
+
+**Alternatives considered**: *Host-rooted routes only (`{tenant}.feedbackmonk.com/api/v1/board`)* — cleaner URLs, but a hard break for deployed widgets and shared links, and it would fork every public handler (rejected). *Resolve the host but do not enforce it* — rejected as the failure mode described in part 2. *Enforce with 403* — rejected as an existence oracle.
+
+---
+
+### DEC-FBR-IMPL-29: The edge owns ACME/TLS; the API owns domain authorisation. Custom-domain certificates are issued on demand, gated by an API `ask` endpoint that enforces the tier
+
+**Resolved**: 2026-08-30 (DEFER-005 build lane). Fills the gap DEC-FBR-13 left open — it sells the CNAME but does not say who issues the certificate.
+
+**Decision**: certificate issuance lives **at the edge** (a reverse proxy with ACME on-demand TLS — Caddy in the reference deployment), never inside `feedbackmonk-api`. The API exposes one unauthenticated, metadata-only endpoint, `GET /api/v1/public/tls-authorize?domain=…`, which returns **200** iff the host is a known tenant subdomain, an **active/pending** custom domain, an admin alias, or the canonical admin host — and **404** otherwise. The edge asks before issuing; a 404 means no certificate is attempted.
+
+**Why this split**: (a) it keeps ACME state, renewal timers and account keys out of the application, so the API stays a stateless HTTP service and the FR-FBR-17 self-host stack is unaffected — an operator who wants neither wildcard nor custom domains runs exactly today's compose file; (b) it makes the tier gate *load-bearing at issuance*: a domain claimed by a tenant whose tier lacks `custom_domain` never gets a certificate, so the paid feature is enforced in infrastructure and not only in the pricing card; (c) it makes unbounded-issuance abuse structurally impossible — on-demand TLS without an `ask` endpoint is a well-known way to get an ACME account rate-limited by anyone who points DNS at you.
+
+**Ownership proof**: pointing a CNAME at us for a domain requires control of that domain's DNS, so the CNAME *is* the proof of control; the claim record's `UNIQUE(domain)` prevents two tenants from holding the same name. A DNS-TXT pre-check is hardening, deliberately deferred (it would add a DNS resolver dependency and network egress in tests for a marginal gain over the CNAME proof).
+
+**Known limitation (documented, not fixed in v1)**: a tenant can *claim* a domain they do not own, denying it to another tenant, because the claim precedes the DNS proof. A stale-`pending` re-claim window is the fix; it is deferred and recorded as a follow-up rather than left implicit.
+
+**Alternatives considered**: *ACME inside the Rust binary* (`instant-acme` / `rustls-acme`) — puts renewal timers, account keys and cert storage into an otherwise stateless service and forces a TLS-terminating listener into the self-host image (rejected). *Manual per-domain certificates* — does not scale past the first customer and makes the paid feature an ops ticket (rejected). *Wildcard-only, no custom domains* — that is the thing DEC-FBR-13 sells (rejected).

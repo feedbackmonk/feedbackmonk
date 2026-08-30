@@ -51,11 +51,24 @@ pub struct AdminSession {
     pub scope: TenantScope,
 }
 
+// Generic over any router state that can hand back an `AppState`.
+//
+// axum supplies a blanket `impl<T: Clone> FromRef<T> for T`, so every existing
+// `State<AppState>` handler keeps working unchanged. The generality exists so a
+// SUB-STATE router (the pattern this codebase already uses for
+// `AttachmentState` / `MeFeedbackDataState` / `AccountRecoveryState`, to avoid
+// rippling a new field through all ~49 `AppState { … }` literals) can still
+// require an authenticated admin session.
 #[axum::async_trait]
-impl FromRequestParts<AppState> for AdminSession {
+impl<S> FromRequestParts<S> for AdminSession
+where
+    S: Send + Sync,
+    AppState: axum::extract::FromRef<S>,
+{
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, ApiError> {
+    async fn from_request_parts(parts: &mut Parts, outer_state: &S) -> Result<Self, ApiError> {
+        let state = &<AppState as axum::extract::FromRef<S>>::from_ref(outer_state);
         let jar = CookieJar::from_headers(&parts.headers);
         let raw = jar
             .get(SESSION_COOKIE_NAME)

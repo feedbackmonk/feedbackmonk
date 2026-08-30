@@ -14,6 +14,14 @@ pub enum RepoError {
     #[error("conflict (uniqueness or state violation)")]
     Conflict,
 
+    /// A `tenant_domains` row held a `kind`/`status` value outside its CHECK
+    /// constraint (migration 00030) — schema and `feedbackmonk-core` have
+    /// drifted apart. Surfaced as a conflict rather than a 500 because the row
+    /// is genuinely in a state the code cannot serve; it is a deployment
+    /// mismatch, not a caller error.
+    #[error("unrecognised tenant_domains column value")]
+    DomainValue(#[from] feedbackmonk_core::DomainValueError),
+
     /// A submit reused an `Idempotency-Key` (same
     /// `(project_id, submitter, key)`) with DIFFERENT content than the original
     /// submission. Distinct from a legit retry (identical content → the

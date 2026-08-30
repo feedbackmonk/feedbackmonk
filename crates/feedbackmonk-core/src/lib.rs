@@ -9,6 +9,7 @@
 #![deny(unsafe_code)]
 
 pub mod action_type;
+pub mod hosting;
 pub mod ids;
 pub mod models;
 pub mod moderation;
@@ -22,6 +23,10 @@ pub mod tier;
 pub mod work_order;
 
 pub use action_type::ActionType;
+pub use hosting::{
+    normalize_host, subdomain_label_of, validate_subdomain_label, DomainKind, DomainStatus,
+    DomainValueError, SubdomainError, RESERVED_LABELS,
+};
 pub use ids::{FeedbackId, SigningKeyId};
 pub use models::{
     AnonSubmission, Feedback, FeedbackKind, KeyClass, Project, RateLimitCounter, SigningKey,

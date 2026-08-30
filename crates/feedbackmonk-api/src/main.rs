@@ -32,6 +32,7 @@ use feedbackmonk_anon::{
 use feedbackmonk_jwt::DEFAULT_IAT_LEEWAY_SECONDS;
 use feedbackmonk_repository::{
     SqlxAnalysisSweepRepo, SqlxAttachmentRepo, SqlxBoardVoteRepo, SqlxClusterRepo,
+    SqlxDomainRepo,
     SqlxEmailVerificationRepo, SqlxFeedbackReplyRepo, SqlxFeedbackRepo,
     SqlxFeedbackStatusHistoryRepo, SqlxHealthCheck, SqlxPasswordResetRepo, SqlxProjectRepo,
     SqlxRecommendationRepo,
@@ -42,22 +43,25 @@ use feedbackmonk_repository::{
 use feedbackmonk_api::email::{
     EmailNotifier, EnvSmtpConfig, EnvSmtpMailer, LettreEmailNotifier, Mailer, MailpitMailer,
 };
-use feedbackmonk_api::router::router as worker_a_router;
+use feedbackmonk_api::router::{health_router, router as worker_a_router};
 use feedbackmonk_api::state::AppState;
 use feedbackmonk_api::translation::{DeepLTranslator, LibreTranslateTranslator, TranslationProvider};
 use feedbackmonk_api::{
     account_recovery_router, admin_feedback_routes, admin_roadmap_router, admin_tier_router,
-    apply_public_rate_limit, attachments_router, board_router, capabilities_router,
-    cluster_admin_router,
+    apply_public_rate_limit, attachments_router, bind_admin_routes, bind_public_routes,
+    board_router, capabilities_router, cluster_admin_router, domains_router,
     me_feedback_data_router, me_feedback_router, moderation_router, ops_router, parse_origins,
-    promote_router, public_cors_layer, recommendation_admin_router, roadmap_router,
-    runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
+    promote_router, public_cors_layer, public_site_router, recommendation_admin_router,
+    roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
     spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
     work_order_admin_router, work_order_runner_router, AccountRecoveryState, AttachmentState,
-    MeFeedbackDataState, PublicRateLimit, VotingCache, DEFAULT_TRANSLATION_POLL_SECS,
+    DomainAdminState, HostConfig, HostState, MeFeedbackDataState, PublicRateLimit,
+    PublicSiteState, VotingCache, DEFAULT_TRANSLATION_POLL_SECS,
     DEFAULT_TRANSLATION_TARGET_LANG,
 };
 
+// Boot sequence: a flat sequence of env reads + wiring, not branching logic.
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> Result<()> {
     init_tracing()?;
@@ -186,11 +190,53 @@ async fn main() -> Result<()> {
         tracing::info!(origins = ?cors_origins, "CORS allowlist for public widget endpoints");
     }
 
+    // FR-FBR-32/33: host->tenant resolution + the custom-domain surface.
+    // Sub-state types (NOT AppState fields) for the same reason
+    // AttachmentState/MeFeedbackDataState are: a new repo handle must not
+    // ripple through every `AppState { … }` construction site.
+    //
+    // `HostConfig::from_env` reads FEEDBACKMONK_ROOT_DOMAIN +
+    // FEEDBACKMONK_ADMIN_HOST. With neither set the whole layer is a
+    // pass-through and self-host behaviour is unchanged (DEC-FBR-IMPL-28).
+    let host_config = HostConfig::from_env(state.trusted_proxy_hops);
+    if host_config.is_enabled() {
+        tracing::info!(
+            root_domain = ?host_config.root_domain,
+            admin_host = ?host_config.admin_host,
+            trust_forwarded_host = host_config.trust_forwarded_host,
+            "host-based tenant resolution ENABLED (FR-FBR-32)"
+        );
+    } else {
+        tracing::info!(
+            "host-based tenant resolution inert (FEEDBACKMONK_ROOT_DOMAIN /              FEEDBACKMONK_ADMIN_HOST unset) — single-tenant/self-host posture"
+        );
+    }
+    let domain_repo = Arc::new(SqlxDomainRepo::new(state.pool.clone()));
+    let host_state = HostState {
+        domains: Arc::clone(&domain_repo) as Arc<dyn feedbackmonk_repository::DomainRepo>,
+        projects: Arc::clone(&state.projects),
+        config: host_config.clone(),
+    };
+    let public_site_state = PublicSiteState {
+        tenants: Arc::clone(&state.tenants),
+        projects: Arc::clone(&state.projects),
+        domains: Arc::clone(&host_state.domains),
+        config: host_config.clone(),
+    };
+    let domain_admin_state = DomainAdminState {
+        app: state.clone(),
+        domains: Arc::clone(&host_state.domains),
+        config: host_config,
+    };
+
     let app = build_app(
         state,
         attachment_state,
         me_feedback_data_state,
         account_recovery_state,
+        &host_state,
+        public_site_state,
+        domain_admin_state,
         &cors_origins,
     );
 
@@ -503,11 +549,17 @@ fn load_session_secret() -> Result<[u8; 32]> {
     Ok(out)
 }
 
+// A flat router-composition function, not complex logic -- `too_many_arguments`
+// does not fit an assembly seam whose whole job is to receive the sub-states.
+#[allow(clippy::too_many_arguments)]
 fn build_app(
     state: AppState,
     attachment_state: AttachmentState,
     me_feedback_data_state: MeFeedbackDataState,
     account_recovery_state: AccountRecoveryState,
+    host_state: &HostState,
+    public_site_state: PublicSiteState,
+    domain_admin_state: DomainAdminState,
     cors_origins: &[String],
 ) -> Router {
     // FR-FBR-18: every request is wrapped in a span carrying a `request_id`
@@ -532,42 +584,96 @@ fn build_app(
     // enforces this so a future public route cannot silently skip the floor.
     let prl = PublicRateLimit::new(state.ip_gate.clone(), state.trusted_proxy_hops);
 
-    let app = worker_a_router(state.clone())
+    // FR-FBR-32 (DEC-FBR-IMPL-28): two binding layers over the SAME routers we
+    // already had — nothing is migrated or duplicated.
+    //
+    //   `bind_public_routes` — resolves the Host, stashes the HostScope, and on
+    //   a tenant-bound host REFUSES (404) any `project_id` in the path that
+    //   belongs to a different tenant. This is what makes the subdomain split
+    //   real; DEC-FBR-13 chose subdomains for origin isolation, and resolution
+    //   without this restriction would render tenant B's user-generated content
+    //   on tenant A's origin while every page still looked correct.
+    //
+    //   `bind_admin_routes` — refuses admin routes on a tenant-bound host, so
+    //   the admin console (and its session cookie) exists on exactly ONE origin.
+    //
+    // The `host-tenant-binding` Verification Oracle asserts from this function
+    // that every public router still carries the public guard and every admin
+    // router the admin guard — the same anti-treadmill shape
+    // `public-route-ceiling` uses for the rate-limit floor. A new public route
+    // added without a wrapper is the regression it exists to catch.
+    //
+    // With no root domain / admin host configured, BOTH layers are
+    // pass-throughs and behaviour is byte-identical to pre-FR-FBR-32.
+    let hs = host_state;
+
+    let app = health_router(state.clone())
+        // Health probes are deliberately NOT bound: an orchestrator may probe
+        // on any hostname the deployment answers on, and health carries no
+        // tenant data. See `router::health_router`.
+        .merge(bind_admin_routes(worker_a_router(state.clone()), hs.clone()))
         // Scrutiny P1-1: password-reset request/confirm + verify-email resend.
         // Public (unauthenticated) + email-triggering, so rate-limited via the
         // shared LoginGate inside the handlers. No CORS (admin/tenant surface,
         // same posture as login/signup in worker_a_router — not a widget embed).
-        .merge(account_recovery_router(account_recovery_state))
-        .merge(apply_public_rate_limit(
-            submission_router(state.clone()).layer(cors.clone()),
-            prl.clone(),
+        // Admin-bound: an account-recovery mail must not be triggerable from a
+        // tenant's own public origin.
+        .merge(bind_admin_routes(
+            account_recovery_router(account_recovery_state),
+            hs.clone(),
         ))
-        .merge(admin_feedback_routes(state.clone()))
-        .merge(widget_config_router(state.clone()))
-        .merge(apply_public_rate_limit(
-            roadmap_router(state.clone()),
-            prl.clone(),
+        .merge(bind_public_routes(
+            apply_public_rate_limit(
+                submission_router(state.clone()).layer(cors.clone()),
+                prl.clone(),
+            ),
+            hs.clone(),
         ))
-        .merge(admin_roadmap_router(state.clone()))
-        .merge(admin_tier_router(state.clone()))
+        .merge(bind_admin_routes(admin_feedback_routes(state.clone()), hs.clone()))
+        .merge(bind_public_routes(widget_config_router(state.clone()), hs.clone()))
+        .merge(bind_public_routes(
+            apply_public_rate_limit(roadmap_router(state.clone()), prl.clone()),
+            hs.clone(),
+        ))
+        .merge(bind_admin_routes(admin_roadmap_router(state.clone()), hs.clone()))
+        .merge(bind_admin_routes(admin_tier_router(state.clone()), hs.clone()))
         // Operator-only tier + brand-override mutation (DEC-FBR-IMPL-11). No
         // CORS layer (called server-side / via curl, never a browser embed);
         // guarded by the OpsAuth bearer token (404 when token unset).
-        .merge(ops_router(state.clone()))
-        .merge(me_feedback_router(state.clone()))
+        .merge(bind_admin_routes(ops_router(state.clone()), hs.clone()))
+        .merge(bind_public_routes(me_feedback_router(state.clone()), hs.clone()))
         // Phase A A1/A5: erasure + export on the me_feedback path — merged
         // WITHOUT CORS, same posture as the read subtree above (JWT end-user
         // surface driven by the consumer's own client, not a browser embed).
-        .merge(me_feedback_data_router(me_feedback_data_state))
+        .merge(bind_public_routes(
+            me_feedback_data_router(me_feedback_data_state),
+            hs.clone(),
+        ))
         // GitCellar in-app solicitation (FR-FBR-28/27): durable per-user
         // solicitation state (JWT end-user surface; merged WITHOUT CORS, like
         // me_feedback — driven by the consumer's own client) + public
         // capability discovery (`GET /api/v1/capabilities`, metadata-only).
-        .merge(solicitation_router(state.clone()))
+        .merge(bind_public_routes(solicitation_router(state.clone()), hs.clone()))
+        // Capability discovery carries no tenant data and no project id — it is
+        // deployment metadata, answerable on any host, so it is left unbound.
         .merge(capabilities_router(state.clone()))
-        .merge(apply_public_rate_limit(
-            attachments_router(attachment_state).layer(cors.clone()),
-            prl.clone(),
+        // FR-FBR-32/33: host-rooted discovery + the edge's on-demand-TLS
+        // authorisation seam. Public, and bound like every other public router
+        // (the guard is what populates the HostScope `/site` reads).
+        .merge(bind_public_routes(
+            apply_public_rate_limit(public_site_router(public_site_state), prl.clone()),
+            hs.clone(),
+        ))
+        // FR-FBR-33: tenant subdomain + custom-domain claim/release. Admin
+        // surface (AdminSession, no CORS); the tier gate fires inside the claim
+        // handler.
+        .merge(bind_admin_routes(domains_router(domain_admin_state), hs.clone()))
+        .merge(bind_public_routes(
+            apply_public_rate_limit(
+                attachments_router(attachment_state).layer(cors.clone()),
+                prl.clone(),
+            ),
+            hs.clone(),
         ))
         // P5a (Contract C22, Worker A): work-order API + approval state machine.
         // Admin routes behind AdminSession; runner routes behind the runner
@@ -575,22 +681,22 @@ fn build_app(
         // admin + server-to-server surfaces, never browser embeds. CORS stays
         // ONLY on the public submit/attachments routers above (Ripple Analysis
         // flags accidental CORS-exposure of admin/runner endpoints).
-        .merge(work_order_admin_router(state.clone()))
-        .merge(work_order_runner_router(state.clone()))
+        .merge(bind_admin_routes(work_order_admin_router(state.clone()), hs.clone()))
+        .merge(bind_admin_routes(work_order_runner_router(state.clone()), hs.clone()))
         // P5b (Contract C25, Worker D consumes): runner-token lifecycle
         // (list/register/revoke) behind AdminSession. Merged WITHOUT
         // `.layer(cors)` — admin surface, never a browser embed. Only the
         // public submit/attachments routers above carry CORS (Ripple Analysis
         // flags accidental CORS-exposure of admin endpoints).
-        .merge(runner_tokens_admin_router(state.clone()))
+        .merge(bind_admin_routes(runner_tokens_admin_router(state.clone()), hs.clone()))
         // P5a (Contract C23/C24, Worker B): clustering/sweep/recommendation
         // admin surface (merge/split, sweep trigger+digest, recommendation
         // ingestion + read). AdminSession; merged WITHOUT `.layer(cors)` — admin
         // surface, never a browser embed. Clustering-on-submit adds NO new
         // external route (it hooks the existing public submit handler).
-        .merge(cluster_admin_router(state.clone()))
-        .merge(recommendation_admin_router(state.clone()))
-        .merge(sweep_admin_router(state.clone()))
+        .merge(bind_admin_routes(cluster_admin_router(state.clone()), hs.clone()))
+        .merge(bind_admin_routes(recommendation_admin_router(state.clone()), hs.clone()))
+        .merge(bind_admin_routes(sweep_admin_router(state.clone()), hs.clone()))
         // Public Feedback Board + Moderation Gate (Contracts C28/C29):
         //   board_router is the PUBLIC approved-only board read — merged WITH
         //   `.layer(cors)`, matching the submit/attachments public surface
@@ -598,12 +704,15 @@ fn build_app(
         //   moderate + queue + board-settings surface — merged WITHOUT CORS
         //   (AdminSession, never a browser embed; Ripple Analysis flags
         //   accidental CORS-exposure of admin endpoints).
-        .merge(apply_public_rate_limit(
-            board_router(state.clone()).layer(cors.clone()),
-            prl.clone(),
+        .merge(bind_public_routes(
+            apply_public_rate_limit(
+                board_router(state.clone()).layer(cors.clone()),
+                prl.clone(),
+            ),
+            hs.clone(),
         ))
-        .merge(moderation_router(state.clone()))
-        .merge(promote_router(state));
+        .merge(bind_admin_routes(moderation_router(state.clone()), hs.clone()))
+        .merge(bind_admin_routes(promote_router(state), hs.clone()));
     app.layer(PropagateRequestIdLayer::x_request_id())
         .layer(trace_layer)
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))

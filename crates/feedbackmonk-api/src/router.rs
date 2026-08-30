@@ -32,8 +32,20 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/:project_id/signing-keys/:key_id",
             delete(signing_keys::deactivate),
         )
-        // FR-FBR-18 (Contract C5): liveness (always 200, body indicates degradation)
-        // + readiness (200 healthy / 503 degraded; 12-factor split for orchestrators).
+        .with_state(state)
+}
+
+/// FR-FBR-18 (Contract C5): liveness (always 200, body indicates degradation)
+/// + readiness (200 healthy / 503 degraded; 12-factor split for orchestrators).
+///
+/// Split out of [`router`] at FR-FBR-32 so the health probes can be merged
+/// WITHOUT the admin host binding. An orchestrator's probe may legitimately
+/// arrive on any hostname the deployment answers on — including a tenant
+/// subdomain behind a shared load balancer — and a liveness check that 404s
+/// because of which name the prober used would take a healthy instance out of
+/// rotation. Health carries no tenant data, so there is nothing to bind.
+pub fn health_router(state: AppState) -> Router {
+    Router::new()
         .route("/health", get(health::liveness))
         .route("/health/ready", get(health::readiness))
         .with_state(state)

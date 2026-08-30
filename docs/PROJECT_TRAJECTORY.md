@@ -112,6 +112,38 @@ P2 convergence (commit `9f1a28b`) delivered the customer-facing surface (widget 
 
 ---
 
+
+### FR-FBR-32 / FR-FBR-33 — commercial hosting shape (2026-08-30, DEFER-005)
+
+**Code COMPLETE and green; three items blocked, none of them code.** DEC-FBR-13 (tenant subdomain by
+default, customer custom domain as the paid upgrade, admin on exactly one host) and DEC-FBR-14
+(first-party products become SaaS tenants) are implemented as FR-FBR-32/33 + DEC-FBR-IMPL-27/28/29.
+Migration `00030`; crate → **0.4.0**; capabilities `hosting.subdomains` + `hosting.custom_domain`.
+Runbook `docs/operations/SAAS_HOSTING.md`.
+
+The deliverable is **binding, not routing**: on a host that resolves to tenant T, every public route
+is restricted to T's projects and another tenant's `project_id` returns 404. Resolution alone would
+have shipped a subdomain scheme that renders another tenant's user-generated content on your origin
+while every page looked correct — the invisible failure the whole feature exists to prevent.
+With no root domain configured the entire layer is a pass-through, so FR-FBR-17 self-host is untouched.
+
+**Blocked — install the `host-tenant-binding` oracle (in this repo):** the oracle and two
+`multi-tenant-isolation-check` allow-list entries could not be written because DEC-84 hard-defers
+`.claude/` writes for a subordinate worker session. Both are finished and adversarially self-tested,
+staged at `scripts/oracles-pending/host-tenant-binding/`; run its `install.sh` from an owner session.
+**Until then `bash scripts/ci-local.sh` is red on that one oracle and nothing may be pushed** — CI runs
+the oracle suite, so a push now would go red. Everything else in the gate is green.
+
+**Blocked — OPS (owner):** (1) provision the `feedbackmonk.com` deployment with wildcard DNS + TLS —
+recommend running it **separately from GitCellar's Railway**, since the vendor's SaaS living inside
+customer #1's infrastructure is the arrangement DEC-FBR-14 exists to undo; (2) execute the GitCellar
+DNS cutover, which must be **coordinated with the GitCellar side first** (live sessions may be
+measuring against `feedback.gitcellar.com`). Neither blocks further code. `SAAS_HOSTING.md` § 4 has
+the ordered, reversible runbook; **no GitCellar source file is edited by any step**, and
+`triage.gitcellar.com` keeps working via an operator-registered admin alias that 301s to the canonical
+admin host (DEC-FBR-IMPL-27 — the reconciliation of DEC-FBR-13's "admin on one host" with
+DEC-FBR-14's "no user-visible change").
+
 ### Deferred Features
 
 - **PF-BOARD-VOTING-01 — DONE (2026-06-19, Contract C30).** Public-board voting shipped: migration `00018_feedback_board_votes.sql` (new table keyed on `feedback_id`, `roadmap_votes`/cache untouched per DEC-FBR-IMPL-21) + `BoardVoteRepo` + direct-SQL `vote_count` aggregate (D1) + `board.rs` POST/DELETE vote endpoints with the moderation gate (D2 — approved-only resolution before any write → 404 on pending/rejected/board-disabled). Anon/JWT voter chokepoint extracted into shared `handlers/voting_common.rs` (roadmap behavior byte-identical). `public-board-moderation-gate` Probe B extended to the vote path (v1.1.0, A/B/C green). Frontend `PublicBoard.tsx` vote button wired. Full gate green: clippy `-D warnings`, board_vote*/roadmap-vote/repo tests, oracles, admin-ui tsc+vitest+a11y.

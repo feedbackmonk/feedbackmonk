@@ -52,6 +52,15 @@ pub const CAPABILITIES: &[&str] = &[
     // P1-16 / M1: user-level "forget me" — DELETE …/me erases the caller's ENTIRE
     // footprint (all feedback + solicitation state + roadmap/board votes).
     "feedback.erase_all",
+    // FR-FBR-32/33: the commercial hosting shape. BUILD-level, like every token
+    // above — they say this binary implements host-based tenant resolution and
+    // tier-gated custom domains, not that a given deployment has switched them
+    // on. Whether THIS deployment has is self-describing and needs no token:
+    // `GET /api/v1/public/site` 404s on a host that is not tenant-bound, and
+    // `GET /api/v1/admin/hosting` returns a null `cname_target` when no root
+    // domain is configured.
+    "hosting.subdomains",
+    "hosting.custom_domain",
 ];
 
 pub async fn capabilities() -> Json<Value> {
@@ -152,11 +161,14 @@ mod tests {
             "feedback.idempotency",
             "feedback.attachments",
             "feedback.erase_all",
+            // FR-FBR-32/33 (DEC-FBR-13/14): the commercial hosting shape.
+            "hosting.subdomains",
+            "hosting.custom_domain",
         ];
         assert_eq!(
             CAPABILITIES.len(),
             expected.len(),
-            "CAPABILITIES drifted from the expected Phase-A set"
+            "CAPABILITIES drifted from the expected set"
         );
         for e in expected {
             assert!(CAPABILITIES.contains(&e), "missing capability: {e}");

@@ -1,7 +1,7 @@
 ---
 id: DEFER-005
 title: Tenant-subdomain hosting shape + custom domain as the paid upgrade, and move first-party products onto the SaaS
-status: PROPOSED
+status: IMPLEMENTED
 origin: inject
 source-project: GitCellar
 source-session-id: interactive-20260830T065606Z-514006
@@ -13,6 +13,35 @@ content-hash: fbm-hosting-shape-dec13-14-v1
 ---
 
 # DEFER-005: Tenant-subdomain hosting shape + custom domain as the paid upgrade, and move first-party products onto the SaaS
+
+> **STATUS 2026-08-30 — IMPLEMENTED (code); two OPS items blocked on the owner.**
+> Integrated into this project's spec as **FR-FBR-32** (host-based tenant resolution + tenant
+> subdomains) and **FR-FBR-33** (custom domain as the tier-gated paid upgrade), with
+> **DEC-FBR-IMPL-27/28/29** recording the three in-lane decisions. Artefacts:
+> [intake](../intakes/20260830T182800-dec-fbr-13-14-tenant-subdomain-hosting.md) →
+> [plan](../plans/20260830T183500-dec-fbr-13-14-tenant-subdomain-hosting.md) → implementation.
+>
+> **Delivered**: migration `00030`, the core hostname vocabulary, the `DomainRepo` registry, the
+> `bind_public_routes` / `bind_admin_routes` guards wired across every router in `build_app`, the
+> `/api/v1/public/site` discovery endpoint, the `tls-authorize` edge seam, the tenant-facing hosting
+> admin surface + UI, the reference Caddy edge, the env catalog entries, and the
+> `docs/operations/SAAS_HOSTING.md` runbook. 42 net-new Rust/vitest tests + 6 Playwright/axe
+> specs, all green.
+>
+> **Two blocked items, both OPS not code** (detail in `SAAS_HOSTING.md` § 5): provisioning the
+> `feedbackmonk.com` deployment with wildcard DNS + TLS, and executing the GitCellar DNS cutover
+> (which must be coordinated first — the brief is explicit). **No GitCellar file was touched.**
+>
+> **One blocked item inside this repo**: the `host-tenant-binding` Verification Oracle and two
+> `multi-tenant-isolation-check` allow-list entries could not be written — DEC-84 hard-defers `.claude/`
+> writes for a subordinate worker session. The block was respected, not worked around. Both are
+> finished and staged at `scripts/oracles-pending/host-tenant-binding/`; one command installs them.
+> **Until they are installed the CI-parity gate is red on that one oracle, so nothing was pushed.**
+>
+> **Not done, deliberately** (recorded, not forgotten): splitting the public board out of the admin
+> bundle — host separation already delivers the origin isolation DEC-FBR-13 reason #1 asks for, so the
+> split is bundle hygiene rather than a prerequisite; see the 2026-08-30 resolution line in
+> `docs/planning/observations-ledger.md`. Custom email `From:` stays deferred on DEC-FBR-13's own terms.
 
 > **Counts, file locations and line numbers below are snapshots taken by the named commands on
 > 2026-08-30 — re-measure before acting.** The fix shapes and acceptance criteria are the filer's

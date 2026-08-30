@@ -17,11 +17,11 @@ interface CapabilityRow {
 function capabilities(quotas: TierQuotas): CapabilityRow[] {
   return [
     { label: "Custom branding", enabled: quotas.custom_branding },
-    {
-      label: "Custom domain",
-      enabled: quotas.custom_domain,
-      notImplemented: quotas.custom_domain,
-    },
+    // FR-FBR-33 shipped: the flag now has an implementation behind it
+    // (/admin/settings/hosting), so the `notImplemented` footnote is gone. It
+    // had been true-and-unimplemented since P3 — the marketing pricing card
+    // advertised it while nothing enforced or delivered it.
+    { label: "Custom domain", enabled: quotas.custom_domain },
     {
       label: "EU data residency",
       enabled: quotas.eu_residency,

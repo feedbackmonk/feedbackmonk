@@ -55,6 +55,21 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
     ) -> Result<feedbackmonk_core::Tenant, RepoError> {
         unimplemented!()
     }
+    // FR-FBR-32: hosting surface. This fake exists only to exercise the email
+    // notifier's brand resolution, so the hosting accessors are unreachable here.
+    async fn get_subdomain(
+        &self,
+        _scope: &feedbackmonk_repository::TenantScope,
+    ) -> Result<Option<String>, RepoError> {
+        unimplemented!()
+    }
+    async fn set_subdomain(
+        &self,
+        _scope: &feedbackmonk_repository::TenantScope,
+        _label: Option<&str>,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
     async fn find_by_email(
         &self,
         _email: &str,

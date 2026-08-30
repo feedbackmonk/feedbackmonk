@@ -1445,3 +1445,57 @@ a {
   flex-wrap: wrap;
   gap: 0.75rem;
 }
+
+/* ── FR-FBR-32/33 — Hosting settings (tenant subdomain + custom domains) ──── */
+.hosting-settings-page {
+  max-width: 52rem;
+}
+.hosting-settings-page .settings-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 6px);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.hosting-settings-page .settings-card h2 {
+  margin-top: 0;
+  font-size: 1.05rem;
+}
+.hosting-settings-page form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 34rem;
+}
+.hosting-settings-page form label {
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+.hosting-settings-page form button {
+  margin-top: 0.75rem;
+  align-self: flex-start;
+}
+.hosting-settings-page ol {
+  padding-left: 1.25rem;
+}
+.hosting-settings-page ol li {
+  margin: 0.25rem 0;
+}
+.domain-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1.25rem;
+}
+.domain-table th,
+.domain-table td {
+  text-align: left;
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.domain-table th {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted, inherit);
+}

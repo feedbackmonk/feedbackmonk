@@ -118,6 +118,34 @@ Optional multilingual-feedback translation (FR-FBR-30, DEC-FBR-IMPL-25 / DEC-FBR
 
 ---
 
+### Hosting Shape — Tenant Subdomains & Custom Domains (FR-FBR-32 / FR-FBR-33)
+
+Optional multi-tenant hosting (FR-FBR-32/33, DEC-FBR-13 / DEC-FBR-IMPL-27/28/29). Configures the SaaS shape: each tenant's public board and widget/API endpoint live at `{subdomain}.{root_domain}`, admin lives on exactly one host, and a paid-tier tenant may point their own domain at us by CNAME.
+
+> **Self-hosters: leave both of these unset.** With neither `FEEDBACKMONK_ROOT_DOMAIN` nor `FEEDBACKMONK_ADMIN_HOST` set, the entire host layer is a **pass-through** and behaviour is byte-identical to a deployment that predates FR-FBR-32 — every route answers on whatever hostname (or bare IP) you serve on, exactly as before. This is deliberate and tested (`tests/host_tenant_binding.rs::unconfigured_deployment_is_inert`): a single-tenant `docker compose up` must not inherit a SaaS feature it never asked for. The quickstart profile below is unchanged.
+
+> **⚠️ If you DO set these, read this.** Setting `FEEDBACKMONK_ROOT_DOMAIN` turns on **host binding**: a request arriving on a host that resolves to tenant T is restricted to T's projects, and another tenant's `project_id` returns **404**. That restriction is the whole point (DEC-FBR-13's origin-isolation argument), but it means a deployment that serves several tenants from one hostname today will start refusing cross-tenant reads the moment a root domain is configured. Set the subdomains first, verify, then point DNS.
+
+| Name | Required | Default | 🔒 | Semantics |
+|---|---|---|---|---|
+| `FEEDBACKMONK_ROOT_DOMAIN` | optional | — | | Wildcard root for tenant subdomains, e.g. `feedbackmonk.com`. When set, `{tenant}.{root}` resolves to the tenant holding that `tenants.subdomain` label, and **host binding activates** for every public route. Exactly ONE level is matched — `a.b.{root}` resolves to nothing, because a wildcard certificate covers one level and binding a host that can never present a valid cert would be a lie. Unset ⇒ no subdomain resolution (the self-host posture). Normalised on read (lowercased, port and trailing dot stripped). Source: `crates/feedbackmonk-api/src/hosting.rs` (`HostConfig::from_env`). |
+| `FEEDBACKMONK_ADMIN_HOST` | optional | — | | The single hostname that serves the admin console, e.g. `app.feedbackmonk.com`. When set, admin routes **404 on any tenant-bound host**, so no admin surface — and no admin session cookie — ever exists on an origin a tenant or a customer controls (DEC-FBR-13: admin custom domains are "Never"). It is also the 301 target for operator-registered admin aliases (DEC-FBR-IMPL-27). Unset ⇒ admin answers on any host, as before. Source: `crates/feedbackmonk-api/src/hosting.rs`. |
+
+**`X-Forwarded-Host` and the trusted proxy.** Behind a reverse proxy the real client-facing hostname arrives in `X-Forwarded-Host`, not `Host`. That header is honoured **only** when `FEEDBACKMONK_TRUSTED_PROXY_HOPS > 0` (the same switch that governs `X-Forwarded-For` for the rate-limit ceiling). It is deliberately not a second, independently-settable flag: an operator who has already declared "there is a trusted proxy in front of me" has made exactly the statement this needs, and two knobs is a way for them to disagree. **On any PaaS or edge proxy, set `FEEDBACKMONK_TRUSTED_PROXY_HOPS=1` or tenant hosts will not resolve.** Without a trusted proxy declared, the header is attacker-settable and is ignored — honouring it would make the whole binding bypassable with one `curl -H`.
+
+**Reserved subdomain labels.** A tenant cannot claim a label the platform needs (`app`, `admin`, `api`, `cdn`, `www`, `mail`, `ns1`, …) — the full set is `feedbackmonk_core::hosting::RESERVED_LABELS`. This is a security boundary, not cosmetics: a tenant on `api.{root}` would be serving tenant-controlled content on a platform origin. Adding to the list is a one-way door for anyone who already holds the label, so additions belong with a migration that checks for collisions.
+
+**Custom domains (FR-FBR-33) and TLS.** A tenant whose tier carries `custom_domain` (Pro and above — `tier_quotas()`, Contract C19) claims a hostname via `POST /api/v1/admin/hosting/domains`, then CNAMEs it at their `{subdomain}.{root}` host. **Certificates are issued by the edge, never by `feedbackmonk-api`** (DEC-FBR-IMPL-29) — the app stays a stateless HTTP service with no ACME account keys or renewal timers, which is exactly what keeps the FR-FBR-17 self-host image unchanged for operators who want none of this. The edge asks before issuing:
+
+```
+GET /api/v1/public/tls-authorize?domain={sni}
+    200 → issue      404 → do not issue
+```
+
+That endpoint is the tier gate *at issuance time*: a tenant who downgrades keeps their claim row but stops getting certificates. It also makes unbounded-issuance abuse structurally impossible — on-demand TLS with no `ask` endpoint lets anyone who points DNS at you exhaust your ACME rate limit. A reference Caddy configuration is at `deploy/caddy/Caddyfile`; see `docs/operations/SAAS_HOSTING.md` for the full stand-up.
+
+---
+
 ## Self-Host Quickstart Env Profile
 
 For a fresh self-host (`docker compose up` against the stack Worker B will ship under `deploy/docker/`), the **minimum required** vars are:

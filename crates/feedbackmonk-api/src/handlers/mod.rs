@@ -87,3 +87,13 @@ pub mod sweeps;
 // (list/register/revoke). Behind AdminSession; merged WITHOUT CORS. The
 // runner-token VERIFY seam lives in `work_orders.rs` (verify_runner_token).
 pub mod runner_tokens;
+
+// FR-FBR-32/33 (Contracts C32/C33, DEC-FBR-13/14): the commercial hosting shape.
+//   public_site — host-rooted discovery (`/api/v1/public/site`) + the edge's
+//                 on-demand-TLS authorisation seam (`/api/v1/public/tls-authorize`).
+//                 PUBLIC; wrapped by `bind_public_routes`.
+//   domains     — tenant subdomain + custom-domain claim/release. AdminSession,
+//                 no CORS, wrapped by `bind_admin_routes`. The claim path is
+//                 where the FR-FBR-33 tier gate fires (402).
+pub mod domains;
+pub mod public_site;

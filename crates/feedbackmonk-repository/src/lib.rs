@@ -17,6 +17,7 @@ pub mod analysis_sweeps;
 pub mod attachments;
 pub mod board_votes;
 pub mod clusters;
+pub mod domains;
 pub mod email_verifications;
 pub mod error;
 pub mod feedback;
@@ -44,6 +45,7 @@ pub use attachments::{
 };
 pub use board_votes::{BoardVote, BoardVoteRepo, SqlxBoardVoteRepo};
 pub use clusters::{ClusterRepo, FeedbackCluster, SqlxClusterRepo};
+pub use domains::{DomainRepo, HostBinding, SqlxDomainRepo, TenantDomain};
 pub use email_verifications::{EmailVerificationRepo, Redemption, SqlxEmailVerificationRepo};
 pub use error::{RepoError, Result};
 pub use feedback::{

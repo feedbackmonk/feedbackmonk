@@ -21,6 +21,7 @@ pub mod egress_guard;
 pub mod email;
 pub mod error;
 pub mod handlers;
+pub mod hosting;
 pub mod rate_limit;
 pub mod roadmap_voting_cache;
 pub mod router;
@@ -52,6 +53,12 @@ pub use handlers::solicitation::solicitation_router;
 pub use handlers::promote::routes as promote_router;
 pub use handlers::roadmap::{admin_roadmap_router, roadmap_router};
 pub use handlers::widget_config::widget_config_router;
+// FR-FBR-32/33 (Contracts C32/C33): host-based tenant resolution + custom domains.
+pub use handlers::domains::{domains_router, DomainAdminState};
+pub use handlers::public_site::{public_site_router, PublicSiteState};
+pub use hosting::{
+    bind_admin_routes, bind_public_routes, HostConfig, HostScope, HostState,
+};
 pub use handlers::work_orders::{work_order_admin_router, work_order_runner_router};
 // P5a (Worker B, Contract C23/C24): cluster/recommendation/sweep admin routers +
 // the testable pure surface (clustering heuristic + source_refs exfil validator)
@@ -75,5 +82,5 @@ pub use translation::{
     NoOpTranslator, TranslateOutput, TranslationProvider, DEFAULT_TRANSLATION_POLL_SECS,
     DEFAULT_TRANSLATION_TARGET_LANG, MAX_TRANSLATION_ATTEMPTS, TRANSLATION_BATCH_LIMIT,
 };
-pub use router::router as worker_a_router;
+pub use router::{health_router, router as worker_a_router};
 pub use state::AppState;

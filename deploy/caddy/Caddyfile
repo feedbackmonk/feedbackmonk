@@ -1,0 +1,150 @@
+# feedbackmonk SaaS edge — reference configuration (FR-FBR-32 / FR-FBR-33).
+#
+# This file is for the MULTI-TENANT SaaS deployment (DEC-FBR-14). Plain
+# self-hosters do not need it: `deploy/docker/docker-compose.yml` remains the
+# FR-FBR-17 story, one tenant on one hostname, no wildcard, no ACME here.
+#
+# WHY THE EDGE OWNS TLS (DEC-FBR-IMPL-29). Certificates are issued here and
+# never inside `feedbackmonk-api`. That keeps ACME account keys, renewal timers
+# and certificate storage out of an otherwise stateless HTTP service — which is
+# precisely what lets the self-host image stay unchanged for operators who want
+# none of this. The app's only role is to say WHICH hostnames are allowed a
+# certificate.
+#
+# THE `ask` ENDPOINT IS NOT OPTIONAL. On-demand TLS without one lets anyone who
+# points a DNS record at this server trigger an ACME order, which is a
+# well-known way to get an account rate-limited by a stranger. It is also where
+# the FR-FBR-33 tier gate becomes infrastructural: a tenant who downgrades off
+# Pro keeps their claim row but stops getting certificates, so the paid feature
+# is enforced by the thing that actually serves traffic rather than only by a
+# check in a claim handler that already ran.
+#
+# Placeholders to replace:
+#   {$FEEDBACKMONK_ROOT_DOMAIN}   e.g. feedbackmonk.com
+#   {$FEEDBACKMONK_ADMIN_HOST}    e.g. app.feedbackmonk.com
+#   {$FEEDBACKMONK_API_UPSTREAM}  e.g. api:14304
+#   {$FEEDBACKMONK_SPA_ROOT}      path to the built admin-ui bundle
+#   {$ACME_EMAIL}                 contact address for Let's Encrypt
+
+{
+	email {$ACME_EMAIL}
+
+	on_demand_tls {
+		# Every unfamiliar SNI is checked against the app before an order is
+		# placed. A 404 here means no certificate is attempted.
+		ask http://{$FEEDBACKMONK_API_UPSTREAM}/api/v1/public/tls-authorize
+
+		# Belt-and-braces ceiling in case the ask endpoint is ever misconfigured
+		# to answer 200 too freely.
+		interval 2m
+		burst 5
+	}
+}
+
+# --- shared snippets ---------------------------------------------------------
+
+(forwarded) {
+	header_up Host {host}
+	header_up X-Real-IP {remote_host}
+	header_up X-Forwarded-Host {host}
+	header_up X-Forwarded-Proto {scheme}
+}
+
+(security_headers) {
+	header {
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}
+
+# --- admin console: exactly one host (DEC-FBR-13) ----------------------------
+#
+# The app ALSO refuses admin routes on any tenant-bound host
+# (`bind_admin_routes`). Two independent layers, deliberately: an edge
+# misconfiguration must not be able to expose admin on a customer's domain, and
+# a future edge change must not be able to either.
+
+{$FEEDBACKMONK_ADMIN_HOST} {
+	import security_headers
+
+	# The admin console frames nothing and is framed by nothing.
+	header X-Frame-Options "DENY"
+
+	handle /api/* {
+		reverse_proxy {$FEEDBACKMONK_API_UPSTREAM} {
+			import forwarded
+		}
+	}
+	handle /health* {
+		reverse_proxy {$FEEDBACKMONK_API_UPSTREAM} {
+			import forwarded
+		}
+	}
+	handle {
+		root * {$FEEDBACKMONK_SPA_ROOT}
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# --- tenant subdomains: *.{root} --------------------------------------------
+#
+# A wildcard certificate (DNS-01) covers exactly ONE level, which is why the app
+# resolves only single-level labels — binding `a.b.{root}` would mint a tenant
+# scope for a hostname that can never present a valid certificate.
+#
+# DNS-01 needs a provider module compiled into Caddy (xcaddy build with e.g.
+# github.com/caddy-dns/cloudflare) and the provider's API token in the
+# environment. Without it, drop the `tls` block and let each subdomain get its
+# own on-demand certificate via HTTP-01 instead — correct, just chattier.
+
+*.{$FEEDBACKMONK_ROOT_DOMAIN} {
+	import security_headers
+
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+
+	handle /api/* {
+		reverse_proxy {$FEEDBACKMONK_API_UPSTREAM} {
+			import forwarded
+		}
+	}
+	handle {
+		root * {$FEEDBACKMONK_SPA_ROOT}
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# --- customer custom domains (FR-FBR-33) + operator admin aliases ------------
+#
+# The catch-all. Any hostname that reaches this block gets a certificate ONLY if
+# `tls-authorize` says so, so this is not the open relay it looks like.
+#
+# Admin aliases (DEC-FBR-IMPL-27, e.g. `triage.gitcellar.com`) land here too and
+# are answered by the app with a 301 to the canonical admin host — which is how
+# DEC-FBR-14's "no user-visible change, no GitCellar source edit" and
+# DEC-FBR-13's "admin on exactly one host" are both satisfied. The redirect is
+# the app's decision, not the edge's, so the alias list lives in one place.
+
+:443 {
+	import security_headers
+
+	tls {
+		on_demand
+	}
+
+	handle /api/* {
+		reverse_proxy {$FEEDBACKMONK_API_UPSTREAM} {
+			import forwarded
+		}
+	}
+	handle {
+		root * {$FEEDBACKMONK_SPA_ROOT}
+		try_files {path} /index.html
+		file_server
+	}
+}

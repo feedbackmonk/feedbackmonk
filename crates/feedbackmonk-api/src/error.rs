@@ -142,6 +142,10 @@ impl From<RepoError> for ApiError {
             // → 409 with a stable machine-readable body `{"error":"IdempotencyKeyReuse"}`.
             RepoError::IdempotencyKeyReuse => Self::Conflict("IdempotencyKeyReuse".into()),
             RepoError::TenantProjectMismatch => Self::Forbidden,
+            // FR-FBR-32: a `tenant_domains` row outside its CHECK set means the
+            // schema and the code disagree — an operator/deploy problem, not
+            // something the caller can fix, so it is a 500 rather than a 4xx.
+            RepoError::DomainValue(err) => Self::Internal(format!("hosting schema drift: {err}")),
             RepoError::Sqlx(err) => Self::Internal(format!("database error: {err}")),
         }
     }

@@ -1,0 +1,29 @@
+# Additions required in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+# for FR-FBR-32 (host-based tenant resolution).
+#
+# WHY THIS FILE EXISTS RATHER THAN THE EDIT ITSELF: the build session was a
+# subordinate worker and DEC-84 (CSI-08) hard-defers any write under `.claude/`
+# at every autonomy level. The block was respected, not worked around. Append the
+# two blocks below to that allowlist and the oracle goes green:
+#
+#     bash .claude/oracles/multi-tenant-isolation-check/oracle.sh
+#     # currently: FAIL (2 offenders) -- both are these entries
+#
+# The offenders are exactly two, and both are structural rather than incidental:
+# the surface was deliberately reshaped during the build to eliminate the other
+# five the first draft produced. `DomainKind` / `DomainStatus` were moved into
+# `feedbackmonk-core::hosting` (where `Tier` and `ModerationStatus` already live,
+# so their parse helpers are no longer repository-crate free functions), and
+# `DomainRepo::mark_active` was made `&TenantScope`-first (the TLS-authorisation
+# handler already resolves the owning tenant, so it can mint the scope). Only a
+# genuine pre-auth boundary and a pool constructor remain.
+
+[[methods]]
+trait = "DomainRepo"
+method = "resolve_host"
+rationale = "Pre-authentication boundary (FR-FBR-32, DEC-FBR-IMPL-28): host->tenant resolution runs BEFORE any scope can exist -- it is what DETERMINES which tenant, if any, a request belongs to. It takes an attacker-controlled `Host` header (already reduced by `feedbackmonk_core::hosting::normalize_host`) and returns a `HostBinding` naming the owning tenant. Structurally identical to `ProjectRepo::open_for_submission`: untrusted input in, a binding out, every subsequent call scope-disciplined again. Critically, the binding GRANTS nothing -- `feedbackmonk-api::hosting::bind_public_routes` consumes it as a RESTRICTION (a request on tenant A's host may not reach tenant B's projects; 404 otherwise), and the `host-tenant-binding` Verification Oracle proves that restriction is actually wired, since resolution without it would render correct-looking cross-tenant pages. This is the SOLE host->tenant lookup in the system, and the oracle's Probe C asserts that."
+
+[[inherent_methods]]
+type_name = "SqlxDomainRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Same shape as SqlxTenantRepo::new / SqlxProjectRepo::new."
