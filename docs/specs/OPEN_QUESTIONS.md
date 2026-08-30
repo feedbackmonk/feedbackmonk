@@ -113,3 +113,58 @@ DEC-FBR-05 committed to "single codebase, fully AGPL; no private 'Pro features' 
 
 ### Q20 — BYO-agent contract for self-hosters
 **Status**: RESOLVED-DEFERRED 2026-06-18 → [P5a plan](../planning/plans/20260618T114524-feedbackmonk-p5a-agentic-resolution-loop.md) Deferred Decisions. Rides with the deferred packaging axis (DEC-FBR-12). P5a documents the work-order API as a seam (ops doc) but ships **no reference adapter** and makes **no open-vs-proprietary analyst call**; that decision arrives with the runner (FR-FBR-24) when external commercialization is on the table, behind the frozen API seam. The contract is the deliverable now; the BYO-agent reference + open-analyst question is moot until packaging is decided.
+
+---
+
+## Commercial hosting shape (opened 2026-08-30)
+
+Surfaced from a GitCellar-side conversation about adopting feedbackmonk for the other sibling
+products. Both are **spec decisions and belong to the owner** — nothing here is decided.
+
+### Q21 — Default public-surface URL shape: tenant subdomain or path?
+**Status**: OPEN.
+
+The P3 commercial gate committed public browse to `feedbackmonk.com/{tenant}/{project}/roadmap`
+([plan §252](../planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md)), with custom
+domain as a $29-tier capability whose flag is `true` but whose implementation is deferred (§427).
+Nothing has shipped against either: the API routes on `project_id` in the path
+(`handlers/board.rs:80`, `handlers/roadmap.rs:179`) and never inspects the Host header, so
+host→tenant resolution is new work under **any** option.
+
+**Recommendation (not a decision): `{tenant}.feedbackmonk.com`.** Three reasons, weighted:
+
+1. **Origin isolation for the UGC surface.** The public board is a route *inside the admin SPA* —
+   `admin-ui/src/App.tsx:35,65` maps `/public/projects/:projectId/board` to `PublicBoard` in the
+   same app that serves `Login.tsx`, triage, moderation and settings. On a path-based multi-tenant
+   SaaS, every tenant's board (rendering user-submitted text) would share one origin with every
+   other tenant's board *and* with the admin console. Same-origin policy is per-origin, not
+   per-path — no path structure fixes this. See the observations-ledger line of the same date.
+2. **The paid upgrade becomes a CNAME swap** (`feedback.customer.com` → `tenant.feedbackmonk.com`)
+   rather than a URL rewrite that breaks every board link a customer has shared.
+3. Cost is a wildcard cert plus host-based tenant resolution, paid once.
+
+**Counter, honestly**: path-based needs no wildcard DNS/TLS and accrues SEO to `feedbackmonk.com`.
+The SEO gain on a feedback board is small and competes directly with the customer's interest.
+
+**Second-order**: sell the custom domain for the **widget/API endpoint**, not only the board. A
+first-party endpoint dodges tracker blocklists, survives strict CSP `connect-src`, and reads as
+first-party in a customer's security review — a stronger $29 justification than a vanity URL, and
+nearly free already since the widget takes `data-api-base`. Admin/triage should stay on one
+feedbackmonk-owned host permanently (custom-domain admin buys nothing and costs per-domain
+sessions). Custom email `From:` is separate and later (DKIM delegation).
+
+### Q22 — Should the sibling products become SaaS tenants rather than self-host instances?
+**Status**: OPEN.
+
+Today GitCellar runs a **self-hosted single-tenant** instance on its own Railway at
+`feedback.gitcellar.com` (widget/API) + `triage.gitcellar.com` (admin). That is right for
+GitCellar's users, but it means the multi-tenant SaaS we intend to sell is never dogfooded —
+custom-domain routing, wildcard TLS, per-tenant isolation under real traffic all go unexercised.
+That is a plausible reason the custom-domain flag has sat `true`-and-unimplemented since P3.
+
+**Recommendation (not a decision)**: stand up the SaaS at `feedbackmonk.com`, make GitCellar (and
+quiqpic, SessionHelm — the canonical multi-product-per-tenant shape DEC-FBR-03 already names)
+tenants of it, and CNAME the existing gitcellar hosts at it. No user-visible change, GitCellar's
+`TRIAGE_URL` constant unchanged, no broken links — and we become customer #1 of the custom-domain
+feature, so it gets built because we need it rather than because a pricing card promises it.
+Depends on Q21: the CNAME target only exists if subdomains do.
