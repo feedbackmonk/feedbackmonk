@@ -122,7 +122,9 @@ Surfaced from a GitCellar-side conversation about adopting feedbackmonk for the 
 products. Both are **spec decisions and belong to the owner** — nothing here is decided.
 
 ### Q21 — Default public-surface URL shape: tenant subdomain or path?
-**Status**: OPEN.
+**Status**: RESOLVED 2026-08-30 → [`DEC-FBR-13`](DECISIONS.md#dec-fbr-13-public-surface-url-shape--tenant-subdomain-by-default-customer-custom-domain-as-the-paid-upgrade)
+
+Resolution: tenant subdomain (`{tenant}.feedbackmonk.com`) as the default for the board AND the widget/API endpoint, customer custom domain via CNAME as the paid-tier upgrade covering both, admin permanently on one feedbackmonk-owned host, email `From:` deferred. Supersedes the P3 gate's path-based commitment.
 
 The P3 commercial gate committed public browse to `feedbackmonk.com/{tenant}/{project}/roadmap`
 ([plan §252](../planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md)), with custom
@@ -154,7 +156,9 @@ feedbackmonk-owned host permanently (custom-domain admin buys nothing and costs 
 sessions). Custom email `From:` is separate and later (DKIM delegation).
 
 ### Q22 — Should the sibling products become SaaS tenants rather than self-host instances?
-**Status**: OPEN.
+**Status**: RESOLVED 2026-08-30 → [`DEC-FBR-14`](DECISIONS.md#dec-fbr-14-first-party-products-become-saas-tenants-not-self-host-instances)
+
+Resolution: yes — stand up the SaaS at `feedbackmonk.com`, make GitCellar (then quiqpic, SessionHelm) tenants, CNAME the existing GitCellar hosts at it. Hard constraint: no user-visible change and no GitCellar source edit.
 
 Today GitCellar runs a **self-hosted single-tenant** instance on its own Railway at
 `feedback.gitcellar.com` (widget/API) + `triage.gitcellar.com` (admin). That is right for

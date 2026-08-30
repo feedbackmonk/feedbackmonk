@@ -249,7 +249,9 @@ roadmap_promotes  (feedback_id, roadmap_item_id, promoted_by, promoted_at)
 
 **Voting**: 1 vote per `(item, voter)`. `voter_id` is JWT `sub` for authenticated mode (DEC-FBR-04 mode a) or hashed cookie+IP for anonymous mode (mode b). Top-voted endpoint with 60s cache (port of GitCellar's `roadmap_voting.rs` algorithm).
 
-**Public browse**: anonymous by default at `feedbackmonk.com/{tenant}/{project}/roadmap` (custom domain in $29+ tier). Browse without auth; auth required to vote (per Q4 modes).
+**Public browse**: anonymous by default. Browse without auth; auth required to vote (per Q4 modes).
+
+> **SUPERSEDED 2026-08-30 — URL shape only (see [`DEC-FBR-13`](#dec-fbr-13-public-surface-url-shape--tenant-subdomain-by-default-customer-custom-domain-as-the-paid-upgrade)).** This line originally read *"anonymous by default at `feedbackmonk.com/{tenant}/{project}/roadmap` (custom domain in $29+ tier)"*. The default is now the tenant subdomain `{tenant}.feedbackmonk.com`, and the paid custom domain covers the widget/API endpoint as well as the board. Everything else in DEC-FBR-06 — the native Postgres roadmap model, anonymous browse, auth-to-vote — stands unchanged.
 
 **Promote-from-feedback**: admin clicks "Promote to roadmap" on a feature_request. Creates `roadmap_items` row, links via `roadmap_promotes`, transitions source feedback to `duplicate`. **Q24 privacy invariant carries over from GitCellar (load-bearing)**: rendered roadmap-item body contains the feedback message verbatim with NO submitter attribution and NO feedback ID reference. Inline test asserts byte-for-byte.
 
@@ -994,3 +996,44 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Alternatives considered**: *Hardcode a single cloud provider* — silently egresses every self-hoster's feedback to a third party; collides with DEC-FBR-02 (rejected). *Default-on* — same egress-without-consent problem (rejected; default-off chosen). *Google Translate as the v1 cloud provider* — US-based, weaker GDPR posture, trains-on-data concerns vs DeepL Pro (rejected for v1; DeepL chosen). *Ship the local engine in v1* — larger scope (bundling/operating a translation model in the self-host compose) for a future-facing nicety (deferred).
 
 ---
+
+## Commercial hosting shape (owner decisions, 2026-08-30)
+
+### DEC-FBR-13: Public-surface URL shape — tenant subdomain by default, customer custom domain as the paid upgrade
+
+**Status**: **RESOLVED 2026-08-30** (owner decision; resolves [Q21](OPEN_QUESTIONS.md#q21--default-public-surface-url-shape-tenant-subdomain-or-path)). **Supersedes** the path-based commitment made inside [`DEC-FBR-06`](#dec-fbr-06-roadmap-backend--native-postgresql-data-model--ui-drop-forge-dependency-entirely) ("Public browse: anonymous by default at `feedbackmonk.com/{tenant}/{project}/roadmap`") — back-annotated there in this same change per the Decision Governance rule.
+
+**Decision**, per surface — the four public surfaces do **not** share one answer:
+
+| Surface | Default | Custom domain? |
+|---|---|---|
+| Public board / roadmap | `{tenant}.feedbackmonk.com` | **Yes** — paid tier, via CNAME |
+| Widget script + API endpoint | `{tenant}.feedbackmonk.com` (or a `cdn.`/`api.` host) | **Yes** — paid tier, same CNAME mechanism |
+| Admin / triage | one feedbackmonk-owned host (`app.feedbackmonk.com`) | **Never** |
+| Transactional email `From:` | feedbackmonk-owned sending domain | Deferred (needs DKIM delegation; separate decision) |
+
+**Why subdomain, not path** — three reasons, weighted:
+
+1. **Origin isolation for the user-generated-content surface.** The public board is a route *inside the admin SPA*: `admin-ui/src/App.tsx:35,65` maps `/public/projects/:projectId/board` to `PublicBoard` in the same bundle that serves `Login.tsx`, triage, moderation and settings. Under path-based multi-tenancy every tenant's board — rendering user-submitted text, which *is* this product's core content — would share one origin with every other tenant's board and with the admin console. Same-origin policy is per-origin, not per-path; no path structure fixes this. Recorded in the observations ledger 2026-08-30 (no observed harm: the only live deployment is single-tenant self-host, so the harm was conditional on this very decision).
+2. **The paid upgrade becomes a CNAME swap** (`feedback.customer.com` → `{tenant}.feedbackmonk.com`) instead of a URL rewrite that permanently breaks every board link a customer has shared.
+3. Cost is a wildcard cert plus host-based tenant resolution, paid once — and host→tenant resolution is **new work under either option**, since the API routes on `project_id` in the path (`handlers/board.rs:80`, `handlers/roadmap.rs:179`) and never inspects the Host header today.
+
+**Custom domain covers the widget/API endpoint, not only the board.** A first-party endpoint dodges tracker blocklists, survives a strict CSP `connect-src`, and reads as first-party in a customer's security review — a stronger justification for the paid tier than a vanity board URL, and nearly free already because the widget takes `data-api-base`. This is the "Plausible proxying" play, and it is the differentiator that holds up against the AGPL self-host alternative (DEC-FBR-05), which is the real competitor to the paid tier.
+
+**Admin stays on one host, permanently.** Custom-domain admin buys nothing and costs per-domain sessions and SSO complexity.
+
+**Free-tier flywheel is preserved**: default-tier visitors still land on a `feedbackmonk.com` origin with the badge intact (`footer_url`, DEC-FBR-IMPL-11); the escape from it is what is being sold.
+
+**Alternatives considered**: *Path-based (`feedbackmonk.com/{tenant}/…`)* — operationally simplest (no wildcard DNS/TLS) and accrues SEO to `feedbackmonk.com`; rejected because the SEO gain on a feedback board is small, competes directly with the customer's own interest, and does not survive reason 1. *Customer domain by default (self-host shape for everyone)* — rejected: destroys the badge flywheel and makes onboarding a DNS task.
+
+### DEC-FBR-14: First-party products become SaaS tenants, not self-host instances
+
+**Status**: **RESOLVED 2026-08-30** (owner decision; resolves [Q22](OPEN_QUESTIONS.md#q22--should-the-sibling-products-become-saas-tenants-rather-than-self-host-instances)). Depends on DEC-FBR-13 (the CNAME target only exists if subdomains do).
+
+**Decision**: stand up the SaaS at `feedbackmonk.com`; make GitCellar — and later quiqpic and SessionHelm, the canonical multi-product-per-tenant shape DEC-FBR-03 already names — **tenants of it**, and CNAME the existing GitCellar hosts (`feedback.gitcellar.com`, `triage.gitcellar.com`) at that instance rather than at a private single-tenant deployment.
+
+**Why**: GitCellar today runs a self-hosted single-tenant instance on its own Railway (`docs/planning/feedbackmonk-deploy-state.md`). That is right for GitCellar's *users* and wrong for us as the *vendor*: the multi-tenant SaaS we intend to sell is never dogfooded — custom-domain routing, wildcard TLS, per-tenant isolation under real traffic all go unexercised. That is the most plausible reason the Pro-tier custom-domain flag has sat `true`-and-unimplemented since P3 ([P3 gate plan, Deferred table row "Custom domain feature"](../planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md); listed OUT in DEC-FBR-08 as "Custom domains for $29+ tier — wire up post-launch"). Becoming customer #1 of the custom-domain feature makes it get built because we need it, not because a pricing card promises it.
+
+**Constraint — no user-visible change**: the GitCellar-branded hosts stay exactly as they are. GitCellar's `TRIAGE_URL` constant (`apps/gitcellar-cloud/admin-ui/src/featureFlags.ts:15`) is unchanged, no shared board or widget link breaks, and the cutover is a DNS/CNAME move plus a tenant migration — not a GitCellar code change. Any migration plan that requires editing GitCellar source has misread this decision.
+
+**Alternatives considered**: *Keep self-hosting our own products* — rejected on the dogfooding argument above; it is the status quo that produced the unimplemented flag. *Move our products onto the SaaS but under `{tenant}.feedbackmonk.com` hosts* — rejected: no reason to advertise the vendor to GitCellar's own users, and it would break existing links for no gain. Once feedbackmonk is publicly sold, "GitCellar runs on feedbackmonk" is a credibility signal that belongs in the badge and marketing copy, not in the hostname.
