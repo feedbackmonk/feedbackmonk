@@ -142,7 +142,7 @@ Verification Oracles built so far + scheduled:
 
 <!-- /0-uldf-schedule writes here -->
 
-- **Unpin stranded-dirty-files oracle (trigger: ULDF DEFER-221 lands in the synced baseline)**: full detail in PF-UNPIN-01 below. Test: `grep -c Carbonadmin ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> 0.
+- **Unpin stranded-dirty-files oracle — TRIGGER HAS FIRED (measured 2026-08-30)**: the synced baseline is clean, so the pin is now the only thing keeping this oracle off upstream fixes. Full detail in PF-UNPIN-01 below. Test (assembles the identifier at runtime — do NOT paste the literal back in, see DEFER-003): `U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> `0`.
 
 ### PF-HOSTING-ORACLE-01: install the staged `host-tenant-binding` oracle + 2 allow-list entries (BLOCKS every push)
 
@@ -306,7 +306,10 @@ Full e2e a11y suite green: **13/13 passed**, including the previously-failing lo
 ### PF-UNPIN-01: Unpin `stranded-dirty-files` once ULDF DEFER-221 lands
 
 **Trigger**: the framework baseline no longer ships the developer's Windows account name — i.e. ULDF DEFER-221 is fixed *and* synced to this machine. One-command test:
-`grep -c Carbonadmin ~/.claude/oracles/stranded-dirty-files/validate.ps1` → `0`.
+`U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` → `0`.
+**Measured 2026-08-30: it returns `0` — the trigger has FIRED.** The upstream ULDF fix has been synced to `~/.claude/`, so the pin should now be removed (it is a `.claude/` write, hence DEC-84-gated for a worker session — see DEFER-003).
+
+> The command assembles both spellings from the live account rather than embedding either. DEFER-003 records that this repo's previous version of this very note re-published the identifier it was documenting the removal of — do not paste the literal back in.
 
 **Why the pin exists**: commit `5bf9878` (2026-05-17) scrubbed that account name to `someuser` in `validate.ps1` lines 38-39, ahead of this repo's first public push. The framework baseline still carries the unscrubbed form, so a blanket `/0-uldf-migrate-oracles` refresh reverts it — **observed twice**: `d71c35a` (2026-08-06) and again during the DEC-405 refresh (`de297c3`, 2026-08-21). The oracle was refreshed to current baseline *first*, the scrub re-applied, then pinned via `.claude/oracles/stranded-dirty-files/.local-customized` — so it carries the DEC-405 InvariantCulture date fix and diverges from baseline by 2 comment lines only.
 

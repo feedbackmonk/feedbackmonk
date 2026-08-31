@@ -98,6 +98,12 @@ each turn a real invariant off to make a message go away.
   session, or a worker after `bash ~/.claude/scripts/grant-deferral.sh --from-request latest`.
 - Nothing else. No code change, no migration, no decision.
 
+**The same grant also clears `DEFER-003` and `PF-UNPIN-01`**, whose remaining steps are likewise
+protected-surface writes (an oracle refresh + removing the `stranded-dirty-files` `.local-customized`
+pin). `DEFER-003`'s blocking dependency was re-measured on 2026-08-30 and has cleared — the synced
+baseline is clean — and `PF-UNPIN-01`'s trigger has fired. Worth batching all three into one pass
+rather than having three sessions each rediscover the same block.
+
 ## Related Artifacts
 
 - `scripts/oracles-pending/host-tenant-binding/` — `install.sh`, `oracle.py` (379 lines, 4 probes),
