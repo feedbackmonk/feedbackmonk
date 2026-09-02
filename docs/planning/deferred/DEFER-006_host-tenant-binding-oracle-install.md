@@ -1,7 +1,7 @@
 ---
 id: DEFER-006
 title: Install the staged host-tenant-binding oracle + 2 allow-list entries — the CI-parity gate is red until then, so nothing from FR-FBR-32/33 can be pushed
-status: PROPOSED
+status: DONE
 origin: defer-local
 source-project: feedbackmonk
 source-session-id: session-20260830-113228-909
@@ -11,6 +11,13 @@ suggested-entry-point: implement
 scope-estimate: single-session
 content-hash: fbm-host-tenant-binding-oracle-install-v1
 ---
+
+> **RESOLVED 2026-09-01** — installed from an owner interactive session (`feedbackmonk-c1`) by
+> running the staged `install.sh` verbatim. Both oracles verified PASS, the staging dir
+> `scripts/oracles-pending/host-tenant-binding/` was deleted, and `bash scripts/ci-local.sh` now
+> reads **15/15 PASS + clippy clean** (it was RED on `multi-tenant-isolation-check` before).
+> The push gate this entry describes is cleared; the corresponding `### PF-HOSTING-ORACLE-01`
+> block was removed from `CLAUDE.md` and the oracle table row flipped to LIVE.
 
 # DEFER-006: Install the staged `host-tenant-binding` oracle + 2 allow-list entries — the CI-parity gate is red until then, so nothing from FR-FBR-32/33 can be pushed
 

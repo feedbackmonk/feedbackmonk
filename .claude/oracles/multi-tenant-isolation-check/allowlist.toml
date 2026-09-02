@@ -254,3 +254,14 @@ rationale = "FR-FBR-30. PK-keyed UPDATE (WHERE id = $1) flipping translation_sta
 trait = "FeedbackRepo"
 method = "backfill_pending_translations"
 rationale = "FR-FBR-30 manual backfill (future-item #5). Bounded UPDATE that stamps never-considered, body-bearing rows (translation_status IS NULL AND body IS NOT NULL) as 'pending' so the worker picks them up. No &ProjectScope: like the worklist methods it is a GLOBAL maintenance op keyed only on the status/body predicate — it returns no row data and exposes nothing cross-tenant (it only flips a status column). Invoked exclusively by the operator-token-gated ops endpoint (POST /api/v1/ops/translation/backfill); the operator chooses to run an instance-wide backfill. SQL lives in the repository crate (DEC-FBR-03). Same tenant-agnostic-transport rationale as the four worklist methods."
+
+# --- FR-FBR-32 host-based tenant resolution (added 2026-09-02) ---
+[[methods]]
+trait = "DomainRepo"
+method = "resolve_host"
+rationale = "Pre-authentication boundary (FR-FBR-32, DEC-FBR-IMPL-28): host->tenant resolution runs BEFORE any scope can exist -- it is what DETERMINES which tenant, if any, a request belongs to. It takes an attacker-controlled `Host` header (already reduced by `feedbackmonk_core::hosting::normalize_host`) and returns a `HostBinding` naming the owning tenant. Structurally identical to `ProjectRepo::open_for_submission`: untrusted input in, a binding out, every subsequent call scope-disciplined again. Critically, the binding GRANTS nothing -- `feedbackmonk-api::hosting::bind_public_routes` consumes it as a RESTRICTION (a request on tenant A's host may not reach tenant B's projects; 404 otherwise), and the `host-tenant-binding` Verification Oracle proves that restriction is actually wired, since resolution without it would render correct-looking cross-tenant pages. This is the SOLE host->tenant lookup in the system, and the oracle's Probe C asserts that."
+
+[[inherent_methods]]
+type_name = "SqlxDomainRepo"
+method = "new"
+rationale = "Constructor: stores PgPool handle; performs no queries. Same shape as SqlxTenantRepo::new / SqlxProjectRepo::new."
