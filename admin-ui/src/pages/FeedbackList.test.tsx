@@ -11,8 +11,9 @@ vi.mock("../shared/ApiClient", () => ({
   fetchSentimentTrend: vi.fn(),
 }));
 
-import { fetchFeedbackList } from "../shared/ApiClient";
+import { fetchFeedbackList, searchFeedback } from "../shared/ApiClient";
 const mockedList = vi.mocked(fetchFeedbackList);
+const mockedSearch = vi.mocked(searchFeedback);
 
 const emptyResponse: FeedbackListResponse = {
   items: [],
@@ -24,7 +25,77 @@ const emptyResponse: FeedbackListResponse = {
 describe("FeedbackList", () => {
   beforeEach(() => {
     mockedList.mockReset();
+    mockedSearch.mockReset();
     window.history.replaceState(null, "", "/feedback");
+  });
+
+  it("search composes with the status pill, summarises both, highlights hits, and Reset all drops both", async () => {
+    const user = userEvent.setup();
+    mockedSearch.mockResolvedValue({
+      items: [
+        {
+          feedback_id: "FB-ABCDEF",
+          kind: "bug",
+          status: "triaged",
+          body_excerpt: "Login button does not respond on mobile Safari.",
+          submitted_at: "2026-05-13T22:00:00Z",
+          submitter_label: "alice@example.com",
+          reply_count: 0,
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+    mockedList.mockResolvedValue(emptyResponse);
+
+    renderWithClient(<FeedbackList />, {
+      withRouter: true,
+      initialPath: "/feedback?q=safari&status=triaged",
+    });
+
+    // The status pill reaches the search endpoint instead of being dropped.
+    await waitFor(() =>
+      expect(mockedSearch).toHaveBeenLastCalledWith(
+        expect.objectContaining({ q: "safari", status: "triaged" }),
+      ),
+    );
+    expect(mockedList).not.toHaveBeenCalled();
+
+    // Summary names both narrowings.
+    const summary = await screen.findByText(
+      (_, el) =>
+        el?.classList.contains("results-summary") === true &&
+        /1 result for “safari” in Triaged/.test(el.textContent ?? ""),
+    );
+    expect(summary).toBeInTheDocument();
+
+    // The matched term is wrapped in <mark>.
+    expect(screen.getByText("Safari", { selector: "mark" })).toBeInTheDocument();
+
+    // Reset all clears query + status in one navigation → plain list fetch.
+    await user.click(screen.getByRole("button", { name: /Reset all/i }));
+    await waitFor(() =>
+      expect(mockedList).toHaveBeenLastCalledWith(
+        expect.objectContaining({ status: undefined, offset: 0 }),
+      ),
+    );
+    expect(window.location.search).toBe("");
+  });
+
+  it("shows a combined empty state when a search + filter has no hits", async () => {
+    mockedSearch.mockResolvedValue(emptyResponse);
+    renderWithClient(<FeedbackList />, {
+      withRouter: true,
+      initialPath: "/feedback?q=zebra&status=shipped",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/No shipped feedback matches “zebra”/i),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: /Clear filter/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Reset all/i }).length).toBeGreaterThan(0);
   });
 
   it("renders the empty state when no items match", async () => {

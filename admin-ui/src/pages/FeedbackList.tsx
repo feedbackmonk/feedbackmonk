@@ -16,6 +16,7 @@ import { SentimentTrendChart } from "../components/SentimentTrendChart";
 import { SearchBox } from "../components/SearchBox";
 import { useRouter, useSearchParams } from "../shared/router";
 import { formatRelative } from "../shared/format";
+import { highlightMatches } from "../shared/highlight";
 
 const STATUS_FILTERS: (FeedbackStatus | "all")[] = [
   "all",
@@ -83,11 +84,13 @@ export function FeedbackList() {
       },
     ],
     // When a search query is present, hit the FTS endpoint (gap #3); otherwise
-    // the status-filtered list. Both return the identical response shape.
+    // the status-filtered list. Both return the identical response shape and
+    // both honour the status pill, so search + filter compose.
     queryFn: () =>
       searching
         ? searchFeedback({
             q: parsed.q,
+            status: parsed.status,
             limit: parsed.limit,
             offset: parsed.offset,
           })
@@ -125,12 +128,24 @@ export function FeedbackList() {
     setParams(p);
   }
 
+  // Drops the query AND the status pill in one navigation (one history entry,
+  // one refetch) — the escape hatch when both are narrowing the list.
+  function resetAll() {
+    const p = new URLSearchParams(params);
+    p.delete("q");
+    p.delete("status");
+    p.delete("offset");
+    setParams(p);
+  }
+
   const items = query.data?.items ?? [];
   const total = query.data?.total ?? 0;
   const limit = parsed.limit;
   const offset = parsed.offset;
   const rangeStart = items.length === 0 ? 0 : offset + 1;
   const rangeEnd = offset + items.length;
+  const statusLabel = parsed.status ? STATUS_LABELS[parsed.status] : null;
+  const narrowed = searching || parsed.status !== undefined;
 
   return (
     <main className="feedback-list-page">
@@ -185,6 +200,33 @@ export function FeedbackList() {
         })}
       </nav>
 
+      {narrowed && !query.isPending && !query.isError ? (
+        <p
+          className={`results-summary ${query.isPlaceholderData ? "muted" : ""}`}
+        >
+          <span>
+            <strong>{total}</strong> {total === 1 ? "result" : "results"}
+            {searching ? (
+              <>
+                {" "}
+                for <strong>“{parsed.q}”</strong>
+              </>
+            ) : null}
+            {statusLabel ? (
+              <>
+                {" "}
+                in <strong>{statusLabel}</strong>
+              </>
+            ) : null}
+          </span>
+          {searching && statusLabel ? (
+            <button type="button" className="link-button" onClick={resetAll}>
+              Reset all
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+
       {query.isError ? (
         <div role="alert" className="error-block">
           Failed to load feedback.{" "}
@@ -199,19 +241,29 @@ export function FeedbackList() {
       ) : items.length === 0 ? (
         <div className="empty-state">
           <p>
-            {searching
-              ? `No feedback matches “${parsed.q}”.`
-              : "No feedback matches this filter."}
+            {searching && statusLabel
+              ? `No ${statusLabel.toLowerCase()} feedback matches “${parsed.q}”.`
+              : searching
+                ? `No feedback matches “${parsed.q}”.`
+                : "No feedback matches this filter."}
           </p>
-          {searching ? (
-            <button type="button" onClick={() => setQuery("")}>
-              Clear search
-            </button>
-          ) : parsed.status ? (
-            <button type="button" onClick={() => setStatus("all")}>
-              Clear filter
-            </button>
-          ) : null}
+          <div className="empty-actions">
+            {searching ? (
+              <button type="button" onClick={() => setQuery("")}>
+                Clear search
+              </button>
+            ) : null}
+            {parsed.status ? (
+              <button type="button" onClick={() => setStatus("all")}>
+                Clear filter
+              </button>
+            ) : null}
+            {searching && parsed.status ? (
+              <button type="button" onClick={resetAll}>
+                Reset all
+              </button>
+            ) : null}
+          </div>
         </div>
       ) : (
         <table className="feedback-table">
@@ -266,7 +318,11 @@ export function FeedbackList() {
                     </span>
                   )}
                 </td>
-                <td className="excerpt">{row.body_excerpt}</td>
+                <td className="excerpt">
+                  {searching
+                    ? highlightMatches(row.body_excerpt, parsed.q)
+                    : row.body_excerpt}
+                </td>
                 <td>
                   <time dateTime={row.submitted_at}>
                     {formatRelative(row.submitted_at)}

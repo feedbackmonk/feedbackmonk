@@ -129,18 +129,22 @@ export async function fetchFeedbackList(
 
 export interface SearchParams {
   q: string;
+  /** Optional status narrowing — same wire values as {@link ListParams.status}. */
+  status?: FeedbackStatus;
   limit?: number;
   offset?: number;
 }
 
 // Gap #3 — admin full-text search. Shares the Contract C8 list response
-// shape, so the feedback table renders search hits with the same rows.
+// shape, so the feedback table renders search hits with the same rows, and
+// accepts the same optional `status` filter so the pills compose with a query.
 export async function searchFeedback(
   params: SearchParams,
 ): Promise<FeedbackListResponse> {
   const r = await api.get<FeedbackListResponse>("/admin/feedback/search", {
     params: {
       q: params.q,
+      status: params.status,
       limit: params.limit ?? 20,
       offset: params.offset ?? 0,
     },

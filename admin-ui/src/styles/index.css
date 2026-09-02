@@ -44,6 +44,9 @@
   --meter-danger: #b3261e;
   --meter-track: var(--surface-2);
 
+  /* Search-hit highlight. Text keeps --text; ~12:1 on this ground. */
+  --mark-bg: #fde68a;
+
   font-family:
     system-ui,
     -apple-system,
@@ -86,6 +89,9 @@
     --meter-warn: #ffb86c;
     --meter-danger: #ff8a80;
     --meter-track: var(--surface-2);
+
+    /* --text (#f0efe8) on this ground is ~5.6:1 — AA. */
+    --mark-bg: #6b5300;
   }
 }
 
@@ -242,6 +248,150 @@ a {
   margin-bottom: 1rem;
 }
 
+/* Feedback list: the header hosts the search box, so align to the bottom edge
+   (h1 baseline vs a two-row search box has no sensible shared baseline) and
+   let it wrap under the title on narrow viewports. */
+.feedback-list-page .page-header {
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+}
+
+/* Search box (SearchBox.tsx). Own layout so it never leans on the global
+   block-level label/input/button rules: the label + Clear share one row of
+   fixed height above a wide field, so toggling Clear can't reflow the page. */
+.search-box {
+  flex: 0 1 32rem;
+  min-width: min(20rem, 100%);
+  margin-left: auto;
+}
+
+.search-box-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  min-height: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.search-box-head label {
+  margin-bottom: 0;
+}
+
+.search-field {
+  position: relative;
+}
+
+.search-icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  width: 1rem;
+  height: 1rem;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.search-box input[type="search"] {
+  margin-bottom: 0;
+  padding: 0.6rem 2.6rem 0.6rem 2.3rem;
+  font-size: 1rem;
+}
+
+/* Shortcut hint inside the field; hidden once it has focus or content so it
+   never competes with what the user typed (or the native clear affordance). */
+.search-kbd {
+  position: absolute;
+  right: 0.6rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 0.45rem;
+  line-height: 1.4;
+  font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.search-field input:focus ~ .search-kbd,
+.search-field input:not(:placeholder-shown) ~ .search-kbd {
+  visibility: hidden;
+}
+
+.search-hint {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.search-hint code,
+.search-hint kbd {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: inherit;
+  padding: 0 0.3rem;
+  border-radius: 3px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+/* A <button> that reads as an inline link: keeps button semantics for
+   keyboard/AT, drops the chrome. Used for Clear search and Reset all. */
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  border-radius: 2px;
+}
+
+.link-button:hover:not(:disabled) {
+  background: none;
+  color: var(--accent-hover);
+}
+
+/* "N results for “q” in Status · Reset all" — sits between the pills and the
+   table so the list's narrowing is never ambiguous after a clear or a
+   back-navigation. Always one line tall when present. */
+.results-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.results-summary strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.results-summary.muted {
+  opacity: 0.7;
+}
+
+mark.search-mark {
+  background: var(--mark-bg);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 0.1em;
+}
+
 .status-filters {
   display: flex;
   flex-wrap: wrap;
@@ -362,6 +512,13 @@ a {
   padding: 2rem;
   text-align: center;
   border-radius: 6px;
+}
+
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .pagination {

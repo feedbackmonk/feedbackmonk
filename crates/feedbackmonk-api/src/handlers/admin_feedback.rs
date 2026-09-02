@@ -465,15 +465,19 @@ pub async fn list_admin_feedback(
 pub struct SearchParams {
     /// Raw user query — passed to `websearch_to_tsquery` (forgiving syntax).
     pub q: Option<String>,
+    /// Optional status narrowing, same wire values as `ListParams::status`, so
+    /// the admin UI's status pills compose with an active search.
+    pub status: Option<FeedbackStatus>,
     pub limit: Option<u32>,
     pub offset: Option<u32>,
 }
 
-/// `GET /api/v1/admin/feedback/search?q=...` — tenant-scoped full-text search
-/// over feedback bodies (GitCellar parity gap #3). Shares the Contract C8 list
-/// response shape so the admin UI renders results with the same table. A blank
-/// `q` short-circuits to an empty page (no DB round-trip) so the UI can mount
-/// the box before the user has typed anything.
+/// `GET /api/v1/admin/feedback/search?q=...[&status=...]` — tenant-scoped
+/// full-text search over feedback bodies (GitCellar parity gap #3). Shares the
+/// Contract C8 list response shape so the admin UI renders results with the
+/// same table, and accepts the same optional `status` filter as the list
+/// endpoint. A blank `q` short-circuits to an empty page (no DB round-trip) so
+/// the UI can mount the box before the user has typed anything.
 pub async fn search_admin_feedback(
     State(state): State<AppState>,
     session: AdminSession,
@@ -495,7 +499,7 @@ pub async fn search_admin_feedback(
     let project_scope = sole_project_scope(&state, &session.scope).await?;
     let (items, total) = state
         .feedback
-        .search_for_admin(&project_scope, &query, limit, offset)
+        .search_for_admin(&project_scope, &query, params.status, limit, offset)
         .await?;
 
     // Same reply_count enrichment as list_admin_feedback — the repository

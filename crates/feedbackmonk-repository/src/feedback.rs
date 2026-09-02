@@ -230,6 +230,10 @@ pub trait FeedbackRepo: Send + Sync {
     /// so the admin UI reuses the same row shape. Results are ordered by
     /// `ts_rank` (relevance) then `accepted_at DESC` as a stable tiebreak.
     ///
+    /// `status_filter` narrows the hits to one status exactly as it does for
+    /// `list_for_admin`, so the admin UI's status pills compose with a live
+    /// search instead of being silently ignored while a query is active.
+    ///
     /// A blank/whitespace `query` yields zero rows (the handler short-circuits
     /// before calling this, but the SQL is defensive: an empty
     /// `websearch_to_tsquery` matches nothing).
@@ -237,6 +241,7 @@ pub trait FeedbackRepo: Send + Sync {
         &self,
         scope: &ProjectScope,
         query: &str,
+        status_filter: Option<FeedbackStatus>,
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<FeedbackListItem>, u32)>;
@@ -1431,6 +1436,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         &self,
         scope: &ProjectScope,
         query: &str,
+        status_filter: Option<FeedbackStatus>,
         limit: u32,
         offset: u32,
     ) -> Result<(Vec<FeedbackListItem>, u32)> {
@@ -1439,7 +1445,10 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         // raw admin query forgivingly (quoted phrases, `-exclude`, `or`) and
         // never raises a parse error, so a malformed/blank query simply matches
         // nothing. Ordering: relevance first, then newest-first as a stable
-        // tiebreak so equal-rank rows page deterministically.
+        // tiebreak so equal-rank rows page deterministically. The optional
+        // status clause is the same nullable-bind shape as `list_for_admin`.
+        let status_str: Option<&'static str> = status_filter.map(FeedbackStatus::as_db_str);
+
         let items = sqlx::query!(
             r#"
             SELECT short_code,
@@ -1454,14 +1463,16 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             WHERE tenant_id = $1
               AND project_id = $2
               AND body_tsv @@ websearch_to_tsquery('english', $3)
+              AND ($4::text IS NULL OR status = $4)
             ORDER BY ts_rank(body_tsv, websearch_to_tsquery('english', $3)) DESC,
                      accepted_at DESC
-            LIMIT $4
-            OFFSET $5
+            LIMIT $5
+            OFFSET $6
             "#,
             scope.tenant_id(),
             scope.project_id(),
             query,
+            status_str,
             i64::from(limit),
             i64::from(offset),
         )
@@ -1475,10 +1486,12 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             WHERE tenant_id = $1
               AND project_id = $2
               AND body_tsv @@ websearch_to_tsquery('english', $3)
+              AND ($4::text IS NULL OR status = $4)
             "#,
             scope.tenant_id(),
             scope.project_id(),
             query,
+            status_str,
         )
         .fetch_one(&self.pool)
         .await?;
@@ -3114,13 +3127,13 @@ mod tests {
             .unwrap();
 
         // Multi-term query: both lexemes present in the first row's body.
-        let (hits, total) = repo.search_for_admin(&scope, "broken checkout", 20, 0).await.unwrap();
+        let (hits, total) = repo.search_for_admin(&scope, "broken checkout", None, 20, 0).await.unwrap();
         assert_eq!(total, 1);
         assert_eq!(hits.len(), 1);
         assert!(hits[0].body_excerpt.contains("checkout"));
 
         // Non-matching term returns nothing (not an error).
-        let (none, none_total) = repo.search_for_admin(&scope, "nonexistentterm", 20, 0).await.unwrap();
+        let (none, none_total) = repo.search_for_admin(&scope, "nonexistentterm", None, 20, 0).await.unwrap();
         assert!(none.is_empty());
         assert_eq!(none_total, 0);
     }
@@ -3137,12 +3150,12 @@ mod tests {
             .unwrap();
 
         // s2 searches for s1's distinctive term — must return 0 rows, not error.
-        let (page, total) = repo.search_for_admin(&s2, "secret roadmap", 20, 0).await.unwrap();
+        let (page, total) = repo.search_for_admin(&s2, "secret roadmap", None, 20, 0).await.unwrap();
         assert!(page.is_empty(), "cross-tenant FTS must not leak rows");
         assert_eq!(total, 0);
 
         // s1 (the owner) finds its own row.
-        let (own, own_total) = repo.search_for_admin(&s1, "secret roadmap", 20, 0).await.unwrap();
+        let (own, own_total) = repo.search_for_admin(&s1, "secret roadmap", None, 20, 0).await.unwrap();
         assert_eq!(own.len(), 1);
         assert_eq!(own_total, 1);
     }
@@ -3164,11 +3177,11 @@ mod tests {
             .unwrap();
         }
 
-        let (page1, total) = repo.search_for_admin(&scope, "keyword", 2, 0).await.unwrap();
+        let (page1, total) = repo.search_for_admin(&scope, "keyword", None, 2, 0).await.unwrap();
         assert_eq!(page1.len(), 2);
         assert_eq!(total, 3);
 
-        let (page2, total2) = repo.search_for_admin(&scope, "keyword", 2, 2).await.unwrap();
+        let (page2, total2) = repo.search_for_admin(&scope, "keyword", None, 2, 2).await.unwrap();
         assert_eq!(page2.len(), 1);
         assert_eq!(total2, 3);
     }
@@ -3182,7 +3195,7 @@ mod tests {
             .unwrap();
 
         // websearch_to_tsquery('') yields an empty query that matches nothing.
-        let (page, total) = repo.search_for_admin(&scope, "   ", 20, 0).await.unwrap();
+        let (page, total) = repo.search_for_admin(&scope, "   ", None, 20, 0).await.unwrap();
         assert!(page.is_empty());
         assert_eq!(total, 0);
     }

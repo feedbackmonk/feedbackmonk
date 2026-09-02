@@ -72,6 +72,59 @@ describe("SearchBox", () => {
     expect(box().value).toBe("");
   });
 
+  it("Escape clears the field and emits an empty query", () => {
+    const onSearch = vi.fn();
+    render(<SearchBox value="theme" onSearch={onSearch} delayMs={250} />);
+
+    fireEvent.keyDown(box(), { key: "Escape" });
+
+    expect(onSearch).toHaveBeenLastCalledWith("");
+    expect(box().value).toBe("");
+  });
+
+  it("does not render Clear when the field is empty", () => {
+    render(<SearchBox value="" onSearch={vi.fn()} />);
+    expect(
+      screen.queryByRole("button", { name: /clear search/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("pressing / outside an editable control focuses the field; inside one it does not", () => {
+    render(
+      <div>
+        <SearchBox value="" onSearch={vi.fn()} />
+        <textarea aria-label="Reply" />
+      </div>,
+    );
+    const reply = screen.getByRole("textbox", { name: "Reply" });
+
+    // From the page body → focuses search.
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(box()).toHaveFocus();
+
+    // From another editable control → leaves focus alone (the "/" is typing).
+    reply.focus();
+    fireEvent.keyDown(reply, { key: "/" });
+    expect(reply).toHaveFocus();
+
+    // Modified keypress is not the shortcut.
+    reply.blur();
+    fireEvent.keyDown(document.body, { key: "/", ctrlKey: true });
+    expect(box()).not.toHaveFocus();
+  });
+
+  it("focusKey={null} disables the shortcut and hides the hint", () => {
+    render(<SearchBox value="" onSearch={vi.fn()} focusKey={null} />);
+    fireEvent.keyDown(document.body, { key: "/" });
+    expect(box()).not.toHaveFocus();
+    expect(box()).not.toHaveAttribute("aria-keyshortcuts");
+  });
+
+  it("describes the field with the syntax hint", () => {
+    render(<SearchBox value="" onSearch={vi.fn()} />);
+    expect(box()).toHaveAccessibleDescription(/exact phrase/i);
+  });
+
   it("syncs the input when the committed value changes externally", () => {
     const { rerender } = render(<SearchBox value="" onSearch={vi.fn()} />);
     rerender(<SearchBox value="external" onSearch={vi.fn()} />);

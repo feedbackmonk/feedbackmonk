@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT short_code,\n                   kind,\n                   status,\n                   sentiment,\n                   left(body, 200) AS body_excerpt,\n                   end_user_email,\n                   anon_token_hash IS NOT NULL AS is_anonymous,\n                   accepted_at\n            FROM feedback\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND body_tsv @@ websearch_to_tsquery('english', $3)\n            ORDER BY ts_rank(body_tsv, websearch_to_tsquery('english', $3)) DESC,\n                     accepted_at DESC\n            LIMIT $4\n            OFFSET $5\n            ",
+  "query": "\n            SELECT short_code,\n                   kind,\n                   status,\n                   sentiment,\n                   left(body, 200) AS body_excerpt,\n                   end_user_email,\n                   anon_token_hash IS NOT NULL AS is_anonymous,\n                   accepted_at\n            FROM feedback\n            WHERE tenant_id = $1\n              AND project_id = $2\n              AND body_tsv @@ websearch_to_tsquery('english', $3)\n              AND ($4::text IS NULL OR status = $4)\n            ORDER BY ts_rank(body_tsv, websearch_to_tsquery('english', $3)) DESC,\n                     accepted_at DESC\n            LIMIT $5\n            OFFSET $6\n            ",
   "describe": {
     "columns": [
       {
@@ -49,6 +49,7 @@
         "Uuid",
         "Uuid",
         "Text",
+        "Text",
         "Int8",
         "Int8"
       ]
@@ -64,5 +65,5 @@
       false
     ]
   },
-  "hash": "74cc69f448ccbb6a5408ce8c7b19a2db4f17da577f324ca2742247241e8d1a00"
+  "hash": "24019cf4f021e2ebeee3e2639f0d4d0c3a998ae1af91e548be2723bb35a3f7d6"
 }
