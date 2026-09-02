@@ -123,7 +123,7 @@ Verification Oracles built so far + scheduled:
 | `cors-allowlist-enforcement` | post-v1 (DEC-FBR-IMPL-09) | ✅ LIVE (built 2026-06-03) — defends the credentialed CORS posture on the public widget endpoints (DEC-FBR-IMPL-09 / DEC-FBR-04) as code-level invariants; closes the gap that `tests/cors_preflight.rs` tests the layer in isolation and can't catch `.layer(cors)` wiring removal from `build_app`; two static probes (A: `main.rs` wires the layer from `FEEDBACKMONK_CORS_ORIGINS` to submit + attachments; B: `cors.rs` keeps `allow_credentials` + `AllowOrigin::list`, never wildcard) + `--full` runs the `cors_preflight` integration test; active-PASS |
 | `approval-gate-enforcement` | P5a Stage 1 | ✅ LIVE (built P5a Stage 1, 2026-06-18) — defends the work-order approval trust boundary (FR-FBR-25a / FR-FBR-22): no work order reaches a state ≥ `dispatched` without a prior owner-authored `approved` event. Detection-from-ledger (parses state-machine source + queries the append-only `work_order_events` table), NOT a self-reported flag — the anti-reward-hacking leg. Probe A (state-machine source) + B (handler authz) + C (`--full`: `tests/work_order_state_machine.rs`); active-PASS A/B/C at convergence |
 | `public-board-moderation-gate` | Public Board Stage 0 → **v1.1.0 (board voting)** | ✅ LIVE (built Stage 0; Probe B/C ACTIVATED Stage 1; **Probe B EXTENDED to the vote path at PF-BOARD-VOTING-01, 2026-06-19**) — defends the **moderation trust boundary** for the public feedback board (FR-FBR-25a sibling): no public-board endpoint (READ **or VOTE**) may return/act on a feedback row whose `moderation_status != approved`, and the board wire shape leaks no submitter PII (DEC-FBR-02 / Q24 class). Detection-from-code (parses `moderation.rs` `is_publicly_visible` + asserts each board read SQL hard-filters `approved` + scans the wire shape for PII + **asserts every `board.rs` handler writing through `state.board_votes` runs `ensure_board_enabled` + an approved-only resolution BEFORE the write**), NOT a self-reported flag — the anti-reward-hacking leg. Probe A (state-machine source) + B (board read + vote path approved-only + no-PII) + C (`--full`: `tests/board_moderation_gate.rs` + `board_privacy_isolation.rs`; vote-path behavioral leg `tests/board_vote_moderation_gate.rs`) all GREEN. The Stage 1 exit gate (GATE 1), now covering the full board surface incl. voting (Contract C30). |
-| `host-tenant-binding` | FR-FBR-32/33 (commercial hosting shape) | ⚠️ **AUTHORED + SELF-TESTED, NOT INSTALLED** (2026-08-30) — blocked by DEC-84 (a subordinate worker may not write under `.claude/`). Staged at `scripts/oracles-pending/host-tenant-binding/`; `bash scripts/oracles-pending/host-tenant-binding/install.sh` from an owner session installs it **and** appends the two `multi-tenant-isolation-check` allow-list entries FR-FBR-32 needs. Defends the **host→tenant binding** trust boundary (DEC-FBR-13 / DEC-FBR-IMPL-28): on a host that resolves to tenant T, no public route may reach another tenant's resource, and admin is reachable on exactly one host. NOT covered by `multi-tenant-isolation-check`, which polices the *repository scope* axis — a router merged without the host guard passes that oracle unchanged, and the failure is invisible (a missing guard renders a correct-looking page of someone else's feedback on your origin). Probe A (guard coverage in `build_app`, the anti-treadmill leg modelled on `public-route-ceiling`) + B (admin exclusivity, 404-not-403, `X-Forwarded-Host` gated on the trusted proxy) + C (one resolution path, in the repository crate) + D (`--full`: `tests/host_tenant_binding.rs` + `domains_repo.rs`). Adversarially self-tested: dropping a guard and flipping 404→403 both go red. |
+| `host-tenant-binding` | FR-FBR-32/33 (commercial hosting shape) | ✅ LIVE (authored 2026-08-30; **installed 2026-09-01** from an owner session via the staged `install.sh`, which also appended the two `multi-tenant-isolation-check` allow-list entries FR-FBR-32 needs; staging dir deleted, `scripts/ci-local.sh` 15/15 PASS). Defends the **host→tenant binding** trust boundary (DEC-FBR-13 / DEC-FBR-IMPL-28): on a host that resolves to tenant T, no public route may reach another tenant's resource, and admin is reachable on exactly one host. NOT covered by `multi-tenant-isolation-check`, which polices the *repository scope* axis — a router merged without the host guard passes that oracle unchanged, and the failure is invisible (a missing guard renders a correct-looking page of someone else's feedback on your origin). Probe A (guard coverage in `build_app`, the anti-treadmill leg modelled on `public-route-ceiling`) + B (admin exclusivity, 404-not-403, `X-Forwarded-Host` gated on the trusted proxy) + C (one resolution path, in the repository crate) + D (`--full`: `tests/host_tenant_binding.rs` + `domains_repo.rs`). Adversarially self-tested: dropping a guard and flipping 404→403 both go red. |
 | `translation-egress-q24-isolation` | FR-FBR-30 (multilingual translation) | ✅ LIVE (built FR-FBR-30 Stream E, 2026-06-21) — defends the **privacy posture** (DEC-FBR-IMPL-26) + **Q24 read-isolation** invariant (DEC-FBR-IMPL-25 / DEC-FBR-02) of the multilingual-translation pipeline. Detection-from-code, NOT a self-reported flag: Probe A (provider DEFAULTS `off` + no unconditional cloud provider in `main.rs::build_translation_provider`), Probe B (NO **public/end-user/board** read of `body_translated` — every referent must be in a tiny allowlist: the analyst consumer `list_member_bodies_for_cluster`, the worker writer `set_translation`, and the one scoped admin-controller reader `get_translation_for_admin` + its handler `get_admin_feedback`), Probe C (writer uniqueness — only `set_translation` writes the column, and ONLY `translation/worker.rs` calls it), Probe D (latest `body_tsv` migration sources from `coalesce(body_translated, body)`); `--full` runs `tests/translation_worker.rs`. A/B/C/D all GREEN. Providers: `off` (default) / `deepl` (cloud) / `libretranslate` (no-egress, self-hosted). |
 
 ## Constraints not in spec artifacts
@@ -143,37 +143,6 @@ Verification Oracles built so far + scheduled:
 <!-- /0-uldf-schedule writes here -->
 
 - **Unpin stranded-dirty-files oracle — TRIGGER HAS FIRED (measured 2026-08-30)**: the synced baseline is clean, so the pin is now the only thing keeping this oracle off upstream fixes. Full detail in PF-UNPIN-01 below. Test (assembles the identifier at runtime — do NOT paste the literal back in, see DEFER-003): `U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> `0`.
-
-### PF-HOSTING-ORACLE-01: install the staged `host-tenant-binding` oracle + 2 allow-list entries (BLOCKS every push)
-
-**Tracked as [`DEFER-006`](docs/planning/deferred/DEFER-006_host-tenant-binding-oracle-install.md)**
-so the `pending-ideas` oracle names it at every session start (this repo's `### PF-` headings are
-invisible to the `pending-followups` oracle — observations-ledger 2026-08-21).
-
-**Status (2026-08-30): BLOCKING.** `bash scripts/ci-local.sh` is RED on exactly one oracle —
-`multi-tenant-isolation-check` reports 2 offenders, both introduced by FR-FBR-32 and both legitimate
-(a pre-auth boundary and a pool constructor). CI runs the oracle suite, so **a push right now would go
-red**; nothing from the FR-FBR-32/33 lane has been pushed.
-
-**Why it wasn't just done**: DEC-84 (CSI-08) hard-defers any write under `.claude/` for a session
-whose role is `orchestrated-worker`, at every autonomy level. The block was respected, not worked
-around; grant requests are recorded in `.claude/session-state/grant-requests.jsonl`.
-
-**One command, from an owner/LD session**:
-```bash
-bash scripts/oracles-pending/host-tenant-binding/install.sh
-```
-It copies the finished `host-tenant-binding` oracle into `.claude/oracles/`, appends the two
-allow-list entries, then verifies both oracles. Expect PASS/PASS. Then delete
-`scripts/oracles-pending/host-tenant-binding/` (a staging area, not a second home) and re-run
-`bash scripts/ci-local.sh` before pushing.
-
-**Do NOT "fix" the oracle by deleting the entries or loosening the probe.** The two offenders were
-already reduced from seven by reshaping the code — the DB-value enums moved to
-`feedbackmonk-core::hosting` beside `Tier`/`ModerationStatus`, and `mark_active` became
-`&TenantScope`-first. What remains is irreducible.
-
-Remove this entry once installed and the gate is green.
 
 ### PF-SAAS-STANDUP-01: provision `feedbackmonk.com` + migrate GitCellar onto it (DEC-FBR-14 ops half)
 
@@ -209,6 +178,18 @@ Delivered (all ADDITIVE to the frozen contract; each advertised via `GET /api/v1
 - **A5 `GET …/me/feedback/export`** GDPR portability. `feedback.export`.
 
 Decisions confirmed (were AFK-adopted, then user-confirmed): D-A1 hard-delete+byte-purge; D-A4 severity `low|medium|high|blocker` optional; D-A5 export included. Built at autopilot; implementation streams executed on the Fable model, coordinated/reviewed on Opus 4.8.
+
+> **2026-09-01 — a FOURTH item now stacks on this redeploy, and this one is a live production
+> defect.** `FeedbackStatus::WontFix` serialised as `wont-fix` (serde `rename_all = "kebab-case"`)
+> while the DB CHECK, Contract C6 and every client status union use `wontfix`. Effect on the live
+> admin at `triage.gitcellar.com`: any `wontfix` feedback rendered a blank status pill, and opening
+> it white-screened the page (`LEGAL_TRANSITIONS["wont-fix"]` is `undefined` →
+> `undefined.length` in `StatusControls`); `?status=wontfix` filtering and
+> `to_status: "wontfix"` transitions were also rejected as an unknown variant. Fixed at HEAD
+> (`#[serde(rename = "wontfix")]` + an all-six-variants JSON⇔DB round-trip test, mirroring
+> `RoadmapItemStatus`, which already carried the rename; plus `?? []` / label-fallback hardening in
+> `StatusControls` + `StatusBadge` so UI-vs-wire drift can never white-screen the admin again).
+> **Only a redeploy clears it for the operator.**
 
 > **Re-measured 2026-08-30 — still outstanding, and now THREE items stack on this one redeploy.**
 > `curl -sS https://feedback.gitcellar.com/api/v1/capabilities` returns `"version":"0.2.0"` with 5

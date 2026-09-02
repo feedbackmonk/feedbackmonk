@@ -25,7 +25,12 @@ interface StatusControlsProps {
 // the UI offers. Backend 409 fallback (Contract C7 TransitionError) is
 // belt-and-braces — illegal transitions are never reachable from this UI.
 export function StatusControls({ feedbackId, currentStatus }: StatusControlsProps) {
-  const choices = LEGAL_TRANSITIONS[currentStatus];
+  // `?? []` is defence-in-depth, not dead code: a status string the backend
+  // emits but this union doesn't know (the `wontfix` / `wont-fix` serde drift
+  // fixed in feedbackmonk-core/src/status.rs) used to make this `undefined`
+  // and white-screen the whole drawer on `.length`. An unknown status now
+  // degrades to "no transitions offered".
+  const choices = LEGAL_TRANSITIONS[currentStatus] ?? [];
   const [pendingTarget, setPendingTarget] = useState<FeedbackStatus | null>(null);
   const [reasonNote, setReasonNote] = useState("");
   const [duplicateOf, setDuplicateOf] = useState("");

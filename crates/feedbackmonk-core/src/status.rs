@@ -33,8 +33,18 @@ pub enum FeedbackStatus {
     #[default]
     Submitted,
     Triaged,
+    // `kebab-case` produces `in-progress` for this variant — matches the
+    // migration 00003 CHECK constraint byte-for-byte.
     InProgress,
     Shipped,
+    // `kebab-case` would produce `wont-fix` for this variant, but Contract
+    // C6 + migration 00003 both store `wontfix` (no hyphen). Explicit
+    // rename keeps DB <-> JSON byte-equivalent, exactly as
+    // `RoadmapItemStatus::WontFix` does. Without it the admin UI receives a
+    // status string outside its six-value union: the status badge renders
+    // blank and `LEGAL_TRANSITIONS[status]` is `undefined`, white-screening
+    // the feedback drawer.
+    #[serde(rename = "wontfix")]
     WontFix,
     Duplicate,
 }
@@ -171,5 +181,35 @@ mod tests {
         assert_eq!(s, r#""in-progress""#);
         let parsed: FeedbackStatus = serde_json::from_str(r#""in-progress""#).unwrap();
         assert_eq!(parsed, FeedbackStatus::InProgress);
+    }
+
+    /// The wire form and the DB form MUST be the same string for every
+    /// variant. `WontFix` is the trap: `rename_all = "kebab-case"` emits
+    /// `wont-fix` while migration 00003's CHECK constraint (and every client
+    /// status union) uses `wontfix`. The old single-variant test above only
+    /// covered `InProgress`, so the drift shipped: a `wontfix` row serialised
+    /// as `wont-fix`, which the admin UI could neither label nor look up in
+    /// its transition table (white screen on the feedback drawer), and a
+    /// `?status=wontfix` filter or `to_status: "wontfix"` transition was
+    /// rejected as an unknown variant. Assert all six, both directions.
+    #[test]
+    fn json_form_matches_db_form_for_every_variant() {
+        for s in [
+            FeedbackStatus::Submitted,
+            FeedbackStatus::Triaged,
+            FeedbackStatus::InProgress,
+            FeedbackStatus::Shipped,
+            FeedbackStatus::WontFix,
+            FeedbackStatus::Duplicate,
+        ] {
+            let json = serde_json::to_string(&s).unwrap();
+            assert_eq!(
+                json,
+                format!("\"{}\"", s.as_db_str()),
+                "JSON form of {s:?} must equal its DB form"
+            );
+            let parsed: FeedbackStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(parsed, s, "{json} must deserialise back to {s:?}");
+        }
     }
 }
