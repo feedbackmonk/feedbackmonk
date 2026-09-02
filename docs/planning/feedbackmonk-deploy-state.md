@@ -44,6 +44,78 @@ for the feedbackmonk backend.
 
 ---
 
+## Stage E (2026-09-01/02) — DB MIGRATED to 00030; images built + pushed; **Railway deploys are BLOCKED**
+
+**Trigger**: the owner reported `triage.gitcellar.com` white-screening on any won't-fix feedback row.
+Root cause was a feedbackmonk bug (`FeedbackStatus::WontFix` serialised `wont-fix`, DB/clients use
+`wontfix`), fixed at `d7dca56` + `c065b60`. **78 of the 79 production feedback rows are `wontfix`**
+(verified by direct `SELECT`), so the triage inbox was ~99% unusable.
+
+### DONE and verified
+
+| Item | State |
+|---|---|
+| Pre-migration backup | `S:\_fbm-deploy-backupseedbackmonk-20260902T024909Z.sql.gz` — gzip-verified, 23 tables. Taken **by hand**: `gitcellar-pg-backup` targets the `railway` DB, NOT `feedbackmonk`. |
+| **Migrations 00019 → 00030** | **APPLIED** to the prod `feedbackmonk` DB. `_sqlx_migrations` max=30, 0 failures. Data intact: 79 feedback rows (78 wontfix / 1 submitted), 1 tenant. `00019`'s `body_tsv` rebuild verified correct — 44 rows have text, 35 are sentiment-only (body NULL/empty), and **0** text-bearing rows have a NULL `body_tsv`. |
+| `feedbackmonk-api:0.4.0` | Built from a clean worktree at `c065b60`, pushed. Digest `sha256:e90569031aa623722ec12dfd78c18e6a91207f016004449ad12eff1e077351e2`. linux/amd64. Binary contains `wontfix`, the `wont-fix` input alias, `feedback.rating`, `hosting.subdomains`, `hosting.custom_domain`, `feedback.export`, `feedback.idempotency`. |
+| `feedbackmonk-admin-ui:0.1.3` | Built + pushed. Digest `sha256:f49add4ac38f05f87a2548507d9233584134e0e087edf3fd2e895173675c3d02`. Verified it baked the **Railway** nginx conf (`proxy_pass https://$fbm_api`), not the compose one (`api:14304`). |
+
+### BLOCKED — Railway will not deploy this service, for a reason unrelated to the image
+
+Three `serviceInstanceDeployV2` attempts, all **FAILED in 2–4 seconds** with **empty `buildLogs` AND
+empty `deploymentLogs`** and `diagnosis: null`:
+
+| Deployment | Image | Result |
+|---|---|---|
+| `c9200c3e-9764-4014-9171-ffeb23049e1c` | `feedbackmonk-api:0.4.0` | FAILED (2.1s) |
+| `a641150b-541f-4e5b-aaf5-1147154daf73` | `feedbackmonk-api:0.4.0` + explicit `registryCredentials` | FAILED (~2s) |
+| `2e5a6af2-50dc-4983-a052-de6bb42a9d4f` | **`feedbackmonk-api:0.2.0` — the known-good image already running** | **FAILED (3.7s)** |
+
+**The third attempt is the decisive one**: the image that is running *right now* also refuses to
+deploy. So this is NOT the new image, NOT the migrations, and NOT the code.
+
+Ruled out by measurement:
+- **Registry auth** — `gitcellar-push` fetches the `0.2.0` and `0.4.0` manifests over HTTPS (both 200;
+  anonymous is 401, so auth is genuinely being used). Credentials were also passed explicitly via
+  `ServiceInstanceUpdateInput.registryCredentials` on attempt 2.
+- **Image shape** — `0.4.0` and `0.2.0` have byte-identical `Entrypoint` (`["/usr/bin/tini","--"]`),
+  `Cmd`, `User`, `WorkingDir`, `ExposedPorts`, and both are `linux/amd64` with a v2 manifest.
+- **Staged changes** — `environmentPatchCommitStaged` returns "No patch to apply"; the pin applies
+  immediately.
+- **Project state** — `subscriptionType: pro`, `deletedAt: null`, not a temp project.
+
+Not determinable with a project-scoped token: account-level billing/payment state, and whether
+*other* services can still deploy (every other service's last deployment is SUCCESS but all are from
+July/August — none were attempted today, and deploying unrelated production services purely as a
+test was not authorised).
+
+**Leading hypothesis for the owner to check in the Railway dashboard**: a workspace-level block on
+new deployments (payment/usage) or a region-scheduling failure — both present exactly this way,
+i.e. existing containers keep serving while every new deployment dies instantly with no logs.
+
+### Current state — SAFE and CONSISTENT
+
+- Service pin **reverted to `feedbackmonk-api:0.2.0`**, matching the container that is actually
+  running, so a restart cannot land on an unpullable tag.
+- `feedback.gitcellar.com/health/ready` **200**; `/api/v1/capabilities` **0.2.0**;
+  `triage.gitcellar.com` **200**.
+- **The DB schema (00030) is intentionally ahead of the running code (0.2.0).** This is supported and
+  was the point of migrating first: every pending migration is backward-compatible with 0.2.0
+  (additive nullable/defaulted columns, constraint weakenings, and `00019`'s transactional
+  drop+re-add of a generated column). Verified live for ~30 min at 200. It is not a state to sit in
+  indefinitely, but it is safe.
+
+### To finish once deploys work again
+
+No rebuild needed — both images are already in the registry. Repoint + deploy:
+`feedbackmonk-api` (`50e4291d-b411-4388-a6e5-1f9d47ec8623`) → `0.4.0`, then
+`feedbackmonk-admin-ui` (`48918bae-fd9f-459a-b280-f2cc9290e640`) → `0.1.3`,
+environment `15941208-6a62-4f8a-ad18-013d67c76df5`, header **`Project-Access-Token`** (NOT
+`Authorization: Bearer` — that returns `"Not Authorized"` at HTTP 200). Then verify per
+`docs/operations/RAILWAY_GITCELLAR.md` §8, and confirm in a **browser** that a won't-fix row opens.
+
+---
+
 ## VERIFIED live state (curl-confirmed 2026-06-03)
 
 | Surface | Result | Probe |
