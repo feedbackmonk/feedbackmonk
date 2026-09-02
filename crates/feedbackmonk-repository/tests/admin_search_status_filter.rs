@@ -111,3 +111,42 @@ async fn status_filter_stays_within_project_scope(pool: PgPool) {
     assert_eq!(total, 0, "another tenant's triaged hit must not leak");
     assert!(items.is_empty());
 }
+
+/// `WontFix` is the one variant whose JSON wire form (`wontfix`, after the
+/// 2026-09-01 serde fix) and DB form diverge from its Rust name. Pin the DB
+/// side here: the filter must bind the `as_db_str` spelling the CHECK
+/// constraint accepts, or the "Won't Fix" pill composed with a search returns
+/// nothing for rows that plainly exist. (The JSON side is pinned in
+/// `feedbackmonk-core/src/status.rs`; the HTTP end-to-end leg is DEFER-008.)
+#[sqlx::test(migrations = "../../migrations")]
+async fn status_filter_binds_the_db_spelling_for_wontfix(pool: PgPool) {
+    let repo = SqlxFeedbackRepo::new(pool.clone());
+    let scope = seed_project_scope(&pool, "search-wontfix@example.com").await;
+    seed_corpus(&repo, &pool, &scope).await;
+
+    // Move the second safari row to won't-fix through the DB spelling.
+    sqlx::query(
+        "UPDATE feedback SET status = 'wontfix' WHERE body LIKE 'Safari renders%' AND tenant_id = $1",
+    )
+    .bind(scope.tenant_id())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let (items, total) = repo
+        .search_for_admin(&scope, "safari", Some(FeedbackStatus::WontFix), 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(total, 1, "the won't-fix safari row must be found under its DB spelling");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].status, FeedbackStatus::WontFix);
+    assert!(items[0].body_excerpt.starts_with("Safari renders"));
+
+    // And the other safari row (triaged by seed_corpus) is not swept in.
+    let (items, total) = repo
+        .search_for_admin(&scope, "safari", Some(FeedbackStatus::Triaged), 50, 0)
+        .await
+        .unwrap();
+    assert_eq!(total, 1);
+    assert!(items[0].body_excerpt.starts_with("Login button"));
+}
