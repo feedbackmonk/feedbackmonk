@@ -44,7 +44,15 @@ pub enum FeedbackStatus {
     // status string outside its six-value union: the status badge renders
     // blank and `LEGAL_TRANSITIONS[status]` is `undefined`, white-screening
     // the feedback drawer.
-    #[serde(rename = "wontfix")]
+    //
+    // `alias` accepts the old broken spelling on INPUT only — it is never
+    // emitted. Between the introduction of this enum and 2026-09-01 the API
+    // accepted `wont-fix` and nothing else, so any caller that ever set a row
+    // to won't-fix was necessarily sending the hyphenated form; dropping it
+    // outright would 422 that caller the moment the fix deploys. Cheap
+    // insurance, and it costs nothing semantically. Safe to delete once no
+    // client is known to send `wont-fix`.
+    #[serde(rename = "wontfix", alias = "wont-fix")]
     WontFix,
     Duplicate,
 }
@@ -211,5 +219,19 @@ mod tests {
             let parsed: FeedbackStatus = serde_json::from_str(&json).unwrap();
             assert_eq!(parsed, s, "{json} must deserialise back to {s:?}");
         }
+    }
+
+    /// The pre-fix wire spelling stays accepted on input so the deploy of the
+    /// fix cannot 422 a caller that was speaking the old form — but it must
+    /// never be produced. Both halves matter; asserting only the first would
+    /// let the bug back in.
+    #[test]
+    fn legacy_wont_fix_spelling_is_accepted_but_never_emitted() {
+        let parsed: FeedbackStatus = serde_json::from_str(r#""wont-fix""#).unwrap();
+        assert_eq!(parsed, FeedbackStatus::WontFix);
+        assert_eq!(
+            serde_json::to_string(&FeedbackStatus::WontFix).unwrap(),
+            r#""wontfix""#
+        );
     }
 }

@@ -107,6 +107,12 @@ posture is load-bearing (scrutiny P0-4). Both durable stores must be covered:
   (PITR)** on the shared instance. Railway offers automated snapshots on paid
   Postgres plans — verify they are ON and note the retention window. This is
   the first line of defense for the shared DB.
+- ⚠️ **GitCellar's existing nightly `pg_dump` cron does NOT cover this
+  database** (measured 2026-09-01). The `gitcellar-pg-backup` service's
+  `DATABASE_URL` targets the **`railway`** database; feedbackmonk lives in the
+  separate **`feedbackmonk`** database on the same server. Until that cron is
+  widened, `Postgres-PITR` is the *only* automatic coverage feedbackmonk has,
+  and every migration run must be preceded by a hand-taken dump.
 - **Scheduled `pg_dump` offsite** as a second, portable line (Railway snapshots
   are provider-locked). Run a periodic logical dump of the `feedbackmonk`
   database to offsite storage (e.g. a Railway cron service or an external
@@ -145,10 +151,26 @@ export). This is the A6 GATE that unblocks GitCellar Phases B/C. Run in order:
 1. **Backup FIRST** (both halves — see §7). Take a fresh `pg_dump` of the
    `feedbackmonk` database offsite, and confirm the attachment bucket has
    versioning enabled. Never migrate an un-backed-up sole backend.
-2. **Deploy the new image** (≥ v0.3.0) from this repo's `deploy/docker/Dockerfile.api`.
-3. **Run migrations** — apply forward-only up to and including `00020`
-   (severity) and `00021` (idempotency key). Either the Railway deploy command
-   or a one-off shell:
+   > ⚠️ **Take this dump by hand — no cron does it for you.** Measured
+   > 2026-09-01: GitCellar's `gitcellar-pg-backup` cron service points its
+   > `DATABASE_URL` at the **`railway`** database, while feedbackmonk lives in
+   > the separate **`feedbackmonk`** database on the same server. Only the
+   > project-level `Postgres-PITR` bucket covers it. See §7.
+2. **Run migrations BEFORE deploying the new image.**
+
+   > ⚠️ **This ordering matters and it is the reverse of what this runbook said
+   > until 2026-09-01.** The API image does **not** auto-migrate, so a new image
+   > booted against the old schema starts up and then fails its `sqlx` queries at
+   > runtime against columns that do not exist yet — an outage, with a green
+   > Railway status next to it (neither service defines a `healthcheckPath`, so
+   > Railway reports SUCCESS as soon as the container starts). Migrating first is
+   > also strictly safer: every pending migration is backward-compatible with the
+   > *running* older image (additive nullable/defaulted columns, constraint
+   > weakenings, and `00019`'s `body_tsv` drop+re-add inside one transaction), so
+   > the old image keeps serving throughout, and a migration failure aborts before
+   > you have touched the running service.
+
+   Apply forward-only. Either the Railway deploy command or a one-off shell:
    ```bash
    DATABASE_URL=postgres://feedbackmonk:<pass>@<host>:<port>/feedbackmonk \
      sqlx migrate run --source migrations
@@ -156,8 +178,22 @@ export). This is the A6 GATE that unblocks GitCellar Phases B/C. Run in order:
    ```
    `sqlx` is idempotent (consults `_sqlx_migrations`); it applies only what is
    pending. If a migration fails, STOP and restore from the §7 backup —
-   forward-only, no rollback.
-4. **Verify the capability advertisement** — the API must advertise all six
+   forward-only, no rollback. Each migration is transactional (no
+   `-- no-transaction` / `CONCURRENTLY` anywhere in `migrations/`), so a failure
+   leaves that migration fully unapplied rather than half-applied.
+
+3. **Deploy the new image** from this repo's `deploy/docker/Dockerfile.api`,
+   then confirm `/health/ready` returns 200 before going further. Roll back by
+   re-pointing the service at the previous image tag; the applied migrations are
+   additive/weakening, so an older image tolerates the newer schema.
+
+   > The **admin-ui is a SEPARATE Railway service** (§3) with its own image tag,
+   > and it does not move when the API does — the two drifted three months apart
+   > by exactly this route. Redeploy it too, and note its build needs
+   > `--build-arg ADMIN_UI_NGINX_CONF=deploy/docker/admin-ui-nginx.gitcellar-railway.conf`;
+   > without it the image bakes the generic compose nginx config whose upstream
+   > (`api:14304`) does not exist on Railway.
+5. **Verify the capability advertisement** — the API must advertise all six
    Phase-A capability strings:
    ```bash
    curl -fsS https://feedback.gitcellar.com/api/v1/capabilities | \
@@ -167,11 +203,11 @@ export). This is the A6 GATE that unblocks GitCellar Phases B/C. Run in order:
    `feedback.reply_state`, `feedback.severity`, `feedback.idempotency`,
    `feedback.export`. If any is missing, the deployed build predates Phase A —
    do NOT cut over.
-5. **Smoke each new route** (delete a test item + verify its attachment bytes
+6. **Smoke each new route** (delete a test item + verify its attachment bytes
    are purged; list attachments; `?since=` reply-state; submit with a
    `severity` + an `Idempotency-Key`; `GET …/me/feedback/export`). Confirm
    `FEEDBACKMONK_TRUSTED_PROXY_HOPS=1` is set (per-client rate limiting).
-6. **Cut over** — flip GitCellar's integration to depend on the new
+7. **Cut over** — flip GitCellar's integration to depend on the new
    capabilities only after steps 4–5 are green. This is what unblocks
    GitCellar Phases B/C.
 
