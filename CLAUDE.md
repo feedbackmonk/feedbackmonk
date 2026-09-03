@@ -142,6 +142,13 @@ Verification Oracles built so far + scheduled:
 
 <!-- /0-uldf-schedule writes here -->
 
+- **🚨 BLOCKED / RESUME HERE — Railway cannot create containers for `feedbackmonk-api`**: the
+  won't-fix white-screen fix is built, merged, migrated and staged, but cannot ship. 78 of 79 prod
+  feedback rows are `wontfix`, so the GitCellar triage inbox is ~99% unusable right now. **Do NOT
+  change any env var / setting / image pin on that Railway service** — the only container serving
+  `feedback.gitcellar.com` is irreplaceable while this persists. Full resume record:
+  [`DEFER-009`](docs/planning/deferred/DEFER-009_railway-deploy-blocked-feedbackmonk-api.md) +
+  `docs/planning/feedbackmonk-deploy-state.md` § Stage E.
 - **Unpin stranded-dirty-files oracle — TRIGGER HAS FIRED (measured 2026-08-30)**: the synced baseline is clean, so the pin is now the only thing keeping this oracle off upstream fixes. Full detail in PF-UNPIN-01 below. Test (assembles the identifier at runtime — do NOT paste the literal back in, see DEFER-003): `U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> `0`.
 
 ### PF-SAAS-STANDUP-01: provision `feedbackmonk.com` + migrate GitCellar onto it (DEC-FBR-14 ops half)

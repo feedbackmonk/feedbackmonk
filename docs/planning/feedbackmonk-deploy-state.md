@@ -105,6 +105,21 @@ i.e. existing containers keep serving while every new deployment dies instantly 
   drop+re-add of a generated column). Verified live for ~30 min at 200. It is not a state to sit in
   indefinitely, but it is safe.
 
+### Support thread (filed 2026-09-02 ~14:50 UTC)
+
+Private Railway "Technical Help" thread: **"Deploys fail instantly at CREATE_CONTAINER, no logs,
+no volume — old container still serving"**. Status **Awaiting Railway Response**, **0 replies as of
+2026-09-03 02:15 UTC (11 h)**. Carries all four deployment IDs incl. the 14:43 UTC retry, and asks
+explicitly that it not be converted to a community bounty.
+
+A fourth attempt (`e12b3923-951a-4397-98c1-07831681700d`) was made at 2026-09-02 14:43 UTC — 11.5 h
+after the first — and **failed identically in 4.4 s**, which rules out a transient condition that has
+since cleared. Pin was reverted to `0.2.0` afterwards.
+
+**Image integrity re-verified 2026-09-03**: every layer blob of `feedbackmonk-api:0.4.0` (10/10) and
+`feedbackmonk-admin-ui:0.1.3` (11/11) is present in the registry, HTTP 200. A Docker daemon restart
+at ~03:14Z did not corrupt the push.
+
 ### To finish once deploys work again
 
 No rebuild needed — both images are already in the registry. Repoint + deploy:
