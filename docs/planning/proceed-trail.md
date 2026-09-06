@@ -25,3 +25,4 @@ KEEP-pin: no .claude/handoff/handoff-20260618-113930.md [routine routing brief; 
 | 2026-06-18T11:46Z | POST-PLAN (P5a plan 5df4e33) | /0-uldf-ltads-start | HANDOFF | current ~37%, full P5a impl arc ahead -> B3 fires; conv-NO (plan+contracts committed); Opus 1M so B1 dormant |
 KEEP-pin: no .claude/handoff/handoff-20260618-114600.md (tactical phase-boundary routing brief; durable record is plan 5df4e33 + spec)
 | 2026-06-18T18:04:50Z | POST-GATE0 | /0-uldf-pods-parallelize | PODS | 3 ownership-clear streams (Worker A/B/C) per P5a plan; decomposable + substantial; stay-alive viable on 1M; security-critical Worker A isolated. Supervised. |
+| 2026-09-06T21:47:13Z | POST-PLAN | Stage 0 here, then /0-uldf-pods-parallelize | PODS (converted LD) | ~20% est. on 1M, planning-heavy, decomposable (4 units), convo not load-bearing; CTD: 3 standard + 1 cheap, seams frontier |

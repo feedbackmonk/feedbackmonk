@@ -1,0 +1,52 @@
+{
+  "name": "i18n-literal-ratchet",
+  "version": "0.1.0",
+  "kind": "verification",
+  "question": "Has a new hard-coded user-facing English literal appeared in a localized surface (widget/src DOM-building calls; admin-ui/src JSX text nodes, aria-label=, title=, placeholder=, notify(...)) beyond the frozen baseline in i18n/literal-baseline.json? The baseline only shrinks. (FR-FBR-35/36/38)",
+  "assertion": {
+    "asserts": "No user-visible string can reach a widget, public-page or admin screen without passing through the catalog -- so a new feature cannot quietly ship English-only in a product that promises 31 locales.",
+    "measures": "A static scan of the working tree: string literals passed to textContent/innerText/createTextNode/setAttribute('aria-label'|'title'|'placeholder', ...) and `notify(` in widget/src/**/*.ts; JSX text nodes and aria-label/title/placeholder attribute string literals and `notify(\"...\"` in admin-ui/src/**/*.tsx -- each matched literal is (file, normalized text). The set of matches must be a SUBSET of i18n/literal-baseline.json; the baseline is rewritten only by `--freeze` and only if the new set is smaller.",
+    "known_gaps": [
+      "A literal assembled at runtime (`'Vote for ' + code`) or held in a const then passed to the DOM is not matched by the direct-call patterns -- accepted and stated; the a11y locale-matrix specs (de/fa runs asserting no English text in known regions) are the second leg.",
+      "Non-user-facing literals (log lines, test ids, CSS class names, data-* values) will match the JSX-text pattern in rare cases; the baseline absorbs them at freeze time and a reviewer removes false positives from it by hand -- shrinking only.",
+      "Cannot tell a string that is intentionally untranslatable (brand name, URL) from a missed one; those are excluded by an allow-list in the oracle (`ALLOWED_LITERALS`), which is itself a stated exemption surface.",
+      "Scans the working tree, not HEAD."
+    ]
+  },
+  "category": "correctness",
+  "invocation": {
+    "unix": ".claude/oracles/i18n-literal-ratchet/oracle.sh",
+    "windows": ".claude/oracles/i18n-literal-ratchet/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS (n matches, all in baseline) or FAIL <n> listing each NEW literal as file:line: \"text\". Exit 0/1/2. `--freeze` rewrites the baseline when the match set shrank (exit 0) and refuses when it grew (exit 1). Vacuous-PASS while i18n/literal-baseline.json is absent (pre-Stage-1-converge)."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "widget/src/**",
+      "admin-ui/src/**",
+      "i18n/literal-baseline.json",
+      ".claude/oracles/i18n-literal-ratchet/oracle.py"
+    ],
+    "compute_cost_ms": 400
+  },
+  "consultation": {
+    "typical_sessions_using": "every commit touching widget/src or admin-ui/src after Stage-1 converge; the exit gate for W-D's cheap-tier extraction (baseline must reach 0 for admin-ui/src)",
+    "estimated_token_savings_per_call": 1500
+  },
+  "consumer_scope": "feedbackmonk: every UI worker and every later session adding a component.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": null
+  },
+  "fallback": "grep -rnE '>[A-Z][a-z]+[^<{]*<' admin-ui/src --include=*.tsx | grep -v 't(' and grep -rnE 'textContent = \"' widget/src; compare against i18n/literal-baseline.json by eye.",
+  "provenance": {
+    "authored_by": "UI-localization LD (Stage 0 Task Zero, 2026-09-06). Assertion frozen before the probe existed; implemented by W-T in Stage 1; baseline frozen by the LD at Stage-1 converge (`--freeze`).",
+    "hardening_note": "Modelled on GitCellar's apps/gitcellar-desktop/src-web/scripts/i18n-audit.mjs ratchet and its lesson: a guard not mechanically invoked at a defined trigger is documentation, not a guard -- this oracle runs from the finalize gate, not from a README.",
+    "created": "2026-09-06T21:50:00Z",
+    "rationale": "The Stage-2 admin extraction is delegated to a cheap-tier worker precisely because a missed literal is caught mechanically here and cheaply recovered (CTD-20 balanced/cost-first tiebreak). Without this oracle, the cheaping precondition 'verifiable boundary' would be false and W-D would have to run at standard."
+  }
+}

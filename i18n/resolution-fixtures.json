@@ -1,0 +1,53 @@
+{
+  "_meta": {
+    "contract": "C34",
+    "purpose": "Truth table for the locale resolver. BOTH implementations (admin-ui/src/i18n/resolve.ts, shared with widget/src/i18n.ts; and crates/feedbackmonk-i18n resolve()) must pass every case. Ported from GitCellar's locale-resolution.ts, extended with the multi-candidate (navigator.languages / Accept-Language) walk.",
+    "semantics": [
+      "`candidates` is an ordered preference list (navigator.languages, or Accept-Language sorted by q). The resolver returns the FIRST candidate that resolves to a shipped code.",
+      "Per candidate: canonicalise (trim, `_`->`-`, language lowercase, 4-letter script Titlecase, 2-letter/3-digit region UPPERCASE) -> exact shipped code -> longest-prefix override (i18n/locales.json `overrides`) -> base language shipped -> bare default (i18n/locales.json `bare_defaults`) -> not shipped, try next candidate.",
+      "`expect` is the resolved code, or `en` when no candidate resolves (the default). A resolver never returns a code that is not in the table."
+    ]
+  },
+  "cases": [
+    { "name": "exact shipped code",                    "candidates": ["de"],                      "expect": "de" },
+    { "name": "exact regional shipped code",           "candidates": ["pt-BR"],                   "expect": "pt-BR" },
+    { "name": "region falls to base language",         "candidates": ["de-AT"],                   "expect": "de" },
+    { "name": "region falls to base, fr-CA",           "candidates": ["fr-CA"],                   "expect": "fr" },
+    { "name": "bare pt -> pt-BR",                      "candidates": ["pt"],                      "expect": "pt-BR" },
+    { "name": "bare zh -> zh-CN",                      "candidates": ["zh"],                      "expect": "zh-CN" },
+    { "name": "zh-Hans -> zh-CN",                      "candidates": ["zh-Hans"],                 "expect": "zh-CN" },
+    { "name": "zh-Hant -> zh-TW",                      "candidates": ["zh-Hant"],                 "expect": "zh-TW" },
+    { "name": "zh-Hans-CN longest prefix",             "candidates": ["zh-Hans-CN"],              "expect": "zh-CN" },
+    { "name": "zh-Hant-CN script beats region",        "candidates": ["zh-Hant-CN"],              "expect": "zh-TW" },
+    { "name": "zh-SG -> zh-CN",                        "candidates": ["zh-SG"],                   "expect": "zh-CN" },
+    { "name": "zh-MO -> zh-HK",                        "candidates": ["zh-MO"],                   "expect": "zh-HK" },
+    { "name": "zh-HK exact",                           "candidates": ["zh-HK"],                   "expect": "zh-HK" },
+    { "name": "pt-AO -> pt-PT",                        "candidates": ["pt-AO"],                   "expect": "pt-PT" },
+    { "name": "pt-MZ -> pt-PT",                        "candidates": ["pt-MZ"],                   "expect": "pt-PT" },
+    { "name": "pt-TL -> pt-PT",                        "candidates": ["pt-TL"],                   "expect": "pt-PT" },
+    { "name": "pt-US unknown region -> bare default",  "candidates": ["pt-US"],                   "expect": "pt-BR" },
+    { "name": "underscore canonicalised",              "candidates": ["pt_br"],                   "expect": "pt-BR" },
+    { "name": "upper-case canonicalised",              "candidates": ["ZH-HANT"],                 "expect": "zh-TW" },
+    { "name": "mixed-case language",                   "candidates": ["De-de"],                   "expect": "de" },
+    { "name": "whitespace trimmed",                    "candidates": ["  ja  "],                  "expect": "ja" },
+    { "name": "unshipped language -> default",         "candidates": ["da"],                      "expect": "en" },
+    { "name": "unshipped is never mapped to neighbour","candidates": ["da-DK"],                   "expect": "en" },
+    { "name": "unshipped then shipped",                "candidates": ["da", "sv"],                "expect": "sv" },
+    { "name": "first shipped wins",                    "candidates": ["fr", "de"],                "expect": "fr" },
+    { "name": "first resolvable wins over later exact","candidates": ["de-CH", "fr"],             "expect": "de" },
+    { "name": "en-US -> en",                           "candidates": ["en-US"],                   "expect": "en" },
+    { "name": "en-GB -> en",                           "candidates": ["en-GB"],                   "expect": "en" },
+    { "name": "empty list -> default",                 "candidates": [],                          "expect": "en" },
+    { "name": "empty string ignored",                  "candidates": [""],                        "expect": "en" },
+    { "name": "empty then shipped",                    "candidates": ["", "ko"],                  "expect": "ko" },
+    { "name": "wildcard ignored",                      "candidates": ["*"],                       "expect": "en" },
+    { "name": "garbage ignored",                       "candidates": ["!!", "not a tag", "uk"],   "expect": "uk" },
+    { "name": "rtl locale exact",                      "candidates": ["fa"],                      "expect": "fa" },
+    { "name": "fa-IR -> fa",                           "candidates": ["fa-IR"],                   "expect": "fa" },
+    { "name": "three-digit region canonicalised",      "candidates": ["es-419"],                  "expect": "es" },
+    { "name": "sr unshipped, then hr unshipped, then it", "candidates": ["sr", "hr", "it"],       "expect": "it" },
+    { "name": "very long tag does not crash",          "candidates": ["de-Latn-DE-u-co-phonebk-x-private"], "expect": "de" },
+    { "name": "en first short-circuits",               "candidates": ["en", "de"],                "expect": "en" },
+    { "name": "regional unshipped language",           "candidates": ["nb-NO"],                   "expect": "en" }
+  ]
+}

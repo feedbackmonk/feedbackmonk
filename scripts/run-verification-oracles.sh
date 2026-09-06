@@ -53,6 +53,7 @@ ORACLES=(
   public-route-ceiling
   public-id-as-capability
   submission-idempotency
+  i18n-catalog-integrity
 )
 
 fail=0

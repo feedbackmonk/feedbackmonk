@@ -1,0 +1,15 @@
+[package]
+name = "feedbackmonk-i18n"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

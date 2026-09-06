@@ -4,6 +4,7 @@ members = [
     "crates/feedbackmonk-anon",
     "crates/feedbackmonk-api",
     "crates/feedbackmonk-core",
+    "crates/feedbackmonk-i18n",
     "crates/feedbackmonk-jwt",
     "crates/feedbackmonk-repository",
     "crates/feedbackmonk-runner",

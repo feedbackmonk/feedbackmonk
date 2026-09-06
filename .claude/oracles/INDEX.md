@@ -133,6 +133,16 @@ Invocation: `bash .claude/oracles/widget-bundle-size/oracle.sh` (Unix) or `pwsh 
 
 Invocation: `bash .claude/oracles/tier-enforcement-status/oracle.sh` (Unix; `--full` runs Probe C integration smoke) or `pwsh .claude/oracles/tier-enforcement-status/oracle.ps1` (Windows); `python .claude/oracles/tier-enforcement-status/oracle.py [--full]` (cross-platform direct).
 
+### localization
+
+| Oracle | Question | Kind | Strategy | Consumer Scope | Est. savings/call |
+|---|---|---|---|---|---|
+| **`i18n-catalog-integrity`** | Is the catalog tree (`i18n/locales/<code>/<ns>.json`) structurally sound and do the three generated locale tables still equal `i18n/locales.json`? (FR-FBR-34/39, C34/C35/C41) | verification | trigger-invalidate (`i18n/**`, the three `locales.gen.*`) | every worker on FR-FBR-34..40; every later session adding a string | ~900 tokens |
+| **`i18n-literal-ratchet`** | Has a new hard-coded user-facing English literal appeared in `widget/src` or `admin-ui/src` beyond the frozen baseline? Baseline only shrinks. (FR-FBR-35/36/38) | verification | trigger-invalidate (`widget/src/**`, `admin-ui/src/**`) | UI workers; exit gate for the Stage-2 admin extraction | ~1500 tokens |
+| **`translation-gap-status`** | How many keys are MISSING / DRIFTED per locale — is a translation pass due before the next release? Advisory, never blocking. (FR-FBR-39, DEC-FBR-17) | project-state | trigger-invalidate (`i18n/locales/**`, `i18n/source-hashes.json`) | owner release checklist; finalize report line | ~600 tokens |
+
+Invocation: `bash .claude/oracles/i18n-catalog-integrity/oracle.sh` (Unix) or `pwsh .claude/oracles/i18n-catalog-integrity/oracle.ps1` (Windows); same shape for the other two. **Stage 0 state (2026-09-06)**: assertions frozen; `i18n-catalog-integrity` Probes A+B live; the rest implemented by worker W-T in Stage 1 (vacuous-PASS until then).
+
 ### deployment
 
 | Oracle | Question | Kind | Strategy | Consumer Scope | Est. savings/call |
