@@ -124,6 +124,14 @@ untouched, so it is recoverable. **Get the owner's approval before moving the do
 
 ## Deferred sub-items (do NOT action before a deploy succeeds)
 
+- **`FEEDBACKMONK_TRANSLATION_PROVIDER`** — currently unset, so it resolves to `off` and the
+  FR-FBR-30 translate-to-English worker never spawns. Measured 2026-09-06 (D-FBR-32): the running
+  `0.2.0` predates FR-FBR-30 anyway, so GitCellar's non-English feedback is clustered, searched and
+  sentiment-scored **untranslated** today. Once a deploy path works, set the provider (`deepl` +
+  `FEEDBACKMONK_TRANSLATION_DEEPL_API_KEY`, or `libretranslate` + URL — `SELFHOST_ENV.md` L110-113)
+  in the same change as the redeploy, then `POST /api/v1/ops/translation/backfill` for the
+  pre-existing rows. The UI-localization spec (FR-FBR-34..41) assumes this pipeline is running.
+
 - **`FEEDBACKMONK_STORAGE_BACKEND=s3`** — currently unset, so attachments would use the ephemeral
   local backend and die on each redeploy. Harmless today: the `attachments` table has **0 rows**.
   It is **not a one-variable change**: `storage.rs` requires `FEEDBACKMONK_S3_BUCKET`,
