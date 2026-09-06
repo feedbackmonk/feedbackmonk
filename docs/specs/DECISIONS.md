@@ -1096,9 +1096,9 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 ## UI localization (spec session 2026-09-06)
 
 > Investigation record: `docs/planning/ideations/20260906T120000-ui-localization-31-locales.md`.
-> Requirements FR-FBR-34..41 (SPECIFICATION.md § Capability extension — UI localization). Two of the
-> five decisions below are **PROPOSED** pending the owner's answers to Q23 / Q25–Q29; the other three
-> ratify the owner's own instructions from the request.
+> Requirements FR-FBR-34..41 (SPECIFICATION.md § Capability extension — UI localization). All five
+> decisions are RESOLVED: three ratify the owner's own instructions from the request, two were
+> proposed and ratified by the owner's "defaults" answer to Q23 / Q25–Q29 on 2026-09-06.
 
 ### DEC-FBR-15: The language set is GitCellar's 31 locales, verbatim, with one shared short-code vocabulary; RTL is supported from day one
 
@@ -1115,7 +1115,7 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 ### DEC-FBR-16: Initial language comes from the user's own browser/OS language preference, never from IP geolocation; an explicit choice always wins and persists
 
-**Status**: **PROPOSED 2026-09-06 — pending [Q23](OPEN_QUESTIONS.md#q23--initial-language-from-the-browsers-language-preference-or-from-the-users-location)** (the owner's wording was "depending on where the user resides"; this decision recommends the browser's stated preference as the better reading of that intent).
+**Status**: **RESOLVED 2026-09-06** (owner ratified the recommendation; resolves [Q23](OPEN_QUESTIONS.md#q23--initial-language-from-the-browsers-language-preference-or-from-the-users-location) — the request's "where the user resides" is served by the browser's stated preference, not geolocation).
 
 **Decision**: the initial language on every surface is resolved from the user's stated preference — `navigator.languages` (walked in order) client-side, `Accept-Language` server-side — through the Contract C34 resolver (exact → override table → base language → regional default → unshipped stays English). Geographic inference (IP → country → language) is not used anywhere. The user's explicit pick — including picking English — overrides detection and persists (per DEC-FBR-IMPL-31). Surfaces **suggest or switch; they never redirect** a URL the user typed.
 
@@ -1139,7 +1139,7 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 ### DEC-FBR-IMPL-30: One catalog source consumed by three runtimes; the widget loads a lazy per-locale chunk and carries no i18n library; the admin/public SPA uses i18next; Rust compiles the catalog in
 
-**Status**: **PROPOSED 2026-09-06** (implementation shape; ratify at plan time).
+**Status**: **RESOLVED 2026-09-06** (owner ratified with the Q23–Q29 defaults; implementation shape frozen for planning).
 
 **Decision**: the catalog tree `i18n/locales/<code>.json` (Contract C35: nested JSON, `_meta.{language,status}`, `{{name}}` interpolation, CLDR plural suffixes `_one/_other/_few/_many/_zero`) is the sole source. Namespaces partition it by consumer: `widget.*`, `public.*`, `admin.*`, `email.*`, shared `status.*`/`kind.*`. Consumers:
 - **Widget**: a ≈40-line `t()` in `widget/src/i18n.ts`; `en` strings inlined in `widget.js` (roughly the bytes the literals cost today); every other locale sliced at build from the `widget.*` namespace into `dist/locales/<code>.js` and `import()`ed on first open — the `redact.js` precedent. No i18next: the 30 KB cap (FR-FBR-04) leaves ~7 KB and i18next alone is larger than that. Server error text is mapped client-side from `err.code`.
@@ -1156,7 +1156,7 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 ### DEC-FBR-IMPL-31: Locale persists per surface where a row exists to hold it; the embedded widget follows its host page; UI locale and the FR-FBR-30 canonical content language are separate axes
 
-**Status**: **PROPOSED 2026-09-06** (persistence shape; ratify at plan time; the widget half depends on Q26).
+**Status**: **RESOLVED 2026-09-06** (owner ratified; Q26 resolved "follow host", so the widget row stands as written).
 
 **Decision**, per surface:
 

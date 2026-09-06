@@ -184,7 +184,7 @@ Depends on Q21: the CNAME target only exists if subdomains do.
 > would collide in every grep. Each question carries the recommendation first.
 
 ### Q23 — Initial language: from the browser's language preference, or from the user's location?
-**Status**: OPEN — **BLOCKING** for DEC-FBR-16 (proposed) and the FR-FBR-34 resolver.
+**Status**: RESOLVED 2026-09-06 (owner: "defaults") → [`DEC-FBR-16`](DECISIONS.md) — browser/OS language preference; never IP geolocation.
 
 The request said "depending on where the user resides, the most likely language they speak". Two readings:
 
@@ -194,7 +194,7 @@ The request said "depending on where the user resides, the most likely language 
 Say "browser" to ratify DEC-FBR-16 as written; say "geo" to switch the resolver to geolocation-first (I would not — the reasons above).
 
 ### Q25 — Is the admin console in scope, or English-only like GitCellar's?
-**Status**: OPEN — **BLOCKING** for FR-FBR-38's status; not blocking L0–L2.
+**Status**: RESOLVED 2026-09-06 (owner: "defaults") — admin console **in scope**, phase L3 (FR-FBR-38 CONFIRMED).
 
 GitCellar's own admin UI and cloud API are deliberately English-only (a staff tool). feedbackmonk's admin is different: it is the product's paying customer surface, used by tenants worldwide. The request said "any user should be able to select the language of their choice", which reads as including admins.
 
@@ -204,7 +204,7 @@ GitCellar's own admin UI and cloud API are deliberately English-only (a staff to
 Say "admin in" (recommended) or "admin later".
 
 ### Q26 — Does the widget follow the host page only, or also offer its own language picker?
-**Status**: OPEN — decides one row of DEC-FBR-IMPL-31; not blocking L0.
+**Status**: RESOLVED 2026-09-06 (owner: "defaults") — the widget **follows the host page**; no in-modal picker; no widget-side persistence (DEC-FBR-IMPL-31 widget row stands).
 
 - **(Recommended) Follow the host**: `data-locale` → `<html lang>` → `navigator.languages`. The host app already has a language setting (GitCellar's Forge cookie / Desktop setting) and the modal should agree with the page around it. No picker, no widget-side persistence, no bytes spent on a `<select>` of 31 endonyms in a 30 KB budget.
 - **Add an in-modal picker** persisted in `localStorage` on the host origin. Lets a user override a host page that has no language setting, at the cost of the widget being able to disagree with its host and ~1 KB of bundle.
@@ -212,7 +212,7 @@ Say "admin in" (recommended) or "admin later".
 Say "follow host" (recommended) or "widget picker".
 
 ### Q27 — Should team-authored text (status notes, public replies) be machine-translated into the submitter's language? (FR-FBR-40)
-**Status**: OPEN — decides whether FR-FBR-40 is v1 (L4) or deferred.
+**Status**: RESOLVED 2026-09-06 (owner: "defaults") — **translate replies**: FR-FBR-40 CONFIRMED for L4 as a per-tenant opt-in, original always included.
 
 The request said "as far as any user is concerned, the whole thing interacts according to the language of their choosing". Localized email *chrome* (FR-FBR-37) gets most of the way; the reply body a triager types in English still arrives in English.
 
@@ -222,7 +222,7 @@ The request said "as far as any user is concerned, the whole thing interacts acc
 Say "translate replies" (recommended) or "defer replies".
 
 ### Q28 — The five languages DeepL cannot translate (`ga`, `fa`, `ml`, `is`, `si`): English fallback, or a second provider?
-**Status**: OPEN — decides one line of FR-FBR-39; not blocking anything before the first release pass.
+**Status**: RESOLVED 2026-09-06 (owner: "defaults") — **English fallback** for `ga, fa, ml, is, si` in v1, listed in the switcher, `dir`/`lang` still honoured; `_meta.status` records the reason.
 
 - **(Recommended for v1) English fallback**, exactly GitCellar's posture, with `_meta.status: "english-fallback — provider unsupported"` so the switcher can still list them (the user picks Persian, gets English chrome *with `dir=rtl` and correct `lang`*) — or hide them from the switcher until translated. I'd list them: parity with GitCellar's picker, and a Persian reader still benefits from RTL and correct `lang`.
 - **A second, LLM-backed translate provider** for those five (the repo already talks to Claude for the P5 analyst). Better than nothing for the five; adds a second provider path and a quality-review burden for languages nobody on the team can check.
@@ -230,7 +230,7 @@ Say "translate replies" (recommended) or "defer replies".
 Say "english fallback" (recommended) or "llm for the five".
 
 ### Q29 — Is the marketing site (`marketing/`, Astro) in scope? (FR-FBR-41)
-**Status**: OPEN — decides FR-FBR-41's status; lowest priority of the set.
+**Status**: RESOLVED 2026-09-06 (owner: "defaults") — **marketing deferred**: FR-FBR-41 DEFERRED until the site is live at `feedbackmonk.com`.
 
 - **(Recommended) Defer.** It is the only surface with no logged-in or embedded user, it is not yet pointed at a live deployment (PF-DEPLOY-01), and GitCellar's own approach (snapshot pages from an already-translated Forge) does not transfer. Revisit when the site goes live at `feedbackmonk.com`.
 - **In scope now** as L4: Astro `i18n` config from C34, per-locale copy modules, `hreflang`, a no-JS switcher.
