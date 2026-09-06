@@ -1092,3 +1092,86 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Known limitation (documented, not fixed in v1)**: a tenant can *claim* a domain they do not own, denying it to another tenant, because the claim precedes the DNS proof. A stale-`pending` re-claim window is the fix; it is deferred and recorded as a follow-up rather than left implicit.
 
 **Alternatives considered**: *ACME inside the Rust binary* (`instant-acme` / `rustls-acme`) — puts renewal timers, account keys and cert storage into an otherwise stateless service and forces a TLS-terminating listener into the self-host image (rejected). *Manual per-domain certificates* — does not scale past the first customer and makes the paid feature an ops ticket (rejected). *Wildcard-only, no custom domains* — that is the thing DEC-FBR-13 sells (rejected).
+
+## UI localization (spec session 2026-09-06)
+
+> Investigation record: `docs/planning/ideations/20260906T120000-ui-localization-31-locales.md`.
+> Requirements FR-FBR-34..41 (SPECIFICATION.md § Capability extension — UI localization). Two of the
+> five decisions below are **PROPOSED** pending the owner's answers to Q23 / Q25–Q29; the other three
+> ratify the owner's own instructions from the request.
+
+### DEC-FBR-15: The language set is GitCellar's 31 locales, verbatim, with one shared short-code vocabulary; RTL is supported from day one
+
+**Status**: **RESOLVED 2026-09-06** (owner instruction: "support the same languages that the product GitCellar supports").
+
+**Decision**: feedbackmonk supports exactly the 31 locales in
+`../GitCellar/apps/gitcellar-landing/src/i18n/locale-map.ts` — `en, de, fr, es, pt-BR, ja, zh-CN, ko, zh-HK, zh-TW, ga, nl, lv, ru, uk, pt-PT, pl, bg, it, fi, tr, cs, sv, el, fa, hu, id, ml, is, si, sk` — using GitCellar's short `url` codes as the canonical code everywhere (catalog file names, `data-locale`, `submitter_locale`, `tenants.locale`, `<html lang>`). Endonym and text direction travel with the code; `fa` is `rtl` and every localized surface honours `dir` from the first release. The table lives once, in `i18n/locales.json`, and the TypeScript and Rust copies are **generated** from it (Contract C34).
+
+**Rationale**: GitCellar is customer #1 and its Desktop, Forge and landing site already speak this vocabulary, so a code they hand the widget needs no mapping layer. The set is Gitea upstream's, which is why GitCellar chose it — it is a proven, community-maintained language list. Generating the copies rather than hand-mirroring them removes the drift class GitCellar had to build a guard script for (`check-locale-single-source.mjs`). RTL from day one because GitCellar's Desktop shipped `fa` without `dir` handling and now carries a locale it cannot render correctly — cheaper to do at extraction time than to retrofit.
+
+**Alternatives considered**: *A smaller "top 10" set* — cheaper translation bills, but breaks parity with the only customer and re-creates the "German page, English modal" gap for the other 20 (rejected). *BCP-47 long forms (`de-DE`) as the canonical code* — matches the Forge's file names but not what the Desktop, landing and every browser emit; the short code is the form every producer already has (rejected). *Hand-maintained TS + Rust tables* — rejected; generated.
+
+---
+
+### DEC-FBR-16: Initial language comes from the user's own browser/OS language preference, never from IP geolocation; an explicit choice always wins and persists
+
+**Status**: **PROPOSED 2026-09-06 — pending [Q23](OPEN_QUESTIONS.md#q23--initial-language-from-the-browsers-language-preference-or-from-the-users-location)** (the owner's wording was "depending on where the user resides"; this decision recommends the browser's stated preference as the better reading of that intent).
+
+**Decision**: the initial language on every surface is resolved from the user's stated preference — `navigator.languages` (walked in order) client-side, `Accept-Language` server-side — through the Contract C34 resolver (exact → override table → base language → regional default → unshipped stays English). Geographic inference (IP → country → language) is not used anywhere. The user's explicit pick — including picking English — overrides detection and persists (per DEC-FBR-IMPL-31). Surfaces **suggest or switch; they never redirect** a URL the user typed.
+
+**Rationale**: the browser's language list *is* the user's own declaration of what they read; geography is a proxy for it that fails for multilingual countries (Switzerland, Belgium, Canada, India), for expatriates, travellers and VPN users, and it requires an IP-to-country lookup — either an egress to a geo service or an operator-maintained database — for a self-hosted, no-egress-by-default product (DEC-FBR-02 / DEC-FBR-IMPL-26). GitCellar reaches the same conclusion: it reads `cf-ipcountry` for sanctions and storage region only, never for language, and DEC-LS-28 argues against locale redirects at all. "Where the user resides" is served *better* by this than by geo-IP, because a Portuguese speaker in Germany gets Portuguese.
+
+**Alternatives considered**: *Geo-IP → language* — rejected for the accuracy, privacy and egress reasons above. *Geo as a tie-breaker between regional variants (`pt-BR` vs `pt-PT`)* — the resolver's regional-default table already answers that without a lookup (rejected as unnecessary). *Tenant-configured default language for the board* — a tenant may still prefer their visitors see the board in the tenant's language by default; deferred, easy to add as a `projects.default_locale` later without changing the resolver.
+
+---
+
+### DEC-FBR-17: Machine translation of the UI catalogs is an owner-authorised release step, not a development-time step; per-key English fallback keeps a partially translated catalog shippable at all times
+
+**Status**: **RESOLVED 2026-09-06** (owner instruction: "we do not need to perform the translations until authorized by me, until just before we deploy a release").
+
+**Decision**: developers add and change strings only in the English source catalog (`i18n/locales/en.json`), in the same commit as the component. The other 30 catalogs are updated **only** by an explicit owner invocation of `/1-translate` (or its script), typically once, immediately before a release. Nothing else writes them — not finalize, not CI, not a hook, not a worker. At runtime every consumer (widget `t()`, i18next, the Rust crate) falls back **per key** to the English source, so an untranslated or drifted key renders correct English rather than a raw key or an error. Drift is tracked per key with a SHA-256 of the English source (`i18n/source-hashes.json`, refreshed by the translate step) so a release pass re-sends only what changed. Finalize and the session briefing *report* missing/drifted counts (advisory); CI *fails* only on structural breakage and on new hard-coded literals, never on an untranslated key.
+
+**Rationale**: strings churn during development; translating on every change pays DeepL characters twice and generates review noise for text that will change again. Deferring to a single pre-release pass makes the bill and the review proportional to what shipped. This is only safe because of the runtime fallback — without it, an untranslated key would break the UI between releases, and the team would be forced to translate continuously. GitCellar runs the same shape (gap check in finalize, translation only via `/1-translate`) and records the lesson that a guard not mechanically invoked at a defined trigger is documentation: hence the gap check is an oracle in the briefing and the translate step has exactly one trigger, the owner's word.
+
+**Alternatives considered**: *Translate in CI on every merge* — continuous cost, review noise, and the owner explicitly rejected it. *Translate in finalize* — same problem with an agent's judgement replacing the owner's (rejected; finalize reports, never translates). *No fallback (fail on missing key)* — forces continuous translation (rejected).
+
+---
+
+### DEC-FBR-IMPL-30: One catalog source consumed by three runtimes; the widget loads a lazy per-locale chunk and carries no i18n library; the admin/public SPA uses i18next; Rust compiles the catalog in
+
+**Status**: **PROPOSED 2026-09-06** (implementation shape; ratify at plan time).
+
+**Decision**: the catalog tree `i18n/locales/<code>.json` (Contract C35: nested JSON, `_meta.{language,status}`, `{{name}}` interpolation, CLDR plural suffixes `_one/_other/_few/_many/_zero`) is the sole source. Namespaces partition it by consumer: `widget.*`, `public.*`, `admin.*`, `email.*`, shared `status.*`/`kind.*`. Consumers:
+- **Widget**: a ≈40-line `t()` in `widget/src/i18n.ts`; `en` strings inlined in `widget.js` (roughly the bytes the literals cost today); every other locale sliced at build from the `widget.*` namespace into `dist/locales/<code>.js` and `import()`ed on first open — the `redact.js` precedent. No i18next: the 30 KB cap (FR-FBR-04) leaves ~7 KB and i18next alone is larger than that. Server error text is mapped client-side from `err.code`.
+- **Admin + public SPA**: `i18next` + `react-i18next` (GitCellar Desktop's stack), catalogs code-split per locale via dynamic import; `fallbackLng: 'en'`; `escapeValue: false`. Enum labels leave the generated `types.gen.ts` (the generator emits keys).
+- **Rust**: new crate `crates/feedbackmonk-i18n`, `include_str!` of the `email.*` (and `status.*`) namespace per locale at compile time, dotted-path lookup, `{{name}}` args, fallback active → base language → `en` → key (GitCellar's `i18n.rs`, ~150 lines). No runtime file I/O, no egress.
+
+`widget-bundle-size`'s measured set is **defined** as the English page-load set (`widget.js` + `widget.css` + `redact.js`) plus a 4,096 B per-chunk cap on each locale chunk. This is not a raise of the cap (`oracle.py:200`); it is a definition of what a drop-in widget costs a host page, recorded so no agent glob-excludes.
+
+**Rationale**: one source means one translation pass, one drift baseline, one validator. Three consumers because their constraints differ: the widget is byte-capped and must stay dependency-free and CSP-clean; the SPA benefits from a mature library for plurals and React binding; Rust needs the catalog at compile time so a self-host image is self-contained. Slicing by namespace at build keeps each consumer's payload to what it uses.
+
+**Alternatives considered**: *Server-supplied strings via `widget-config?locale=`* — one fewer file to vendor, but couples widget text to the API deploy, adds bytes to every config response, and does not help the SPA or emails (rejected; static chunks). *All catalogs in the widget bundle* — 30 × ~2 KB blows the cap by construction (rejected). *Fluent / ICU MessageFormat* — richer plural/gender grammar, but GitCellar's tooling, plural-completion script and DeepL placeholder handling are all i18next-shaped; parity wins (rejected for v1). *Extract keys automatically from source (i18next-parser)* — optional later; the ratchet oracle already forces the key into `en.json` in the same commit.
+
+---
+
+### DEC-FBR-IMPL-31: Locale persists per surface where a row exists to hold it; the embedded widget follows its host page; UI locale and the FR-FBR-30 canonical content language are separate axes
+
+**Status**: **PROPOSED 2026-09-06** (persistence shape; ratify at plan time; the widget half depends on Q26).
+
+**Decision**, per surface:
+
+| Surface | Who | Persisted where | Precedence |
+|---|---|---|---|
+| Admin console | tenant account (the `tenants` row *is* the account; no members table) | `tenants.locale` (nullable; follows the `widget_theme` precedent, migration 00012) | column → `navigator.languages` → `en` |
+| Public board / roadmap / tenant-host landing | anonymous visitor | `localStorage` `fbm_lang` on that origin (first client-side persistence in the codebase — a deliberate new pattern, scoped to public pages) | `?lang=` → `fbm_lang` → `navigator.languages` → `en` |
+| Embedded widget | end-user of the host app | **not persisted by the widget** — the host page owns the language | `data-locale` → `<html lang>` → `navigator.languages` → `en` |
+| Emails to a submitter | submitter | `feedback.submitter_locale` (captured at submit from payload `locale`, else `Accept-Language`; admin-read-only, never on a public surface) | `submitter_locale` → `tenants.locale` → `en` |
+| Account emails | tenant | `tenants.locale` | column → `Accept-Language` at signup → `en` |
+
+`submitter_locale` is a **preference**; `source_lang` (00019) is the provider-**detected** language of a body. They may differ (a French speaker writing English) and neither feeds the other. FR-FBR-30's target language stays English (D-XLATE-5); an admin in any UI locale reads the verbatim original and the English translation.
+
+**Rationale**: persistence belongs where an identity exists. The tenant has a row; the submitter has a row at exactly one moment (submit) and the email templates are the only consumer; the board visitor has no row and no account, so the origin's storage is the honest place; the widget's end-user *has* a language setting — in the host app — and a second picker inside a 30 KB modal would let the widget disagree with the page around it. Keeping the two axes separate is what lets the pipeline stay English-canonical while every human sees their own language.
+
+**Alternatives considered**: *Locale claim in the end-user JWT (Contract C2)* — a clean channel for authenticated widgets, but leaves anonymous mode (GitCellar's landing) with nothing; `data-locale` serves both and is set from the same value the host would put in a claim (rejected for v1; may be added as an optional claim later). *Cookie instead of `localStorage` on public hosts* — the SPA never server-renders, so a cookie buys nothing and adds a consent-banner question (rejected). *Persist the widget's locale in `localStorage` on the host origin* — would let the widget drift from a host that later changes language (rejected pending Q26).
+
+---

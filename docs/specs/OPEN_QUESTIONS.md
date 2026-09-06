@@ -172,3 +172,67 @@ tenants of it, and CNAME the existing gitcellar hosts at it. No user-visible cha
 `TRIAGE_URL` constant unchanged, no broken links — and we become customer #1 of the custom-domain
 feature, so it gets built because we need it rather than because a pricing card promises it.
 Depends on Q21: the CNAME target only exists if subdomains do.
+
+
+---
+
+## UI localization — spec session 2026-09-06
+
+> Raised at `autopilot:director` (spec domain `ask-major`): major gaps are asked, minor ones assumed and
+> recorded in DEC-FBR-15..17 / DEC-FBR-IMPL-30/31. **Q24 is deliberately skipped as an identifier** —
+> "the Q24 invariant" is a reserved name in this repo (FR-FBR-12 / DEC-FBR-IMPL-25) and a second Q24
+> would collide in every grep. Each question carries the recommendation first.
+
+### Q23 — Initial language: from the browser's language preference, or from the user's location?
+**Status**: OPEN — **BLOCKING** for DEC-FBR-16 (proposed) and the FR-FBR-34 resolver.
+
+The request said "depending on where the user resides, the most likely language they speak". Two readings:
+
+- **(Recommended) The user's own browser/OS language** (`navigator.languages` / `Accept-Language`), resolved through the C34 algorithm. It is the user's stated preference, needs no lookup or egress, and gets multilingual countries, expatriates and VPN users right. GitCellar does this and uses geo only for sanctions. A Portuguese speaker in Germany gets Portuguese — which is what "the language they speak" means.
+- **IP geolocation → country → language.** Needs an IP-to-country source (a geo service — egress — or an operator-shipped database), guesses wrong in CH/BE/CA/IN and for anyone travelling, and collides with the no-egress-by-default posture for self-hosters.
+
+Say "browser" to ratify DEC-FBR-16 as written; say "geo" to switch the resolver to geolocation-first (I would not — the reasons above).
+
+### Q25 — Is the admin console in scope, or English-only like GitCellar's?
+**Status**: OPEN — **BLOCKING** for FR-FBR-38's status; not blocking L0–L2.
+
+GitCellar's own admin UI and cloud API are deliberately English-only (a staff tool). feedbackmonk's admin is different: it is the product's paying customer surface, used by tenants worldwide. The request said "any user should be able to select the language of their choice", which reads as including admins.
+
+- **(Recommended) In scope, last phase (L3).** Cost is the largest of the surfaces (the most strings) but the mechanism is shared with the public pages (same bundle, same i18next). Ship end-user surfaces first.
+- **Out of scope for now.** Saves the L3 phase; the public pages still need the i18next bootstrap, so the saving is the string extraction and the settings page only.
+
+Say "admin in" (recommended) or "admin later".
+
+### Q26 — Does the widget follow the host page only, or also offer its own language picker?
+**Status**: OPEN — decides one row of DEC-FBR-IMPL-31; not blocking L0.
+
+- **(Recommended) Follow the host**: `data-locale` → `<html lang>` → `navigator.languages`. The host app already has a language setting (GitCellar's Forge cookie / Desktop setting) and the modal should agree with the page around it. No picker, no widget-side persistence, no bytes spent on a `<select>` of 31 endonyms in a 30 KB budget.
+- **Add an in-modal picker** persisted in `localStorage` on the host origin. Lets a user override a host page that has no language setting, at the cost of the widget being able to disagree with its host and ~1 KB of bundle.
+
+Say "follow host" (recommended) or "widget picker".
+
+### Q27 — Should team-authored text (status notes, public replies) be machine-translated into the submitter's language? (FR-FBR-40)
+**Status**: OPEN — decides whether FR-FBR-40 is v1 (L4) or deferred.
+
+The request said "as far as any user is concerned, the whole thing interacts according to the language of their choosing". Localized email *chrome* (FR-FBR-37) gets most of the way; the reply body a triager types in English still arrives in English.
+
+- **(Recommended) Yes, as an opt-in per tenant in L4**, using the FR-FBR-30 provider already configured (same egress posture and disclosure as DEC-FBR-IMPL-26), machine translation shown **above** the original with a localized "machine-translated" line, original always included, failure never blocks sending. Cheap because the provider trait exists; honest because the original travels with it.
+- **Defer.** Ship chrome-only emails; revisit when a tenant asks.
+
+Say "translate replies" (recommended) or "defer replies".
+
+### Q28 — The five languages DeepL cannot translate (`ga`, `fa`, `ml`, `is`, `si`): English fallback, or a second provider?
+**Status**: OPEN — decides one line of FR-FBR-39; not blocking anything before the first release pass.
+
+- **(Recommended for v1) English fallback**, exactly GitCellar's posture, with `_meta.status: "english-fallback — provider unsupported"` so the switcher can still list them (the user picks Persian, gets English chrome *with `dir=rtl` and correct `lang`*) — or hide them from the switcher until translated. I'd list them: parity with GitCellar's picker, and a Persian reader still benefits from RTL and correct `lang`.
+- **A second, LLM-backed translate provider** for those five (the repo already talks to Claude for the P5 analyst). Better than nothing for the five; adds a second provider path and a quality-review burden for languages nobody on the team can check.
+
+Say "english fallback" (recommended) or "llm for the five".
+
+### Q29 — Is the marketing site (`marketing/`, Astro) in scope? (FR-FBR-41)
+**Status**: OPEN — decides FR-FBR-41's status; lowest priority of the set.
+
+- **(Recommended) Defer.** It is the only surface with no logged-in or embedded user, it is not yet pointed at a live deployment (PF-DEPLOY-01), and GitCellar's own approach (snapshot pages from an already-translated Forge) does not transfer. Revisit when the site goes live at `feedbackmonk.com`.
+- **In scope now** as L4: Astro `i18n` config from C34, per-locale copy modules, `hreflang`, a no-JS switcher.
+
+Say "defer marketing" (recommended) or "marketing in".

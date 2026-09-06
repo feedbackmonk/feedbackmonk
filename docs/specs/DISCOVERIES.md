@@ -482,3 +482,28 @@ The third path — a `marketing-selfhost-page-parity` Verification Oracle that d
 **Where this pays off again**: any privileged mutation in a multi-tenant system. The question isn't "is the caller an admin?" but "is the caller's admin-ness scoped *below* the blast radius of this mutation?" If a tenant-scoped admin can reach a cross-tenant or commercial-policy lever, you need an operator tier above it.
 
 ---
+
+
+---
+
+## UI localization spec session (2026-09-06)
+
+### D-FBR-31: Two localization defects already ship in an English-only product — a UI that formats dates by the browser's locale while declaring `lang="en"`, and an embedded widget that inherits its host's `lang`
+
+**Surfaced by**: the 2026-09-06 i18n audit (ideation `20260906T120000-ui-localization-31-locales.md`).
+
+**What was discovered**: (1) `admin-ui/src/shared/format.ts:6,19` calls `Intl.RelativeTimeFormat(undefined, …)` and `toLocaleString()` with no locale, so a German-browser admin already sees "vor 3 Tagen" inside otherwise English chrome declared `<html lang="en">`. (2) The widget never sets `lang` on `.fbm-root`, so on GitCellar's `/de/` pages its English form inherits `lang="de"` — screen readers pronounce English text with German rules (WCAG 3.1.2, Language of Parts). Neither needed a localization feature to be wrong; both were invisible because every developer's browser is set to English.
+
+**Generalizable insight**: "English-only" is not a locale-neutral state — it is a locale, and it has to be *declared* consistently: pass the active locale to every `Intl` call (never `undefined`), and set `lang` on any root you inject into a page you do not own. Test at least one non-English browser locale in the a11y suite even before translation exists (Playwright `locale: 'de-DE'` is one line).
+
+**Where this pays off again**: both fixes are folded into L0 of FR-FBR-34; the `i18n-literal-ratchet` and the a11y specs' locale matrix keep them fixed.
+
+### D-FBR-32: The canonical-English content pipeline (FR-FBR-30) has never run in production — the live instance predates it, and no deployment record sets a provider
+
+**Surfaced by**: verifying the "process everything as English" premise during the i18n audit.
+
+**What was discovered**: `GET https://feedback.gitcellar.com/api/v1/capabilities` reports `0.2.0` (deployed 2026-06-03); FR-FBR-30 landed 2026-06-21. Neither `docs/planning/feedbackmonk-deploy-state.md` nor `docs/operations/RAILWAY_GITCELLAR.md` mentions `FEEDBACKMONK_TRANSLATION_PROVIDER`, and the provider defaults to `off` (DEC-FBR-IMPL-26). So GitCellar's many-language feedback is being clustered, searched and sentiment-scored **untranslated** today — the exact silent degradation FR-FBR-30 was built to stop.
+
+**Generalizable insight**: a capability that defaults *off* for privacy reasons is done when it is *configured*, not when it is merged. Its spec row should name the deployment step that turns it on, and the deploy-state record should carry the env value, or "DONE" in the spec quietly means "possible".
+
+**Where this pays off again**: the DEFER-009 redeploy / DEC-FBR-14 cutover must set the provider (DeepL for the SaaS; the self-host runbook already documents the choice). Recorded in the FR-FBR-34..41 section's measured-state note so the localization work does not assume a running pipeline.
