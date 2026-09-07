@@ -181,6 +181,73 @@ def cell_two_source_files_no_readme_is_not_flagged(t: T) -> None:
     t.eq(r["data"]["presence_gaps"], [])
 
 
+@cell(red="every one of these tokens was reported as a file that is gone: 12 false hits")
+def cell_prose_backticks_are_not_filename_claims(t: T) -> None:
+    """A File Index describes its module, so it backticks identifiers and literals too.
+
+    Measured before the fix, over five instrumented projects: `hooks/README.md` alone produced 24
+    of these, and the storm held proof (3) red on nothing. Each token below is one this check
+    really reported, copied from `S:/Apps/Table`'s run of 2026-09-07.
+    """
+    root = repo(t)
+    write(root / "mod" / "run.py", "x")
+    write(root / "mod" / "sub" / "nested.py", "x")
+    noise = ('`""`', "`0`", "`=`", "`<table>`", "`#[ignore]`", "`.await`", "`$derived`",
+             "`-Json`", "`CELL_IDS`", "`page.goto`", "`window.__aor_cmd_core`", "`sub`")
+    write(root / "mod" / "README.md",
+          "# mod\n\n## File Index\n\n| `run.py` | entry point, which returns "
+          + ", ".join(noise) + " |\n")
+    commit_all(t, root)
+    r = measure(root)
+    t.eq(r["verdict"], "pass",
+         f"prose backticks were graded as filenames: {r['data']['parity_mismatches']}")
+    t.eq(r["data"]["parity_mismatches"], [])
+
+
+@cell(red="`^[A-Za-z0-9]` first char: a correctly indexed __init__.py and .gitignore both "
+          "reported missing_from_index")
+def cell_a_leading_underscore_or_dot_still_names_a_file(t: T) -> None:
+    """The names real files open with, which a narrowed filename shape is quickest to lose.
+
+    Caught by the judge on the first attempt at this fix, and it was live rather than theoretical:
+    the oracle reported `scripts/lib/uldf: missing_from_index: ['__init__.py']` against a README
+    that indexes it on line 23, and `['_force-clean-worktrees.ps1', '_rewrite-paths.ps1']` in a
+    consumer project -- a false hit no README edit can clear, in the direction the first fix was
+    not looking. Both new cells there asserted only that prose is dropped, and every filename in
+    their fixtures began with a lowercase letter, so the suite was green over it.
+    """
+    root = repo(t)
+    write(root / "mod" / "__init__.py", "x")
+    write(root / "mod" / "_helper.ps1", "x")
+    write(root / "mod" / ".gitignore", "x")
+    write(root / "mod" / "run.py", "x")
+    write(root / "mod" / "README.md",
+          "# mod\n\n## File Index\n\n| `__init__.py` | the package |\n"
+          "| `_helper.ps1` | a helper |\n| `.gitignore` | ignores |\n| `run.py` | entry |\n")
+    commit_all(t, root)
+    r = measure(root)
+    t.eq(r["verdict"], "pass",
+         f"a correctly indexed dot- or underscore-file was graded wrong: "
+         f"{r['data']['parity_mismatches']}")
+    t.eq(r["data"]["parity_mismatches"], [])
+
+
+@cell(red="the shape test alone passed `page.goto`; only a used extension separates it")
+def cell_a_stale_entry_is_still_caught_by_its_extension(t: T) -> None:
+    """The fix must not buy quiet by grading nothing: an entry naming a real-looking file that
+    is not there stays a mismatch, and it is the extension its siblings use that says so."""
+    root = repo(t)
+    write(root / "mod" / "run.py", "x")
+    write(root / "mod" / "README.md",
+          "# mod\n\n## File Index\n\n| `run.py` | x |\n| `ghost.py` | deleted last week |\n"
+          "| `page.goto` | a call site, not a file |\n")
+    commit_all(t, root)
+    r = measure(root)
+    t.eq(r["verdict"], "fail")
+    m = r["data"]["parity_mismatches"][0]
+    t.eq(m["missing_from_directory"], ["ghost.py"])
+
+
 @cell(red="pre-implementation: an untracked file was never excluded from either check")
 def cell_untracked_files_are_invisible_to_both_checks(t: T) -> None:
     root = repo(t)
