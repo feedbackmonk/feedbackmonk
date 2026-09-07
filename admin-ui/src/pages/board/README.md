@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-`/public/projects/:projectId/board` — the hosted, no-auth public feedback board end-users see. Renders APPROVED feedback only (a server-side SQL invariant), no admin chrome, mirroring `pages/roadmap/PublicRoadmap.tsx`. Consumes `GET /api/v1/projects/{id}/board` (Contract C29) and the `POST`/`DELETE .../board/items/{short_code}/vote` voting surface (Contract C30, PF-BOARD-VOTING-01) — `vote_count` is the real aggregate and each item carries an accessible vote button.
+`/public/projects/:projectId/board` — the hosted, no-auth public feedback board end-users see. Renders APPROVED feedback only (a server-side SQL invariant), no admin chrome, mirroring `pages/roadmap/PublicRoadmap.tsx`. Consumes `GET /api/v1/projects/{id}/board` (Contract C29) and the `POST`/`DELETE .../board/items/{short_code}/vote` voting surface (Contract C30, PF-BOARD-VOTING-01) — `vote_count` is the real aggregate and each item carries an accessible vote button. **Localized since FR-FBR-36**: page chrome, status labels, vote controls and empty states come from the `public.*` / `status.*` catalog namespaces via `useLabels`, `<html lang/dir>` follow the active locale, and a `?lang=` parameter wins for a page-view — but **feedback content stays verbatim in its source language** (the Q24 boundary; never translate a submitter's words here).
 
 ## Purpose & Responsibilities
 

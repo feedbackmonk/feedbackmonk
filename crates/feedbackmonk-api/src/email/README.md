@@ -12,7 +12,7 @@ Agent Context Header (ULADP):
 
 ## Synopsis
 
-Outbound feedback-notification email module (FR-FBR-09, plain-text). Every confirmation / status-change / public-reply email funnels through one `EmailNotifier::send_email` chokepoint so brand parameterisation (Contract C10) is uniform. Holds the `Mailer` trait + plain-text template renderers + the env-selected send path (Mailpit in dev, lettre SMTP in prod).
+Outbound feedback-notification email module (FR-FBR-09, plain-text). Every confirmation / status-change / public-reply email funnels through one `EmailNotifier::send_email` chokepoint so brand parameterisation (Contract C10) is uniform. Holds the `Mailer` trait + plain-text template renderers + the env-selected send path (Mailpit in dev, lettre SMTP in prod). **Localized since FR-FBR-37**: every `Mailer` method and `render_*` takes a required `Locale`, and all copy comes from the `email.*` catalog namespace with per-key English fallback — recipient language resolves `feedback.submitter_locale` → `tenants.locale` → `en`. Two things not to break: Contract C10's subject shape `[{prefix} #{fb_id}] {short_subject}` is structural (words localize, structure does not), and English output is byte-locked by insta snapshots.
 
 ## 1. Purpose & Responsibilities
 
