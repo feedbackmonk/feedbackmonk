@@ -1,0 +1,16 @@
+{
+  "schema": "installed/1",
+  "hooks": [],
+  "oracles": [
+    "arc-state",
+    "git-state",
+    "markdown-link-validity",
+    "module-readme-parity",
+    "peers",
+    "pending-followups",
+    "pending-ideas",
+    "project-index",
+    "project-type",
+    "workflow-position"
+  ]
+}

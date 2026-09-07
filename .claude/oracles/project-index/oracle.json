@@ -1,0 +1,23 @@
+{
+  "schema": "oracle/2",
+  "name": "project-index",
+  "question": "Does this project's CLAUDE.md hold the shape the instruction-surface standard asks for, and how big is it getting?",
+  "kind": "verification",
+  "expected_runtime_ms": 120,
+  "install_when": {
+    "any_glob": ["CLAUDE.md"]
+  },
+  "assertion": {
+    "asserts": "the project index carries what a fresh session's first hour needs and nothing that belongs in git, a dev note or a linked authority (ISF-2, ISF-3), and its size is visible as a trend before it becomes a problem (ISF-7)",
+    "measures": "four deterministic SHAPES over the index text, each a `fail`: a block whose opening word is a finished-work token; a body inlined under a `## Pending Follow-Ups` stub (a nested bullet, a blank-separated paragraph, a sub-heading or a fenced block inside the section); a stub over `FOLLOWUP_STUB_BYTES`; and a paragraph whose 10-word shingles overlap the RENDERED global instruction file at `<home>/CLAUDE.md` by at least 25%. Plus three `warn` measures: bytes over `PROJECT_INDEX_ALARM_BYTES` (or the project's `.claude/config.json` `limits.project_index_alarm_bytes`), growth over `PROJECT_INDEX_GROWTH_BYTES` against the previous committed size, and a backticked token that looks like a path and resolves to nothing in the tree",
+    "known_gaps": [
+      "THE FINISHED-WORK TOKENS ARE A PROXY FOR NARRATION, AND A PARAPHRASE PASSES. The fail is a fixed list of past-tense openers matched at the first word of a block. `Completed the migration to v2` fails; `The migration to v2 is complete` says the same thing and passes, and so does any narration that opens with a noun. The shape catches the form the diet reports actually found -- a changelog entry pasted into an index -- and claims nothing about narration in general. Widening the list is how it stops being deterministic; the judgment half of ISF-2 reaches the author by delivered segment instead.",
+      "SHAPE 4 COMPARES AGAINST THE RENDERED GLOBAL FILE, WHICH MAY BE ABSENT OR STALE. `<home>/CLAUDE.md` is written by `sync.py`; on a machine that has never synced it does not exist, and the shape is then not measured at all -- reported as a `warn` naming the absence, never skipped silently. When it is present it is the DEPLOYED text, so a global rule edited in the template and not yet synced is compared against the old wording.",
+      "SHAPE 4 CANNOT TELL A RESTATEMENT FROM A DELIBERATE QUOTATION. A project that quotes a global rule on purpose -- to say it is tightened here, or to name the authority verbatim -- trips the same overlap as one that pasted it in. The direction is deliberate: the index is an index, and a rule that needs the global file's own words needs a pointer to the global file. A project that means it moves the quotation into the linked authority or accepts the fail's fix.",
+      "SIZE AND GROWTH ARE `warn` AND NOTHING FAILS ON EITHER (DEC-472). An index growing without bound is visible in every session-start briefing and stopped by no gate. That is the trade: the byte FAIL this replaces produced cut-to-fit in three of five files in one afternoon, one of them reporting 12 KB of its own content unreachable under the wall.",
+      "GROWTH IS MEASURED AGAINST ONE PRIOR SIZE, NOT A TREND. When the working tree differs from HEAD the delta is this uncommitted change's; otherwise it is the last commit's (HEAD vs HEAD~1). A sawtooth of six commits each adding 1.9 KB never warns, and neither does a rewrite that adds 8 KB while deleting 8 KB. It is an alarm on the single jump the diet reports measured, not a regression on the curve.",
+      "THE BACKTICKED-PATH WARN RESOLVES BY EXISTENCE ONLY, AND SKIPS ANYTHING AMBIGUOUS. A token holding a glob, a placeholder (`<home>`), a `~` or an absolute path is not graded at all, so a whole class of stale pointer is invisible. A token that resolves is not checked for being the RIGHT file.",
+      "SHAPES ARE GRADED OVER THE FILE'S TEXT, NOT A MARKDOWN PARSE. Blocks are split on blank lines and fenced code is tracked well enough to keep a fence's contents out of the block scan; a document that nests fences inside lists inside fences can confuse the split. A confused split can only mis-attribute a line to a neighbouring block, never invent a token that is not in the file."
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schema": "oracle/2",
+  "name": "module-readme-parity",
+  "question": "Does every module README's File Index match the files actually in that directory?",
+  "kind": "verification",
+  "expected_runtime_ms": 200,
+  "assertion": {
+    "asserts": "every module directory's README.md File Index names exactly the files that are really there, so an agent orienting from the README is never misled",
+    "measures": "for every directory holding a git-tracked README.md with a heading matching '## File Index' or '## 2. File Index', the backtick-quoted filenames in that section's body, diffed against the direct-child git-tracked files of that directory (README.md itself excluded); separately, a directory with >= 3 tracked source files and NO README.md at all is reported as a presence gap (RB-44's other half of today's module-index)",
+    "known_gaps": [
+      "scope is git-tracked files only (uldf.git.ls_files) -- an untracked file is invisible to both the parity and the presence checks, which is deliberate: a build artifact directory (bin/obj, node_modules) is normally gitignored and never reaches either check.",
+      "the File Index heading match is textual (a regex over the heading line), not a markdown parser -- a heading spelled some third way is not recognized and that README is silently outside the parity check (it would still count for the presence check as 'has a README', so it is never double-penalized).",
+      "'source file' for the presence half is a fixed extension list; a directory of three README-only or config-only files is never flagged, and a real module in an unlisted language is invisible to the presence check specifically.",
+      "existence, not correctness: an index entry naming a file that exists passes even if the file's actual purpose no longer matches the index's one-line description -- this oracle cannot see content."
+    ]
+  }
+}

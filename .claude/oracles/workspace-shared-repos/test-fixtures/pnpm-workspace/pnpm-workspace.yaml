@@ -1,5 +1,0 @@
-packages:
-  - "../sibling-a"
-  - '../sibling-b'
-  - ../not-a-git-checkout
-  - "../glob-*"

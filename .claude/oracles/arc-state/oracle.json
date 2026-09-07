@@ -1,0 +1,7 @@
+{
+  "schema": "oracle/2",
+  "name": "arc-state",
+  "question": "Is there an active LTADS arc, and what is its status, driver, consent expiry, and progress?",
+  "kind": "project-state",
+  "expected_runtime_ms": 50
+}

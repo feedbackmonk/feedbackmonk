@@ -1,0 +1,20 @@
+{
+  "schema": "oracle/2",
+  "name": "peers",
+  "question": "Which sessions are live in this project, with role and native idle/busy state?",
+  "kind": "project-state",
+  "expected_runtime_ms": 1000,
+  "assertion": {
+    "asserts": "Which sessions of this project are live right now, each with its role and its native idle/busy state.",
+    "measures": "Every C1 record in the anchor's active-sessions.json, graded by the C1 § 1.4 ladder: the model's ListAgents ids when the caller passes --native-live, else an OS pid probe corroborated by comparing the live process's start time against the harness's own procStart.",
+    "known_gaps": [
+      "In a batch there is no --native-live, so step 0 is unreachable and liveness rests on the pid probe plus procStart; a live session with no native session file reads `unknown`, never `alive`.",
+      "`unknown` is the honest answer for a session this process cannot corroborate, not a defect; it authorises no destructive act and is never rendered as dead.",
+      "The native sessions file outlives its process by 156-193 s (RBD-N1), so a session killed within that window is graded by the pid probe and the start-time comparison rather than by the file's presence, which stays true for minutes.",
+      "`status` (idle/busy/waiting) is read only for a record already graded `alive` by step 0 or 1; every other record renders `-` even when the file carries a value.",
+      "A record whose session never wrote a native file (a spawn before the v2 SessionStart hook is wired) is `unknown` on liveness, so before cut-over this oracle under-reports `alive`.",
+      "Liveness is never cached: every batch re-grades every record (RB-22). A verdict is true only at the instant it was taken.",
+      "The pre-rebuild registry lives at the same path with a different shape; this oracle refuses it and returns `unknown` rather than reading it as an empty project."
+    ]
+  }
+}
