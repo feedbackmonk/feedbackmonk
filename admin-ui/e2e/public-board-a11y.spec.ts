@@ -82,6 +82,109 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Locale matrix (FR-FBR-36 / TGF-02).
+//
+// `test.use({ locale })` sets the real browser locale, so this exercises the
+// C34 resolver on `navigator.languages` rather than a stub. `fa-IR` is in the
+// matrix because axe cannot judge visual direction: the ONLY machine check
+// that RTL is wired at all is the `dir` attribute, so this is where it is
+// asserted (a human pass is R-A11Y's job).
+//
+// TEXT IS NOT ASSERTED PER LOCALE, deliberately: in this arc every non-English
+// catalog is still a skeleton (DEC-FBR-17 — translation is the owner's release
+// step), so a German page legitimately renders English strings. What must hold
+// in every locale is the machinery: the resolved `lang`, the `dir`, the
+// switcher, and zero axe violations.
+// ─────────────────────────────────────────────────────────────────────────
+
+const LOCALE_MATRIX = [
+  { browser: "en-US", expectLang: "en", expectDir: "ltr" },
+  { browser: "de-DE", expectLang: "de", expectDir: "ltr" },
+  { browser: "fa-IR", expectLang: "fa", expectDir: "rtl" },
+] as const;
+
+for (const { browser, expectLang, expectDir } of LOCALE_MATRIX) {
+  test.describe(`Public board in ${browser}`, () => {
+    test.use({ locale: browser });
+
+    test(`resolves to lang=${expectLang} dir=${expectDir}, offers the switcher, and stays axe-clean`, async ({
+      page,
+    }) => {
+      test.skip(!FAKE_API, "Real-backend mode requires a seeded project");
+
+      await installFakeApi(page);
+      await page.goto(`/public/projects/${PROJECT_ID}/board`);
+      await expect(page.getByText("Please add a dark theme.")).toBeVisible();
+
+      const html = page.locator("html");
+      await expect(html).toHaveAttribute("lang", expectLang);
+      await expect(html).toHaveAttribute("dir", expectDir);
+
+      // The visitor can always change language, from the page, without an
+      // account and without navigating away.
+      const switcher = page.getByRole("combobox", { name: "Language" });
+      await expect(switcher).toBeVisible();
+      await expect(switcher).toHaveValue(expectLang);
+
+      await expectNoAxeViolations(page, `public board ${browser}`);
+    });
+  });
+}
+
+test.describe("Public board locale precedence", () => {
+  test.use({ locale: "en-US" });
+
+  test("?lang= overrides the browser for this page view", async ({ page }) => {
+    test.skip(!FAKE_API, "Real-backend mode requires a seeded project");
+
+    await installFakeApi(page);
+    await page.goto(`/public/projects/${PROJECT_ID}/board?lang=de`);
+    await expect(page.getByText("Please add a dark theme.")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "de");
+    // …and is NOT remembered: a shared link must not re-language the site.
+    const stored = await page.evaluate(() =>
+      window.localStorage.getItem("fbm_lang"),
+    );
+    expect(stored).toBeNull();
+  });
+
+  test("an unknown ?lang= is ignored, not echoed", async ({ page }) => {
+    test.skip(!FAKE_API, "Real-backend mode requires a seeded project");
+
+    await installFakeApi(page);
+    await page.goto(
+      `/public/projects/${PROJECT_ID}/board?lang=${encodeURIComponent('"><script>x</script>')}`,
+    );
+    await expect(page.getByText("Please add a dark theme.")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  });
+
+  test("choosing a language in the switcher persists it on this origin", async ({
+    page,
+  }) => {
+    test.skip(!FAKE_API, "Real-backend mode requires a seeded project");
+
+    await installFakeApi(page);
+    await page.goto(`/public/projects/${PROJECT_ID}/board`);
+    await expect(page.getByText("Please add a dark theme.")).toBeVisible();
+
+    const before = page.url();
+    await page
+      .getByRole("combobox", { name: "Language" })
+      .selectOption("fa");
+    await expect(page.locator("html")).toHaveAttribute("lang", "fa");
+    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    // Changing language NEVER navigates (no /fa/ path, no ?lang= rewrite).
+    expect(page.url()).toBe(before);
+
+    // Survives a reload — the choice is the visitor's, not the page view's.
+    await page.reload();
+    await expect(page.getByText("Please add a dark theme.")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "fa");
+  });
+});
+
 test.describe("Public board a11y smoke", () => {
   test.beforeEach(async ({ page }) => {
     if (FAKE_API) {

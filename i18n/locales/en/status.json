@@ -2,5 +2,31 @@
   "_meta": {
     "language": "English",
     "status": "source"
+  },
+  "status": {
+    "submitted": "Submitted",
+    "triaged": "Triaged",
+    "in-progress": "In Progress",
+    "shipped": "Shipped",
+    "wontfix": "Won't Fix",
+    "duplicate": "Duplicate"
+  },
+  "kind": {
+    "bug": "Bug",
+    "feature": "Feature",
+    "question": "Question",
+    "other": "Other"
+  },
+  "sentiment": {
+    "negative": "Negative",
+    "neutral": "Neutral",
+    "positive": "Positive"
+  },
+  "roadmapStatus": {
+    "considering": "Considering",
+    "planned": "Planned",
+    "in-progress": "In Progress",
+    "shipped": "Shipped",
+    "wontfix": "Won't Do"
   }
 }

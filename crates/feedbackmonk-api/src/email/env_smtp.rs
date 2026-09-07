@@ -13,6 +13,8 @@ use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 
+use feedbackmonk_i18n::Locale;
+
 use crate::email::mailpit::{build_password_reset_email, build_verify_email};
 use crate::email::Mailer;
 
@@ -49,16 +51,21 @@ impl EnvSmtpMailer {
 
 #[async_trait]
 impl Mailer for EnvSmtpMailer {
-    async fn send_verify_email(&self, to: &str, link: &str) -> anyhow::Result<()> {
+    async fn send_verify_email(&self, to: &str, link: &str, locale: Locale) -> anyhow::Result<()> {
         let to: Mailbox = to.parse()?;
-        let msg = build_verify_email(self.from.clone(), to, link)?;
+        let msg = build_verify_email(self.from.clone(), to, link, locale)?;
         self.transport.send(msg).await?;
         Ok(())
     }
 
-    async fn send_password_reset_email(&self, to: &str, link: &str) -> anyhow::Result<()> {
+    async fn send_password_reset_email(
+        &self,
+        to: &str,
+        link: &str,
+        locale: Locale,
+    ) -> anyhow::Result<()> {
         let to: Mailbox = to.parse()?;
-        let msg = build_password_reset_email(self.from.clone(), to, link)?;
+        let msg = build_password_reset_email(self.from.clone(), to, link, locale)?;
         self.transport.send(msg).await?;
         Ok(())
     }

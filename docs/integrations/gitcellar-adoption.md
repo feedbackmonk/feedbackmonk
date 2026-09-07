@@ -289,6 +289,20 @@ Idempotency-Key: <opaque-string>            # OPTIONAL — dedupe on retry (Phas
   returns `200` with the original id. Keys are bounded to 1..=255 chars. There is no cross-project dedupe.
   Erasing the feedback (§12) frees the key. Absent/empty header ⇒ pre-Phase-A behavior (a new row each call).
   Browser note: the credentialed CORS layer allowlists `Idempotency-Key` on preflight.
+- **`locale`** (optional, FR-FBR-37 — capability `feedback.submitter_locale`): the C34 UI-locale code
+  the submitter was reading (`de`, `pt-BR`, `ja`; the full list is in `capabilities.i18n.locales`).
+  Recorded as `feedback.submitter_locale` and used to pick the language of the confirmation /
+  status-change / public-reply emails that submitter receives.
+  **This field can never fail a submission.** Unlike `sentiment` / `severity` / `rating` — semantic
+  content where an unrecognized value is a 400 — an unshipped, non-canonical or malformed `locale`
+  is silently dropped to NULL and the submission is accepted. That asymmetry is deliberate: a client
+  shipping a new language must not be able to break submission against an older server. Absent ⇒ the
+  server falls back to the request's `Accept-Language` (resolved per C34: `de-AT` → `de`,
+  `pt` → `pt-BR`), then to NULL.
+  **NULL is not `"en"`.** A stored `en` means the submitter stated English; NULL means no language we
+  ship was offered. The value is admin-read-only — it appears on the admin feedback detail read and
+  on **no** public, board, roadmap or end-user projection, and it is **not** echoed back in
+  `echo` (a locale narrows a population, so it is treated as PII-adjacent).
 JWT failures return **401** with `{ "error": "<variant>" }` where variant ∈
 `BadSignature | Expired | NotYetValid | WrongAudience | AlgorithmNotAllowed | MissingRequiredClaim
 | ExternalMetadataTooLarge | MalformedToken` — Desktop can disambiguate (e.g. re-mint on `Expired`).
@@ -675,7 +689,10 @@ GET /api/v1/capabilities                      (no auth, no project scope)
       "feedback.sentiment", "feedback.body-optional", "feedback.sentiment-trend",
       "solicitation.v1", "feedback.my-feedback",
       "feedback.delete", "feedback.reply_state", "feedback.export",   // Phase A
-      "feedback.severity", "feedback.idempotency", "feedback.attachments"
+      "feedback.severity", "feedback.idempotency", "feedback.attachments",
+      "feedback.erase_all",
+      "hosting.subdomains", "hosting.custom_domain",                  // FR-FBR-32/33
+      "i18n.locales", "feedback.submitter_locale"                     // FR-FBR-34..38
     ],
     "feedback": {
       "sentiment":   { "field":"sentiment", "values":["negative","neutral","positive"], "body_optional": true },
@@ -686,8 +703,12 @@ GET /api/v1/capabilities                      (no auth, no project scope)
                        "log_kinds":["service_log","console_log"] },
       "reply_state": { "fields":["updated_at","reply_count"], "since_param":"since" },
       "delete": true,
-      "export": true
+      "export": true,
+      "erase_all": true,
+      "submitter_locale": { "field":"locale", "never_rejects": true }
     },
+    "i18n": { "locales": ["en","de","fr","es","pt-BR", "…31 in switcher order…"],
+              "default": "en" },
     "solicitation": { "events":["prompted","dismissed","gave_feedback","opted_out"],
                       "states":["eligible","prompted","dismissed","gave_feedback","opted_out"],
                       "cooldown_days_default": 182 }
@@ -697,7 +718,8 @@ GET /api/v1/capabilities                      (no auth, no project scope)
 **Detection contract**: treat the **presence of a string in `capabilities`** as authoritative —
 `"feedback.sentiment"` for §9, `"solicitation.v1"` for §10, and the Phase A strings for their surfaces
 (`"feedback.delete"` §6.4, `"feedback.export"` §6.5, `"feedback.reply_state"` §6.1, `"feedback.attachments"`
-§6.6, `"feedback.severity"`/`"feedback.idempotency"` §5.5). Do NOT parse the semver `version`; it is
+§6.6, `"feedback.severity"`/`"feedback.idempotency"`/`"feedback.submitter_locale"` §5.5). Do NOT parse
+the semver `version`; it is
 informational and the capability array is the stable, additive negotiation surface. An older
 deployment that predates these features simply omits the strings (and 404s the new routes), so a
 client that checks the array degrades gracefully.
@@ -764,6 +786,17 @@ rating is entirely unaffected; one that does can feature-detect before sending.
 ---
 
 ## Change log
+- 2026-09-06 (FR-FBR-34..38 — UI localization, Stage 1) — ADDITIVE, no existing field or response
+  shape changes. §5.5 gained an optional **`locale`** submit field (capability
+  `feedback.submitter_locale`, migration `00031`): the submitter's UI language, recorded and used to
+  pick the language of the notification emails they receive. It is the first submit field that is
+  **never** a 400 — an unshipped or malformed value is dropped to NULL — so a client may ship a
+  language ahead of the server. §11 gained the capability strings `i18n.locales` +
+  `feedback.submitter_locale` and an `i18n` block enumerating the 31 shipped locale codes, so a
+  consumer reads the list rather than hardcoding it (the table is additive — DEC-FBR-15). The §11
+  sample was also brought up to date with the `feedback.erase_all` and `hosting.*` strings that had
+  shipped earlier without being reflected here. **No change to any existing endpoint, error body or
+  wire shape**; `submitter_locale` is admin-read-only and appears on no consumer-facing projection.
 - 2026-08-24 (GitCellar solicitation-card redesign) — Added §12: optional 1-5 `rating` on submit
   (capability `feedback.rating`, migration `00029`) with server-side derivation of the 3-point
   `sentiment`, chosen ADDITIVELY over widening the `sentiment` enum so no existing consumer, stored

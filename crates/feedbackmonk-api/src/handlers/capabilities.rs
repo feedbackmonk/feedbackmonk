@@ -17,6 +17,7 @@ use axum::{Json, Router};
 use serde_json::{json, Value};
 
 use feedbackmonk_core::{Rating, Sentiment, Severity};
+use feedbackmonk_i18n::Locale;
 
 use crate::handlers::solicitation::{
     DEFAULT_SOLICITATION_COOLDOWN_DAYS, DEFAULT_SOLICITATION_SNOOZE_DAYS,
@@ -61,11 +62,24 @@ pub const CAPABILITIES: &[&str] = &[
     // domain is configured.
     "hosting.subdomains",
     "hosting.custom_domain",
+    // FR-FBR-34..38: UI localization. BUILD-level, like the hosting pair above.
+    //   i18n.locales             — this build ships the C34 locale table; the
+    //                              `i18n` block below enumerates the codes, so a
+    //                              consumer never hardcodes the list.
+    //   feedback.submitter_locale — submit accepts an optional `locale` field and
+    //                              records it; localized notification mail follows
+    //                              from it. Advertised because a consumer that
+    //                              sends `locale` to an older build would silently
+    //                              have it dropped, which is exactly the case
+    //                              feature detection exists for.
+    "i18n.locales",
+    "feedback.submitter_locale",
 ];
 
 pub async fn capabilities() -> Json<Value> {
     let sentiment_values: Vec<&str> = Sentiment::ALL.iter().map(|s| s.as_db_str()).collect();
     let severity_values: Vec<&str> = Severity::ALL.iter().map(|s| s.as_db_str()).collect();
+    let locale_codes: Vec<&str> = Locale::all().map(Locale::code).collect();
     Json(json!({
         "version": API_VERSION,
         "capabilities": CAPABILITIES,
@@ -111,6 +125,20 @@ pub async fn capabilities() -> Json<Value> {
             "export": true,
             // P1-16 / M1: DELETE …/me user-level "forget me" (full footprint).
             "erase_all": true,
+            // FR-FBR-37 / C37: optional `locale` on submit. Unknown values are
+            // dropped, never rejected — a client may send a code this build does
+            // not ship without risking the submission.
+            "submitter_locale": {
+                "field": "locale",
+                "never_rejects": true,
+            },
+        },
+        // FR-FBR-34 / C39: the shipped UI-locale vocabulary, in switcher order
+        // (English first). Enumerated rather than versioned because the table is
+        // additive (DEC-FBR-15) — a consumer reads what THIS build ships.
+        "i18n": {
+            "locales": locale_codes,
+            "default": feedbackmonk_i18n::default_locale_code(),
         },
         "solicitation": {
             "events": ["prompted", "dismissed", "gave_feedback", "opted_out"],
@@ -164,6 +192,9 @@ mod tests {
             // FR-FBR-32/33 (DEC-FBR-13/14): the commercial hosting shape.
             "hosting.subdomains",
             "hosting.custom_domain",
+            // FR-FBR-34..38 (DEC-FBR-15/16): UI localization.
+            "i18n.locales",
+            "feedback.submitter_locale",
         ];
         assert_eq!(
             CAPABILITIES.len(),
@@ -184,5 +215,18 @@ mod tests {
         assert_eq!(fb["delete"], true);
         assert_eq!(fb["export"], true);
         assert_eq!(fb["erase_all"], true);
+        assert_eq!(fb["submitter_locale"]["field"], "locale");
+        assert_eq!(fb["submitter_locale"]["never_rejects"], true);
+
+        // C39: the advertised locale list IS the shipped table, not a copy of it.
+        let advertised: Vec<String> = body["i18n"]["locales"]
+            .as_array()
+            .expect("i18n.locales is an array")
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        let shipped: Vec<String> = Locale::all().map(|l| l.code().to_string()).collect();
+        assert_eq!(advertised, shipped, "advertised locales drifted from the C34 table");
+        assert_eq!(body["i18n"]["default"], "en");
     }
 }

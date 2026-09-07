@@ -34,6 +34,42 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
     </p>
   </section>
 
+  <section aria-labelledby="language-heading">
+    <h2 id="language-heading">Language</h2>
+    <p>
+      The widget speaks 31 languages. Tell it which one your page is in with
+      <code>data-locale</code>:
+    </p>
+    <pre><code>{`<script
+  type="module"
+  src="https://cdn.feedbackmonk.com/widget.js"
+  data-project-id="YOUR_PROJECT_ID"
+  data-locale="de"
+></script>`}</code></pre>
+    <p>
+      If you leave it out, the widget follows your page's
+      <code>&lt;html lang&gt;</code>, then the visitor's browser languages,
+      then falls back to English. Regional tags resolve sensibly
+      (<code>de-AT</code> &rarr; German, <code>pt</code> &rarr; Brazilian
+      Portuguese), and a language we don't ship yet simply renders in English
+      &mdash; it never breaks the button.
+    </p>
+    <p>
+      The widget sets <code>lang</code> and <code>dir</code> on its own root, so
+      it is announced correctly by screen readers even when it differs from the
+      surrounding page, and Persian lays out right-to-left without you doing
+      anything.
+    </p>
+    <p>
+      <strong>Self-hosting or vendoring the bundle?</strong> Copy the whole
+      <code>dist/</code> tree, including the <code>dist/locales/</code>
+      directory. English is built into <code>widget.js</code>; each other
+      language is a small file fetched from
+      <code>locales/&lt;code&gt;.js</code> beside it, only when it is needed.
+      If that directory is missing, every visitor silently gets English.
+    </p>
+  </section>
+
   <section aria-labelledby="identity-heading">
     <h2 id="identity-heading">Identity modes</h2>
     <h3>Anonymous (default)</h3>
@@ -106,9 +142,16 @@ await mountFeedbackMonk({
     <h2 id="constraints-heading">Constraints</h2>
     <ul>
       <li>
-        <strong>Bundle size:</strong> ≤ 30,720 bytes total (FR-FBR-04).
-        Currently 16,829&nbsp;B &mdash; 45% headroom. Enforced by the
-        <em>widget-bundle-size</em> Verification Oracle, Probe&nbsp;A.
+        <strong>Bundle size:</strong> ≤ 30,720 bytes for everything a page
+        load fetches &mdash; <code>widget.js</code> + <code>widget.css</code> +
+        the lazy redaction chunk (FR-FBR-04). Currently 29,836&nbsp;B.
+        Enforced by the <em>widget-bundle-size</em> Verification Oracle,
+        Probe&nbsp;A.
+      </li>
+      <li>
+        <strong>Language chunks:</strong> ≤ 4,096 bytes each. A non-English
+        visitor fetches exactly one of them; an English visitor fetches none.
+        Enforced by the same oracle, Probe&nbsp;C.
       </li>
       <li>
         <strong>Zero third-party tracker hostnames:</strong> the

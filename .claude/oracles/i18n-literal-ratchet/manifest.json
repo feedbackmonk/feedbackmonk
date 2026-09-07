@@ -1,6 +1,6 @@
 {
   "name": "i18n-literal-ratchet",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "kind": "verification",
   "question": "Has a new hard-coded user-facing English literal appeared in a localized surface (widget/src DOM-building calls; admin-ui/src JSX text nodes, aria-label=, title=, placeholder=, notify(...)) beyond the frozen baseline in i18n/literal-baseline.json? The baseline only shrinks. (FR-FBR-35/36/38)",
   "assertion": {
@@ -38,9 +38,9 @@
   },
   "consumer_scope": "feedbackmonk: every UI worker and every later session adding a component.",
   "validation": {
-    "self_test_unix": null,
-    "self_test_windows": null,
-    "last_validated": null
+    "self_test_unix": ".claude/oracles/i18n-literal-ratchet/oracle.sh --self-test",
+    "self_test_windows": ".claude/oracles/i18n-literal-ratchet/oracle.ps1 --self-test",
+    "last_validated": "2026-09-07T02:18:00Z"
   },
   "fallback": "grep -rnE '>[A-Z][a-z]+[^<{]*<' admin-ui/src --include=*.tsx | grep -v 't(' and grep -rnE 'textContent = \"' widget/src; compare against i18n/literal-baseline.json by eye.",
   "provenance": {

@@ -1,0 +1,636 @@
+{
+  "$schema_note": "Shared plural truth table for the THREE runtimes that implement C35 rule 5. Read at TEST time by crates/feedbackmonk-i18n/tests/plural_partition.rs, scripts/i18n/tests/test_plural_partition.py and widget/src/plural-partition.test.ts. Never hand-edit a category set to make a test pass -- fix the implementation, or move the code into a ledger below with a reason.",
+  "counts_checked": {
+    "from": 0,
+    "through": 1000
+  },
+  "locales": {
+    "en": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "de": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "fr": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "es": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "pt-BR": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "ja": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "zh-CN": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "ko": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "zh-HK": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "zh-TW": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "ga": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "two",
+        "few",
+        "many",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "nl": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "lv": {
+      "catalog_categories": [
+        "zero",
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "zero",
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "zero",
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8801fc67afa539d24acc65f895a53ee94051e5cb9932a55618baaa5efc997ddf"
+    },
+    "ru": {
+      "catalog_categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "few",
+        "many"
+      ],
+      "icu_reachable": [
+        "one",
+        "few",
+        "many"
+      ],
+      "rust_map_sha256": "182f8c3557956ec26e5c50663d311c326f92f757c552990d686230e099ca10d8"
+    },
+    "uk": {
+      "catalog_categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "few",
+        "many"
+      ],
+      "icu_reachable": [
+        "one",
+        "few",
+        "many"
+      ],
+      "rust_map_sha256": "182f8c3557956ec26e5c50663d311c326f92f757c552990d686230e099ca10d8"
+    },
+    "pt-PT": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "pl": {
+      "catalog_categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "few",
+        "many"
+      ],
+      "icu_reachable": [
+        "one",
+        "few",
+        "many"
+      ],
+      "rust_map_sha256": "0130388816a7dfe7b7a6dd15564e9f20845553e33a8a501287ffcaa2cce73ab3"
+    },
+    "bg": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "it": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "fi": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "tr": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "cs": {
+      "catalog_categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "few",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "few",
+        "other"
+      ],
+      "rust_map_sha256": "172c974828b6e0f117f5cdc2786c0d78b36ec866dd33f5bde1360252a1b2219b"
+    },
+    "sv": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "el": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "fa": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "hu": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "id": {
+      "catalog_categories": [
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "ml": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "is": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "si": {
+      "catalog_categories": [
+        "one",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "other"
+      ],
+      "rust_map_sha256": "8aa17fc89449eaeec162b6169a1fad44215f82e8422b0798dca6212da5c9afc9"
+    },
+    "sk": {
+      "catalog_categories": [
+        "one",
+        "few",
+        "many",
+        "other"
+      ],
+      "rust_reachable": [
+        "one",
+        "few",
+        "other"
+      ],
+      "icu_reachable": [
+        "one",
+        "few",
+        "other"
+      ],
+      "rust_map_sha256": "172c974828b6e0f117f5cdc2786c0d78b36ec866dd33f5bde1360252a1b2219b"
+    }
+  },
+  "ledger": {
+    "$note": "Both lists are RATCHETS. They record divergences MEASURED on 2026-09-07, so that no NEW one can appear silently. Shrinking a list is the goal; growing one must be a deliberate, reviewed act.",
+    "english_fallback_locales": {
+      "$why": "Rust plural_category() can return a category that complete-plurals.py never writes into this locale catalog. The lookup misses the target catalog and falls through to ENGLISH, so a translated email renders an English sentence at those counts while rendering the target language at others. Latent today: the en email/status catalogs currently define no plural keys, so t_plural has no live call site. It becomes user-visible the moment one is added.",
+      "codes": [
+        "ja",
+        "zh-CN",
+        "ko",
+        "zh-HK",
+        "zh-TW",
+        "tr",
+        "fa",
+        "id"
+      ]
+    },
+    "icu_partition_mismatch_locales": {
+      "$why": "Rust plural_category() disagrees with ICU/CLDR (Intl.PluralRules) for at least one integer count. The widget uses Intl directly and is correct by construction, so these are Rust-side divergences only. Recorded, not blessed.",
+      "codes": [
+        "fr",
+        "pt-BR",
+        "ja",
+        "zh-CN",
+        "ko",
+        "zh-HK",
+        "zh-TW",
+        "ga",
+        "fa",
+        "id",
+        "is",
+        "si"
+      ],
+      "examples": {
+        "fr": [
+          {
+            "count": 0,
+            "icu": "one",
+            "rust": "other"
+          }
+        ],
+        "pt-BR": [
+          {
+            "count": 0,
+            "icu": "one",
+            "rust": "other"
+          }
+        ],
+        "ja": [
+          {
+            "count": 1,
+            "icu": "other",
+            "rust": "one"
+          }
+        ],
+        "zh-CN": [
+          {
+            "count": 1,
+            "icu": "other",
+            "rust": "one"
+          }
+        ],
+        "ko": [
+          {
+            "count": 1,
+            "icu": "other",
+            "rust": "one"
+          }
+        ],
+        "zh-HK": [
+          {
+            "count": 1,
+            "icu": "other",
+            "rust": "one"
+          }
+        ],
+        "zh-TW": [
+          {
+            "count": 1,
+            "icu": "other",
+            "rust": "one"
+          }
+        ],
+        "ga": [
+          {
+            "count": 2,
+            "icu": "two",
+            "rust": "other"
+          },
+          {
+            "count": 3,
+            "icu": "few",
+            "rust": "other"
+          },
+          {
+            "count": 4,
+            "icu": "few",
+            "rust": "other"
+          },
+          {
+            "count": 5,
+            "icu": "few",
+            "rust": "other"
+          }
+        ],
+        "fa": [
+          {
+            "count": 0,
+            "icu": "one",
+            "rust": "other"
+          }
+        ],
+        "id": [
+          {
+            "count": 1,
+            "icu": "other",
+            "rust": "one"
+          }
+        ],
+        "is": [
+          {
+            "count": 21,
+            "icu": "one",
+            "rust": "other"
+          },
+          {
+            "count": 31,
+            "icu": "one",
+            "rust": "other"
+          },
+          {
+            "count": 41,
+            "icu": "one",
+            "rust": "other"
+          },
+          {
+            "count": 51,
+            "icu": "one",
+            "rust": "other"
+          }
+        ],
+        "si": [
+          {
+            "count": 0,
+            "icu": "one",
+            "rust": "other"
+          }
+        ]
+      }
+    }
+  },
+  "locales_note": "rust_map_sha256 = sha256 of the comma-joined plural_category() result for every count in counts_checked. It pins the per-count MAPPING, not just the reachable set, so a rule change that preserves which categories are reachable still turns the Rust test red -- and it is what proves the table transcribed into widget/src/plural-partition.test.ts is still faithful to the Rust source."
+}

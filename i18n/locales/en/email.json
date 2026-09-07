@@ -2,5 +2,53 @@
   "_meta": {
     "language": "English",
     "status": "source"
+  },
+  "email": {
+    "confirmation": {
+      "subject": "We received your feedback",
+      "intro": "Thanks for sending feedback to {{brandName}}.",
+      "referenceLine": "Reference: {{feedbackId}}",
+      "yourMessageHeading": "Your message:"
+    },
+    "status": {
+      "subject": "Status updated: {{status}}",
+      "intro": "Your feedback {{feedbackId}} was updated.",
+      "previousLine": "Previous status: {{status}}",
+      "newLine": "New status:      {{status}}",
+      "noteHeading": "Note from the team:",
+      "value": {
+        "submitted": "Submitted",
+        "triaged": "Triaged",
+        "in-progress": "In progress",
+        "shipped": "Shipped",
+        "wontfix": "Won't fix",
+        "duplicate": "Duplicate"
+      }
+    },
+    "reply": {
+      "subject": "Reply from the team",
+      "intro": "The {{brandName}} team replied to your feedback {{feedbackId}}."
+    },
+    "footer": {
+      "receivingBecause": "You are receiving this because you submitted feedback to {{brandName}}.",
+      "contact": "Reply to this email or contact {{supportEmail}}.",
+      "unsubscribe": "Unsubscribe: {{url}}"
+    },
+    "account": {
+      "verify": {
+        "subject": "Confirm your feedbackmonk account",
+        "intro": "Welcome to feedbackmonk.",
+        "textInstruction": "Confirm your account by opening this link:",
+        "htmlInstruction": "Confirm your account:",
+        "ignore": "If you didn't sign up for feedbackmonk, ignore this email."
+      },
+      "reset": {
+        "subject": "Reset your feedbackmonk password",
+        "intro": "A password reset was requested for your feedbackmonk admin account.",
+        "textInstruction": "Reset your password by opening this link:",
+        "htmlInstruction": "Reset your password:",
+        "expiry": "This link expires shortly. If you didn't request a reset, you can safely ignore this email — your password will not change."
+      }
+    }
   }
 }

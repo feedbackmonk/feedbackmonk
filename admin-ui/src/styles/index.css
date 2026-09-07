@@ -137,7 +137,9 @@ p {
 .error-block {
   padding: 0.75rem 1rem;
   background: var(--surface-2);
-  border-left: 3px solid var(--danger);
+  /* Logical, not physical (TGF-02): this block renders on the public board and
+     roadmap, which run in RTL locales. `border-inline-start` follows `dir`. */
+  border-inline-start: 3px solid var(--danger);
   margin-bottom: 1rem;
 }
 
@@ -695,7 +697,8 @@ mark.search-mark {
 .toast-region {
   position: fixed;
   bottom: 1rem;
-  right: 1rem;
+  /* Logical (TGF-02) — vote toasts appear on the public pages, which run RTL. */
+  inset-inline-end: 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -712,11 +715,11 @@ mark.search-mark {
 }
 
 .toast-success {
-  border-left: 3px solid var(--success);
+  border-inline-start: 3px solid var(--success);
 }
 
 .toast-error {
-  border-left: 3px solid var(--danger);
+  border-inline-start: 3px solid var(--danger);
 }
 
 /* ---------- Tier settings (P3 Stage 2) ---------- */
@@ -1655,4 +1658,43 @@ mark.search-mark {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted, inherit);
+}
+
+/* ---------- Language switcher (FR-FBR-36) ---------- */
+/* Sits in the public page chrome (board, roadmap, tenant-host landing). All
+   spacing is LOGICAL so the control lands on the correct side under `dir=rtl`
+   without a second rule (TGF-02). */
+.language-switcher {
+  margin-block-start: 0.75rem;
+}
+
+.language-switcher-select {
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* ---------- Language settings (FR-FBR-38) ---------- */
+.language-settings-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-block-end: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.language-settings-card select {
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }

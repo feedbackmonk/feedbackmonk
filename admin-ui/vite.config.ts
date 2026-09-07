@@ -12,6 +12,13 @@ export default defineConfig({
   server: {
     port: 14204,
     strictPort: true,
+    // The i18n catalogs live at the repo root (`i18n/locales/…`), one level
+    // above this Vite root, because three runtimes share one source of truth
+    // (Contract C35). The dev server refuses to serve outside its root unless
+    // told, so this is what makes the lazy catalog imports work in `npm run
+    // dev` — the production build resolves them at bundle time and does not
+    // need it.
+    fs: { allow: [".."] },
     proxy: {
       "/api": {
         target: "http://localhost:14304",

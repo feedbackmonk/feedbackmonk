@@ -40,6 +40,13 @@ export interface SubmitFeedbackRequest {
   subject: string;
   body: string;
   email?: string;
+  // C37 — the submitter's resolved UI locale (a C34 code, e.g. "de", "pt-BR").
+  // A PREFERENCE for how to write back to this person, never a detection of
+  // what language the body is in. The server treats an unknown value as absent
+  // and NEVER rejects the submission for it (a locale must not be able to
+  // break submit); it is stored on `feedback.submitter_locale` and exposed
+  // only on the admin detail projection.
+  locale?: string;
 }
 
 export interface SubmitFeedbackResponse {
@@ -71,6 +78,13 @@ export interface MountOptions {
   // to the per-tenant brand default, then "auto". Set via the script-tag
   // `data-theme` attribute or programmatically (DEC-FBR-IMPL-12).
   theme?: WidgetTheme;
+  // UI language for the widget's own chrome (C36). A BCP-47-ish tag; it is
+  // resolved through the C34 table (`de-AT` → `de`, `zh-Hant` → `zh-TW`,
+  // unshipped → `en`), so an unrecognised value degrades to English rather
+  // than failing. Highest precedence; falls back to the host page's
+  // `<html lang>`, then `navigator.languages`, then `en`. Set via the
+  // script-tag `data-locale` attribute or programmatically (FR-FBR-35).
+  locale?: string;
   // Suppress the floating launcher and initialize launcher-less — the embedder
   // provides its own trigger via `[data-feedback-open]` or
   // `window.feedbackmonk.open()`. Set via `data-fbm-no-auto-mount`

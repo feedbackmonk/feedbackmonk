@@ -12,3 +12,10 @@ playwright-report/
 # build runs, which would defeat the inner-loop closure the oracle exists to
 # provide. The dist/ files are minified output; reviewing diffs is intentional
 # friction that surfaces accidental bundle-size growth.
+
+# Generated from i18n/locales/ by scripts/slice-locales.mjs on every build
+# (Contract C42). Committing them would create a second source of truth for
+# strings whose only source is i18n/locales/<code>/widget.json.
+/src/catalog-en.ts
+/src/locale-chunks.ts
+/src/locales/*.ts

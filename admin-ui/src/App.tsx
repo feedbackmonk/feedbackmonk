@@ -17,6 +17,11 @@ import { WorkOrderDetail } from "./pages/autopilot/WorkOrderDetail";
 import { NewStory } from "./pages/autopilot/NewStory";
 import { Board } from "./pages/autopilot/Board";
 import { TenantHostLanding } from "./pages/public/TenantHostLanding";
+import { LanguageSettings } from "./pages/settings/LanguageSettings";
+// Side-effect import: initialises i18next before any page renders (FR-FBR-36).
+import "./i18n";
+import { useLocale } from "./i18n/useLocale";
+import { useAdminLocaleDefault } from "./i18n/useAdminLocaleDefault";
 
 // Routes:
 //   /login                                   → Login
@@ -27,6 +32,7 @@ import { TenantHostLanding } from "./pages/public/TenantHostLanding";
 //   /admin/settings/runner-tokens            → RunnerTokens (P5b — runner key + token lifecycle)
 //   /admin/settings/board                    → BoardSettings (public-board enable + moderation toggles, Contract C28/00016)
 //   /admin/settings/hosting                  → HostingSettings (tenant subdomain + custom domains, FR-FBR-32/33)
+//   /admin/settings/language                 → LanguageSettings (tenant default UI locale, FR-FBR-38 / Contract C38)
 //   /admin/moderation                        → ModerationQueue (owner approve/reject queue, Contract C28)
 //   /admin/autopilot                         → AutopilotDigest (P5a — digest + cluster list)
 //   /admin/autopilot/clusters/:clusterId     → ClusterDetail (members + rec cards)
@@ -45,6 +51,12 @@ import { TenantHostLanding } from "./pages/public/TenantHostLanding";
 // sole-project from AdminSession. Multi-project URL routing deferred to P3.
 export function App() {
   const { pathname, navigate } = useRouter();
+
+  // Locale bootstrap runs before routing so `<html lang/dir>` is correct on
+  // the first painted route, whichever it is. Both hooks are unconditional;
+  // the tenant-default read is a no-op off `/admin` (see useAdminLocaleDefault).
+  useLocale();
+  useAdminLocaleDefault(pathname);
 
   if (pathname === "/login") {
     return <Login />;
@@ -96,6 +108,15 @@ export function App() {
     pathname === "/admin/settings/hosting/"
   ) {
     return <HostingSettings />;
+  }
+
+  // Tenant default UI language (FR-FBR-38, Contract C38). Tenant-level like
+  // hosting, so no project segment.
+  if (
+    pathname === "/admin/settings/language" ||
+    pathname === "/admin/settings/language/"
+  ) {
+    return <LanguageSettings />;
   }
 
   // Public Feedback Board admin surfaces (Contract C28 / migration 00016).

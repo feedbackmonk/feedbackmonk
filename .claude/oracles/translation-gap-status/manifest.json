@@ -1,6 +1,6 @@
 {
   "name": "translation-gap-status",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "kind": "project-state",
   "question": "How many catalog keys are MISSING (never translated) and how many DRIFTED (English changed since translation) per locale and namespace -- i.e. is a translation pass due before the next release? Advisory: consumed by the owner's release checklist and by finalize as a report line; never blocking. (FR-FBR-39, DEC-FBR-17)",
   "assertion": {
@@ -27,6 +27,7 @@
       "i18n/locales/**",
       "i18n/source-hashes.json",
       "scripts/i18n/check-gaps.py",
+      "scripts/i18n/_catalog.py",
       ".claude/oracles/translation-gap-status/oracle.py"
     ],
     "compute_cost_ms": 300
@@ -37,9 +38,9 @@
   },
   "consumer_scope": "feedbackmonk owner + finalize. This is the machine-readable form of the release step in DEC-FBR-17.",
   "validation": {
-    "self_test_unix": null,
-    "self_test_windows": null,
-    "last_validated": null
+    "self_test_unix": ".claude/oracles/translation-gap-status/oracle.sh --self-test",
+    "self_test_windows": ".claude/oracles/translation-gap-status/oracle.ps1 --self-test",
+    "last_validated": "2026-09-07T02:18:00Z"
   },
   "fallback": "python scripts/i18n/check-gaps.py",
   "provenance": {

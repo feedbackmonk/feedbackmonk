@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "greeting": "Hallo {{name}}, willkommen bei unserem heutigen Rückmeldeformular"
+  }
+}

@@ -25,7 +25,7 @@
 //! account" email in v1 (optional, not required).
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
@@ -35,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::password::hash_password;
+use crate::email::resolve_account_locale;
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -91,6 +92,7 @@ fn generate_token() -> String {
 
 pub async fn signup(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(req): Json<SignupRequest>,
 ) -> Result<(StatusCode, Json<SignupResponse>), ApiError> {
     let email = validate_email(&req.email)?;
@@ -129,7 +131,10 @@ pub async fn signup(
         .await?;
 
     let link = format!("{}/verify-email?token={token}", state.public_url);
-    if let Err(e) = state.mailer.send_verify_email(&email, &link).await {
+    // FR-FBR-37: a brand-new tenant has no Language setting yet, so the only
+    // signal is the browser that is signing up right now.
+    let locale = resolve_account_locale(None, &headers);
+    if let Err(e) = state.mailer.send_verify_email(&email, &link, locale).await {
         // Do NOT fail the request -- the tenant row is committed. Log loudly.
         tracing::error!(error = %e, tenant_id = %tenant.id, "verify email send failed");
     }

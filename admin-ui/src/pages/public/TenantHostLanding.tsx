@@ -2,6 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { fetchPublicSite } from "../../shared/hostingApi";
 import { PublicBoard } from "../board/PublicBoard";
 import { PublicRoadmap } from "../roadmap/PublicRoadmap";
+import { useTranslation } from "../../i18n";
+import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 
 interface TenantHostLandingProps {
   /** Which public surface to show for this host's project. */
@@ -31,6 +33,7 @@ interface TenantHostLandingProps {
 // routing). That is why the 404 is handled as a route decision rather than
 // surfaced as an error: nothing has gone wrong.
 export function TenantHostLanding({ surface, fallback }: TenantHostLandingProps) {
+  const { t } = useTranslation("public");
   const query = useQuery({
     queryKey: ["public-site"],
     queryFn: fetchPublicSite,
@@ -42,7 +45,7 @@ export function TenantHostLanding({ surface, fallback }: TenantHostLandingProps)
   if (query.isPending) {
     return (
       <main className="tenant-landing" aria-busy="true">
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("public.common.loading")}</p>
       </main>
     );
   }
@@ -63,8 +66,9 @@ export function TenantHostLanding({ surface, fallback }: TenantHostLandingProps)
   if (!project) {
     return (
       <main className="tenant-landing">
-        <h1>Nothing here yet</h1>
-        <p className="muted">This site has no public projects.</p>
+        <h1>{t("public.site.emptyTitle")}</h1>
+        <p className="muted">{t("public.site.emptyBody")}</p>
+        <LanguageSwitcher />
       </main>
     );
   }
@@ -79,10 +83,9 @@ export function TenantHostLanding({ surface, fallback }: TenantHostLandingProps)
     // difference between a visitor retrying and a visitor giving up.
     return (
       <main className="tenant-landing">
-        <h1>Board not available</h1>
-        <p className="muted">
-          This project hasn’t published a public feedback board.
-        </p>
+        <h1>{t("public.site.boardUnavailableTitle")}</h1>
+        <p className="muted">{t("public.site.boardUnavailableBody")}</p>
+        <LanguageSwitcher />
       </main>
     );
   }

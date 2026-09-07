@@ -6,19 +6,23 @@
   "description": "Embeddable feedbackmonk widget (vanilla JS+CSS, <30KB, CSP-safe, no third-party trackers).",
   "license": "AGPL-3.0-or-later",
   "scripts": {
-    "build": "vite build && npm run minify",
+    "gen:locales": "node scripts/slice-locales.mjs",
+    "build": "npm run gen:locales && vite build && npm run minify",
     "minify": "terser dist/widget.js -m -c passes=2,drop_console=true --module -o dist/widget.js && terser dist/redact.js -m -c passes=2,drop_console=true --module -o dist/redact.js",
-    "build:check": "tsc -b && npm run build",
+    "build:check": "npm run gen:locales && tsc -b && npm run build",
     "preview": "vite preview",
+    "test": "npm run gen:locales && vitest run",
     "test:e2e": "playwright test"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
     "@playwright/test": "^1.48.2",
     "@types/node": "^25.7.0",
+    "jsdom": "^25.0.1",
     "terser": "^5.36.0",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^2.1.9"
   },
   "optionalDependencies": {
     "@rollup/rollup-win32-x64-msvc": "^4.60.3"

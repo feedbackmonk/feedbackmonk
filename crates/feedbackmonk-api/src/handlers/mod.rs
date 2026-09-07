@@ -97,3 +97,8 @@ pub mod runner_tokens;
 //                 where the FR-FBR-33 tier gate fires (402).
 pub mod domains;
 pub mod public_site;
+
+// FR-FBR-38 (Contract C38): tenant Language settings — the admin's UI language
+// and the email fallback language (DEC-FBR-IMPL-31). AdminSession, no CORS,
+// wrapped by `bind_admin_routes`.
+pub mod tenant_settings;

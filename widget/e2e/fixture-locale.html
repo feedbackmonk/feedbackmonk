@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Locale-matrix fixture (FR-FBR-35). Deliberately declares NO `lang` on
+      <html> and passes NO `data-locale`, so the third precedence step —
+      `navigator.languages` — is the one under test. `widget-locale.spec.ts`
+      drives it with Playwright's `locale` option for en-US / de-DE / fa-IR.
+
+      Its sibling `fixture.html` DOES declare `lang="en"`, which is what makes
+      the "host page beats the browser" case assertable there.
+    -->
+    <title>feedbackmonk widget — locale matrix fixture</title>
+    <link rel="stylesheet" href="../dist/widget.css" />
+  </head>
+  <body>
+    <main>
+      <h1>feedbackmonk widget — locale matrix fixture</h1>
+      <p>No lang attribute, no data-locale: the browser's language decides.</p>
+    </main>
+    <script
+      type="module"
+      src="../dist/widget.js"
+      data-project-id="00000000-0000-0000-0000-000000000001"
+      data-api-base="http://localhost:14206/e2e/mock"
+    ></script>
+  </body>
+</html>

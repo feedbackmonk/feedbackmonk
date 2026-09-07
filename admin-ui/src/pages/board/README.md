@@ -19,7 +19,7 @@ The customer-embeddable public board surface for the Public Feedback Board + Mod
 | `PublicBoard.tsx` | Page component — query + loading/empty/error/board-disabled/list states; `BoardItemRow` renders one approved item |
 | `__tests__/PublicBoard.test.tsx` | Vitest suite — list render + vote button, **vote-cast on click (C30)**, **privacy-leak guard**, empty state, board-disabled (404) state |
 
-E2E a11y coverage lives in `admin-ui/e2e/public-board-a11y.spec.ts` (Playwright + axe-core, idle + board-disabled, 0 violations).
+E2E a11y coverage lives in `admin-ui/e2e/public-board-a11y.spec.ts` (Playwright + axe-core, idle + board-disabled + the `en`/`de`/`fa` locale matrix, 0 violations).
 
 ## Public API & Usage
 
@@ -71,3 +71,11 @@ Data shape consumed verbatim from Contract C29 (`BoardListResponse` / `BoardItem
 **Rationale**: C29 enforces no-PII at the server (the board query selects exactly `short_code, kind, status, body, accepted_at` + `vote_count`). Mirroring that on the client — declaring no identity fields and asserting their absence in a test — makes the invariant defensible on both sides and resistant to a future well-meaning "show who submitted this" edit.
 
 **Implementation**: `BoardItem` in `types.gen.ts`; the "never references a submitter-identity field" test in `PublicBoard.test.tsx`.
+
+#### Localized chrome, verbatim content (FR-FBR-36)
+
+**Decision**: Every string this page authors comes from `i18n/locales/<code>/public.json` + `status.json` via `useTranslation('public')` and `useLabels()`; the language switcher sits in the page header; `formatRelative` is passed the active locale. The feedback **body** is not touched.
+
+**Rationale**: The two axes are different things and conflating them is the failure mode this stage exists to avoid — the visitor's UI language is a presentation choice, while the feedback body is content someone wrote, published verbatim under the Q24 promise (`DEC-FBR-15`). A public surface that "helpfully" translated a body would also be the first public reader of `body_translated`, which the `translation-egress-q24-isolation` oracle forbids outright.
+
+**Implementation**: `PublicBoard.tsx` — `t()` for all chrome, `<LanguageSwitcher />` in the header, `formatRelative(item.accepted_at, locale)`; `{item.body}` remains a bare text node. Locale machinery lives in `admin-ui/src/i18n/` (see that module's README).

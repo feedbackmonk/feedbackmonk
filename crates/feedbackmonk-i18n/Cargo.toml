@@ -7,9 +7,19 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+# `http` only for `HeaderMap` in `parse_accept_language` — pinned to the same
+# major the workspace's axum 0.7 re-exports, so there is exactly one HeaderMap
+# type in the program.
+http = "1"
+# Catalog parsing. The catalogs are `include_str!`-embedded, so this is a
+# compile-time-sourced, runtime-parsed dependency — no file I/O at any point.
+serde_json = { workspace = true }
 
 [dev-dependencies]
+serde = { workspace = true }
 serde_json = { workspace = true }
+# Test-only: pins the per-count plural mapping in i18n/plural-fixtures.json.
+sha2 = { workspace = true }
 
 [lints]
 workspace = true

@@ -172,6 +172,20 @@ pub struct Feedback {
     /// default; the repository layer reads it as part of `get_with_history`).
     #[serde(default)]
     pub status: FeedbackStatus,
+    /// C34 UI-locale code the submitter was reading at submit time
+    /// (FR-FBR-37, migration 00031). `None` for every row submitted before the
+    /// feature, and for a submitter whose browser offered no shipped language —
+    /// deliberately distinct from `Some("en")`.
+    ///
+    /// **Not the same thing as the FR-FBR-30 `source_lang`**, which is the
+    /// language a provider DETECTED the body to be in. This is a stated UI
+    /// preference; that is a machine's reading of content.
+    ///
+    /// PII-adjacent (a locale narrows a population), so it is exposed on the
+    /// admin detail read only — never on `FeedbackListItem` or any
+    /// board/roadmap/public projection.
+    #[serde(default)]
+    pub submitter_locale: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

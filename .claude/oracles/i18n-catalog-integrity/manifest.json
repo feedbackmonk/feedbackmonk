@@ -1,6 +1,6 @@
 {
   "name": "i18n-catalog-integrity",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "kind": "verification",
   "question": "Is the i18n catalog tree structurally sound -- every i18n/locales/<code>/<ns>.json parses, starts with _meta, has keys that are a subset of en's, matches en's {{placeholders}} per key, carries the CLDR plural categories its locale needs, contains no mojibake or leaked HTML entities -- and do the three generated locale tables still equal i18n/locales.json? (FR-FBR-34/39, Contracts C34/C35/C41)",
   "assertion": {
@@ -30,6 +30,8 @@
       "widget/src/locales.gen.ts",
       "crates/feedbackmonk-i18n/src/locales.gen.rs",
       "scripts/i18n/gen-locales.py",
+      "scripts/i18n/validate.py",
+      "scripts/i18n/_catalog.py",
       ".claude/oracles/i18n-catalog-integrity/oracle.py"
     ],
     "compute_cost_ms": 200
@@ -40,9 +42,9 @@
   },
   "consumer_scope": "feedbackmonk: every worker on FR-FBR-34..40 and every later session adding a string. Green is the Stage-0/1/2 exit gate of the localization plan.",
   "validation": {
-    "self_test_unix": null,
-    "self_test_windows": null,
-    "last_validated": null
+    "self_test_unix": ".claude/oracles/i18n-catalog-integrity/oracle.sh --self-test",
+    "self_test_windows": ".claude/oracles/i18n-catalog-integrity/oracle.ps1 --self-test",
+    "last_validated": "2026-09-07T02:18:00Z"
   },
   "fallback": "python scripts/i18n/gen-locales.py --check; then for f in i18n/locales/*/*.json: python -c 'import json,sys; json.load(open(sys.argv[1]))' f; then diff the flattened key sets against i18n/locales/en/<ns>.json by hand.",
   "provenance": {

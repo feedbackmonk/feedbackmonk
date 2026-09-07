@@ -117,6 +117,12 @@ PII_FIELDS = [
     "anon_token_hash",
     "external_metadata",
     "crash_event_id",
+    # FR-FBR-37 (migration 00031): the UI language the submitter was reading.
+    # PII-ADJACENT rather than PII — it names no person, but a locale narrows a
+    # population, and on a small board it can be the field that distinguishes
+    # one submitter from the rest. Admin-read only, by the same rule as the
+    # columns above (Contract C37: `FeedbackDetailResponse` and nowhere else).
+    "submitter_locale",
 ]
 # The board must not surface internal/admin reply content (C29: "internal/admin
 # reply content"). `feedback_replies` carries `visibility IN ('public','internal')`

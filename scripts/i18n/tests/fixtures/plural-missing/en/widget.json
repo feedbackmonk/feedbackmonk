@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "English",
+    "status": "source"
+  },
+  "widget": {
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items"
+  }
+}

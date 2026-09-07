@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "language": "English",
+    "status": "source"
+  },
+  "widget": {
+    "greeting": "Hello {{name}}, welcome to the NEW feedback form today"
+  }
+}

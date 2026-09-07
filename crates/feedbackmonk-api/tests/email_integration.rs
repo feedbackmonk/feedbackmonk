@@ -98,6 +98,31 @@ impl feedbackmonk_repository::TenantRepo for FakeTenantRepo {
     async fn get_brand(&self, _scope: &TenantScope) -> Result<EmailTenantBrand, RepoError> {
         Ok(self.brand.clone())
     }
+
+    // FR-FBR-38: the send chokepoint reads the tenant locale on EVERY send, so
+    // unlike the other stubs in this fake these must answer rather than panic.
+    // `None` / `false` are the untouched-tenant values, which is what keeps this
+    // test's expected output the English it has always been.
+    async fn get_locale(&self, _scope: &TenantScope) -> Result<Option<String>, RepoError> {
+        Ok(None)
+    }
+    async fn set_locale(
+        &self,
+        _scope: &TenantScope,
+        _locale: Option<&str>,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
+    async fn get_translate_outbound(&self, _scope: &TenantScope) -> Result<bool, RepoError> {
+        Ok(false)
+    }
+    async fn set_translate_outbound(
+        &self,
+        _scope: &TenantScope,
+        _enabled: bool,
+    ) -> Result<(), RepoError> {
+        unimplemented!()
+    }
     async fn update_brand(
         &self,
         _scope: &TenantScope,
@@ -235,6 +260,9 @@ async fn mailpit_status_change_email_lands_with_brand_subject_and_footer() {
         submitter_email: Some(unique_submitter.clone()),
         body_excerpt: None,
         reply_body: None,
+        // No captured submitter locale — the pre-FR-FBR-37 shape, which keeps
+        // this test asserting the English body it always has.
+        submitter_locale: None,
     };
     let kind = feedbackmonk_api::email::EmailKind::StatusChange {
         from: FeedbackStatus::Submitted,

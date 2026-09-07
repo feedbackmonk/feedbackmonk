@@ -1,9 +1,21 @@
-//! feedbackmonk-i18n — the server-side locale vocabulary and (from Stage 1) the compiled-in
-//! catalog reader for emails and status words (FR-FBR-34/37, Contracts C34/C40).
+//! feedbackmonk-i18n — the server-side locale vocabulary and the compiled-in catalog
+//! reader for emails and status words (FR-FBR-34/37, Contracts C34/C40).
 //!
-//! Stage 0 ships ONLY the generated locale table and the two types it needs. The resolver,
-//! `t()`/`t_args()`, `parse_accept_language()` and the `include_str!` catalogs land in Stage 1
-//! (worker W-C) against the C40 signatures recorded in the execution plan.
+//! ```rust
+//! use feedbackmonk_i18n::{resolve, t, Locale};
+//! let l = resolve(&["de-AT", "en"]);      // -> de
+//! let _ = t(l, "email.confirmation.subject");
+//! ```
+//!
+//! Three concerns, one crate: the generated locale TABLE (`locales.gen.rs`), the
+//! RESOLVER that maps a browser's preference list onto it (`locale.rs`), and the
+//! CATALOGS compiled in from `i18n/locales/<code>/{email,status}.json`
+//! (`catalogs.rs`). `accept_language.rs` is the one request-header surface.
+//!
+//! **The catalogs are read at COMPILE time from paths relative to this file**
+//! (`../../../i18n/locales/…`), so the crate is only buildable inside the repo
+//! tree — which is also what makes a self-host binary self-contained: no runtime
+//! file I/O, no egress, nothing an operator can repoint (DEC-FBR-IMPL-30).
 //!
 //! `locales.gen.rs` is GENERATED from `i18n/locales.json` by `scripts/i18n/gen-locales.py`.
 //! Never edit it by hand; the `i18n-catalog-integrity` oracle runs `--check` on every commit.
@@ -43,6 +55,14 @@ pub struct LocaleEntry {
 #[path = "locales.gen.rs"]
 mod locales_gen;
 pub use locales_gen::{BARE_DEFAULTS, DEFAULT_LOCALE, LOCALES, TAG_OVERRIDES};
+
+pub mod accept_language;
+pub mod catalogs;
+pub mod locale;
+
+pub use accept_language::{parse_accept_language, MAX_ACCEPT_LANGUAGE_BYTES};
+pub use catalogs::{english_keys, t, t_args, t_plural, PluralCategory, NAMESPACES};
+pub use locale::{default_locale_code, resolve, resolve_opt, Locale};
 
 /// Look up a locale entry by its canonical code (exact match, no resolution).
 #[must_use]

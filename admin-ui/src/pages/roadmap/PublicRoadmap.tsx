@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trans } from "react-i18next";
 import {
-  ROADMAP_STATUS_LABELS,
   ROADMAP_STATUS_PUBLIC_ORDER,
   type RoadmapItem,
   type RoadmapItemStatus,
@@ -15,6 +15,10 @@ import {
 } from "../../shared/ApiClient";
 import { useToast } from "../../components/Toast";
 import { formatRelative } from "../../shared/format";
+import { useTranslation } from "../../i18n";
+import { useLabels } from "../../i18n/useLabels";
+import { useLocale } from "../../i18n/useLocale";
+import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 
 interface PublicRoadmapProps {
   projectId: string;
@@ -25,9 +29,15 @@ interface PublicRoadmapProps {
 // docs domain or linked from the feedbackmonk widget. Renders items
 // grouped by status in the canonical public order (in-progress → planned
 // → considering → shipped → wontfix).
+//
+// LOCALIZATION (FR-FBR-36): chrome from `i18n/locales/<code>/public.json`;
+// item titles and bodies are CONTENT and render verbatim (Q24 / DEC-FBR-15).
 export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
   const queryClient = useQueryClient();
   const { notify } = useToast();
+  const { t } = useTranslation("public");
+  const labels = useLabels();
+  const { locale } = useLocale();
 
   const listQuery = useQuery({
     queryKey: ["public-roadmap", projectId],
@@ -68,8 +78,8 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
     onError: (err) => {
       const msg =
         axios.isAxiosError(err) && err.response?.status === 409
-          ? "You've already voted on this item."
-          : "Vote failed — please try again.";
+          ? t("public.vote.alreadyVoted")
+          : t("public.vote.failed");
       notify(msg, "error");
     },
   });
@@ -81,13 +91,13 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
       queryClient.invalidateQueries({
         queryKey: ["public-roadmap-top", projectId],
       });
-      notify("Vote retracted.", "info");
+      notify(t("public.vote.retracted"), "info");
     },
     onError: (err) => {
       const msg =
         axios.isAxiosError(err) && err.response?.status === 403
-          ? "The 60s retract window has closed for this vote."
-          : "Retract failed — please try again.";
+          ? t("public.vote.retractWindowClosed")
+          : t("public.vote.retractFailed");
       notify(msg, "error");
     },
   });
@@ -95,8 +105,8 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
   if (listQuery.isPending) {
     return (
       <main className="public-roadmap" aria-busy="true">
-        <h1>Roadmap</h1>
-        <p>Loading…</p>
+        <h1>{t("public.roadmap.title")}</h1>
+        <p>{t("public.common.loading")}</p>
       </main>
     );
   }
@@ -104,11 +114,11 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
   if (listQuery.isError) {
     return (
       <main className="public-roadmap">
-        <h1>Roadmap</h1>
+        <h1>{t("public.roadmap.title")}</h1>
         <div role="alert" className="error-block">
-          Failed to load roadmap.{" "}
+          {t("public.roadmap.loadError")}{" "}
           <button type="button" onClick={() => listQuery.refetch()}>
-            Retry
+            {t("public.common.retry")}
           </button>
         </div>
       </main>
@@ -118,15 +128,14 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
   return (
     <main className="public-roadmap" aria-labelledby="public-roadmap-title">
       <header>
-        <h1 id="public-roadmap-title">Roadmap</h1>
-        <p className="muted">
-          Vote on what we should ship next. One vote per visitor per item.
-        </p>
+        <h1 id="public-roadmap-title">{t("public.roadmap.title")}</h1>
+        <p className="muted">{t("public.roadmap.intro")}</p>
+        <LanguageSwitcher />
       </header>
 
       {topQuery.data && topQuery.data.items.length > 0 ? (
         <section aria-labelledby="public-roadmap-top-label">
-          <h2 id="public-roadmap-top-label">Most-voted</h2>
+          <h2 id="public-roadmap-top-label">{t("public.roadmap.topVoted")}</h2>
           <ol className="roadmap-top-list">
             {topQuery.data.items.map((it) => (
               <li key={`top-${it.slug}`}>
@@ -136,7 +145,12 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
                 >
                   <h3 id={`top-${it.slug}-title`}>{it.title}</h3>
                   <p className="muted">
-                    {ROADMAP_STATUS_LABELS[it.status]} · {it.vote_count} votes
+                    {t("public.roadmap.topMeta", {
+                      status: labels.roadmapStatus(it.status),
+                      votes: t("public.roadmap.voteCount", {
+                        count: it.vote_count,
+                      }),
+                    })}
                   </p>
                 </article>
               </li>
@@ -155,7 +169,7 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
             className={`roadmap-section roadmap-section-${status}`}
           >
             <h2 id={`public-roadmap-${status}-label`}>
-              {ROADMAP_STATUS_LABELS[status]}
+              {labels.roadmapStatus(status)}
             </h2>
             <ol className="roadmap-item-list">
               {items.map((it) => (
@@ -175,15 +189,21 @@ export function PublicRoadmap({ projectId }: PublicRoadmapProps) {
 
       <footer
         className="public-roadmap-footer"
-        aria-label="Roadmap freshness"
+        aria-label={t("public.roadmap.freshnessLabel")}
       >
         {cachedAt ? (
           <p className="muted">
-            Vote counts updated{" "}
-            <time dateTime={cachedAt}>{formatRelative(cachedAt)}</time>.
+            {/* One sentence, one key: splitting it into prefix/suffix keys
+                would fix English word order for every language. */}
+            <Trans
+              i18nKey="public.roadmap.updated"
+              t={t}
+              values={{ when: formatRelative(cachedAt, locale) }}
+              components={{ time: <time dateTime={cachedAt} /> }}
+            />
           </p>
         ) : (
-          <p className="muted">Vote counts will refresh shortly.</p>
+          <p className="muted">{t("public.roadmap.refreshSoon")}</p>
         )}
       </footer>
     </main>
@@ -198,6 +218,9 @@ interface RoadmapItemRowProps {
 }
 
 function RoadmapItemRow({ item, onVote, onRetract, busy }: RoadmapItemRowProps) {
+  const { t } = useTranslation("public");
+  const labels = useLabels();
+  const statusLabel = labels.roadmapStatus(item.status);
   const voteCount = item.vote_count;
   return (
     <article
@@ -208,9 +231,9 @@ function RoadmapItemRow({ item, onVote, onRetract, busy }: RoadmapItemRowProps) 
         <h3 id={`item-${item.slug}-title`}>{item.title}</h3>
         <span
           className={`status-badge status-${item.status}`}
-          aria-label={`Status: ${ROADMAP_STATUS_LABELS[item.status]}`}
+          aria-label={t("public.common.statusLabel", { status: statusLabel })}
         >
-          {ROADMAP_STATUS_LABELS[item.status]}
+          {statusLabel}
         </span>
       </header>
       <p className="roadmap-item-body">{item.body}</p>
@@ -221,9 +244,11 @@ function RoadmapItemRow({ item, onVote, onRetract, busy }: RoadmapItemRowProps) 
             onClick={onRetract}
             disabled={busy}
             aria-pressed="true"
-            aria-label={`Retract vote — current count ${voteCount}`}
+            aria-label={t("public.common.retractVoteAria", {
+              votes: voteCount,
+            })}
           >
-            ★ Voted ({voteCount})
+            {t("public.common.voted", { votes: voteCount })}
           </button>
         ) : (
           <button
@@ -231,9 +256,12 @@ function RoadmapItemRow({ item, onVote, onRetract, busy }: RoadmapItemRowProps) 
             onClick={onVote}
             disabled={busy}
             aria-pressed="false"
-            aria-label={`Vote for ${item.title} — current count ${voteCount}`}
+            aria-label={t("public.roadmap.voteAria", {
+              title: item.title,
+              votes: voteCount,
+            })}
           >
-            ☆ Vote ({voteCount})
+            {t("public.common.vote", { votes: voteCount })}
           </button>
         )}
       </div>

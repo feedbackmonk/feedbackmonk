@@ -1,10 +1,6 @@
 import axios from "axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  KIND_LABELS,
-  STATUS_LABELS,
-  type BoardItem,
-} from "../../shared/types.gen";
+import { type BoardItem } from "../../shared/types.gen";
 import {
   castBoardVote,
   fetchPublicBoard,
@@ -12,6 +8,10 @@ import {
 } from "../../shared/ApiClient";
 import { useToast } from "../../components/Toast";
 import { formatRelative } from "../../shared/format";
+import { useTranslation } from "../../i18n";
+import { useLabels } from "../../i18n/useLabels";
+import { useLocale } from "../../i18n/useLocale";
+import { LanguageSwitcher } from "../../i18n/LanguageSwitcher";
 
 interface PublicBoardProps {
   projectId: string;
@@ -40,9 +40,16 @@ interface PublicBoardProps {
 // renders as "Vote" and surfaces a friendly toast on the 409 (AlreadyVoted) —
 // same shape as PublicRoadmap; the retract path is wired for when `voted_by_me`
 // support lands.
+//
+// LOCALIZATION (FR-FBR-36): the CHROME comes from `i18n/locales/<code>/
+// public.json`; the feedback BODY is rendered verbatim in whatever language it
+// was written in and is never translated on a public surface (Q24 /
+// DEC-FBR-15). Do not wrap `item.body` in anything.
 export function PublicBoard({ projectId }: PublicBoardProps) {
   const queryClient = useQueryClient();
   const { notify } = useToast();
+  const { t } = useTranslation("public");
+  const { locale } = useLocale();
 
   const listQuery = useQuery({
     queryKey: ["public-board", projectId],
@@ -63,8 +70,8 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
     onError: (err) => {
       const msg =
         axios.isAxiosError(err) && err.response?.status === 409
-          ? "You've already voted on this item."
-          : "Vote failed — please try again.";
+          ? t("public.vote.alreadyVoted")
+          : t("public.vote.failed");
       notify(msg, "error");
     },
   });
@@ -74,13 +81,13 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
       retractBoardVote(projectId, shortCode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["public-board", projectId] });
-      notify("Vote retracted.", "info");
+      notify(t("public.vote.retracted"), "info");
     },
     onError: (err) => {
       const msg =
         axios.isAxiosError(err) && err.response?.status === 403
-          ? "The 60s retract window has closed for this vote."
-          : "Retract failed — please try again.";
+          ? t("public.vote.retractWindowClosed")
+          : t("public.vote.retractFailed");
       notify(msg, "error");
     },
   });
@@ -91,8 +98,8 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
   if (listQuery.isPending) {
     return (
       <main className="public-board" aria-busy="true">
-        <h1>Feedback board</h1>
-        <p>Loading…</p>
+        <h1>{t("public.board.title")}</h1>
+        <p>{t("public.common.loading")}</p>
       </main>
     );
   }
@@ -108,9 +115,10 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
     return (
       <main className="public-board" aria-labelledby="public-board-title">
         <header>
-          <h1 id="public-board-title">Feedback board</h1>
+          <h1 id="public-board-title">{t("public.board.title")}</h1>
+          <LanguageSwitcher />
         </header>
-        <p className="muted">This feedback board isn’t available.</p>
+        <p className="muted">{t("public.board.unavailable")}</p>
       </main>
     );
   }
@@ -118,11 +126,11 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
   if (listQuery.isError) {
     return (
       <main className="public-board">
-        <h1>Feedback board</h1>
+        <h1>{t("public.board.title")}</h1>
         <div role="alert" className="error-block">
-          Failed to load the feedback board.{" "}
+          {t("public.board.loadError")}{" "}
           <button type="button" onClick={() => listQuery.refetch()}>
-            Retry
+            {t("public.common.retry")}
           </button>
         </div>
       </main>
@@ -132,21 +140,20 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
   return (
     <main className="public-board" aria-labelledby="public-board-title">
       <header>
-        <h1 id="public-board-title">Feedback board</h1>
-        <p className="muted">
-          Feedback we’ve published, with how many people have backed it. One vote
-          per visitor per item.
-        </p>
+        <h1 id="public-board-title">{t("public.board.title")}</h1>
+        <p className="muted">{t("public.board.intro")}</p>
+        <LanguageSwitcher />
       </header>
 
       {items.length === 0 ? (
-        <p className="muted">No feedback has been published yet.</p>
+        <p className="muted">{t("public.board.empty")}</p>
       ) : (
         <ol className="board-item-list">
           {items.map((it) => (
             <li key={it.short_code}>
               <BoardItemRow
                 item={it}
+                locale={locale}
                 onVote={() => voteMutation.mutate(it.short_code)}
                 onRetract={() => retractMutation.mutate(it.short_code)}
                 busy={busy}
@@ -161,13 +168,26 @@ export function PublicBoard({ projectId }: PublicBoardProps) {
 
 interface BoardItemRowProps {
   item: BoardItem;
+  locale: string;
   onVote: () => void;
   onRetract: () => void;
   busy: boolean;
 }
 
-function BoardItemRow({ item, onVote, onRetract, busy }: BoardItemRowProps) {
-  const title = `${KIND_LABELS[item.kind]} · ${item.short_code}`;
+function BoardItemRow({
+  item,
+  locale,
+  onVote,
+  onRetract,
+  busy,
+}: BoardItemRowProps) {
+  const { t } = useTranslation("public");
+  const labels = useLabels();
+  const statusLabel = labels.status(item.status);
+  const title = t("public.board.itemTitle", {
+    kind: labels.kind(item.kind),
+    code: item.short_code,
+  });
   const voteCount = item.vote_count;
   return (
     <article
@@ -180,9 +200,9 @@ function BoardItemRow({ item, onVote, onRetract, busy }: BoardItemRowProps) {
         </h2>
         <span
           className={`status-badge status-${item.status}`}
-          aria-label={`Status: ${STATUS_LABELS[item.status]}`}
+          aria-label={t("public.common.statusLabel", { status: statusLabel })}
         >
-          {STATUS_LABELS[item.status]}
+          {statusLabel}
         </span>
       </header>
       <p className="board-item-body">{item.body}</p>
@@ -194,9 +214,11 @@ function BoardItemRow({ item, onVote, onRetract, busy }: BoardItemRowProps) {
               onClick={onRetract}
               disabled={busy}
               aria-pressed="true"
-              aria-label={`Retract vote — current count ${voteCount}`}
+              aria-label={t("public.common.retractVoteAria", {
+                votes: voteCount,
+              })}
             >
-              ★ Voted ({voteCount})
+              {t("public.common.voted", { votes: voteCount })}
             </button>
           ) : (
             <button
@@ -204,14 +226,17 @@ function BoardItemRow({ item, onVote, onRetract, busy }: BoardItemRowProps) {
               onClick={onVote}
               disabled={busy}
               aria-pressed="false"
-              aria-label={`Vote for ${item.short_code} — current count ${voteCount}`}
+              aria-label={t("public.board.voteAria", {
+                code: item.short_code,
+                votes: voteCount,
+              })}
             >
-              ☆ Vote ({voteCount})
+              {t("public.common.vote", { votes: voteCount })}
             </button>
           )}
         </div>
         <time className="muted" dateTime={item.accepted_at}>
-          {formatRelative(item.accepted_at)}
+          {formatRelative(item.accepted_at, locale)}
         </time>
       </div>
     </article>

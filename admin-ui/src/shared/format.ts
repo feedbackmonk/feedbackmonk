@@ -1,9 +1,27 @@
-export function formatRelative(iso: string, now: Date = new Date()): string {
+// Date/number formatting for humans.
+//
+// LOCALE IS AN ARGUMENT, NOT AN AMBIENT (D-FBR-31). `Intl` defaults to the
+// BROWSER's locale, which is not the locale the page is being rendered in the
+// moment a visitor picks a language in the switcher: a German-speaking visitor
+// on an English browser used to read German chrome next to English-formatted
+// dates. Pass the active locale from `useLocale()`.
+//
+// The parameter is optional ONLY so that the admin-console call sites, whose
+// strings are extracted in Stage 2 (W-D), keep compiling unchanged in the
+// meantime — they still get today's browser-default behaviour. W-D passes the
+// active locale at the remaining sites and makes this parameter required; see
+// the localization plan § W-B step 5 / § W-D.
+
+export function formatRelative(
+  iso: string,
+  locale?: string,
+  now: Date = new Date(),
+): string {
   const ts = new Date(iso).getTime();
   if (Number.isNaN(ts)) return iso;
   const diffSec = Math.round((ts - now.getTime()) / 1000);
   const abs = Math.abs(diffSec);
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
   if (abs < 60) return rtf.format(diffSec, "second");
   if (abs < 3600) return rtf.format(Math.round(diffSec / 60), "minute");
   if (abs < 86400) return rtf.format(Math.round(diffSec / 3600), "hour");
@@ -13,8 +31,8 @@ export function formatRelative(iso: string, now: Date = new Date()): string {
   return rtf.format(Math.round(diffSec / (86400 * 365)), "year");
 }
 
-export function formatAbsolute(iso: string): string {
+export function formatAbsolute(iso: string, locale?: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+  return d.toLocaleString(locale);
 }

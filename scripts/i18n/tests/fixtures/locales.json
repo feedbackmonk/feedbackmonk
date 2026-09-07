@@ -1,0 +1,11 @@
+{
+  "_meta": {"contract": "C34", "note": "minimal fixture table for scripts/i18n/tests -- not the real i18n/locales.json"},
+  "default": "en",
+  "overrides": {},
+  "bare_defaults": {},
+  "locales": [
+    { "code": "en", "name": "English",  "dir": "ltr", "deepl": "EN-US", "base": null },
+    { "code": "de", "name": "Deutsch",  "dir": "ltr", "deepl": "DE",    "base": null },
+    { "code": "ru", "name": "Русский",  "dir": "ltr", "deepl": "RU",    "base": null }
+  ]
+}

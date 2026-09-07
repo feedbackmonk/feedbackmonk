@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 feedbackmonk-anon = { path = "../feedbackmonk-anon" }
 feedbackmonk-core = { path = "../feedbackmonk-core" }
+feedbackmonk-i18n = { path = "../feedbackmonk-i18n" }
 feedbackmonk-jwt = { path = "../feedbackmonk-jwt" }
 feedbackmonk-repository = { path = "../feedbackmonk-repository" }
 feedbackmonk-tracing = { path = "../feedbackmonk-tracing" }

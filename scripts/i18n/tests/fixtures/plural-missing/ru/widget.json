@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "language": "Русский",
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "items_one": "{{count}} элемент",
+    "items_other": "{{count}} элементов"
+  }
+}

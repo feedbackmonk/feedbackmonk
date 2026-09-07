@@ -116,6 +116,43 @@ pub trait TenantRepo: Send + Sync {
     /// `RepoError::Conflict` when another tenant already holds the label.
     async fn set_subdomain(&self, scope: &TenantScope, label: Option<&str>) -> Result<()>;
 
+    // ==== Language settings (FR-FBR-38, migration 00032) ==================
+
+    /// Read the tenant's chosen UI locale, or `None` when they have never
+    /// chosen one.
+    ///
+    /// Scope-bound accessors rather than fields on `Tenant`, for the same
+    /// reason `get_brand` and `get_subdomain` are: `find_by_email` is
+    /// allow-listed as a PRE-AUTH read, and widening the row it returns widens
+    /// the pre-auth surface for no benefit.
+    ///
+    /// **`None` is not `"en"`.** An absent preference means "follow the
+    /// browser" in the admin UI and "fall back to English" in an email; a
+    /// stored `"en"` means the tenant chose English and should keep it when
+    /// they travel. Collapsing the two would silently change the admin's
+    /// language the first time they open the console abroad.
+    async fn get_locale(&self, scope: &TenantScope) -> Result<Option<String>>;
+
+    /// Set (or clear, with `None`) the tenant's UI locale.
+    ///
+    /// The caller MUST have validated the value against the C34 shipped-locale
+    /// table (`feedbackmonk_i18n::Locale::parse`) first. This method enforces
+    /// only the schema's length CHECK — the vocabulary is additive data, not
+    /// schema (DEC-FBR-15), which is precisely why the table is not a DB
+    /// constraint and the validation has to live one layer up.
+    async fn set_locale(&self, scope: &TenantScope, locale: Option<&str>) -> Result<()>;
+
+    /// Read the tenant's outbound-translation preference.
+    ///
+    /// RESERVED for FR-FBR-40 (Stage 2): persisted and served by the C38
+    /// settings endpoint so the setting survives, consulted by no send path in
+    /// this stage. `false` for every existing row.
+    async fn get_translate_outbound(&self, scope: &TenantScope) -> Result<bool>;
+
+    /// Set the tenant's outbound-translation preference. See
+    /// [`TenantRepo::get_translate_outbound`] — inert until W-E wires it.
+    async fn set_translate_outbound(&self, scope: &TenantScope, enabled: bool) -> Result<()>;
+
     /// Append an operator-mutation audit row for the target tenant `scope`
     /// (scrutiny P1-12). `action` names the ops action (e.g. `"patch_tenant"`)
     /// and `detail` carries the before/after JSON. Scope-bound so the
@@ -510,6 +547,55 @@ impl TenantRepo for SqlxTenantRepo {
             sqlx::Error::Database(ref db) if db.is_unique_violation() => RepoError::Conflict,
             other => RepoError::Sqlx(other),
         })?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepoError::NotFound);
+        }
+        Ok(())
+    }
+
+    async fn get_locale(&self, scope: &TenantScope) -> Result<Option<String>> {
+        let row = sqlx::query!("SELECT locale FROM tenants WHERE id = $1", scope.tenant_id())
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or(RepoError::NotFound)?;
+        Ok(row.locale)
+    }
+
+    async fn set_locale(&self, scope: &TenantScope, locale: Option<&str>) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE tenants SET locale = $2, updated_at = now() WHERE id = $1",
+            scope.tenant_id(),
+            locale
+        )
+        .execute(&self.pool)
+        .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(RepoError::NotFound);
+        }
+        Ok(())
+    }
+
+    async fn get_translate_outbound(&self, scope: &TenantScope) -> Result<bool> {
+        let row = sqlx::query!(
+            "SELECT translate_outbound FROM tenants WHERE id = $1",
+            scope.tenant_id()
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+        Ok(row.translate_outbound)
+    }
+
+    async fn set_translate_outbound(&self, scope: &TenantScope, enabled: bool) -> Result<()> {
+        let result = sqlx::query!(
+            "UPDATE tenants SET translate_outbound = $2, updated_at = now() WHERE id = $1",
+            scope.tenant_id(),
+            enabled
+        )
+        .execute(&self.pool)
+        .await?;
 
         if result.rows_affected() == 0 {
             return Err(RepoError::NotFound);

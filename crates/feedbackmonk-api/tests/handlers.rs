@@ -38,12 +38,12 @@ struct RecordingMailer {
 
 #[async_trait::async_trait]
 impl Mailer for RecordingMailer {
-    async fn send_verify_email(&self, to: &str, link: &str) -> anyhow::Result<()> {
+    async fn send_verify_email(&self, to: &str, link: &str, _locale: feedbackmonk_i18n::Locale) -> anyhow::Result<()> {
         self.sent.lock().unwrap().push((to.to_string(), link.to_string()));
         Ok(())
     }
 
-    async fn send_password_reset_email(&self, to: &str, link: &str) -> anyhow::Result<()> {
+    async fn send_password_reset_email(&self, to: &str, link: &str, _locale: feedbackmonk_i18n::Locale) -> anyhow::Result<()> {
         self.sent.lock().unwrap().push((to.to_string(), link.to_string()));
         Ok(())
     }

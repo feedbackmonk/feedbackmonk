@@ -1,5 +1,11 @@
 <!doctype html>
-<html lang="en">
+<!--
+  `lang`/`dir` are the STATIC DEFAULT only. The SPA rewrites both on
+  `document.documentElement` as soon as the active locale is known
+  (admin-ui/src/i18n/useLocale.ts — FR-FBR-34/36); `dir` is declared here so an
+  RTL locale has an attribute to flip rather than one to create.
+-->
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

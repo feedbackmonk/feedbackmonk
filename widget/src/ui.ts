@@ -1,9 +1,5 @@
-import type {
-  ApiError,
-  WidgetConfig,
-  WidgetSubmissionKind,
-  WidgetTheme,
-} from "./types.js";
+import type { WidgetConfig, WidgetTheme } from "./types.js";
+import { dir as localeDir, activeLocale, hasKey, t } from "./i18n.js";
 
 // DOM construction helpers for the feedbackmonk widget. CSP-safe:
 //   - No `innerHTML` with user input.
@@ -96,9 +92,16 @@ const LAUNCHER_ICON_SVG =
   '<path d="M4 4h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2z"/>' +
   "</svg>";
 
+/// The widget root declares its OWN language and direction (FR-FBR-35 /
+/// Contract C36). Without these the widget's content inherits the host page's
+/// `<html lang>`, which misdeclares it to a screen reader whenever the two
+/// differ (WCAG 3.1.2) — the D-FBR-31 defect. `dir` is what makes the Persian
+/// layout mirror; both values come from the C34 table, never from raw input.
 export function createRoot(): HTMLDivElement {
   const root = createElement("div", "fbm-root");
   root.setAttribute("data-fbm-root", "");
+  root.lang = activeLocale();
+  root.dir = localeDir();
   return root;
 }
 
@@ -112,9 +115,12 @@ export function createLauncher(
   // SVG content is a static literal — CSP-safe; embedders' style-src does
   // not need unsafe-inline because we use external stylesheet for CSS.
   btn.innerHTML = LAUNCHER_ICON_SVG;
-  const label = createElement("span", undefined, "Feedback");
+  const label = createElement("span", undefined, t("widget.launcher.label"));
   btn.appendChild(label);
-  btn.setAttribute("aria-label", "Open feedback form for " + brandLabel);
+  btn.setAttribute(
+    "aria-label",
+    t("widget.launcher.openAria", { brand: brandLabel }),
+  );
   btn.addEventListener("click", onOpen);
   return btn;
 }
@@ -142,7 +148,7 @@ export function createModal(
 
   const closeBtn = createElement("button", "fbm-close");
   closeBtn.type = "button";
-  closeBtn.setAttribute("aria-label", "Close feedback form");
+  closeBtn.setAttribute("aria-label", t("widget.modal.closeAria"));
   closeBtn.textContent = "×";
   closeBtn.addEventListener("click", onClose);
 
@@ -153,25 +159,23 @@ export function createModal(
   if (logoSrc) {
     logoEl = createElement("img", "fbm-logo");
     logoEl.src = logoSrc;
-    logoEl.alt = config.display_name + " logo";
+    logoEl.alt = t("widget.modal.logoAlt", { brand: config.display_name });
     logoEl.decoding = "async";
     logoEl.loading = "lazy";
   }
 
-  const titleEl = createElement("h2", "fbm-title", "Send feedback");
+  const titleEl = createElement("h2", "fbm-title", t("widget.modal.title"));
   titleEl.id = titleId;
 
   const descEl = createElement(
     "p",
     "fbm-sr-only",
-    "Tell us what's on your mind. Submissions are sent to " +
-      config.display_name +
-      ".",
+    t("widget.modal.description", { brand: config.display_name }),
   );
   descEl.id = bodyId;
 
   const subjectField = createElement("div", "fbm-field");
-  const subjectLabel = createElement("label", undefined, "Subject");
+  const subjectLabel = createElement("label", undefined, t("widget.form.subject"));
   const subjectInput = createElement("input");
   subjectInput.type = "text";
   subjectInput.required = true;
@@ -182,44 +186,44 @@ export function createModal(
   subjectField.append(subjectLabel, subjectInput);
 
   const kindField = createElement("div", "fbm-field");
-  const kindLabel = createElement("label", undefined, "Type");
+  const kindLabel = createElement("label", undefined, t("widget.form.kind"));
   const kindSelect = createElement("select");
   const kindId = makeId("fbm-kind");
   kindSelect.id = kindId;
   kindLabel.htmlFor = kindId;
-  const kindLabelMap: Record<WidgetSubmissionKind, string> = {
-    bug: "Bug",
-    feature: "Feature request",
-    question: "Question",
-    other: "Other",
-  };
   for (const kind of config.submission_kinds) {
     const opt = createElement("option");
     opt.value = kind;
-    opt.textContent = kindLabelMap[kind] ?? kind;
+    // An unknown kind from a newer server renders its wire value rather than
+    // a raw catalog key — `t()` returns the key when nothing matches, so the
+    // `hasKey` guard is what keeps that path honest.
+    const key = "widget.kind." + kind;
+    opt.textContent = hasKey(key) ? t(key) : kind;
     kindSelect.appendChild(opt);
   }
   kindField.append(kindLabel, kindSelect);
 
   const bodyField = createElement("div", "fbm-field");
-  const bodyLabel = createElement("label", undefined, "Message");
+  const bodyLabel = createElement("label", undefined, t("widget.form.message"));
   const bodyTextarea = createElement("textarea");
   bodyTextarea.required = true;
   bodyTextarea.maxLength = config.max_body_chars;
   const bodyTextareaId = makeId("fbm-textarea");
   bodyTextarea.id = bodyTextareaId;
   bodyLabel.htmlFor = bodyTextareaId;
-  const counter = createElement("span", "fbm-counter", "0 / " + config.max_body_chars);
+  const counterText = (n: number): string =>
+    t("widget.form.counter", { n, max: config.max_body_chars });
+  const counter = createElement("span", "fbm-counter", counterText(0));
   bodyField.append(bodyLabel, bodyTextarea, counter);
   bodyTextarea.addEventListener("input", () => {
-    counter.textContent = bodyTextarea.value.length + " / " + config.max_body_chars;
+    counter.textContent = counterText(bodyTextarea.value.length);
   });
 
   let emailField: HTMLDivElement | null = null;
   let emailInput: HTMLInputElement | null = null;
   if (mode === "anonymous") {
     emailField = createElement("div", "fbm-field");
-    const emailLabel = createElement("label", undefined, "Email (optional)");
+    const emailLabel = createElement("label", undefined, t("widget.form.email"));
     emailInput = createElement("input");
     emailInput.type = "email";
     emailInput.autocomplete = "email";
@@ -247,7 +251,7 @@ export function createModal(
     const consentLabel = createElement(
       "label",
       "fbm-consent-label",
-      "Include diagnostic logs to help us debug",
+      t("widget.form.logConsent"),
     );
     consentLabel.htmlFor = consentId;
     logConsentField.append(logConsent, consentLabel);
@@ -260,10 +264,18 @@ export function createModal(
   errorRegion.hidden = true;
 
   const actions = createElement("div", "fbm-actions");
-  const cancelBtn = createElement("button", "fbm-btn fbm-btn-secondary", "Cancel");
+  const cancelBtn = createElement(
+    "button",
+    "fbm-btn fbm-btn-secondary",
+    t("widget.form.cancel"),
+  );
   cancelBtn.type = "button";
   cancelBtn.addEventListener("click", onClose);
-  const submitBtn = createElement("button", "fbm-btn fbm-btn-primary", "Send");
+  const submitBtn = createElement(
+    "button",
+    "fbm-btn fbm-btn-primary",
+    t("widget.form.send"),
+  );
   submitBtn.type = "button";
   submitBtn.addEventListener("click", () => {
     void onSubmit();
@@ -342,8 +354,42 @@ export function applyTheme(
   }
 }
 
-export function showError(els: ModalElements, err: ApiError): void {
-  els.errorRegion.textContent = err.message + " (" + err.code + ")";
+/// Map an `ApiError.code` to a catalog key (FR-FBR-35).
+///
+/// The widget NEVER renders `err.message`. Two reasons, one of which is not
+/// about translation at all: (1) server text is English, so a localized widget
+/// would suddenly speak two languages in the same dialog; (2) that string is
+/// server-authored and reached `textContent` unfiltered.
+///
+/// `api.ts` synthesises `http_<status>` whenever the response body is not the
+/// `{code, message}` shape — which is the common case today, since the API
+/// emits `{"error": "..."}` — so the status classes below are the codes that
+/// actually reach a user, not a theoretical fallback.
+export function errorKey(code: string): string {
+  const direct = "widget.error." + code;
+  if (hasKey(direct)) return direct;
+  const status = /^http_(\d{3})$/.exec(code);
+  if (status) {
+    const byStatus: Record<string, string> = {
+      "401": "unauthorized",
+      "402": "tier_cap",
+      "403": "unauthorized",
+      "404": "not_found",
+      "413": "payload_too_large",
+      "429": "rate_limited",
+    };
+    const named = byStatus[status[1]];
+    if (named && hasKey("widget.error." + named)) return "widget.error." + named;
+    const cls = "widget.error.http_" + status[1][0] + "xx";
+    if (hasKey(cls)) return cls;
+  }
+  return "widget.error.generic";
+}
+
+/// Takes the CODE, not the `ApiError` — so "never render the server's message"
+/// is enforced by the signature instead of by everyone remembering it.
+export function showError(els: ModalElements, code: string): void {
+  els.errorRegion.textContent = t(errorKey(code));
   els.errorRegion.hidden = false;
 }
 

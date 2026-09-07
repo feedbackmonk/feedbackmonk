@@ -108,3 +108,7 @@ playwright-report/
 # Python
 __pycache__/
 *.pyc
+
+# finalize per-machine state (framework hygiene baseline; the other four missing
+# patterns are left to /0-uldf-migrate-hygiene -- see observations-ledger 2026-09-07)
+**/.claude/finalize-state/

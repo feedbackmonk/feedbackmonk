@@ -235,6 +235,9 @@ pub(crate) async fn perform_transition(
             submitter_email: feedback.end_user_email.clone(),
             body_excerpt: None,
             reply_body: None,
+            // FR-FBR-37: the notification goes to the SUBMITTER, so it speaks
+            // their language when we captured one — not the admin's.
+            submitter_locale: feedback.submitter_locale.clone(),
         };
         let kind = EmailKind::StatusChange {
             from: actual_from,
@@ -364,6 +367,7 @@ pub async fn reply(
             submitter_email: feedback.end_user_email.clone(),
             body_excerpt: None,
             reply_body: Some(req.body.clone()),
+            submitter_locale: feedback.submitter_locale.clone(),
         };
         let kind = EmailKind::PublicReply { reply_id: inserted.id };
         match state.email_notifier.send_email(project_scope.tenant(), kind, ctx).await {
@@ -677,6 +681,12 @@ pub struct FeedbackDetailResponse {
     /// `pending | translated | skipped | failed`, or `null` (never considered).
     pub translation_status: Option<String>,
     pub submitted_at: DateTime<Utc>,
+    /// FR-FBR-37 (C37): the UI language the submitter was reading at submit
+    /// time, or `null` when unknown. **Admin-only by design** — a locale
+    /// narrows a population, so it appears on this data-controller read and on
+    /// no public, board, roadmap or end-user projection (the
+    /// `public-board-moderation-gate` oracle's no-PII wire scan enforces that).
+    pub submitter_locale: Option<String>,
     pub submitter: SubmitterWire,
     pub external_metadata: Option<serde_json::Value>,
     pub status_history: Vec<StatusHistoryEntryWire>,
@@ -777,6 +787,7 @@ pub async fn get_admin_feedback(
         source_lang: translation.source_lang,
         translation_status: translation.translation_status,
         submitted_at: feedback.accepted_at,
+        submitter_locale: feedback.submitter_locale,
         submitter,
         external_metadata: feedback.external_metadata,
         status_history: history_wire,
@@ -856,10 +867,10 @@ mod tests {
     struct StubMailer;
     #[async_trait::async_trait]
     impl Mailer for StubMailer {
-        async fn send_verify_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+        async fn send_verify_email(&self, _to: &str, _link: &str, _locale: feedbackmonk_i18n::Locale) -> anyhow::Result<()> {
             Ok(())
         }
-        async fn send_password_reset_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+        async fn send_password_reset_email(&self, _to: &str, _link: &str, _locale: feedbackmonk_i18n::Locale) -> anyhow::Result<()> {
             Ok(())
         }
     }

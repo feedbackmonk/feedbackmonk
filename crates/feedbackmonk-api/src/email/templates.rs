@@ -1,7 +1,7 @@
 //! Plain-text email templates parameterised by `EmailTenantBrand`
-//! (Contract C10). One renderer per email kind, each producing a
-//! `RenderedEmail { subject, body }`. The mailer composes the From/To
-//! envelope from the brand + submitter context.
+//! (Contract C10) and by the recipient's `Locale` (FR-FBR-37). One renderer per
+//! email kind, each producing a `RenderedEmail { subject, body }`. The mailer
+//! composes the From/To envelope from the brand + submitter context.
 //!
 //! Plain-text only per FR-FBR-09 ("Status emails (plain-text)") and the
 //! P1 plan's Deferred Decisions resolution. Markdown / HTML is NOT a
@@ -10,8 +10,33 @@
 //! Ports the parameterization shape from
 //! `gitcellar-cloud/src/feedback/email_templates.rs` (READ-ONLY reference
 //! per DEC-FBR-07).
+//!
+//! ## Every literal lives in `i18n/locales/<code>/email.json`
+//!
+//! There is no English string in this file: the renderers assemble catalog
+//! values, and `Locale::EN` reproduces today's bytes exactly — which the
+//! `insta` snapshots below enforce. That byte-identity is the regression gate
+//! for this whole change: localizing an email must not alter the email anyone
+//! is receiving today.
+//!
+//! **Line structure stays in code; line CONTENT lives in the catalog.** Blank
+//! lines, the `---` footer rule and the order of sections are layout, not
+//! language, and a translator who could move them could break a mail client.
+//! The one place alignment is language-dependent — the padded
+//! `Previous status:` / `New status:` pair — is carried inside the catalog
+//! strings, so a translator aligns their own labels instead of inheriting
+//! English's column.
+//!
+//! ## Why `status.value.*` keys live HERE and not in the shared `status.json`
+//!
+//! The shared catalog renders status chips in the admin UI as `In Progress` /
+//! `Won't Fix` (title case). These emails have said `In progress` / `Won't fix`
+//! (sentence case) since P1. Pointing the email at the shared keys would silently
+//! re-case two shipped emails. Prose and chip labels are different registers, so
+//! they get different keys — see MSG-004 in the Stage-1 collaboration channel.
 
 use feedbackmonk_core::{FeedbackId, FeedbackStatus};
+use feedbackmonk_i18n::{t, t_args, Locale};
 use feedbackmonk_repository::EmailTenantBrand;
 
 /// Rendered email — the wire-ready subject + plain-text body. The mailer
@@ -34,21 +59,38 @@ pub struct ConfirmationContext<'a> {
 }
 
 #[must_use]
-pub fn render_confirmation(brand: &EmailTenantBrand, ctx: &ConfirmationContext<'_>) -> RenderedEmail {
-    let subject = format_subject(brand, ctx.feedback_id, "We received your feedback");
+pub fn render_confirmation(
+    brand: &EmailTenantBrand,
+    ctx: &ConfirmationContext<'_>,
+    locale: Locale,
+) -> RenderedEmail {
+    let subject = format_subject(
+        brand,
+        ctx.feedback_id,
+        &t(locale, "email.confirmation.subject"),
+    );
     let body = format!(
-        "Thanks for sending feedback to {brand_name}.\n\
+        "{intro}\n\
          \n\
-         Reference: {fb_id}\n\
+         {reference}\n\
          \n\
-         Your message:\n\
+         {your_message}\n\
          {body_excerpt}\n\
          \n\
          {footer}",
-        brand_name = brand.brand_name,
-        fb_id = ctx.feedback_id,
+        intro = t_args(
+            locale,
+            "email.confirmation.intro",
+            &[("brandName", &brand.brand_name)],
+        ),
+        reference = t_args(
+            locale,
+            "email.confirmation.referenceLine",
+            &[("feedbackId", ctx.feedback_id.as_str())],
+        ),
+        your_message = t(locale, "email.confirmation.yourMessageHeading"),
         body_excerpt = ctx.body_excerpt,
-        footer = render_footer(brand),
+        footer = render_footer(brand, locale),
     );
     RenderedEmail { subject, body }
 }
@@ -70,29 +112,45 @@ pub struct StatusChangeContext<'a> {
 pub fn render_status_change(
     brand: &EmailTenantBrand,
     ctx: &StatusChangeContext<'_>,
+    locale: Locale,
 ) -> RenderedEmail {
-    let short_subject = format!(
-        "Status updated: {}",
-        status_human(ctx.to_status)
+    let short_subject = t_args(
+        locale,
+        "email.status.subject",
+        &[("status", &status_human(ctx.to_status, locale))],
     );
     let subject = format_subject(brand, ctx.feedback_id, &short_subject);
 
     let mut body = format!(
-        "Your feedback {fb_id} was updated.\n\
+        "{intro}\n\
          \n\
-         Previous status: {from}\n\
-         New status:      {to}\n",
-        fb_id = ctx.feedback_id,
-        from = status_human(ctx.from_status),
-        to = status_human(ctx.to_status),
+         {previous}\n\
+         {new}\n",
+        intro = t_args(
+            locale,
+            "email.status.intro",
+            &[("feedbackId", ctx.feedback_id.as_str())],
+        ),
+        previous = t_args(
+            locale,
+            "email.status.previousLine",
+            &[("status", &status_human(ctx.from_status, locale))],
+        ),
+        new = t_args(
+            locale,
+            "email.status.newLine",
+            &[("status", &status_human(ctx.to_status, locale))],
+        ),
     );
     if let Some(note) = ctx.reason_note {
-        body.push_str("\nNote from the team:\n");
+        body.push('\n');
+        body.push_str(&t(locale, "email.status.noteHeading"));
+        body.push('\n');
         body.push_str(note);
         body.push('\n');
     }
     body.push('\n');
-    body.push_str(&render_footer(brand));
+    body.push_str(&render_footer(brand, locale));
     RenderedEmail { subject, body }
 }
 
@@ -108,18 +166,25 @@ pub struct PublicReplyContext<'a> {
 pub fn render_public_reply(
     brand: &EmailTenantBrand,
     ctx: &PublicReplyContext<'_>,
+    locale: Locale,
 ) -> RenderedEmail {
-    let subject = format_subject(brand, ctx.feedback_id, "Reply from the team");
+    let subject = format_subject(brand, ctx.feedback_id, &t(locale, "email.reply.subject"));
     let body = format!(
-        "The {brand_name} team replied to your feedback {fb_id}.\n\
+        "{intro}\n\
          \n\
          {reply_body}\n\
          \n\
          {footer}",
-        brand_name = brand.brand_name,
-        fb_id = ctx.feedback_id,
+        intro = t_args(
+            locale,
+            "email.reply.intro",
+            &[
+                ("brandName", brand.brand_name.as_str()),
+                ("feedbackId", ctx.feedback_id.as_str()),
+            ],
+        ),
         reply_body = ctx.reply_body,
-        footer = render_footer(brand),
+        footer = render_footer(brand, locale),
     );
     RenderedEmail { subject, body }
 }
@@ -135,33 +200,43 @@ fn format_subject(brand: &EmailTenantBrand, fb_id: &FeedbackId, short_subject: &
 
 /// Plain-text footer per Contract C10. `unsubscribe_url` is optional —
 /// `None` omits the line entirely (no empty "Unsubscribe:" stub).
-fn render_footer(brand: &EmailTenantBrand) -> String {
+///
+/// `footer_signature` is tenant-authored text, so it is never translated —
+/// a customer's sign-off is their words in their language.
+fn render_footer(brand: &EmailTenantBrand, locale: Locale) -> String {
     let mut s = format!(
         "{footer_signature}\n\
          ---\n\
-         You are receiving this because you submitted feedback to {brand_name}.\n\
-         Reply to this email or contact {support_email}.\n",
+         {receiving}\n\
+         {contact}\n",
         footer_signature = brand.footer_signature,
-        brand_name = brand.brand_name,
-        support_email = brand.support_email,
+        receiving = t_args(
+            locale,
+            "email.footer.receivingBecause",
+            &[("brandName", &brand.brand_name)],
+        ),
+        contact = t_args(
+            locale,
+            "email.footer.contact",
+            &[("supportEmail", &brand.support_email)],
+        ),
     );
     if let Some(url) = &brand.unsubscribe_url {
-        s.push_str("Unsubscribe: ");
-        s.push_str(url);
+        s.push_str(&t_args(locale, "email.footer.unsubscribe", &[("url", url)]));
         s.push('\n');
     }
     s
 }
 
-fn status_human(s: FeedbackStatus) -> &'static str {
-    match s {
-        FeedbackStatus::Submitted => "Submitted",
-        FeedbackStatus::Triaged => "Triaged",
-        FeedbackStatus::InProgress => "In progress",
-        FeedbackStatus::Shipped => "Shipped",
-        FeedbackStatus::WontFix => "Won't fix",
-        FeedbackStatus::Duplicate => "Duplicate",
-    }
+/// The human-readable phrase for a status, in the EMAIL's register.
+///
+/// Reads `email.status.value.<db wire value>` — the wire value is the key, so
+/// adding a status is a catalog row and a match arm, never a translation table
+/// in two places. See the module docs for why this is not the shared
+/// `status.*` namespace.
+#[must_use]
+pub fn status_human(s: FeedbackStatus, locale: Locale) -> String {
+    t(locale, &format!("email.status.value.{}", s.as_db_str())).into_owned()
 }
 
 #[cfg(test)]
@@ -209,6 +284,7 @@ mod tests {
                 feedback_id: &id,
                 body_excerpt: "Login button is broken on Safari 17.",
             },
+            Locale::EN,
         );
         insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
         Subject: [acme #FB-ABC123] We received your feedback
@@ -237,6 +313,7 @@ mod tests {
                 feedback_id: &id,
                 body_excerpt: "Login button is broken on Safari 17.",
             },
+            Locale::EN,
         );
         insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
         Subject: [ACME #FB-ABC123] We received your feedback
@@ -269,6 +346,7 @@ mod tests {
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
             },
+            Locale::EN,
         );
         insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
         Subject: [acme #FB-ABC123] Status updated: Triaged
@@ -297,6 +375,7 @@ mod tests {
                 to_status: FeedbackStatus::InProgress,
                 reason_note: Some("We've started work on this. ETA next week."),
             },
+            Locale::EN,
         );
         insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
         Subject: [ACME #FB-ABC123] Status updated: In progress
@@ -328,6 +407,7 @@ mod tests {
                 feedback_id: &id,
                 reply_body: "Thanks — we've reproduced it and pushed a fix.",
             },
+            Locale::EN,
         );
         insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
         Subject: [acme #FB-ABC123] Reply from the team
@@ -353,6 +433,7 @@ mod tests {
                 feedback_id: &id,
                 reply_body: "Thanks — we've reproduced it and pushed a fix.",
             },
+            Locale::EN,
         );
         insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
         Subject: [ACME #FB-ABC123] Reply from the team
@@ -379,6 +460,7 @@ mod tests {
         let r = render_confirmation(
             &brand,
             &ConfirmationContext { feedback_id: &id, body_excerpt: "x" },
+            Locale::EN,
         );
         assert!(r.subject.starts_with("[acme #FB-ABC123]"));
     }
@@ -395,6 +477,7 @@ mod tests {
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
             },
+            Locale::EN,
         );
         assert!(!r.body.contains("Unsubscribe"));
     }
@@ -411,6 +494,7 @@ mod tests {
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
             },
+            Locale::EN,
         );
         assert!(r.body.contains("Unsubscribe: https://acme.example/unsub?u=abc"));
     }
@@ -427,6 +511,7 @@ mod tests {
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
             },
+            Locale::EN,
         );
         assert!(!r.body.contains("Note from the team"));
     }
@@ -439,6 +524,7 @@ mod tests {
             render_confirmation(
                 &brand,
                 &ConfirmationContext { feedback_id: &id, body_excerpt: "x" },
+                Locale::EN,
             ).body,
             render_status_change(
                 &brand,
@@ -448,10 +534,12 @@ mod tests {
                     to_status: FeedbackStatus::Shipped,
                     reason_note: None,
                 },
+                Locale::EN,
             ).body,
             render_public_reply(
                 &brand,
                 &PublicReplyContext { feedback_id: &id, reply_body: "y" },
+                Locale::EN,
             ).body,
         ];
         for b in bodies {

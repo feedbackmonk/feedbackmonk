@@ -44,9 +44,9 @@ adds per-tenant brand resolution that the signup path doesn't need.
 | File | One-line summary |
 |------|---|
 | `mod.rs` | Module surface — `pub use` re-exports of every type Worker A's handlers consume. |
-| `templates.rs` | Plain-text template renderers: `render_confirmation`, `render_status_change`, `render_public_reply`. Brand-parameterised; locked by `insta` snapshots. |
-| `send.rs` | `EmailNotifier` trait + `LettreEmailNotifier` (lettre SMTP) + `RecordingEmailNotifier` (test). `is_submitter_visible_transition` filters re-open/un-merge from the email path. |
-| `mailpit.rs` | P0 signup-verification mailer over Mailpit (dev). Not part of FR-FBR-09 — kept here for module cohesion with `env_smtp.rs`. |
+| `templates.rs` | Plain-text template renderers: `render_confirmation`, `render_status_change`, `render_public_reply`. Brand- AND locale-parameterised; every literal comes from `i18n/locales/<code>/email.json`. English is locked byte-for-byte by `insta` snapshots. |
+| `send.rs` | `EmailNotifier` trait + `LettreEmailNotifier` (lettre SMTP) + `RecordingEmailNotifier` (test). `is_submitter_visible_transition` filters re-open/un-merge from the email path. `resolve_recipient_locale` / `resolve_account_locale` are the two FR-FBR-37 language ladders. |
+| `mailpit.rs` | P0 signup-verification + password-reset mailer over Mailpit (dev), plus the four catalog-driven body renderers both mailers share. Not part of FR-FBR-09 — kept here for module cohesion with `env_smtp.rs`. |
 | `env_smtp.rs` | P0 signup-verification mailer over env-driven SMTP (prod). |
 | `README.md` | This file. |
 
@@ -63,8 +63,12 @@ let rendered: RenderedEmail = render_status_change(&brand, &StatusChangeContext 
     from_status: FeedbackStatus::Submitted,
     to_status:   FeedbackStatus::Triaged,
     reason_note: None,
-});
+}, Locale::EN);
 ```
+
+`Locale` is required, not optional (FR-FBR-37). An `Option` defaulting to English would make
+"forgot to pass the language" produce output indistinguishable from correct output — the one
+failure mode a localized email system cannot afford.
 
 ### Send chokepoint (handlers)
 
@@ -73,9 +77,13 @@ use feedbackmonk_api::email::{EmailKind, EmailContext, EmailNotifier};
 
 state.email_notifier
     .send_email(scope.tenant(), EmailKind::StatusChange { from, to, reason_note },
-                EmailContext { feedback_id, submitter_email: feedback.end_user_email, .. })
+                EmailContext { feedback_id, submitter_email: feedback.end_user_email,
+                   submitter_locale: feedback.submitter_locale, .. })
     .await?;
 ```
+
+The chokepoint resolves the language itself — hand it `submitter_locale` straight off the
+`Feedback` row and it applies the ladder below.
 
 ### Submitter-visibility filter (handlers)
 
@@ -106,6 +114,25 @@ if is_submitter_visible_transition(to_status) {
   source of truth, the email is best-effort notification.
 - **Subject format is Contract-locked.** `[{email_subject_prefix} #{FB-id}] {short_subject}`
   is byte-for-byte from Contract C10. The insta snapshots lock this.
+- **The recipient's language is resolved at the chokepoint, not at the call site.** Two ladders,
+  because the two kinds of mail have two different recipients:
+  - **Notification mail** (confirmation / status-change / public-reply) goes to the SUBMITTER:
+    `feedback.submitter_locale` → `tenants.locale` → English (`resolve_recipient_locale`). The
+    submitter's own captured language wins over the admin's setting; the tenant value is a fallback
+    for rows that carry none, not a default that overrides one.
+  - **Account mail** (verify / password reset) goes to the ADMIN: `tenants.locale` →
+    `Accept-Language` of the request → English (`resolve_account_locale`). At signup there is no
+    stored setting yet, so the signing-up browser is the only signal there is.
+  A tenant-locale read failure degrades to English with a `warn!` — it must never swallow the email.
+- **English output is byte-locked.** Moving every literal into `i18n/locales/en/email.json` must not
+  change a single byte any recipient sees. Ten `insta` snapshots enforce it: six on the three
+  feedback templates × two brand fixtures, four on the account emails' text and HTML parts (which
+  had no test at all before FR-FBR-37 — the gap most likely to have hidden a silent drift).
+- **A missing translation renders English, never a raw key.** Fallback is per key (C35 rule 6), and
+  `every_shipped_locale_renders_both_account_emails_without_raw_keys` asserts it across all 31
+  locales for every catalog state, including today's untranslated skeletons.
+- **Tenant-authored text is never translated.** `footer_signature` is the customer's own sign-off;
+  brand names (`feedbackmonk`, the tenant's `brand_name`) are names. Both pass through verbatim.
 - **Re-open transitions are silent.** `Submitted → Submitted` is not a real
   transition (rejected by the state machine). `WontFix/Duplicate → Submitted`
   is a re-open / un-merge — Contract C6 admin-internal correction. The
@@ -122,8 +149,13 @@ if is_submitter_visible_transition(to_status) {
 - **Consumed by**:
   - `handlers/admin_feedback.rs::transition_status` (StatusChange emails)
   - `handlers/admin_feedback.rs::reply` (PublicReply emails)
-  - (P0 carry-state path) `handlers/signup.rs` uses the separate
-    `Mailer::send_verify_email` path, NOT this chokepoint.
+  - (P0 carry-state path) `handlers/signup.rs` and `handlers/account_recovery.rs` use the separate
+    `Mailer::{send_verify_email, send_password_reset_email}` path, NOT this chokepoint. Both pass a
+    `Locale` from `resolve_account_locale`.
+- **Reads** the catalogs and `Locale` from `feedbackmonk_i18n` (Contract C40). The catalogs are
+  compiled in, so rendering does no file I/O and cannot fail on a missing bundle.
+- **Reads** `tenants.locale` via `TenantRepo::get_locale` (migration 00032), written by the C38
+  settings endpoint in `handlers/tenant_settings.rs`.
 
 ## 6. Decision Log
 

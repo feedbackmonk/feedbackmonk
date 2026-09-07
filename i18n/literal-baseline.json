@@ -1,0 +1,253 @@
+{
+  "admin-ui/src/components/ReplyComposer.tsx": [
+    "Reply",
+    "Reply body",
+    "Visibility"
+  ],
+  "admin-ui/src/components/SearchBox.tsx": [
+    "\"exact phrase\"",
+    "-exclude",
+    "this OR that"
+  ],
+  "admin-ui/src/components/SentimentTrendChart.tsx": [
+    "No sentiment data yet",
+    "Period start",
+    "Total",
+    "Totals"
+  ],
+  "admin-ui/src/components/StatusControls.tsx": [
+    "Terminal — no further transitions.",
+    "Transition status"
+  ],
+  "admin-ui/src/pages/FeedbackDrawer.tsx": [
+    "Body",
+    "Close drawer",
+    "From",
+    "Kind",
+    "Loading…",
+    "No status changes yet.",
+    "Replies",
+    "Reply visibility",
+    "Sentiment",
+    "Status",
+    "Status history",
+    "Submitted"
+  ],
+  "admin-ui/src/pages/FeedbackList.tsx": [
+    "Excerpt",
+    "Feedback",
+    "Filter by status",
+    "From",
+    "ID",
+    "Kind",
+    "Loading…",
+    "No sentiment",
+    "Replies",
+    "Sentiment",
+    "Status",
+    "Submitted"
+  ],
+  "admin-ui/src/pages/Login.tsx": [
+    "Email",
+    "Password",
+    "Sign in to triage feedback.",
+    "feedbackmonk Admin"
+  ],
+  "admin-ui/src/pages/autopilot/AutonomyRungDial.tsx": [
+    "Autonomy rung",
+    "after"
+  ],
+  "admin-ui/src/pages/autopilot/AutopilotDigest.tsx": [
+    "Autopilot",
+    "Loading digest…",
+    "Loading…",
+    "No clusters yet. They form automatically as feedback arrives.",
+    "No digest summary recorded for this sweep.",
+    "What changed since the last sweep",
+    "Why this priority:"
+  ],
+  "admin-ui/src/pages/autopilot/Board.tsx": [
+    "Board",
+    "Loading…",
+    "Nothing here.",
+    "Work orders by state",
+    "full list"
+  ],
+  "admin-ui/src/pages/autopilot/BoardCard.tsx": [
+    "Claimed by runner",
+    "Owner-authored story",
+    "Routed to runner"
+  ],
+  "admin-ui/src/pages/autopilot/ClusterDetail.tsx": [
+    "Loading cluster…",
+    "Loading…",
+    "No feedback in this cluster.",
+    "Why this priority:"
+  ],
+  "admin-ui/src/pages/autopilot/NewStory.tsx": [
+    "Action type",
+    "Instructions",
+    "Loading…",
+    "New story",
+    "Title",
+    "Work order drafted.",
+    "sub"
+  ],
+  "admin-ui/src/pages/autopilot/RecommendationCard.tsx": [
+    "Grounding evidence",
+    "Rationale",
+    "Reason (optional)",
+    "Recommendation",
+    "Recommendation decision",
+    "Recommendation detail",
+    "Recommendation rejected.",
+    "Reject recommendation",
+    "Routing label (optional)",
+    "Source references",
+    "Title (authoritative)",
+    "sub"
+  ],
+  "admin-ui/src/pages/autopilot/SourceRefList.tsx": [
+    "No source references cited."
+  ],
+  "admin-ui/src/pages/autopilot/WorkOrderDetail.tsx": [
+    "Action",
+    "Approved",
+    "Autonomy rung",
+    "Claimed by",
+    "Event ledger",
+    "Failure",
+    "Instructions",
+    "Loading work order…",
+    "Loading…",
+    "No events yet.",
+    "Note (optional)",
+    "Owner actions",
+    "Provenance",
+    "Routing",
+    "State",
+    "Title",
+    "Work-order metadata"
+  ],
+  "admin-ui/src/pages/autopilot/WorkOrderList.tsx": [
+    "Action",
+    "Loading…",
+    "Rung",
+    "State",
+    "Title",
+    "Updated",
+    "Work orders"
+  ],
+  "admin-ui/src/pages/autopilot/badges.tsx": [
+    "Confidence"
+  ],
+  "admin-ui/src/pages/moderation/ModerationActions.tsx": [
+    "Reason note (optional)"
+  ],
+  "admin-ui/src/pages/moderation/ModerationQueue.tsx": [
+    "Actions",
+    "Excerpt",
+    "Filter by moderation status",
+    "From",
+    "ID",
+    "Kind",
+    "Moderation",
+    "Submitted"
+  ],
+  "admin-ui/src/pages/roadmap/AdminRoadmap.tsx": [
+    "Body",
+    "Initial status",
+    "Loading…",
+    "New roadmap item",
+    "No items.",
+    "Roadmap (admin)",
+    "Roadmap item created.",
+    "Roadmap item updated.",
+    "Slug (kebab-case, 1–80 chars)",
+    "Status",
+    "Title"
+  ],
+  "admin-ui/src/pages/roadmap/PromoteButton.tsx": [
+    "(auto from feedback body)",
+    "Promote to roadmap",
+    "Promoted to roadmap."
+  ],
+  "admin-ui/src/pages/settings/BoardSettings.tsx": [
+    "Board settings",
+    "Board settings saved.",
+    "Could not save board settings.",
+    "Enable public board",
+    "Loading…",
+    "Public board",
+    "Require moderation"
+  ],
+  "admin-ui/src/pages/settings/HostingSettings.tsx": [
+    "Actions",
+    "Add your hostname below.",
+    "Could not add that domain.",
+    "Could not remove that domain.",
+    "Could not update your public address.",
+    "Domain",
+    "Domain added. Point your DNS at us to finish.",
+    "Domain removed.",
+    "Hostname",
+    "Public address",
+    "Public address updated.",
+    "Status",
+    "Subdomain",
+    "Your custom domains",
+    "Your own domain",
+    "Your subdomain",
+    "and",
+    "connect-src"
+  ],
+  "admin-ui/src/pages/settings/LanguageSettings.tsx": [
+    "Browser default",
+    "Default language",
+    "Language",
+    "Language saved."
+  ],
+  "admin-ui/src/pages/settings/RunnerTokenCard.tsx": [
+    "Expires",
+    "Registered",
+    "Revoke failed. Please try again.",
+    "Revoked",
+    "Token ID (jti)",
+    "no expiry recorded"
+  ],
+  "admin-ui/src/pages/settings/RunnerTokens.tsx": [
+    ", record its",
+    "Expires (optional)",
+    "How runners authenticate",
+    "Label",
+    "Loading…",
+    "Public key (base64)",
+    "Register a runner key",
+    "Register an issued token",
+    "Runner tokens",
+    "Token ID (jti)",
+    "base64 of the 32-byte raw Ed25519 public key",
+    "ci-runner",
+    "dispatched",
+    "feedbackmonk never holds your private key.",
+    "feedbackmonk-runner mint-token",
+    "half here as a",
+    "jti",
+    "never approve one",
+    "public",
+    "runner",
+    "runner write-token",
+    "the token's jti claim (a UUID)"
+  ],
+  "admin-ui/src/pages/settings/RunnerTokensList.tsx": [
+    "Registered tokens"
+  ],
+  "admin-ui/src/pages/settings/TierSettings.tsx": [
+    "Capabilities",
+    "Loading…",
+    "Usage"
+  ],
+  "admin-ui/src/pages/settings/UpgradePrompt.tsx": [
+    "Upgrade options"
+  ]
+}

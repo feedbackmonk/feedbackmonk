@@ -2,5 +2,82 @@
   "_meta": {
     "language": "English",
     "status": "source"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Feedback",
+      "openAria": "Open feedback form for {{brand}}"
+    },
+    "modal": {
+      "title": "Send feedback",
+      "description": "Tell us what's on your mind. Submissions are sent to {{brand}}.",
+      "closeAria": "Close feedback form",
+      "logoAlt": "{{brand}} logo"
+    },
+    "form": {
+      "subject": "Subject",
+      "kind": "Type",
+      "message": "Message",
+      "counter": "{{n}} / {{max}}",
+      "email": "Email (optional)",
+      "logConsent": "Include diagnostic logs to help us debug",
+      "cancel": "Cancel",
+      "send": "Send",
+      "sending": "Sending…"
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "Feature request",
+      "question": "Question",
+      "other": "Other"
+    },
+    "attach": {
+      "label": "Screenshots (optional)",
+      "help": "PNG, JPEG, or WebP · up to {{max}} · 5 MB each. Redact sensitive areas before sending.",
+      "button": "Attach screenshot",
+      "buttonFull_one": "Maximum {{count}} screenshot",
+      "buttonFull_other": "Maximum {{count}} screenshots",
+      "listAria": "Attached screenshots",
+      "previewAlt": "Preview of {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · redacted",
+      "redact": "Redact",
+      "redactAria": "Redact {{name}}",
+      "reRedactAria": "Re-redact {{name}}",
+      "remove": "Remove",
+      "removeAria": "Remove {{name}}",
+      "loading": "Loading…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Only PNG, JPEG, or WebP images can be attached.",
+      "errorSize": "Each image must be 5 MB or smaller.",
+      "errorMax_one": "You can attach at most {{count}} screenshot.",
+      "errorMax_other": "You can attach at most {{count}} screenshots.",
+      "errorRedactLoad": "The redaction tool could not be loaded. You can still send the image as-is."
+    },
+    "redact": {
+      "title": "Redact screenshot",
+      "hint": "Drag across the image to black out sensitive areas, then apply.",
+      "canvasAria": "Screenshot redaction surface. Drag with a pointer to add black-out boxes.",
+      "undo": "Undo",
+      "apply": "Apply redaction"
+    },
+    "status": {
+      "sent": "Thanks — your feedback was sent.",
+      "sentAttachmentsFailed": "Feedback sent — but attachments couldn't be uploaded."
+    },
+    "error": {
+      "invalid_input": "Subject and message are required.",
+      "network_error": "Could not send. Try again in a moment.",
+      "payload_too_large": "That's too large to send. Try removing an attachment.",
+      "rate_limited": "Too many submissions just now. Please try again in a minute.",
+      "tier_cap": "This project has reached its feedback limit. Please contact the site owner.",
+      "unauthorized": "Your session has expired. Reload the page and try again.",
+      "not_found": "This feedback form is no longer available.",
+      "http_4xx": "Could not send. Check your entry and try again.",
+      "http_5xx": "Something went wrong on our side. Please try again shortly.",
+      "generic": "Could not send. Try again in a moment."
+    }
   }
 }

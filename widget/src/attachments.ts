@@ -5,6 +5,7 @@ import type {
   MountOptions,
 } from "./types.js";
 import { readError, resolveApiBase } from "./api.js";
+import { t } from "./i18n.js";
 import { createElement } from "./ui.js";
 
 // Attachment capture + upload for the feedbackmonk widget.
@@ -118,9 +119,11 @@ interface Item {
 }
 
 function humanSize(bytes: number): string {
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  if (bytes < 1024) return t("widget.attach.sizeBytes", { n: bytes });
+  if (bytes < 1024 * 1024) {
+    return t("widget.attach.sizeKb", { n: Math.round(bytes / 1024) });
+  }
+  return t("widget.attach.sizeMb", { n: (bytes / (1024 * 1024)).toFixed(1) });
 }
 
 function baseName(name: string): string {
@@ -130,10 +133,10 @@ function baseName(name: string): string {
 
 function validate(file: File): string | null {
   if (!ALLOWED_TYPES.includes(file.type)) {
-    return "Only PNG, JPEG, or WebP images can be attached.";
+    return t("widget.attach.errorType");
   }
   if (file.size > MAX_BYTES) {
-    return "Each image must be 5 MB or smaller.";
+    return t("widget.attach.errorSize");
   }
   return null;
 }
@@ -142,13 +145,13 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
   const items: Item[] = [];
 
   const container = createElement("div", "fbm-field fbm-attach");
-  const label = createElement("span", "fbm-attach-label", "Screenshots (optional)");
+  const label = createElement("span", "fbm-attach-label", t("widget.attach.label"));
 
   const helpId = "fbm-attach-help-" + Math.random().toString(36).slice(2, 8);
   const help = createElement(
     "span",
     "fbm-attach-help",
-    "PNG, JPEG, or WebP · up to 4 · 5 MB each. Redact sensitive areas before sending.",
+    t("widget.attach.help", { max: MAX_FILES }),
   );
   help.id = helpId;
 
@@ -162,7 +165,7 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
   const attachBtn = createElement(
     "button",
     "fbm-btn fbm-btn-secondary fbm-attach-btn",
-    "Attach screenshot",
+    t("widget.attach.button"),
   );
   attachBtn.type = "button";
   attachBtn.setAttribute("aria-describedby", helpId);
@@ -174,7 +177,7 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
   errorRegion.hidden = true;
 
   const list = createElement("ul", "fbm-attach-list");
-  list.setAttribute("aria-label", "Attached screenshots");
+  list.setAttribute("aria-label", t("widget.attach.listAria"));
 
   container.append(label, help, attachBtn, input, errorRegion, list);
 
@@ -192,8 +195,8 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
     const full = items.length >= MAX_FILES;
     attachBtn.disabled = full;
     attachBtn.textContent = full
-      ? "Maximum 4 screenshots"
-      : "Attach screenshot";
+      ? t("widget.attach.buttonFull", { count: MAX_FILES })
+      : t("widget.attach.button");
   }
 
   function removeItem(it: Item): void {
@@ -210,11 +213,14 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
   async function redactItem(it: Item): Promise<void> {
     it.redactBtn.disabled = true;
     const prev = it.redactBtn.textContent;
-    it.redactBtn.textContent = "Loading…";
+    it.redactBtn.textContent = t("widget.attach.loading");
     try {
       // Same-origin code-split chunk — only fetched on first redact.
       const mod = await import("./redact.js");
-      const result = await mod.redactImage(it.file, root);
+      // `t` is PASSED IN, not imported by redact.ts: an import would make
+      // Rollup hoist i18n.ts into a chunk shared with the entry, adding a
+      // network round trip to every page load to save nothing.
+      const result = await mod.redactImage(it.file, root, t);
       if (result) {
         URL.revokeObjectURL(it.url);
         it.file = result;
@@ -222,14 +228,20 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
         it.url = URL.createObjectURL(result);
         it.thumb.src = it.url;
         it.redacted = true;
-        it.nameEl.textContent = it.name + " · redacted";
-        it.redactBtn.setAttribute("aria-label", "Re-redact " + it.name);
+        it.nameEl.textContent = t("widget.attach.nameRedacted", { name: it.name });
+        it.redactBtn.setAttribute(
+          "aria-label",
+          t("widget.attach.reRedactAria", { name: it.name }),
+        );
       }
     } catch {
-      setError("The redaction tool could not be loaded. You can still send the image as-is.");
+      setError(t("widget.attach.errorRedactLoad"));
     } finally {
       it.redactBtn.disabled = false;
-      it.redactBtn.textContent = prev || "Redact";
+      // `prev` is already localized (it was read off the button); the fallback
+      // has to be too, or a locale whose chunk arrived late would restore an
+      // English label onto an otherwise translated button.
+      it.redactBtn.textContent = prev || t("widget.attach.redact");
     }
   }
 
@@ -241,13 +253,16 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
 
     const thumb = createElement("img", "fbm-thumb");
     thumb.src = url;
-    thumb.alt = "Preview of " + file.name;
+    thumb.alt = t("widget.attach.previewAlt", { name: file.name });
 
     const meta = createElement("div", "fbm-attach-meta");
     const nameEl = createElement(
       "span",
       "fbm-attach-name",
-      file.name + " (" + humanSize(file.size) + ")",
+      t("widget.attach.nameSize", {
+        name: file.name,
+        size: humanSize(file.size),
+      }),
     );
     meta.appendChild(nameEl);
 
@@ -255,18 +270,24 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
     const redactBtn = createElement(
       "button",
       "fbm-btn fbm-btn-secondary fbm-attach-mini",
-      "Redact",
+      t("widget.attach.redact"),
     );
     redactBtn.type = "button";
-    redactBtn.setAttribute("aria-label", "Redact " + file.name);
+    redactBtn.setAttribute(
+      "aria-label",
+      t("widget.attach.redactAria", { name: file.name }),
+    );
 
     const removeBtn = createElement(
       "button",
       "fbm-btn fbm-btn-secondary fbm-attach-mini",
-      "Remove",
+      t("widget.attach.remove"),
     );
     removeBtn.type = "button";
-    removeBtn.setAttribute("aria-label", "Remove " + file.name);
+    removeBtn.setAttribute(
+      "aria-label",
+      t("widget.attach.removeAria", { name: file.name }),
+    );
 
     controls.append(redactBtn, removeBtn);
     li.append(thumb, meta, controls);
@@ -293,7 +314,7 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
     setError(null);
     for (const file of Array.from(files)) {
       if (items.length >= MAX_FILES) {
-        setError("You can attach at most 4 screenshots.");
+        setError(t("widget.attach.errorMax", { count: MAX_FILES }));
         break;
       }
       const err = validate(file);

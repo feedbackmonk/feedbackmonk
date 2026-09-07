@@ -27,6 +27,7 @@ import {
   uploadAttachments,
   type AttachmentsController,
 } from "./attachments.js";
+import { activeLocale, loadLocale, resolveLocale, t } from "./i18n.js";
 import type { CapturedLogs } from "./types.js";
 
 // feedbackmonk widget entry point.
@@ -36,11 +37,17 @@ import type { CapturedLogs } from "./types.js";
 // "@feedbackmonk/widget"; mountFeedbackMonk({ projectId: "…", jwt: "…" })`.
 //
 // Load-bearing constraints:
-//   - CSP-safe (no inline scripts, no eval, no Function constructor, no
-//     dynamic import). Verified by Probe B of widget-bundle-size oracle.
+//   - CSP-safe: no inline scripts, no eval, no Function constructor. Dynamic
+//     `import()` IS used — for `redact.js` and for the per-locale catalog
+//     chunks — but only same-origin and only from a generated list of literal
+//     specifiers, which `script-src 'self'` permits (proved on every commit by
+//     e2e/fixture-csp.html). No computed specifier ever reaches `import()`.
 //   - No third-party trackers (DEC-FBR-02). Verified by Probe B.
-//   - <30KB bundled (FR-FBR-04). Verified by Probe A.
+//   - English page-load set <30KB (FR-FBR-04); each locale chunk <4KB (C42).
+//     Verified by Probes A and C of the widget-bundle-size oracle.
 //   - A11y: keyboard trap inside modal; ESC closes; focus returns to launcher.
+//   - The widget speaks the host page's language (FR-FBR-35) and declares it:
+//     `lang` + `dir` on its own root, never inherited from the host.
 
 interface WidgetState {
   root: HTMLDivElement;
@@ -132,6 +139,41 @@ function resolveTheme(opts: MountOptions): MountOptions {
   return opts;
 }
 
+// UI language from the script tag's `data-locale` attribute (FR-FBR-35,
+// Contract C36). The HOST decides the language — it already knows the user's
+// (a cookie, an account setting, its own `<html lang>`); the widget only
+// follows. Precedence, resolved once at mount:
+//   data-locale / MountOptions.locale → host <html lang> → navigator.languages → en
+// The value is resolved through the C34 table before it is used anywhere, so
+// an unshipped or hostile attribute value degrades to `en` and can never reach
+// the `lang` attribute or the `import()` path.
+function resolveLocaleOption(opts: MountOptions): MountOptions {
+  let explicit = opts.locale;
+  if (!explicit) {
+    const scripts = document.querySelectorAll<HTMLScriptElement>(
+      "script[data-locale]",
+    );
+    for (const s of Array.from(scripts)) {
+      const l = s.getAttribute("data-locale");
+      if (l) {
+        explicit = l;
+        break;
+      }
+    }
+  }
+  // One ordered candidate list, resolved by the shared C34 resolver — the same
+  // shape `navigator.languages` and `Accept-Language` take, so the widget, the
+  // SPA and the Rust crate all answer with one implementation.
+  return {
+    ...opts,
+    locale: resolveLocale([
+      explicit,
+      document.documentElement.getAttribute("lang"),
+      ...(navigator.languages ?? []),
+    ]),
+  };
+}
+
 // Launcher-less mode from the script tag's `data-fbm-no-auto-mount` attribute
 // (DEC-FBR-IMPL-13). When set, the widget initializes WITHOUT the floating
 // launcher; the embedder opens the modal via `[data-feedback-open]` or
@@ -203,19 +245,25 @@ async function performSubmit(state: WidgetState): Promise<void> {
   const body = els.bodyTextarea.value.trim();
   const kind = els.kindSelect.value as WidgetSubmissionKind;
   if (!subject || !body) {
-    showError(els, {
-      code: "invalid_input",
-      message: "Subject and message are required.",
-    });
+    showError(els, "invalid_input");
     return;
   }
-  const payload: SubmitFeedbackRequest = { kind, subject, body };
+  // C37: the resolved locale rides along with every submission so status
+  // emails can answer in the language the person wrote in. Always a C34 code
+  // (never raw input), and an unknown value is ignored server-side rather than
+  // rejected — a locale must never be able to break a submission.
+  const payload: SubmitFeedbackRequest = {
+    kind,
+    subject,
+    body,
+    locale: activeLocale(),
+  };
   if (els.emailInput && els.emailInput.value.trim()) {
     payload.email = els.emailInput.value.trim();
   }
   state.submitting = true;
   els.submitBtn.disabled = true;
-  els.submitBtn.textContent = "Sending…";
+  els.submitBtn.textContent = t("widget.form.sending");
   try {
     const resp = await submitFeedback(state.projectId, payload, state.opts);
     // Gather attachments + consented logs BEFORE closeModal (which destroys
@@ -247,25 +295,19 @@ async function performSubmit(state: WidgetState): Promise<void> {
     closeModal(state);
     showToast(
       state.root,
-      attachOk
-        ? "Thanks — your feedback was sent."
-        : "Feedback sent — but attachments couldn't be uploaded.",
+      t(attachOk ? "widget.status.sent" : "widget.status.sentAttachmentsFailed"),
       attachOk ? "success" : "error",
     );
   } catch (err) {
     const apiErr = err as ApiError;
-    if (apiErr && typeof apiErr.code === "string") {
-      showError(els, apiErr);
-    } else {
-      showError(els, {
-        code: "network_error",
-        message: "Could not send. Try again in a moment.",
-      });
-    }
+    showError(
+      els,
+      apiErr && typeof apiErr.code === "string" ? apiErr.code : "network_error",
+    );
   } finally {
     state.submitting = false;
     els.submitBtn.disabled = false;
-    els.submitBtn.textContent = "Send";
+    els.submitBtn.textContent = t("widget.form.send");
   }
 }
 
@@ -325,16 +367,37 @@ function destroyWidget(state: WidgetState): void {
 export async function mountFeedbackMonk(
   options: MountOptions = {},
 ): Promise<FeedbackMonkHandle | undefined> {
-  const opts = resolveNoLauncher(
-    resolveTheme(resolveCaptureConsole(resolveApiBase(resolveJwt(options)))),
+  const opts = resolveLocaleOption(
+    resolveNoLauncher(
+      resolveTheme(resolveCaptureConsole(resolveApiBase(resolveJwt(options)))),
+    ),
   );
   const projectId = resolveProjectId(opts);
   if (!projectId) {
     return undefined;
   }
+  // Start the catalog chunk NOW, in parallel with the config fetch below, and
+  // await both together: nothing is rendered before the config arrives anyway,
+  // so the locale costs max(config, chunk) rather than config + chunk. A chunk
+  // that fails or 404s leaves the widget in English (loadLocale never throws).
+  const localeReady = loadLocale(opts.locale ?? "en");
   // Install console capture eagerly (if opted in) so logs that precede the
   // user opening the modal are still captured. No-op + zero overhead otherwise.
   const consoleLog = opts.captureConsole ? installConsoleCapture() : null;
+  let config: WidgetConfig;
+  try {
+    const [fetched] = await Promise.all([
+      fetchWidgetConfig(projectId, opts),
+      localeReady,
+    ]);
+    config = fetched;
+  } catch {
+    // Silently no-op if the project is unknown or backend unreachable.
+    // The customer's page should not be impacted by widget errors.
+    return undefined;
+  }
+  // Root is created AFTER the locale settles so `lang`/`dir` are right on the
+  // first paint — no flash of a mis-declared language.
   const root = createRoot();
   document.body.appendChild(root);
   const state: WidgetState = {
@@ -354,15 +417,6 @@ export async function mountFeedbackMonk(
     destroyed: false,
     handleOpen: () => openModal(state),
   };
-  let config: WidgetConfig;
-  try {
-    config = await fetchWidgetConfig(projectId, opts);
-  } catch {
-    // Silently no-op if the project is unknown or backend unreachable.
-    // The customer's page should not be impacted by widget errors.
-    root.remove();
-    return undefined;
-  }
   state.config = config;
   // Theme precedence: explicit option / data-theme → per-tenant brand default
   // → "auto" (DEC-FBR-IMPL-12).

@@ -21,6 +21,10 @@ Renders the user-facing surface for FR-FBR-14 (Tier enforcement). Stage 1 (commi
 | `UsageMeter.tsx` | Reusable accessible progressbar with `unlimited` rendering convention |
 | `UpgradePrompt.tsx` | Tier-aware upgrade CTA; renders nothing on Self-host |
 | `__tests__/TierSettings.test.tsx` | Vitest suite — 13 tests; **inlined Contract C19 fixture is the Stage-2-side drift surface** paired with `tier-enforcement-status` Probe B |
+| `LanguageSettings.tsx` | `/admin/settings/language` — the tenant's default UI locale (FR-FBR-38, Contract C38); applies the saved language immediately |
+| `__tests__/LanguageSettings.test.tsx` | Vitest suite — precedence of "Browser default" (null), PUT shape, immediate application, `invalid_locale` rejection |
+
+> This directory has grown past the tier page it was originally written for: `BoardSettings.tsx`, `HostingSettings.tsx`, `RunnerTokens.tsx` and `RunnerTokenCard.tsx` also live here and are documented in their own file headers rather than this index. Consolidating them is Stage-2 (W-D) work, listed in that lane's deltas.
 
 E2E a11y coverage lives in `admin-ui/e2e/tier-settings-a11y.spec.ts` (Playwright + axe-core, 4/4 PASS, 0 violations on Free / Starter / Pro / Self-host).
 

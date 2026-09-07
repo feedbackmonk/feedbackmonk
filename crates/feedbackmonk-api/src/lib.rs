@@ -55,6 +55,7 @@ pub use handlers::roadmap::{admin_roadmap_router, roadmap_router};
 pub use handlers::widget_config::widget_config_router;
 // FR-FBR-32/33 (Contracts C32/C33): host-based tenant resolution + custom domains.
 pub use handlers::domains::{domains_router, DomainAdminState};
+pub use handlers::tenant_settings::{tenant_settings_router, LocaleSettingsResponse};
 pub use handlers::public_site::{public_site_router, PublicSiteState};
 pub use hosting::{
     bind_admin_routes, bind_public_routes, HostConfig, HostScope, HostState,

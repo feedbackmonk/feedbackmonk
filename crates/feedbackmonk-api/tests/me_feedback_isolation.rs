@@ -62,10 +62,10 @@ use feedbackmonk_repository::{
 struct StubMailer;
 #[async_trait::async_trait]
 impl Mailer for StubMailer {
-    async fn send_verify_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+    async fn send_verify_email(&self, _to: &str, _link: &str, _locale: feedbackmonk_i18n::Locale) -> anyhow::Result<()> {
         Ok(())
     }
-    async fn send_password_reset_email(&self, _to: &str, _link: &str) -> anyhow::Result<()> {
+    async fn send_password_reset_email(&self, _to: &str, _link: &str, _locale: feedbackmonk_i18n::Locale) -> anyhow::Result<()> {
         Ok(())
     }
 }

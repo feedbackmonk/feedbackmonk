@@ -53,6 +53,7 @@ use feedbackmonk_api::{
     me_feedback_data_router, me_feedback_router, moderation_router, ops_router, parse_origins,
     promote_router, public_cors_layer, public_site_router, recommendation_admin_router,
     roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
+    tenant_settings_router,
     spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
     work_order_admin_router, work_order_runner_router, AccountRecoveryState, AttachmentState,
     DomainAdminState, HostConfig, HostState, MeFeedbackDataState, PublicRateLimit,
@@ -668,6 +669,11 @@ fn build_app(
         // surface (AdminSession, no CORS); the tier gate fires inside the claim
         // handler.
         .merge(bind_admin_routes(domains_router(domain_admin_state), hs.clone()))
+        // FR-FBR-38 / C38: tenant Language settings. Admin-only, one origin.
+        .merge(bind_admin_routes(
+            tenant_settings_router(state.clone()),
+            hs.clone(),
+        ))
         .merge(bind_public_routes(
             apply_public_rate_limit(
                 attachments_router(attachment_state).layer(cors.clone()),

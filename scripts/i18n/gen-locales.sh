@@ -14,7 +14,7 @@ for c in python3 python py; do
     fi
 done
 if [ -z "$PY" ]; then
-    echo "FAIL host-tenant-binding (python3 not found)"
+    echo "FAIL gen-locales (python3 not found)"
     exit 2
 fi
 exec "$PY" "$script_dir/gen-locales.py" "$@"

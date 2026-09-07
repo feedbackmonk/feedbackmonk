@@ -42,7 +42,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
@@ -61,7 +61,7 @@ use feedbackmonk_repository::{EmailVerificationRepo, PasswordResetRepo, TenantRe
 use crate::auth::password::hash_password;
 use crate::auth::session::clear_session_cookie;
 use crate::auth::AdminSession;
-use crate::email::Mailer;
+use crate::email::{resolve_account_locale, Mailer};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -178,6 +178,7 @@ pub async fn logout(
 pub async fn password_reset_request(
     State(state): State<AccountRecoveryState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<EmailBody>,
 ) -> Result<Response, ApiError> {
     let email = req.email.trim().to_ascii_lowercase();
@@ -199,7 +200,15 @@ pub async fn password_reset_request(
             state.password_resets.create(&scope, &digest, expires_at).await?;
 
             let link = format!("{}/reset-password?token={token}", state.public_url);
-            if let Err(e) = state.mailer.send_password_reset_email(&email, &link).await {
+            // FR-FBR-37: this tenant exists, so their Language setting leads;
+            // the requesting browser is the fallback.
+            let tenant_locale = state.tenants.get_locale(&scope).await.unwrap_or(None);
+            let locale = resolve_account_locale(tenant_locale.as_deref(), &headers);
+            if let Err(e) = state
+                .mailer
+                .send_password_reset_email(&email, &link, locale)
+                .await
+            {
                 // Do NOT surface send failure to the caller (that would leak
                 // account existence + is an email-independent transient).
                 tracing::error!(error = %e, tenant_id = %tenant.id, "password reset email send failed");
@@ -257,6 +266,7 @@ pub async fn password_reset_confirm(
 pub async fn verify_email_resend(
     State(state): State<AccountRecoveryState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<EmailBody>,
 ) -> Result<Response, ApiError> {
     let email = req.email.trim().to_ascii_lowercase();
@@ -276,7 +286,9 @@ pub async fn verify_email_resend(
             state.email_verifications.create(&scope, &token, expires_at).await?;
 
             let link = format!("{}/verify-email?token={token}", state.public_url);
-            if let Err(e) = state.mailer.send_verify_email(&email, &link).await {
+            let tenant_locale = state.tenants.get_locale(&scope).await.unwrap_or(None);
+            let locale = resolve_account_locale(tenant_locale.as_deref(), &headers);
+            if let Err(e) = state.mailer.send_verify_email(&email, &link, locale).await {
                 tracing::error!(error = %e, tenant_id = %tenant.id, "verify email resend failed");
             }
         }

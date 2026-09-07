@@ -54,6 +54,7 @@ ORACLES=(
   public-id-as-capability
   submission-idempotency
   i18n-catalog-integrity
+  i18n-literal-ratchet
 )
 
 fail=0

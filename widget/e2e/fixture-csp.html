@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      TGF-20260906T213706-01 fixture.
+
+      The only real consumer of this widget (GitCellar's landing) serves it
+      under a strict CSP, and the localization work added a SECOND lazy chunk
+      path (`dist/locales/<code>.js`) beside the redaction editor's. A
+      Playwright run against the permissive `fixture.html` proves nothing about
+      that page — so this fixture reproduces the policy and
+      `widget-locale.spec.ts` asserts the chunk still loads under it and that
+      the browser logs no CSP violation.
+
+      `script-src 'self'` is the load-bearing directive: it permits the
+      same-origin dynamic import and forbids everything else (no inline, no
+      eval). `style-src 'self'` proves the widget still needs no
+      `unsafe-inline` for its stylesheet. `connect-src` allows the mocked API
+      origin so the widget-config fetch is not what fails.
+
+      The host page declares `lang="de"` and passes NO data-locale: this is
+      also the "widget follows the host page" precedence case (C36) under CSP.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self' http://localhost:14206; base-uri 'none'"
+    />
+    <title>feedbackmonk widget — CSP fixture</title>
+    <link rel="stylesheet" href="../dist/widget.css" />
+  </head>
+  <body>
+    <main>
+      <h1>feedbackmonk widget — CSP fixture (script-src 'self')</h1>
+      <p>
+        This page hosts the widget under the same policy shape a real embedder
+        serves. If the lazy locale chunk were blocked, the widget would silently
+        fall back to English — which is why the spec asserts the chunk REQUEST,
+        not just that the page still renders.
+      </p>
+    </main>
+    <script
+      type="module"
+      src="../dist/widget.js"
+      data-project-id="00000000-0000-0000-0000-000000000001"
+      data-api-base="http://localhost:14206/e2e/mock"
+    ></script>
+  </body>
+</html>

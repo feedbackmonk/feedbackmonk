@@ -334,3 +334,26 @@ bash scripts/ci-local.sh                           # workspace member compiles
 # Release (owner only, later)
 /1-translate
 ```
+
+## Convergence notes — Stage 1 (collab-20260906-215851, 2026-09-07)
+
+Outcome: all four lanes COMPLETE; CI-parity + tests green; 17/17 oracles; admin 208 vitest / 35 e2e; widget 93 vitest / 29 e2e; critic verdict in the archived convergence report. Deviations from this plan, all ruled by the LD in-session (messages MSG-001..008) and none changing a contract's public shape:
+
+- **C35 rule 3 amended**: `status.json` is the shared-enum namespace with families `status|kind|sentiment|roadmapStatus` (MSG-001).
+- **C40 note**: Rust `status_human` reads `email.status.value.<wire>` from `email.json` (sentence case, byte-identical to shipped emails), **not** `status.*` (title-case UI chips). Six deliberately duplicated keys (MSG-004).
+- **C41 for the widget**: `widget/src/locales.gen.ts` is generated and policed but is **type-only** for the widget — the 31-row table is ~1.9 KB and unshakeable. The widget consumes `widget/src/locale-chunks.ts`, a build-time projection of the same `i18n/locales.json` (MSG-005). Final: 29,836 B / 30,720.
+- **C42**: all 30 chunks are emitted from day one as empty maps so the output file set never changes at the first translation (MSG-002). Vite lib mode emits no chunks for a template-literal `import()`; the loader is a generated literal map (also the R-SEC whitelist).
+- **C36**: `data-locale` resolves through the lenient resolver (embedder-trusted attribute; resolver is table-bounded); `validateLocale` (exact-only) gates `?lang=`, `localStorage` and stored tenant values (MSG-006).
+- **`format.ts`** locale parameter shipped **optional** (ten unowned call sites); Stage 2 passes the active locale everywhere and flips it required.
+- **Pre-existing finding routed to Stage 2**: `error.rs` emits `{"error": msg}` while `widget/src/types.ts` expects `{code, message}`; the widget maps HTTP status classes instead. Stage 2 backend lane adds an additive `code` field (precedent: C38's 400 body).
+- **Dev DB**: `feedbackmonk_dev` unrepairable by migration; owner-gated recreate; `LOCAL_DEV.md` carries the note.
+
+**Stage 2 (W-D admin extraction, cheap) brief inputs** — from the lanes' `## Deltas for LEAD`:
+1. `format.ts`: pass the active locale at `FeedbackList`, `FeedbackDrawer`(4), `ModerationQueue`, `AutopilotDigest`, `BoardCard`, `ClusterDetail`(2), `WorkOrderList`, `WorkOrderDetail`(2), `RunnerTokenCard`(3), `SentimentTrendChart`(2 + 5 `toLocaleString`), `TierSettings`(1), `UsageMeter`(4); then make the parameter required.
+2. `admin.settings.language.*` keys for `LanguageSettings.tsx` (inline `[CLAUDE-B][NOTE]` marks the spot); W-E's `translate_outbound` checkbox attaches there.
+3. Admin-only physical CSS → logical: `.search-box`, `.search-icon`, `.search-kbd`, `.feedback-table td`, `.drawer`, `.char-counter`, `.upgrade-prompt`, `.runner-tokens-security`, `.hosting-settings-page ol`, `.domain-table td`.
+4. `admin-ui/src/pages/settings/README.md` consolidation (five pages, one documented).
+5. `i18n-literal-ratchet` exit gate: baseline for `admin-ui/src` → 0 (191 today, incl. `AdminRoadmap.tsx` 11, `PromoteButton.tsx` 3).
+6. Remove the English label constants from `types.gen.ts` and stop the generator emitting them; all consumers via `useLabels()`.
+
+**Stage 2 (W-E outbound translation, standard) brief inputs**: `tenants.translate_outbound` + `TenantRepo` accessors exist; `send.rs` already resolves a `Locale`; add the additive `code` field on `ApiError` bodies + C39/adoption-doc line (see above).

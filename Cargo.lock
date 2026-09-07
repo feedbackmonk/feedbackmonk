@@ -634,6 +634,7 @@ dependencies = [
  "ed25519-dalek",
  "feedbackmonk-anon",
  "feedbackmonk-core",
+ "feedbackmonk-i18n",
  "feedbackmonk-jwt",
  "feedbackmonk-repository",
  "feedbackmonk-runner",
@@ -678,7 +679,10 @@ dependencies = [
 name = "feedbackmonk-i18n"
 version = "0.4.0"
 dependencies = [
+ "http",
+ "serde",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -133,6 +133,12 @@ pub trait FeedbackRepo: Send + Sync {
         // `idempotency_key` — client-supplied `Idempotency-Key` header value
         // (A4b, migration 00021). `None` ⇒ byte-identical to pre-A4 behavior.
         idempotency_key: Option<&str>,
+        // `submitter_locale` — the C34 UI-locale code the submitter was reading
+        // at submit time (FR-FBR-37, migration 00031). ALREADY RESOLVED and
+        // validated by the API layer; the repository stores it verbatim. `None`
+        // when the request offered no language this deployment ships — a
+        // different fact from `Some("en")`, and one that must stay different.
+        submitter_locale: Option<&str>,
     ) -> Result<SubmitOutcome>;
 
     /// Full-fat anonymous-mode submit (Phase A A4). See
@@ -155,6 +161,8 @@ pub trait FeedbackRepo: Send + Sync {
         rating: Option<Rating>,
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
+        // See [`FeedbackRepo::submit_authenticated_full`] — identical semantics.
+        submitter_locale: Option<&str>,
     ) -> Result<SubmitOutcome>;
 
     /// Convenience wrapper (provided): auth-mode submit with no severity and
@@ -188,6 +196,7 @@ pub trait FeedbackRepo: Send + Sync {
                 None,
                 kind,
                 None,
+                None,
             )
             .await?
             .feedback_id)
@@ -205,7 +214,18 @@ pub trait FeedbackRepo: Send + Sync {
         kind: FeedbackKind,
     ) -> Result<FeedbackId> {
         Ok(self
-            .submit_anonymous_full(scope, anon_token_hash, optional_email, body, sentiment, None, None, kind, None)
+            .submit_anonymous_full(
+                scope,
+                anon_token_hash,
+                optional_email,
+                body,
+                sentiment,
+                None,
+                None,
+                kind,
+                None,
+                None,
+            )
             .await?
             .feedback_id)
     }
@@ -1088,6 +1108,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         rating: Option<Rating>,
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
+        submitter_locale: Option<&str>,
     ) -> Result<SubmitOutcome> {
         let kind_str = kind.as_str();
         // Empty body => SQL NULL (sentiment-only submission, FR-FBR-28). The
@@ -1128,9 +1149,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                     short_code, project_id, tenant_id,
                     end_user_sub, end_user_email, end_user_name,
                     external_metadata, crash_event_id, body, sentiment, severity, rating, kind,
-                    translation_status
+                    translation_status, submitter_locale
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 RETURNING id AS "id!"
                 "#,
                 short_code.as_str(),
@@ -1147,6 +1168,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 rating_val,
                 kind_str,
                 translation_status,
+                submitter_locale,
             )
             .fetch_one(&mut *sp)
             .await;
@@ -1206,6 +1228,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
         rating: Option<Rating>,
         kind: FeedbackKind,
         idempotency_key: Option<&str>,
+        submitter_locale: Option<&str>,
     ) -> Result<SubmitOutcome> {
         let kind_str = kind.as_str();
         let token: &[u8] = anon_token_hash.as_slice();
@@ -1238,9 +1261,9 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 INSERT INTO feedback (
                     short_code, project_id, tenant_id,
                     end_user_email, anon_token_hash, body, sentiment, severity, rating, kind,
-                    translation_status
+                    translation_status, submitter_locale
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                 RETURNING id AS "id!"
                 "#,
                 short_code.as_str(),
@@ -1254,6 +1277,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 rating_val,
                 kind_str,
                 translation_status,
+                submitter_locale,
             )
             .fetch_one(&mut *sp)
             .await;
@@ -1320,7 +1344,8 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             SELECT id, short_code, project_id, tenant_id,
                    end_user_sub, end_user_email, end_user_name,
-                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status
+                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status,
+                   submitter_locale
             FROM feedback
             WHERE project_id = $1 AND tenant_id = $2
             ORDER BY accepted_at DESC
@@ -1352,6 +1377,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
                 kind: FeedbackKind::from_db_str(&r.kind),
                 accepted_at: r.accepted_at,
                 status: FeedbackStatus::from_db_str(&r.status),
+                submitter_locale: r.submitter_locale,
             })
             .collect())
     }
@@ -1527,7 +1553,8 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             SELECT id, short_code, project_id, tenant_id,
                    end_user_sub, end_user_email, end_user_name,
-                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status
+                   external_metadata, crash_event_id, anon_token_hash, body, sentiment, kind, accepted_at, status,
+                   submitter_locale
             FROM feedback
             WHERE tenant_id = $1 AND project_id = $2 AND short_code = $3
             "#,
@@ -1555,6 +1582,7 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             kind: FeedbackKind::from_db_str(&row.kind),
             accepted_at: row.accepted_at,
             status: FeedbackStatus::from_db_str(&row.status),
+            submitter_locale: row.submitter_locale,
         };
 
         let history_rows = sqlx::query!(
@@ -2800,6 +2828,8 @@ mod tests {
                 None,
                 FeedbackKind::Bug,
                 None,
+            
+                None,
             )
             .await
             .unwrap();
@@ -2814,6 +2844,8 @@ mod tests {
                 Some(Severity::Blocker),
                 None,
                 FeedbackKind::Other,
+                None,
+            
                 None,
             )
             .await
@@ -2866,6 +2898,8 @@ mod tests {
                 None,
                 FeedbackKind::Other,
                 Some("key-1"),
+            
+                None,
             )
             .await
             .unwrap();
@@ -2885,6 +2919,8 @@ mod tests {
                 None,
                 FeedbackKind::Other,
                 Some("key-1"),
+            
+                None,
             )
             .await
             .unwrap();
@@ -2905,6 +2941,8 @@ mod tests {
                 None,
                 FeedbackKind::Other,
                 Some("key-1"),
+            
+                None,
             )
             .await;
         assert!(
@@ -2953,6 +2991,8 @@ mod tests {
                     None,
                     FeedbackKind::Bug,
                     Some(key),
+                
+                    None,
                 )
                 .await
                 .unwrap()
@@ -2974,11 +3014,11 @@ mod tests {
 
         // Different keys in the same project → two rows.
         let a = repo
-            .submit_anonymous_full(&s1, &[3u8; 32], None, "a", None, None, None, FeedbackKind::Other, Some("k-a"))
+            .submit_anonymous_full(&s1, &[3u8; 32], None, "a", None, None, None, FeedbackKind::Other, Some("k-a"), None)
             .await
             .unwrap();
         let b = repo
-            .submit_anonymous_full(&s1, &[3u8; 32], None, "b", None, None, None, FeedbackKind::Other, Some("k-b"))
+            .submit_anonymous_full(&s1, &[3u8; 32], None, "b", None, None, None, FeedbackKind::Other, Some("k-b"), None)
             .await
             .unwrap();
         assert!(!a.deduped && !b.deduped);
@@ -2988,7 +3028,7 @@ mod tests {
         // The SAME key in a DIFFERENT project → no cross-project dedupe (the
         // PK is (project_id, idempotency_key)).
         let c = repo
-            .submit_anonymous_full(&s2, &[4u8; 32], None, "c", None, None, None, FeedbackKind::Other, Some("k-a"))
+            .submit_anonymous_full(&s2, &[4u8; 32], None, "c", None, None, None, FeedbackKind::Other, Some("k-a"), None)
             .await
             .unwrap();
         assert!(!c.deduped);

@@ -2,5 +2,53 @@
   "_meta": {
     "language": "English",
     "status": "source"
+  },
+  "public": {
+    "common": {
+      "loading": "Loading…",
+      "retry": "Retry",
+      "statusLabel": "Status: {{status}}",
+      "vote": "☆ Vote ({{votes}})",
+      "voted": "★ Voted ({{votes}})",
+      "retractVoteAria": "Retract vote — current count {{votes}}"
+    },
+    "vote": {
+      "alreadyVoted": "You've already voted on this item.",
+      "failed": "Vote failed — please try again.",
+      "retracted": "Vote retracted.",
+      "retractWindowClosed": "The 60s retract window has closed for this vote.",
+      "retractFailed": "Retract failed — please try again."
+    },
+    "board": {
+      "title": "Feedback board",
+      "intro": "Feedback we’ve published, with how many people have backed it. One vote per visitor per item.",
+      "empty": "No feedback has been published yet.",
+      "unavailable": "This feedback board isn’t available.",
+      "loadError": "Failed to load the feedback board.",
+      "itemTitle": "{{kind}} · {{code}}",
+      "voteAria": "Vote for {{code}} — current count {{votes}}"
+    },
+    "roadmap": {
+      "title": "Roadmap",
+      "intro": "Vote on what we should ship next. One vote per visitor per item.",
+      "loadError": "Failed to load roadmap.",
+      "topVoted": "Most-voted",
+      "voteCount_one": "{{count}} vote",
+      "voteCount_other": "{{count}} votes",
+      "topMeta": "{{status}} · {{votes}}",
+      "freshnessLabel": "Roadmap freshness",
+      "updated": "Vote counts updated <time>{{when}}</time>.",
+      "refreshSoon": "Vote counts will refresh shortly.",
+      "voteAria": "Vote for {{title}} — current count {{votes}}"
+    },
+    "site": {
+      "emptyTitle": "Nothing here yet",
+      "emptyBody": "This site has no public projects.",
+      "boardUnavailableTitle": "Board not available",
+      "boardUnavailableBody": "This project hasn’t published a public feedback board."
+    },
+    "switcher": {
+      "label": "Language"
+    }
   }
 }

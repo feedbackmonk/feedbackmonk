@@ -119,6 +119,59 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
+// Locale matrix (FR-FBR-36 / TGF-02) — see the same block in
+// `public-board-a11y.spec.ts` for why text is not asserted per locale while
+// the catalogs are still skeletons, and why `fa` is in the matrix.
+const LOCALE_MATRIX = [
+  { browser: "en-US", expectLang: "en", expectDir: "ltr" },
+  { browser: "de-DE", expectLang: "de", expectDir: "ltr" },
+  { browser: "fa-IR", expectLang: "fa", expectDir: "rtl" },
+] as const;
+
+for (const { browser, expectLang, expectDir } of LOCALE_MATRIX) {
+  test.describe(`Public roadmap in ${browser}`, () => {
+    test.use({ locale: browser });
+
+    test(`resolves to lang=${expectLang} dir=${expectDir}, offers the switcher, and stays axe-clean`, async ({
+      page,
+    }) => {
+      test.skip(!FAKE_API, "Real-backend mode requires a seeded project");
+
+      await installFakeApi(page);
+      await page.goto(`/public/projects/${PROJECT_ID}/roadmap`);
+      await expect(page.getByText("CSV export")).toBeVisible();
+
+      const html = page.locator("html");
+      await expect(html).toHaveAttribute("lang", expectLang);
+      await expect(html).toHaveAttribute("dir", expectDir);
+
+      const switcher = page.getByRole("combobox", { name: "Language" });
+      await expect(switcher).toBeVisible();
+      await expect(switcher).toHaveValue(expectLang);
+
+      await expectNoAxeViolations(page, `public roadmap ${browser}`);
+    });
+  });
+}
+
+test.describe("Public roadmap locale precedence", () => {
+  test.use({ locale: "en-US" });
+
+  test("?lang= overrides the browser and is not persisted", async ({ page }) => {
+    test.skip(!FAKE_API, "Real-backend mode requires a seeded project");
+
+    await installFakeApi(page);
+    await page.goto(`/public/projects/${PROJECT_ID}/roadmap?lang=fa`);
+    await expect(page.getByText("CSV export")).toBeVisible();
+    await expect(page.locator("html")).toHaveAttribute("lang", "fa");
+    await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+    const stored = await page.evaluate(() =>
+      window.localStorage.getItem("fbm_lang"),
+    );
+    expect(stored).toBeNull();
+  });
+});
+
 test.describe("Public roadmap a11y smoke", () => {
   test.beforeEach(async ({ page }) => {
     if (FAKE_API) {

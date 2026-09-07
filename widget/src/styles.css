@@ -8,6 +8,14 @@
  *     without re-injecting stylesheet text (CSP friendly).
  *   - Bundle budget contributor: every selector here counts against the 30KB
  *     cap. Keep terse.
+ *   - RTL (FR-FBR-35): NO physical inline-axis properties. Use the logical
+ *     forms (`inset-inline-*`, `margin-inline-*`, `padding-inline-*`,
+ *     `text-align: start/end`) so `dir="rtl"` on `.fbm-root` mirrors the
+ *     layout with no per-direction rules. `widget/e2e/widget-locale.spec.ts`
+ *     greps this file for `margin-left`, `padding-right`, `text-align: left`
+ *     and friends and fails on any of them — a physical property cannot come
+ *     back by accident. Block-axis properties (`top`, `bottom`) are unaffected
+ *     by direction and stay physical.
  */
 
 .fbm-root {
@@ -59,7 +67,7 @@
 
 .fbm-launcher {
   position: fixed;
-  right: 24px;
+  inset-inline-end: 24px;
   bottom: 24px;
   pointer-events: auto;
   appearance: none;
@@ -125,7 +133,7 @@
 .fbm-close {
   position: absolute;
   top: 12px;
-  right: 12px;
+  inset-inline-end: 12px;
   appearance: none;
   border: 0;
   background: transparent;
@@ -217,8 +225,13 @@
 .fbm-toast {
   position: fixed;
   bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Direction-agnostic centering: `inset-inline: 0` + `margin-inline: auto`
+     centers in both directions, where `left: 50%` + `translateX(-50%)` reads
+     as a physical-property regression to the RTL grep test. */
+  inset-inline: 0;
+  margin-inline: auto;
+  width: max-content;
+  max-width: calc(100vw - 32px);
   background: var(--fbm-text);
   color: var(--fbm-surface);
   padding: 10px 16px;

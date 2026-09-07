@@ -6,12 +6,19 @@
 // Rollup keeps the entry (`widget.js`) whole instead of hoisting a shared
 // chunk + stub. The two tiny helpers below are the only duplication.
 //
+// That is also why localization arrives as a PARAMETER: `redactImage` takes
+// the translator `t` from its caller rather than importing `./i18n.js`, which
+// would hoist the i18n module into a shared chunk and undo the split. The
+// `import type` below is erased at compile time and creates no such edge.
+//
 // The user draws opaque rectangles over sensitive regions; "Apply" exports a
 // flattened PNG with those regions permanently blacked out. CSP-safe (pure
 // canvas 2D + DOM; no eval/Function/inline). A11y: focus-trapped role="dialog",
 // keyboard-operable controls, ESC cancels. Rectangle DRAWING is pointer-driven
 // (fine-grained region selection is inherently a pointing gesture) — a
 // documented limitation; every control around it is keyboard-reachable.
+
+import type { Translate } from "./i18n.js";
 
 interface Rect {
   x: number;
@@ -46,6 +53,7 @@ function btn(cls: string, text: string): HTMLButtonElement {
 export function redactImage(
   file: Blob,
   root: HTMLElement,
+  t: Translate,
 ): Promise<Blob | null> {
   return new Promise((resolve) => {
     const objectUrl = URL.createObjectURL(file);
@@ -69,23 +77,16 @@ export function redactImage(
       const titleId = "fbm-rt-" + Math.random().toString(36).slice(2, 8);
       panel.setAttribute("aria-labelledby", titleId);
 
-      const title = ce("h2", "fbm-title", "Redact screenshot");
+      const title = ce("h2", "fbm-title", t("widget.redact.title"));
       title.id = titleId;
-      const hint = ce(
-        "p",
-        "fbm-redact-hint",
-        "Drag across the image to black out sensitive areas, then apply.",
-      );
+      const hint = ce("p", "fbm-redact-hint", t("widget.redact.hint"));
 
       const canvas = ce("canvas", "fbm-redact-canvas");
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       canvas.tabIndex = 0;
       canvas.setAttribute("role", "img");
-      canvas.setAttribute(
-        "aria-label",
-        "Screenshot redaction surface. Drag with a pointer to add black-out boxes.",
-      );
+      canvas.setAttribute("aria-label", t("widget.redact.canvasAria"));
       const ctx = canvas.getContext("2d");
 
       function redraw(preview?: Rect): void {
@@ -142,7 +143,7 @@ export function redactImage(
       canvas.addEventListener("pointercancel", endDraw);
 
       const actions = ce("div", "fbm-actions fbm-redact-actions");
-      const undoBtn = btn("fbm-btn-secondary", "Undo");
+      const undoBtn = btn("fbm-btn-secondary", t("widget.redact.undo"));
       undoBtn.disabled = true;
       undoBtn.addEventListener("click", () => {
         rects.pop();
@@ -150,8 +151,8 @@ export function redactImage(
         undoBtn.disabled = rects.length === 0;
         canvas.focus();
       });
-      const cancelBtn = btn("fbm-btn-secondary", "Cancel");
-      const applyBtn = btn("fbm-btn-primary", "Apply redaction");
+      const cancelBtn = btn("fbm-btn-secondary", t("widget.form.cancel"));
+      const applyBtn = btn("fbm-btn-primary", t("widget.redact.apply"));
       actions.append(undoBtn, cancelBtn, applyBtn);
 
       panel.append(title, hint, canvas, actions);

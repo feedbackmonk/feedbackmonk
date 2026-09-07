@@ -507,3 +507,99 @@ The third path — a `marketing-selfhost-page-parity` Verification Oracle that d
 **Generalizable insight**: a capability that defaults *off* for privacy reasons is done when it is *configured*, not when it is merged. Its spec row should name the deployment step that turns it on, and the deploy-state record should carry the env value, or "DONE" in the spec quietly means "possible".
 
 **Where this pays off again**: the DEFER-009 redeploy / DEC-FBR-14 cutover must set the provider (DeepL for the SaaS; the self-host runbook already documents the choice). Recorded in the FR-FBR-34..41 section's measured-state note so the localization work does not assume a running pipeline.
+
+## UI localization Stage 1 (2026-09-07)
+
+### D-FBR-33: Four translation-provider request tunables are hardcoded constants, and none is in the C21 env catalog
+
+**Surfaced by**: `/0-uldf-finalize` Phase 6 settings analysis at the UI-localization Stage 1 commit.
+
+**Type**: `settings-candidate` (recommendation-only per DEC-117 — nothing was implemented).
+
+**What was found**: the FR-FBR-30 translation pipeline carries four request-level constants that an
+operator cannot reach:
+
+| Setting | Location | Current | Type |
+|---|---|---|---|
+| DeepL request timeout | `crates/feedbackmonk-api/src/translation/deepl.rs:29` | `DEEPL_TIMEOUT_SECS = 30` | integer (seconds) |
+| LibreTranslate request timeout | `crates/feedbackmonk-api/src/translation/libretranslate.rs:24` | `LIBRETRANSLATE_TIMEOUT_SECS = 30` | integer (seconds) |
+| Worker batch size | `crates/feedbackmonk-api/src/translation/worker.rs:41` | `TRANSLATION_BATCH_LIMIT = 32` | integer (rows/tick) |
+| Worker max attempts | `crates/feedbackmonk-api/src/translation/worker.rs:47` | `MAX_TRANSLATION_ATTEMPTS = 5` | integer (attempts) |
+
+`docs/operations/SELFHOST_ENV.md` (Contract C21) already catalogues `FEEDBACKMONK_TRANSLATION_PROVIDER`,
+`FEEDBACKMONK_TRANSLATION_*_API_KEY`, `FEEDBACKMONK_TRANSLATION_TARGET_LANG` and
+`FEEDBACKMONK_TRANSLATION_POLL_SECS` — checked, and none of the four above duplicates an existing row.
+
+**Scope honesty**: these live in FR-FBR-30 code and are **not** part of this commit's diff; Phase 6 found
+them while scanning the adjacent i18n surface. They are pre-existing, and nothing observed has gone wrong
+because of them — a self-hoster on a slow link or behind a rate-limited LibreTranslate is the plausible
+first complaint, not a witnessed one.
+
+**Deliberately excluded**, so a future reader does not re-propose them: `scripts/i18n/translate.py`'s
+`MAX_BATCH` / timeouts are owner-only release-time tooling, not runtime config; and the widget's byte caps
+(`30720`, `4096`) are **invariants, not settings** — `widget-bundle-size` exists precisely to stop them
+being raised, and making them configurable would defeat the oracle.
+
+**Suggested action**: fold all four into C21 as `FEEDBACKMONK_TRANSLATION_*` env vars in a single future
+session, through the normal planned-and-verified path. Not now, and not during a finalize.
+
+**Status**: [PROPOSED]
+
+---
+
+### D-FBR-34: Five oracles carry two manifests, and version-bumping one of them has now made a pair disagree
+
+**Surfaced by**: `/0-uldf-finalize` Phase 11 oracle inventory, cross-checked by the Phase 4.5 spec pass.
+
+**Type**: `debt-discovered`.
+
+**What was found**: `cors-allowlist-enforcement`, `pii-scrub-audit`, `selfhost-compose-smoke`,
+`tier-enforcement-status` and `widget-bundle-size` each carry **both** `manifest.json` and a legacy
+`manifest.toml`. Four of the five still agree at `1.0.0`. `widget-bundle-size` does not: this commit bumped
+`manifest.json` to `1.1.0` (Probe A rescoped, Probe C added) and left `manifest.toml` at `1.0.0`.
+
+**Measured, not assumed**: `grep -rl "manifest.toml" .claude/ scripts/` finds **no consumer** outside the
+oracle directories themselves, and `scripts/run-verification-oracles.sh` reads no manifest at all. So the
+drift is inert today — no gate, briefing or runner resolves the stale file.
+
+**Generalizable insight**: a duplicated declaration with no consumer is not free, it is *deferred* cost. It
+stays invisible exactly until someone edits one copy, at which point the project holds two answers to
+"what version is this oracle?" and nothing mechanical says which is authoritative. The pattern reads as
+harmless because the harm is postponed to whoever next reads the wrong file — and this commit is the first
+time that condition actually became reachable.
+
+**Suggested action**: delete the five `manifest.toml` files (`manifest.json` is what everything reads), or,
+if the TOML form is wanted for something, name its consumer and make one generate the other. Deleting is
+the cheaper of the two and loses nothing measurable.
+
+**Status**: [PROPOSED]
+
+---
+
+### D-FBR-35: `ARCHITECTURE.md` has been frozen since P0 and now omits three whole crates
+
+**Surfaced by**: `/0-uldf-finalize` Phase 4.5 spec reconciliation, while checking whether the new
+`feedbackmonk-i18n` crate needed an architecture entry.
+
+**Type**: `debt-discovered`.
+
+**What was found**: `git log -1 -- docs/specs/ARCHITECTURE.md` returns `3678a41` (2026-05-14) — and that
+commit was a path-rename sweep, not a content update. The document describes five components. The workspace
+now has eight: `feedbackmonk-i18n` (this commit), `feedbackmonk-runner` (P5b, 2026-06-18) and
+`feedbackmonk-tracing` are all absent. Nearly four months and three phases of work are missing from the one
+document a fresh session would read to orient on system shape.
+
+**Why it matters more than it looks**: the other spec artifacts have stayed accurate because finalize
+reconciles them every commit — `SPECIFICATION.md` gets a reverse check, `DECISIONS.md` gets appended,
+`DISCOVERIES.md` gets this. `ARCHITECTURE.md` has no such loop, so it decays silently and its staleness is
+only discoverable by noticing an absence, which is the hardest thing for a reader to notice. An orientation
+document that is confidently wrong about which crates exist is worse than a missing one.
+
+**Suggested action**: one `/0-uldf-ldis-spec` pass over `ARCHITECTURE.md` alone — reconcile the component
+table against `Cargo.toml`'s actual members and add the three missing crates. Deliberately **not** folded
+into this commit: it means rewriting the component table, which the MECHANICAL-ONLY reconciliation scope and
+the never-reorganize rule both forbid. Worth considering afterwards whether a `crate-inventory-drift` oracle
+(component table vs. workspace members) should close the loop permanently, the way the other three artifacts
+already have one.
+
+**Status**: [PROPOSED]

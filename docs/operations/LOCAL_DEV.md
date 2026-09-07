@@ -47,6 +47,17 @@ docker exec -i feedbackmonk-pg-dev \
 
 Or via sqlx-cli once a project-level migration runner is wired in Stage 2.
 
+### Known state of the shared dev databases (measured 2026-09-07)
+
+`feedbackmonk_dev` on the shared container is **not repairable by migration**: its schema is
+non-contiguous (00028 and 00030 missing, 00029 applied) and `_sqlx_migrations` is empty, so
+`cargo sqlx migrate run` fails on migration 1 and an online `sqlx::query!` compile against it
+fails with errors that blame your own code (`column "routing_label" does not exist`). Until the
+owner recreates it (a `DROP DATABASE` — destructive, needs the owner's word), use the
+`feedbackmonk_prepare` database on the same container for online builds and `cargo sqlx prepare`:
+it is correctly migrated (32/32 at 2026-09-07). `#[sqlx::test]` creates throwaway databases per
+test, so the test suite is unaffected either way.
+
 ### Tear down
 
 ```bash

@@ -23,6 +23,7 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use feedbackmonk_core::{FeedbackId, FeedbackStatus};
+use feedbackmonk_i18n::Locale;
 use feedbackmonk_repository::{EmailTenantBrand, TenantRepo, TenantScope};
 
 use crate::email::templates::{
@@ -54,6 +55,11 @@ pub struct EmailContext {
     pub body_excerpt: Option<String>,
     /// Reply body string (for `PublicReply`).
     pub reply_body: Option<String>,
+    /// The submitter's UI locale as captured at submit time
+    /// (`feedback.submitter_locale`, C37). `None` — the common case for every
+    /// row that predates FR-FBR-37, and for a submitter whose browser offered
+    /// no language we ship — falls back to the tenant's setting, then English.
+    pub submitter_locale: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -160,7 +166,23 @@ impl EmailNotifier for LettreEmailNotifier {
         };
 
         let brand = self.tenants.get_brand(scope).await?;
-        let rendered = render_for_kind(&brand, &kind, &ctx);
+        // FR-FBR-37: the recipient's language, resolved at the chokepoint so
+        // every notification path inherits the same rule (the same reason brand
+        // resolution lives here). A locale read failure must not swallow the
+        // email — degrade to English and log.
+        let tenant_locale = match self.tenants.get_locale(scope).await {
+            Ok(l) => l,
+            Err(e) => {
+                tracing::warn!(
+                    target: "email",
+                    error = %e,
+                    "tenant locale lookup failed; falling back to English"
+                );
+                None
+            }
+        };
+        let locale = resolve_recipient_locale(ctx.submitter_locale.as_deref(), tenant_locale.as_deref());
+        let rendered = render_for_kind(&brand, &kind, &ctx, locale);
 
         let from: Mailbox = build_from_mailbox(&self.envelope_from, &brand.sender_display_name)
             .map_err(|e| EmailError::Transport(format!("invalid envelope_from: {e}")))?;
@@ -201,10 +223,49 @@ fn build_from_mailbox(envelope_from: &str, display_name: &str) -> anyhow::Result
     Ok(Mailbox::new(Some(display_name.to_string()), addr))
 }
 
+/// The FR-FBR-37 recipient-language ladder: the submitter's own captured locale
+/// → the tenant's Language setting → English.
+///
+/// **The submitter wins over the tenant on purpose.** The tenant setting is the
+/// admin's language; the recipient of these three emails is the *submitter*, who
+/// may share none of it. The tenant value is a fallback for the rows that carry
+/// no submitter locale, not a default that overrides one.
+///
+/// Both inputs are stored canonical codes, so an unparseable value means the row
+/// predates the shipped-locale table or the language was retired — either way,
+/// fall through rather than fail.
+#[must_use]
+pub fn resolve_recipient_locale(submitter: Option<&str>, tenant: Option<&str>) -> Locale {
+    submitter
+        .and_then(Locale::parse)
+        .or_else(|| tenant.and_then(Locale::parse))
+        .unwrap_or(Locale::EN)
+}
+
+/// The recipient-language ladder for ACCOUNT mail (verify, password reset):
+/// the tenant's stored Language setting → the request's `Accept-Language` →
+/// English.
+///
+/// Different ladder from [`resolve_recipient_locale`] because the recipient is
+/// different: account mail goes to the ADMIN, so their own setting leads. The
+/// header is the second rung rather than the first because it describes the
+/// browser making *this* request, which at signup is the only signal there is,
+/// and after signup is weaker evidence than a setting they chose.
+#[must_use]
+pub fn resolve_account_locale(tenant_locale: Option<&str>, headers: &axum::http::HeaderMap) -> Locale {
+    if let Some(l) = tenant_locale.and_then(Locale::parse) {
+        return l;
+    }
+    let candidates = feedbackmonk_i18n::parse_accept_language(headers);
+    let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    feedbackmonk_i18n::resolve_opt(&refs).unwrap_or(Locale::EN)
+}
+
 fn render_for_kind(
     brand: &EmailTenantBrand,
     kind: &EmailKind,
     ctx: &EmailContext,
+    locale: Locale,
 ) -> RenderedEmail {
     match kind {
         EmailKind::Confirmation => render_confirmation(
@@ -213,6 +274,7 @@ fn render_for_kind(
                 feedback_id: &ctx.feedback_id,
                 body_excerpt: ctx.body_excerpt.as_deref().unwrap_or(""),
             },
+            locale,
         ),
         EmailKind::StatusChange {
             from,
@@ -226,6 +288,7 @@ fn render_for_kind(
                 to_status: *to,
                 reason_note: reason_note.as_deref(),
             },
+            locale,
         ),
         EmailKind::PublicReply { .. } => render_public_reply(
             brand,
@@ -233,6 +296,7 @@ fn render_for_kind(
                 feedback_id: &ctx.feedback_id,
                 reply_body: ctx.reply_body.as_deref().unwrap_or(""),
             },
+            locale,
         ),
     }
 }
@@ -315,5 +379,29 @@ mod tests {
     fn send_outcome_was_queued() {
         assert!(SendOutcome::Sent.was_queued());
         assert!(!SendOutcome::Skipped.was_queued());
+    }
+
+    #[test]
+    fn recipient_locale_prefers_the_submitter_then_the_tenant_then_english() {
+        let de = Locale::parse("de").unwrap();
+        let fr = Locale::parse("fr").unwrap();
+
+        // The submitter's own language wins over the admin's.
+        assert_eq!(resolve_recipient_locale(Some("de"), Some("fr")), de);
+        // No submitter locale (every pre-FR-FBR-37 row) → the tenant setting.
+        assert_eq!(resolve_recipient_locale(None, Some("fr")), fr);
+        // Neither → English, which is exactly today's behaviour.
+        assert_eq!(resolve_recipient_locale(None, None), Locale::EN);
+    }
+
+    #[test]
+    fn recipient_locale_falls_through_unshipped_values_instead_of_failing() {
+        let fr = Locale::parse("fr").unwrap();
+        // A code we no longer ship (or never did) is not a hard error: it is
+        // skipped, and the next rung of the ladder answers.
+        assert_eq!(resolve_recipient_locale(Some("da"), Some("fr")), fr);
+        assert_eq!(resolve_recipient_locale(Some("da"), Some("xx")), Locale::EN);
+        // Not a resolver: a stored value is canonical or it is nothing.
+        assert_eq!(resolve_recipient_locale(Some("de-AT"), None), Locale::EN);
     }
 }

@@ -57,6 +57,7 @@ use uuid::Uuid;
 
 use feedbackmonk_anon::{AnonGate, ANON_COOKIE_HEADER};
 use feedbackmonk_core::{Rating, FeedbackKind, KeyClass, ResourceKind, Sentiment, Severity};
+use feedbackmonk_i18n::{parse_accept_language, resolve_opt, Locale};
 use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError, VerifiedClaims};
 
 use crate::error::ApiError;
@@ -124,6 +125,19 @@ pub struct FeedbackRequest {
     /// explicit `sentiment` always wins over the derivation.
     #[serde(default)]
     pub rating: Option<i16>,
+    /// The UI language the submitter was reading when they wrote this
+    /// (FR-FBR-37 / Contract C37). A C34 canonical code (`de`, `pt-BR`); the
+    /// widget sends the locale it actually rendered in.
+    ///
+    /// **A locale can never fail a submit.** An unshipped or malformed value is
+    /// dropped to `None`, not rejected — unlike `sentiment` / `severity` /
+    /// `rating`, which are semantic content the caller must get right. The
+    /// widget must not be able to break submission by shipping ahead of the
+    /// server's locale table.
+    ///
+    /// Absent ⇒ the server falls back to `Accept-Language`, then stores NULL.
+    #[serde(default)]
+    pub locale: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -187,6 +201,11 @@ pub async fn submit(
     // Phase A A4b: optional client dedupe key (exactly-once on retry).
     let idempotency_key = extract_idempotency_key(&headers);
 
+    // FR-FBR-37 / C37: capture the submitter's UI language. Submit is the ONE
+    // moment it is knowable — the request carries it and nothing afterwards
+    // does — which is why this is captured rather than derived later.
+    let submitter_locale = resolve_submitter_locale(req.locale.as_deref(), &headers);
+
     // ----- 2. Project scope (DEC-PODS-001) ---------------------------------
     let project_scope = state.projects.open_for_submission(project_id).await?;
 
@@ -223,6 +242,7 @@ pub async fn submit(
             rating,
             kind,
             idempotency_key.as_deref(),
+            submitter_locale,
         )
         .await
     } else {
@@ -240,6 +260,7 @@ pub async fn submit(
             rating,
             kind,
             idempotency_key.as_deref(),
+            submitter_locale,
         )
         .await
     }
@@ -262,6 +283,7 @@ async fn submit_authenticated_path(
     rating: Option<Rating>,
     kind: FeedbackKind,
     idempotency_key: Option<&str>,
+    submitter_locale: Option<Locale>,
 ) -> Result<Response, ApiError> {
     // P5b (C25): end-user JWT verification selects ONLY identity-class keys — a
     // runner-class key can never authenticate a submitter (privilege separation).
@@ -297,6 +319,7 @@ async fn submit_authenticated_path(
             rating,
             kind,
             idempotency_key,
+            submitter_locale.map(Locale::code),
         )
         .await?;
 
@@ -336,6 +359,7 @@ async fn submit_anonymous_path(
     rating: Option<Rating>,
     kind: FeedbackKind,
     idempotency_key: Option<&str>,
+    submitter_locale: Option<Locale>,
 ) -> Result<Response, ApiError> {
     // Scrutiny P2-6: validate the client-supplied email shape before it is
     // stored (attacker-chosen, unvalidated email = impersonation vector). Only
@@ -368,6 +392,7 @@ async fn submit_anonymous_path(
             rating,
             kind,
             idempotency_key,
+            submitter_locale.map(Locale::code),
         )
         .await?;
 
@@ -422,6 +447,36 @@ async fn cluster_on_submit_best_effort(
 // ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
+
+/// Resolve the submitter's UI locale at submit time (FR-FBR-37, Contract C37).
+///
+/// The ladder, and why each rung is where it is:
+///
+/// 1. **`locale` in the payload** — the widget states the language it actually
+///    rendered in. Exact-match only: the widget sends a canonical C34 code
+///    because it just used one to pick its own catalog, so anything else is a
+///    client bug and gets ignored rather than guessed at.
+/// 2. **`Accept-Language`** — a preference list, so it gets the full resolver
+///    (`de-AT` → `de`, `pt` → `pt-BR`). This is what makes a French browser
+///    with no widget locale still store `fr`.
+/// 3. **`None`** — nothing offered resolved to a language we ship.
+///
+/// **Step 3 is the subtle one and it is deliberate.** [`resolve`] would answer
+/// `en` here, which would record "this submitter reads English" for a Danish
+/// browser we simply do not serve. [`resolve_opt`] keeps *unknown* distinct
+/// from *English*: a NULL column can be filled in later by a real signal, an
+/// incorrect `en` cannot be told from a correct one.
+///
+/// This function CANNOT fail. An unshipped or malformed value degrades to
+/// `None`; the widget must never be able to break a submit by sending a locale.
+fn resolve_submitter_locale(payload_locale: Option<&str>, headers: &HeaderMap) -> Option<Locale> {
+    if let Some(l) = payload_locale.and_then(Locale::parse) {
+        return Some(l);
+    }
+    let candidates = parse_accept_language(headers);
+    let refs: Vec<&str> = candidates.iter().map(String::as_str).collect();
+    resolve_opt(&refs)
+}
 
 fn parse_kind(s: Option<&str>) -> Result<FeedbackKind, ApiError> {
     Ok(match s {
