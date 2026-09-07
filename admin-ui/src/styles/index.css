@@ -265,7 +265,7 @@ a {
 .search-box {
   flex: 0 1 32rem;
   min-width: min(20rem, 100%);
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .search-box-head {
@@ -287,7 +287,7 @@ a {
 
 .search-icon {
   position: absolute;
-  left: 0.75rem;
+  inset-inline-start: 0.75rem;
   top: 50%;
   width: 1rem;
   height: 1rem;
@@ -302,7 +302,9 @@ a {
 
 .search-box input[type="search"] {
   margin-bottom: 0;
-  padding: 0.6rem 2.6rem 0.6rem 2.3rem;
+  padding-block: 0.6rem;
+  padding-inline-start: 2.3rem;
+  padding-inline-end: 2.6rem;
   font-size: 1rem;
 }
 
@@ -310,7 +312,7 @@ a {
    never competes with what the user typed (or the native clear affordance). */
 .search-kbd {
   position: absolute;
-  right: 0.6rem;
+  inset-inline-end: 0.6rem;
   top: 50%;
   transform: translateY(-50%);
   padding: 0 0.45rem;
@@ -423,7 +425,7 @@ mark.search-mark {
 
 .feedback-table th,
 .feedback-table td {
-  text-align: left;
+  text-align: start;
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
@@ -541,12 +543,12 @@ mark.search-mark {
 
 .drawer {
   position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  inset-block-end: 0;
   width: min(600px, 100vw);
   background: var(--surface);
-  border-left: 1px solid var(--border);
+  border-inline-start: 1px solid var(--border);
   z-index: 11;
   padding: 1.5rem;
   overflow-y: auto;
@@ -657,7 +659,7 @@ mark.search-mark {
 .char-counter {
   font-size: 0.85rem;
   color: var(--text-muted);
-  text-align: right;
+  text-align: end;
   margin-bottom: 0.5rem;
 }
 
@@ -950,7 +952,7 @@ mark.search-mark {
 .upgrade-prompt {
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  border-inline-start: 3px solid var(--accent);
   border-radius: 6px;
   padding: 1rem 1.25rem;
   margin-top: 1rem;
@@ -1313,8 +1315,8 @@ mark.search-mark {
   margin: 0.5rem 0;
 }
 .runner-tokens-security {
-  border-left: 3px solid var(--accent);
-  padding-left: 0.75rem;
+  border-inline-start: 3px solid var(--accent);
+  padding-inline-start: 0.75rem;
 }
 .runner-key-register,
 .runner-token-register,
@@ -1636,7 +1638,7 @@ mark.search-mark {
   align-self: flex-start;
 }
 .hosting-settings-page ol {
-  padding-left: 1.25rem;
+  padding-inline-start: 1.25rem;
 }
 .hosting-settings-page ol li {
   margin: 0.25rem 0;
@@ -1648,8 +1650,10 @@ mark.search-mark {
 }
 .domain-table th,
 .domain-table td {
-  text-align: left;
-  padding: 0.5rem 0.75rem 0.5rem 0;
+  text-align: start;
+  padding-block: 0.5rem;
+  padding-inline-end: 0.75rem;
+  padding-inline-start: 0;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -1697,4 +1701,27 @@ mark.search-mark {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+/* FR-FBR-40 outbound-translation checkbox, appended below the language select
+   inside the same card. */
+.language-settings-outbound {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.6rem;
+  row-gap: 0.25rem;
+  margin-block-start: 0.75rem;
+  padding-block-start: 0.75rem;
+  border-block-start: 1px solid var(--border);
+  width: 100%;
+}
+.language-settings-outbound input[type="checkbox"] {
+  margin-block-start: 0.2rem;
+}
+.language-settings-outbound label {
+  font-weight: 600;
+}
+.language-settings-outbound p {
+  grid-column: 2;
+  margin: 0;
 }

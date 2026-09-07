@@ -12,6 +12,22 @@
 //! submitter, or a `visibility=internal` reply), `send_email` returns
 //! `Ok(())` immediately with an `info!` log line. This is NOT an error
 //! state — it is the documented happy-path for unaddressable receivers.
+//!
+//! ## Outbound machine translation (FR-FBR-40)
+//!
+//! The team writes a status note or a public reply in their language; when the
+//! tenant has opted in (`tenants.translate_outbound`, off by default) and a
+//! provider is configured (off by default, DEC-FBR-IMPL-26), the chokepoint
+//! translates that ONE string into the submitter's own language and the template
+//! renders the translation above the original. Everything about it degrades to
+//! "send the original": no provider, no opt-in, no submitter locale, an English
+//! recipient, a locale the provider has no target for, a provider error — every
+//! one of those sends today's email, unchanged. A translation problem can never
+//! delay or drop a notification.
+//!
+//! This is NOT the FR-FBR-30 inbound pipeline and touches none of its state: the
+//! text translated here is the TEAM's, it is translated per-send, and it is
+//! never written to a feedback row.
 
 use std::sync::Arc;
 
@@ -30,6 +46,7 @@ use crate::email::templates::{
     render_confirmation, render_public_reply, render_status_change, ConfirmationContext,
     PublicReplyContext, RenderedEmail, StatusChangeContext,
 };
+use crate::translation::TranslationProvider;
 
 /// Notification kind passing through the send chokepoint.
 #[derive(Debug, Clone)]
@@ -113,6 +130,13 @@ pub struct LettreEmailNotifier {
     /// display name comes from the per-tenant brand
     /// (`brand.sender_display_name`).
     envelope_from: String,
+    /// FR-FBR-40: the outbound machine-translation provider, or `None`.
+    ///
+    /// `None` is the default and the shipped posture (DEC-FBR-IMPL-26): with no
+    /// provider constructed there is no code path from here to any translation
+    /// backend, so an operator who never opted in cannot egress a byte no matter
+    /// what a tenant ticks.
+    translator: Option<Arc<dyn TranslationProvider>>,
 }
 
 impl LettreEmailNotifier {
@@ -131,6 +155,7 @@ impl LettreEmailNotifier {
             tenants,
             transport,
             envelope_from: envelope_from.to_string(),
+            translator: None,
         })
     }
 
@@ -144,8 +169,149 @@ impl LettreEmailNotifier {
             tenants,
             transport,
             envelope_from: envelope_from.to_string(),
+            translator: None,
         }
     }
+
+    /// Attach the FR-FBR-40 outbound-translation provider (`main.rs` hands over
+    /// the same `Option` `build_translation_provider()` returned).
+    ///
+    /// A builder rather than a fourth constructor argument: translation is
+    /// optional in the strongest sense — it is absent by default, absent in
+    /// every test that does not ask for it, and absent in every self-host
+    /// deployment that has not opted in. Threading it through both constructors
+    /// would make every call site restate `None`.
+    #[must_use]
+    pub fn with_translator(mut self, translator: Option<Arc<dyn TranslationProvider>>) -> Self {
+        self.translator = translator;
+        self
+    }
+
+    /// FR-FBR-40: the machine translation of this email's team-authored text,
+    /// or `None` — which is every case where anything at all is missing.
+    ///
+    /// **This function can only ever return less than it is asked for; it can
+    /// never fail.** Its `None` is not an error path, it is the shipped
+    /// behaviour: the recipient reads the original, exactly as before FR-FBR-40.
+    /// A provider outage, a locale the provider has no target for, an empty
+    /// response — all of them land here as `None` and the email goes out
+    /// unchanged. There is deliberately no `Result`: a caller cannot be tempted
+    /// to `?` a translation problem into a dropped notification.
+    ///
+    /// **Gate order is cheapest-first, not the order the four conditions are
+    /// listed in.** All four are required, so a conjunction may be evaluated in
+    /// any order; putting the three free checks (provider present, recipient
+    /// language known and non-English, provider has a target code) ahead of the
+    /// `translate_outbound` row read means an operator with translation off pays
+    /// zero extra database round-trips per email.
+    async fn translate_outbound_text(
+        &self,
+        scope: &TenantScope,
+        kind: &EmailKind,
+        ctx: &EmailContext,
+    ) -> Option<String> {
+        // The three free checks first, so the tenant read below never happens on
+        // a deployment with no provider.
+        let provider = self.translator.as_ref()?;
+        outbound_translation_target(ctx.submitter_locale.as_deref())?;
+
+        // The tenant's opt-in. A read failure is NOT an error for the email —
+        // treat it as "not opted in", the safe direction for an egress decision.
+        let opted_in = match self.tenants.get_translate_outbound(scope).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    target: "email",
+                    error = %e,
+                    "translate_outbound lookup failed; sending the original untranslated"
+                );
+                return None;
+            }
+        };
+
+        outbound_translation(Some(provider.as_ref()), opted_in, kind, ctx).await
+    }
+}
+
+/// The whole FR-FBR-40 decision, with the one database read lifted out
+/// (`tenant_opted_in`) so it is a pure function of its inputs and every branch
+/// is testable without a database, an SMTP server, or a network.
+///
+/// Returns the machine translation, or `None` meaning "send the original" —
+/// which is what happens when ANY of the four conditions is missing, and also
+/// whenever the provider misbehaves:
+///
+/// | condition | `None` because |
+/// |---|---|
+/// | no provider configured | the default posture (DEC-FBR-IMPL-26) |
+/// | `tenant_opted_in == false` | the default per tenant (migration `00032`) |
+/// | no captured submitter locale, or it is English | nothing to translate into |
+/// | the locale has no provider target code (`ga fa ml is si`) | English by design |
+/// | nothing team-authored in this email | nothing to translate |
+/// | provider error / empty / unchanged output | best-effort, never blocking |
+///
+/// There is no `Result` on purpose: a translation problem must not be
+/// `?`-able into a dropped notification.
+pub async fn outbound_translation(
+    provider: Option<&dyn TranslationProvider>,
+    tenant_opted_in: bool,
+    kind: &EmailKind,
+    ctx: &EmailContext,
+) -> Option<String> {
+    if !tenant_opted_in {
+        return None;
+    }
+    let provider = provider?;
+    let target = outbound_translation_target(ctx.submitter_locale.as_deref())?;
+    let source = outbound_translatable_text(kind, ctx)?;
+
+    match crate::translation::translate_to(provider, source, target).await {
+        Ok(t) => t,
+        Err(e) => {
+            // No body in the log line — the note/reply is customer text.
+            tracing::warn!(
+                target: "email",
+                feedback_id = %ctx.feedback_id,
+                error = %e,
+                "outbound translation failed; sending the original untranslated"
+            );
+            None
+        }
+    }
+}
+
+/// The language to machine-translate outbound team text INTO, or `None`.
+///
+/// Only the submitter's own captured locale counts, and only when it is not
+/// English. That is narrower than [`resolve_recipient_locale`], which also
+/// renders the chrome for a recipient we know nothing about, and the difference
+/// is deliberate: the tenant setting is the ADMIN's language — the language the
+/// note was most likely written in — so treating it as evidence about the
+/// submitter would translate text into its own source language and charge a
+/// provider for the privilege. No submitter locale is not a request for a
+/// translation.
+#[must_use]
+pub fn outbound_translation_target(submitter_locale: Option<&str>) -> Option<Locale> {
+    submitter_locale
+        .and_then(Locale::parse)
+        .filter(|l| *l != Locale::EN)
+}
+
+/// The one string in this email that is TEAM-authored and therefore eligible for
+/// outbound translation (FR-FBR-40), or `None`.
+///
+/// Exactly two qualify: a status-change `reason_note` and a public `reply_body`.
+/// The confirmation email's `body_excerpt` is the SUBMITTER'S OWN WORDS quoted
+/// back at them — already in their language, and the string Q24 is about — so it
+/// is never eligible. Neither is any chrome: that comes from the `email.*`
+/// catalog in all 31 languages (FR-FBR-37) and needs no provider.
+fn outbound_translatable_text<'a>(kind: &'a EmailKind, ctx: &'a EmailContext) -> Option<&'a str> {
+    let text = match kind {
+        EmailKind::StatusChange { reason_note, .. } => reason_note.as_deref(),
+        EmailKind::PublicReply { .. } => ctx.reply_body.as_deref(),
+        EmailKind::Confirmation => None,
+    }?;
+    (!text.trim().is_empty()).then_some(text)
 }
 
 #[async_trait]
@@ -182,7 +348,8 @@ impl EmailNotifier for LettreEmailNotifier {
             }
         };
         let locale = resolve_recipient_locale(ctx.submitter_locale.as_deref(), tenant_locale.as_deref());
-        let rendered = render_for_kind(&brand, &kind, &ctx, locale);
+        let translated = self.translate_outbound_text(scope, &kind, &ctx).await;
+        let rendered = render_for_kind(&brand, &kind, &ctx, locale, translated.as_deref());
 
         let from: Mailbox = build_from_mailbox(&self.envelope_from, &brand.sender_display_name)
             .map_err(|e| EmailError::Transport(format!("invalid envelope_from: {e}")))?;
@@ -261,11 +428,16 @@ pub fn resolve_account_locale(tenant_locale: Option<&str>, headers: &axum::http:
     feedbackmonk_i18n::resolve_opt(&refs).unwrap_or(Locale::EN)
 }
 
+/// `translated` is the FR-FBR-40 machine translation of the team-authored text,
+/// or `None` for "render exactly what shipped before FR-FBR-40". It is applied
+/// to the note or the reply body only — never to the confirmation excerpt, which
+/// is the submitter's own words.
 fn render_for_kind(
     brand: &EmailTenantBrand,
     kind: &EmailKind,
     ctx: &EmailContext,
     locale: Locale,
+    translated: Option<&str>,
 ) -> RenderedEmail {
     match kind {
         EmailKind::Confirmation => render_confirmation(
@@ -287,6 +459,7 @@ fn render_for_kind(
                 from_status: *from,
                 to_status: *to,
                 reason_note: reason_note.as_deref(),
+                translated_reason_note: translated,
             },
             locale,
         ),
@@ -295,6 +468,7 @@ fn render_for_kind(
             &PublicReplyContext {
                 feedback_id: &ctx.feedback_id,
                 reply_body: ctx.reply_body.as_deref().unwrap_or(""),
+                translated_reply: translated,
             },
             locale,
         ),
@@ -392,6 +566,68 @@ mod tests {
         assert_eq!(resolve_recipient_locale(None, Some("fr")), fr);
         // Neither → English, which is exactly today's behaviour.
         assert_eq!(resolve_recipient_locale(None, None), Locale::EN);
+    }
+
+    fn ctx_with(reply_body: Option<&str>, submitter_locale: Option<&str>) -> EmailContext {
+        EmailContext {
+            feedback_id: FeedbackId::from("FB-ABC123".to_string()),
+            submitter_email: Some("s@example.com".into()),
+            body_excerpt: Some("the submitter's own words".into()),
+            reply_body: reply_body.map(str::to_string),
+            submitter_locale: submitter_locale.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn outbound_target_is_the_submitters_own_non_english_locale() {
+        let de = Locale::parse("de").unwrap();
+        assert_eq!(outbound_translation_target(Some("de")), Some(de));
+        // English recipient: nothing to translate INTO.
+        assert_eq!(outbound_translation_target(Some("en")), None);
+        // No captured locale is not a request for a translation — the tenant
+        // setting is the ADMIN's language, i.e. the note's own source language.
+        assert_eq!(outbound_translation_target(None), None);
+        // A value we do not ship is not a language we can target.
+        assert_eq!(outbound_translation_target(Some("da")), None);
+    }
+
+    #[test]
+    fn only_team_authored_text_is_eligible() {
+        let note = EmailKind::StatusChange {
+            from: FeedbackStatus::Triaged,
+            to: FeedbackStatus::InProgress,
+            reason_note: Some("We've started.".into()),
+            };
+        let ctx = ctx_with(None, Some("de"));
+        assert_eq!(outbound_translatable_text(&note, &ctx), Some("We've started."));
+
+        let reply = EmailKind::PublicReply { reply_id: Uuid::nil() };
+        let ctx = ctx_with(Some("Fixed in 2.1."), Some("de"));
+        assert_eq!(outbound_translatable_text(&reply, &ctx), Some("Fixed in 2.1."));
+
+        // The confirmation excerpt is the SUBMITTER's own words — the string Q24
+        // is about. Never eligible, whatever else is set.
+        assert_eq!(outbound_translatable_text(&EmailKind::Confirmation, &ctx), None);
+    }
+
+    #[test]
+    fn nothing_to_translate_when_the_team_wrote_nothing() {
+        let ctx = ctx_with(None, Some("de"));
+        let no_note = EmailKind::StatusChange {
+            from: FeedbackStatus::Triaged,
+            to: FeedbackStatus::Shipped,
+            reason_note: None,
+        };
+        assert_eq!(outbound_translatable_text(&no_note, &ctx), None);
+        let blank_note = EmailKind::StatusChange {
+            from: FeedbackStatus::Triaged,
+            to: FeedbackStatus::Shipped,
+            reason_note: Some("   \n".into()),
+        };
+        assert_eq!(outbound_translatable_text(&blank_note, &ctx), None);
+        // A PublicReply whose body never made it into the context.
+        let reply = EmailKind::PublicReply { reply_id: Uuid::nil() };
+        assert_eq!(outbound_translatable_text(&reply, &ctx_with(None, Some("de"))), None);
     }
 
     #[test]

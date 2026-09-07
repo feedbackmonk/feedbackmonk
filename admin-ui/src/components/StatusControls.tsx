@@ -8,12 +8,13 @@ import axios from "axios";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   LEGAL_TRANSITIONS,
-  STATUS_LABELS,
   type FeedbackStatus,
   type TransitionErrorBody,
 } from "../shared/types.gen";
 import { postTransition } from "../shared/ApiClient";
 import { useToast } from "./Toast";
+import { useTranslation } from "../i18n";
+import { useLabels } from "../i18n/useLabels";
 
 interface StatusControlsProps {
   feedbackId: string;
@@ -25,6 +26,8 @@ interface StatusControlsProps {
 // the UI offers. Backend 409 fallback (Contract C7 TransitionError) is
 // belt-and-braces — illegal transitions are never reachable from this UI.
 export function StatusControls({ feedbackId, currentStatus }: StatusControlsProps) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
   // `?? []` is defence-in-depth, not dead code: a status string the backend
   // emits but this union doesn't know (the `wontfix` / `wont-fix` serde drift
   // fixed in feedbackmonk-core/src/status.rs) used to make this `undefined`
@@ -49,7 +52,12 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
       });
     },
     onSuccess: (_res, target) => {
-      notify(`Transitioned to ${STATUS_LABELS[target]}.`, "success");
+      notify(
+        t("admin.statusControls.transitionedTo", {
+          status: labels.status(target),
+        }),
+        "success",
+      );
       queryClient.invalidateQueries({
         queryKey: ["admin-feedback-detail", feedbackId],
       });
@@ -59,9 +67,9 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
     onError: (err) => {
       if (axios.isAxiosError(err) && err.response?.status === 409) {
         const body = err.response.data as TransitionErrorBody | undefined;
-        setInlineError(messageForError(body?.error));
+        setInlineError(messageForError(body?.error, t));
       } else {
-        setInlineError("Transition failed. Please try again.");
+        setInlineError(t("admin.statusControls.errors.generic"));
       }
     },
   });
@@ -85,7 +93,7 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
     e.preventDefault();
     if (!pendingTarget) return;
     if (pendingTarget === "duplicate" && !duplicateOf.trim()) {
-      setInlineError("A duplicate target (FB-XXXXXX) is required.");
+      setInlineError(t("admin.statusControls.errors.duplicateRequired"));
       return;
     }
     mutation.mutate(pendingTarget);
@@ -94,16 +102,24 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
   if (choices.length === 0) {
     return (
       <div className="status-controls status-controls-terminal">
-        <p className="muted">Terminal — no further transitions.</p>
+        <p className="muted">{t("admin.statusControls.terminal")}</p>
       </div>
     );
   }
 
   return (
     <div className="status-controls">
-      <h3>Transition status</h3>
-      <p className="muted">From {STATUS_LABELS[currentStatus]} to:</p>
-      <div className="status-choices" role="group" aria-label="Transition status">
+      <h3>{t("admin.statusControls.heading")}</h3>
+      <p className="muted">
+        {t("admin.statusControls.fromTo", {
+          status: labels.status(currentStatus),
+        })}
+      </p>
+      <div
+        className="status-choices"
+        role="group"
+        aria-label={t("admin.statusControls.heading")}
+      >
         {choices.map((target) => (
           <button
             key={target}
@@ -111,7 +127,7 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
             onClick={() => openDialog(target)}
             disabled={mutation.isPending}
           >
-            {STATUS_LABELS[target]}
+            {labels.status(target)}
           </button>
         ))}
       </div>
@@ -127,13 +143,15 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
         >
           <form onSubmit={onConfirm}>
             <h4 id={`${dialogId}-title`}>
-              Transition to {STATUS_LABELS[pendingTarget]}
+              {t("admin.statusControls.transitionTo", {
+                status: labels.status(pendingTarget),
+              })}
             </h4>
 
             {pendingTarget === "duplicate" ? (
               <>
                 <label htmlFor={`${dialogId}-dup`}>
-                  Duplicate of (required, e.g. FB-XXXXXX)
+                  {t("admin.statusControls.duplicateOfLabel")}
                 </label>
                 <input
                   id={`${dialogId}-dup`}
@@ -148,7 +166,7 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
             ) : null}
 
             <label htmlFor={`${dialogId}-reason`}>
-              Reason note (optional)
+              {t("admin.statusControls.reasonNoteLabel")}
             </label>
             <textarea
               id={`${dialogId}-reason`}
@@ -170,10 +188,12 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
                 onClick={closeDialog}
                 disabled={mutation.isPending}
               >
-                Cancel
+                {t("admin.common.cancel")}
               </button>
               <button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? "Submitting…" : "Confirm"}
+                {mutation.isPending
+                  ? t("admin.statusControls.submitting")
+                  : t("admin.common.confirm")}
               </button>
             </div>
           </form>
@@ -183,17 +203,20 @@ export function StatusControls({ feedbackId, currentStatus }: StatusControlsProp
   );
 }
 
-function messageForError(code?: TransitionErrorBody["error"]): string {
+function messageForError(
+  code: TransitionErrorBody["error"] | undefined,
+  t: (key: string) => string,
+): string {
   switch (code) {
     case "IllegalTransition":
-      return "That transition is not allowed from the current status.";
+      return t("admin.statusControls.errors.illegalTransition");
     case "DuplicateRequiresTarget":
-      return "A duplicate target is required.";
+      return t("admin.statusControls.errors.duplicateRequired");
     case "DuplicateTargetMissing":
-      return "The duplicate target was not found in this project.";
+      return t("admin.statusControls.errors.duplicateTargetMissing");
     case "DuplicateSelfReference":
-      return "A feedback item cannot be a duplicate of itself.";
+      return t("admin.statusControls.errors.duplicateSelfReference");
     default:
-      return "Transition rejected. Please try again.";
+      return t("admin.statusControls.errors.transitionRejected");
   }
 }

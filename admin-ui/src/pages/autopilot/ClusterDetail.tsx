@@ -1,8 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  CLUSTER_STATUS_LABELS,
-  KIND_LABELS,
-  STATUS_LABELS,
   type ClusterDetail as ClusterDetailShape,
 } from "../../shared/types.gen";
 import { fetchClusterDetail } from "../../shared/ApiClient";
@@ -11,6 +8,11 @@ import { formatRelative } from "../../shared/format";
 import { useAdminProject } from "./useAdminProject";
 import { PriorityBadge } from "./badges";
 import { RecommendationCard } from "./RecommendationCard";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
+import { useLabels } from "../../i18n/useLabels";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
+import { useLocale } from "../../i18n/useLocale";
 
 // FR-FBR-21 cluster detail — the cluster's members (the feedback grouped into
 // it, rendered as quoted data) and its recommendations (newest first) with the
@@ -18,13 +20,14 @@ import { RecommendationCard } from "./RecommendationCard";
 // prominently (explainability). All member/cluster text is untrusted public
 // input, rendered as escaped React text nodes.
 export function ClusterDetail({ clusterId }: { clusterId: string }) {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -33,7 +36,7 @@ export function ClusterDetail({ clusterId }: { clusterId: string }) {
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -48,6 +51,10 @@ function ClusterDetailInner({
   projectId: string;
   clusterId: string;
 }) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
+  const adminLabels = useAdminLabels();
+  const { locale } = useLocale();
   const query = useQuery({
     queryKey: ["autopilot-cluster", projectId, clusterId],
     queryFn: () => fetchClusterDetail(projectId, clusterId),
@@ -57,7 +64,7 @@ function ClusterDetailInner({
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading cluster…</p>
+        <p className="muted">{t("admin.clusterDetail.loadingCluster")}</p>
       </main>
     );
   }
@@ -66,9 +73,9 @@ function ClusterDetailInner({
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          Failed to load this cluster.{" "}
+          {t("admin.clusterDetail.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       </main>
@@ -85,43 +92,49 @@ function ClusterDetailInner({
         <div className="ap-cluster-tags">
           <PriorityBadge priority={cluster.priority} />
           <span className={`kind-badge kind-${cluster.kind}`}>
-            {KIND_LABELS[cluster.kind]}
+            {labels.kind(cluster.kind)}
           </span>
-          <span className="muted">{CLUSTER_STATUS_LABELS[cluster.status]}</span>
+          <span className="muted">
+            {adminLabels.clusterStatus(cluster.status)}
+          </span>
         </div>
       </header>
 
       <section aria-labelledby="ap-cluster-summary-label">
         <h2 id="ap-cluster-summary-label" className="visually-hidden">
-          Summary
+          {t("admin.clusterDetail.summaryHeading")}
         </h2>
         {cluster.summary ? (
           <p className="ap-cluster-summary">{cluster.summary}</p>
         ) : null}
         {cluster.priority_rationale ? (
           <p className="ap-cluster-rationale">
-            <span className="muted">Why this priority: </span>
+            <span className="muted">
+              {t("admin.autopilotDigest.whyThisPriority")}
+            </span>
             {cluster.priority_rationale}
           </p>
         ) : null}
         {cluster.last_swept_at ? (
           <p className="muted">
-            Last swept{" "}
-            <time dateTime={cluster.last_swept_at}>
-              {formatRelative(cluster.last_swept_at)}
-            </time>
+            <Trans
+              i18nKey="admin.clusterDetail.lastSwept"
+              t={t}
+              values={{ when: formatRelative(cluster.last_swept_at, locale) }}
+              components={{ time: <time dateTime={cluster.last_swept_at} /> }}
+            />
           </p>
         ) : null}
       </section>
 
       <section aria-labelledby="ap-cluster-recs-label">
         <h2 id="ap-cluster-recs-label">
-          Recommendations{" "}
+          {t("admin.clusterDetail.recommendationsHeading")}{" "}
           <span className="muted">({cluster.recommendations.length})</span>
         </h2>
         {cluster.recommendations.length === 0 ? (
           <p className="muted">
-            No recommendations yet. They are emitted by analysis sweeps.
+            {t("admin.clusterDetail.noRecommendations")}
           </p>
         ) : (
           <div className="ap-rec-cards">
@@ -138,11 +151,11 @@ function ClusterDetailInner({
       {cluster.members ? (
         <section aria-labelledby="ap-cluster-members-label">
           <h2 id="ap-cluster-members-label">
-            Grouped feedback{" "}
+            {t("admin.clusterDetail.groupedFeedbackHeading")}{" "}
             <span className="muted">({cluster.members.length})</span>
           </h2>
           {cluster.members.length === 0 ? (
-            <p className="muted">No feedback in this cluster.</p>
+            <p className="muted">{t("admin.clusterDetail.noMembers")}</p>
           ) : (
             <ul className="ap-member-list">
               {cluster.members.map((m) => (
@@ -154,13 +167,13 @@ function ClusterDetailInner({
                   {m.feedback_id}
                 </Link>
                 <span className={`kind-badge kind-${m.kind}`}>
-                  {KIND_LABELS[m.kind]}
+                  {labels.kind(m.kind)}
                 </span>
-                <span className="muted">{STATUS_LABELS[m.status]}</span>
+                <span className="muted">{labels.status(m.status)}</span>
                 {/* Untrusted submitter text — quoted data only. */}
-                <span className="ap-member-excerpt">{m.body_excerpt}</span>
+                <span className="ap-member-excerpt" dir="auto">{m.body_excerpt}</span>
                 <time className="muted" dateTime={m.submitted_at}>
-                  {formatRelative(m.submitted_at)}
+                  {formatRelative(m.submitted_at, locale)}
                 </time>
                 </li>
               ))}
@@ -173,9 +186,10 @@ function ClusterDetailInner({
 }
 
 function BackLink() {
+  const { t } = useTranslation("admin");
   return (
     <Link to="/admin/autopilot" className="ap-back-link">
-      ← Back to digest
+      {t("admin.common.backToDigest")}
     </Link>
   );
 }

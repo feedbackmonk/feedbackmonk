@@ -1,8 +1,7 @@
-import {
-  AUTONOMY_RUNG_DESCRIPTIONS,
-  AUTONOMY_RUNG_LABELS,
-  type AutonomyRung,
-} from "../../shared/types.gen";
+import { type AutonomyRung } from "../../shared/types.gen";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
 
 // The graduated autonomy-rung dial (FR-FBR-21). Sets how far the agent walks
 // before it needs a signature, sent at work-order CREATE (C22). This is a
@@ -25,17 +24,21 @@ export function AutonomyRungDial({
   disabled?: boolean;
   idPrefix: string;
 }) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
   return (
     <fieldset className="ap-rung-dial" disabled={disabled}>
-      <legend>Autonomy rung</legend>
+      <legend>{t("admin.autonomyRungDial.legend")}</legend>
       <p className="muted ap-rung-hint">
-        How far the agent may walk before it needs your signature. You approve
-        every work order regardless of rung — the rung governs what happens{" "}
-        <em>after</em> approval.
+        <Trans
+          i18nKey="admin.autonomyRungDial.hint"
+          t={t}
+          components={{ em: <em /> }}
+        />
       </p>
       <div
         role="radiogroup"
-        aria-label="Autonomy rung"
+        aria-label={t("admin.autonomyRungDial.legend")}
         className="ap-rung-options"
       >
         {SELECTABLE_RUNGS.map((rung) => {
@@ -57,10 +60,10 @@ export function AutonomyRungDial({
                 disabled={disabled}
               />
               <span className="ap-rung-option-label">
-                {AUTONOMY_RUNG_LABELS[rung]}
+                {adminLabels.autonomyRungLabel(rung)}
               </span>
               <span className="ap-rung-option-desc muted">
-                {AUTONOMY_RUNG_DESCRIPTIONS[rung]}
+                {adminLabels.autonomyRungDescription(rung)}
               </span>
             </label>
           );

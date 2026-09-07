@@ -143,7 +143,18 @@ describe("the modal speaks the active locale", () => {
 
 describe("server error text is never rendered verbatim", () => {
   const cases: [string, string][] = [
-    ["invalid_input", "Subject and message are required."],
+    // Reworded 2026-09-07 (FR-FBR-40, LEAD ruling on MSG-001 item 5): the
+    // server now sends `code: "invalid_input"` for EVERY 400, including "body
+    // too long" and "email is not a valid address" — both reachable from this
+    // widget — so a subject/message-specific string would be confidently wrong.
+    ["invalid_input", "Check your entry and try again."],
+    // ADDED 2026-09-07 (critic finding C-005): the server now sends
+    // `code: "internal"` for a 500, which reaches this map through the submit
+    // call's `readError`. Without a key of its own it fell to
+    // `widget.error.generic` ("Could not send…"), which is worse than the
+    // `http_5xx` line the status fallback used to give. This case pins the
+    // restored 5xx-quality wording so the regression cannot return silently.
+    ["internal", "Something went wrong on our side. Please try again shortly."],
     ["network_error", "Could not send. Try again in a moment."],
     ["http_401", "Your session has expired. Reload the page and try again."],
     ["http_402", "This project has reached its feedback limit. Please contact the site owner."],

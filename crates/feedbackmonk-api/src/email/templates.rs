@@ -106,6 +106,11 @@ pub struct StatusChangeContext<'a> {
     /// Optional admin note ("we couldn't reproduce this without a logged-in
     /// user"). When `None`, the body omits the note section entirely.
     pub reason_note: Option<&'a str>,
+    /// FR-FBR-40: a machine translation of `reason_note` into the recipient's
+    /// language, when the tenant opted in and one was produced. `None` — the
+    /// default and the only possibility with the provider off — renders exactly
+    /// what shipped before FR-FBR-40. Ignored when `reason_note` is `None`.
+    pub translated_reason_note: Option<&'a str>,
 }
 
 #[must_use]
@@ -146,7 +151,11 @@ pub fn render_status_change(
         body.push('\n');
         body.push_str(&t(locale, "email.status.noteHeading"));
         body.push('\n');
-        body.push_str(note);
+        body.push_str(&with_optional_translation(
+            note,
+            ctx.translated_reason_note,
+            locale,
+        ));
         body.push('\n');
     }
     body.push('\n');
@@ -160,6 +169,10 @@ pub fn render_status_change(
 pub struct PublicReplyContext<'a> {
     pub feedback_id: &'a FeedbackId,
     pub reply_body: &'a str,
+    /// FR-FBR-40: a machine translation of `reply_body` into the recipient's
+    /// language, when the tenant opted in and one was produced. `None` renders
+    /// exactly what shipped before FR-FBR-40.
+    pub translated_reply: Option<&'a str>,
 }
 
 #[must_use]
@@ -183,10 +196,33 @@ pub fn render_public_reply(
                 ("feedbackId", ctx.feedback_id.as_str()),
             ],
         ),
-        reply_body = ctx.reply_body,
+        reply_body = with_optional_translation(ctx.reply_body, ctx.translated_reply, locale),
         footer = render_footer(brand, locale),
     );
     RenderedEmail { subject, body }
+}
+
+/// FR-FBR-40 render shape for one piece of team-authored text: the machine
+/// translation, a blank line, the localized "this was translated" line, then the
+/// original.
+///
+/// **The translation goes first and the original is always present.** First,
+/// because the recipient's own language is the one they can read — burying it
+/// under a paragraph they can't parse defeats the feature. Always, because a
+/// machine translation is evidence about the original, not a replacement for it:
+/// a mistranslated status decision must stay checkable against what the team
+/// actually wrote (and against a second reader who speaks the source language).
+///
+/// `None` reproduces today's bytes exactly, which is why the ten English
+/// snapshots do not move.
+fn with_optional_translation(original: &str, translated: Option<&str>, locale: Locale) -> String {
+    match translated {
+        None => original.to_string(),
+        Some(mt) => format!(
+            "{mt}\n\n{separator}\n{original}",
+            separator = t(locale, "email.machineTranslated"),
+        ),
+    }
 }
 
 /// `[{email_subject_prefix} #{FB-id}] {short_subject}` per Contract C10.
@@ -345,6 +381,7 @@ mod tests {
                 from_status: FeedbackStatus::Submitted,
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
+                translated_reason_note: None,
             },
             Locale::EN,
         );
@@ -374,6 +411,7 @@ mod tests {
                 from_status: FeedbackStatus::Triaged,
                 to_status: FeedbackStatus::InProgress,
                 reason_note: Some("We've started work on this. ETA next week."),
+                translated_reason_note: None,
             },
             Locale::EN,
         );
@@ -406,6 +444,7 @@ mod tests {
             &PublicReplyContext {
                 feedback_id: &id,
                 reply_body: "Thanks — we've reproduced it and pushed a fix.",
+                translated_reply: None,
             },
             Locale::EN,
         );
@@ -432,6 +471,7 @@ mod tests {
             &PublicReplyContext {
                 feedback_id: &id,
                 reply_body: "Thanks — we've reproduced it and pushed a fix.",
+                translated_reply: None,
             },
             Locale::EN,
         );
@@ -449,6 +489,155 @@ mod tests {
         Reply to this email or contact help@acme.example.
         Unsubscribe: https://acme.example/unsub?u=abc
         "###);
+    }
+
+    // --- FR-FBR-40: machine translation above the original -------
+
+    #[test]
+    fn snapshot_status_change_with_a_machine_translated_note() {
+        let brand = default_brand();
+        let id = fb();
+        let r = render_status_change(
+            &brand,
+            &StatusChangeContext {
+                feedback_id: &id,
+                from_status: FeedbackStatus::Triaged,
+                to_status: FeedbackStatus::InProgress,
+                reason_note: Some("We've started work on this. ETA next week."),
+                translated_reason_note: Some(
+                    "Wir haben mit der Arbeit begonnen. ETA nächste Woche.",
+                ),
+            },
+            Locale::EN,
+        );
+        // Rendered in English here so the shape is legible; a real send renders
+        // the chrome in the recipient's language too.
+        insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
+        Subject: [acme #FB-ABC123] Status updated: In progress
+
+        Your feedback FB-ABC123 was updated.
+
+        Previous status: Triaged
+        New status:      In progress
+
+        Note from the team:
+        Wir haben mit der Arbeit begonnen. ETA nächste Woche.
+
+        Translated automatically. Original text below:
+        We've started work on this. ETA next week.
+
+        — The acme team
+        ---
+        You are receiving this because you submitted feedback to acme.
+        Reply to this email or contact acme@example.com.
+        "###);
+    }
+
+    #[test]
+    fn snapshot_public_reply_with_a_machine_translated_body() {
+        let brand = default_brand();
+        let id = fb();
+        let r = render_public_reply(
+            &brand,
+            &PublicReplyContext {
+                feedback_id: &id,
+                reply_body: "Thanks — we've reproduced it and pushed a fix.",
+                translated_reply: Some(
+                    "Danke — wir haben es reproduziert und einen Fix veröffentlicht.",
+                ),
+            },
+            Locale::EN,
+        );
+        insta::assert_snapshot!(format!("Subject: {}\n\n{}", r.subject, r.body), @r###"
+        Subject: [acme #FB-ABC123] Reply from the team
+
+        The acme team replied to your feedback FB-ABC123.
+
+        Danke — wir haben es reproduziert und einen Fix veröffentlicht.
+
+        Translated automatically. Original text below:
+        Thanks — we've reproduced it and pushed a fix.
+
+        — The acme team
+        ---
+        You are receiving this because you submitted feedback to acme.
+        Reply to this email or contact acme@example.com.
+        "###);
+    }
+
+    #[test]
+    fn the_original_survives_every_translated_render() {
+        // The load-bearing half of FR-FBR-40: a machine translation is evidence
+        // about the original, never a replacement for it.
+        let brand = default_brand();
+        let id = fb();
+        let note = "We couldn't reproduce this.";
+        let reply = "Fixed in 2.1.";
+        let a = render_status_change(
+            &brand,
+            &StatusChangeContext {
+                feedback_id: &id,
+                from_status: FeedbackStatus::Triaged,
+                to_status: FeedbackStatus::WontFix,
+                reason_note: Some(note),
+                translated_reason_note: Some("MT"),
+            },
+            Locale::EN,
+        );
+        let b = render_public_reply(
+            &brand,
+            &PublicReplyContext {
+                feedback_id: &id,
+                reply_body: reply,
+                translated_reply: Some("MT"),
+            },
+            Locale::EN,
+        );
+        assert!(a.body.contains(note), "the original note must always be present");
+        assert!(b.body.contains(reply), "the original reply must always be present");
+        // …and the translation is ABOVE it.
+        assert!(a.body.find("MT").unwrap() < a.body.find(note).unwrap());
+        assert!(b.body.find("MT").unwrap() < b.body.find(reply).unwrap());
+    }
+
+    #[test]
+    fn a_translation_with_no_note_changes_nothing() {
+        // `translated_reason_note` without a `reason_note` is meaningless input;
+        // it must not conjure a note section.
+        let brand = default_brand();
+        let id = fb();
+        let r = render_status_change(
+            &brand,
+            &StatusChangeContext {
+                feedback_id: &id,
+                from_status: FeedbackStatus::Submitted,
+                to_status: FeedbackStatus::Triaged,
+                reason_note: None,
+                translated_reason_note: Some("MT"),
+            },
+            Locale::EN,
+        );
+        assert!(!r.body.contains("MT"));
+        assert!(!r.body.contains("Note from the team"));
+    }
+
+    #[test]
+    fn the_separator_line_is_localized_from_the_catalog() {
+        // Not an English literal in Rust (FR-FBR-37): the line comes from
+        // `email.machineTranslated`, so a translated catalog moves it.
+        let brand = default_brand();
+        let id = fb();
+        let de = Locale::parse("de").unwrap();
+        let r = render_public_reply(
+            &brand,
+            &PublicReplyContext {
+                feedback_id: &id,
+                reply_body: "original",
+                translated_reply: Some("übersetzt"),
+            },
+            de,
+        );
+        assert!(r.body.contains(&*t(de, "email.machineTranslated")));
     }
 
     // --- structural assertions (not snapshot-locked) -------------
@@ -476,6 +665,7 @@ mod tests {
                 from_status: FeedbackStatus::Submitted,
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
+                translated_reason_note: None,
             },
             Locale::EN,
         );
@@ -493,6 +683,7 @@ mod tests {
                 from_status: FeedbackStatus::Submitted,
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
+                translated_reason_note: None,
             },
             Locale::EN,
         );
@@ -510,6 +701,7 @@ mod tests {
                 from_status: FeedbackStatus::Submitted,
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
+                translated_reason_note: None,
             },
             Locale::EN,
         );
@@ -533,12 +725,17 @@ mod tests {
                     from_status: FeedbackStatus::InProgress,
                     to_status: FeedbackStatus::Shipped,
                     reason_note: None,
+                    translated_reason_note: None,
                 },
                 Locale::EN,
             ).body,
             render_public_reply(
                 &brand,
-                &PublicReplyContext { feedback_id: &id, reply_body: "y" },
+                &PublicReplyContext {
+                    feedback_id: &id,
+                    reply_body: "y",
+                    translated_reply: None,
+                },
                 Locale::EN,
             ).body,
         ];

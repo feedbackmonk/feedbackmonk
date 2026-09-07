@@ -23,8 +23,10 @@ One i18next instance, the C34 locale resolver, the locale state machine (`?lang=
 | `useLocale.ts` | Precedence, persistence (`fbm_lang`), `setLocale`, `bootstrapLocale`, `applyDocumentLocale`, `browserLocale`, `dirOf` |
 | `useLocale.test.ts` | Precedence, invalid-input rejection, `lang`/`dir` application, storage-throws survival |
 | `useAdminLocaleDefault.ts` | Admin-only C38 read applied as a default (never an override) |
-| `useLabels.ts` | Localized wire-enum labels with per-key English fallback |
+| `useLabels.ts` | Localized wire-enum labels with per-key English fallback (the four `status.json` SHARED families) |
 | `useLabels.test.tsx` | Catalog value, per-key fallback, unknown-value fallback |
+| `useAdminLabels.ts` | Localized wire-enum labels for the ADMIN-ONLY families (`admin.enum.*` — Stage 2 / W-D, LD ruling R-1); mirrors `useLabels.ts` exactly |
+| `useAdminLabels.test.tsx` | Catalog value, per-key fallback, unknown-value fallback (mirrors `useLabels.test.tsx`) |
 | `LanguageSwitcher.tsx` | Native `<select>` of the 31 endonyms; sets `lang` per option |
 | `locales.gen.ts` | **GENERATED** from `i18n/locales.json` by `scripts/i18n/gen-locales.py` (C41) — never hand-edit |
 
@@ -41,7 +43,7 @@ t("public.board.title");
 t("public.roadmap.voteCount", { count: 3 });        // plural, C35 rule 5
 ```
 
-Namespaces: `public` (public surfaces, W-B), `admin` (admin console — extracted in Stage 2 by W-D; `useTranslation('admin')` already works against the empty catalog), `status` (shared wire-enum labels, read by the Rust backend too).
+Namespaces: `public` (public surfaces, W-B), `admin` (admin console — fully extracted in Stage 2 by W-D; `i18n-literal-ratchet` baseline is 0 for `admin-ui/src`), `status` (shared wire-enum labels, read by the Rust backend too).
 
 ## Constraints & Business Rules
 
@@ -54,8 +56,8 @@ Namespaces: `public` (public surfaces, W-B), `admin` (admin console — extracte
 
 ## Relationships & Dependencies
 
-- **Consumes**: `i18n/locales.json` → `locales.gen.ts` (C34/C41, LD-owned); `i18n/locales/en/{public,admin,status}.json` (C35); `i18n/resolution-fixtures.json`; `shared/localeApi.ts` (C38); `shared/types.gen.ts` (English label constants, used as `useLabels` fallback until Stage 2).
-- **Consumed by**: `pages/board/PublicBoard.tsx`, `pages/roadmap/PublicRoadmap.tsx`, `pages/public/TenantHostLanding.tsx`, `pages/settings/LanguageSettings.tsx`, `App.tsx`; Stage 2 (W-D) extracts the rest of the admin console against this same surface.
+- **Consumes**: `i18n/locales.json` → `locales.gen.ts` (C34/C41, LD-owned); `i18n/locales/en/{public,admin,status}.json` (C35); `i18n/resolution-fixtures.json`; `shared/localeApi.ts` (C38).
+- **Consumed by**: `pages/board/PublicBoard.tsx`, `pages/roadmap/PublicRoadmap.tsx`, `pages/public/TenantHostLanding.tsx`, `pages/settings/LanguageSettings.tsx`, `App.tsx`, and — since Stage 2 (W-D) — every remaining `admin-ui/src/pages/**` and `components/**` file.
 - **Sibling implementations** that must not drift: `widget/src/i18n.ts` (same resolver), `crates/feedbackmonk-i18n` (same resolver + the `status` namespace).
 
 ## Decision Log

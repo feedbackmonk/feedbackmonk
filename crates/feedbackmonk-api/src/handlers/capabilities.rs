@@ -74,6 +74,12 @@ pub const CAPABILITIES: &[&str] = &[
     //                              feature detection exists for.
     "i18n.locales",
     "feedback.submitter_locale",
+    // FR-FBR-40 / R-2: every `ApiError` JSON body now carries a stable
+    // machine-readable `code` (and `message`) beside the original `error` field,
+    // so a client can branch on what went wrong instead of on the HTTP status.
+    // Additive, and a consumer cannot feature-detect an added field any other
+    // way — which is exactly what this array is for.
+    "errors.code",
 ];
 
 pub async fn capabilities() -> Json<Value> {
@@ -195,6 +201,8 @@ mod tests {
             // FR-FBR-34..38 (DEC-FBR-15/16): UI localization.
             "i18n.locales",
             "feedback.submitter_locale",
+            // FR-FBR-40: machine-readable `code` on every ApiError body.
+            "errors.code",
         ];
         assert_eq!(
             CAPABILITIES.len(),

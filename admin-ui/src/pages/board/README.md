@@ -39,7 +39,7 @@ Data shape consumed verbatim from Contract C29 (`BoardListResponse` / `BoardItem
 ## Relationships & Dependencies
 
 - **`shared/ApiClient.ts`** — `fetchPublicBoard()` is the single read path (it deliberately does NOT swallow a 404, so the page can distinguish board-disabled from a transport error); `castBoardVote()` / `retractBoardVote()` drive `PUBLIC_BOARD_PATHS.vote` (Contract C30).
-- **`shared/types.gen.ts`** — `BoardItem` / `BoardListResponse` (Contract C29 mirror), plus `KIND_LABELS` / `STATUS_LABELS` / `FeedbackKind` / `FeedbackStatus`.
+- **`shared/types.gen.ts`** — `BoardItem` / `BoardListResponse` (Contract C29 mirror), plus `FeedbackKind` / `FeedbackStatus`. The kind/status *labels* come from `i18n/useLabels.ts::useLabels()` (`status.json`), not from this file — the `KIND_LABELS`/`STATUS_LABELS` constants it once held are deleted (Stage 2 / W-D, R-1/R-3).
 - **Backend**: `crates/feedbackmonk-api/src/handlers/board.rs` (`board_router`, CORS-exposed) is the server side of Contract C29. The `public-board-moderation-gate` Verification Oracle (Probe B) asserts the approved-only SQL filter + no-PII from the Rust side.
 
 ## Decision Log

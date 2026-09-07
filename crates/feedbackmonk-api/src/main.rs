@@ -85,7 +85,16 @@ async fn main() -> Result<()> {
         .context("FEEDBACKMONK_BIND_ADDR is not a valid IP address (try 127.0.0.1 for local, 0.0.0.0 for docker)")?;
 
     let pool = connect_pg().await?;
-    let state = build_state(pool)?;
+
+    // The translation provider is built ONCE and used by two consumers: the
+    // FR-FBR-30 translate-after-accept worker (spawned below) and the FR-FBR-40
+    // outbound email path (inside `build_state`, which is why it is constructed
+    // here rather than beside the worker). `None` — the default posture,
+    // DEC-FBR-IMPL-26 — means neither consumer has a path to any backend.
+    let translation_provider = build_translation_provider()?;
+    feedbackmonk_repository::TranslationFlag::set(translation_provider.is_some());
+
+    let state = build_state(pool, translation_provider.clone())?;
 
     // Gap #1: attachment upload sub-router state — its own state type (NOT
     // AppState) so attachments add zero edits to AppState constructors. The
@@ -154,8 +163,6 @@ async fn main() -> Result<()> {
     // background worker drains the queue off the request path (DEC-FBR-IMPL-25
     // D3). JoinHandle intentionally not held — process exit aborts the task,
     // exactly like the voting-cache tick above.
-    let translation_provider = build_translation_provider()?;
-    feedbackmonk_repository::TranslationFlag::set(translation_provider.is_some());
     if let Some(provider) = translation_provider {
         let target_lang = env::var("FEEDBACKMONK_TRANSLATION_TARGET_LANG")
             .unwrap_or_else(|_| DEFAULT_TRANSLATION_TARGET_LANG.to_string());
@@ -297,7 +304,10 @@ async fn connect_pg() -> Result<PgPool> {
 // A flat repo-wiring + env-parsing constructor, not complex logic — the
 // `too_many_lines` heuristic does not fit an `AppState` assembly function.
 #[allow(clippy::too_many_lines)]
-fn build_state(pool: PgPool) -> Result<AppState> {
+fn build_state(
+    pool: PgPool,
+    translation_provider: Option<Arc<dyn TranslationProvider>>,
+) -> Result<AppState> {
     let tenants = Arc::new(SqlxTenantRepo::new(pool.clone()));
     let projects = Arc::new(SqlxProjectRepo::new(pool.clone()));
     let signing_keys = Arc::new(SqlxSigningKeyRepo::new(pool.clone()));
@@ -323,7 +333,10 @@ fn build_state(pool: PgPool) -> Result<AppState> {
     let health = SqlxHealthCheck::new(pool.clone());
 
     let mailer = build_mailer()?;
-    let email_notifier = build_email_notifier(Arc::clone(&tenants) as Arc<dyn feedbackmonk_repository::TenantRepo>)?;
+    let email_notifier = build_email_notifier(
+        Arc::clone(&tenants) as Arc<dyn feedbackmonk_repository::TenantRepo>,
+        translation_provider,
+    )?;
     let session_secret = load_session_secret()?;
     let public_url = env::var("FEEDBACKMONK_PUBLIC_URL")
         .unwrap_or_else(|_| "http://localhost:14304".to_string());
@@ -487,8 +500,12 @@ fn build_mailer() -> Result<Arc<dyn Mailer>> {
     }
 }
 
+/// `translation_provider` is the FR-FBR-40 outbound-translation backend, and is
+/// `None` in the default posture — the notifier then has no path to any provider
+/// at all, whatever a tenant has ticked (DEC-FBR-IMPL-26).
 fn build_email_notifier(
     tenants: Arc<dyn feedbackmonk_repository::TenantRepo>,
+    translation_provider: Option<Arc<dyn TranslationProvider>>,
 ) -> Result<Arc<dyn EmailNotifier>> {
     let mode = env::var("FEEDBACKMONK_MAILER").unwrap_or_else(|_| "mailpit".to_string());
     let from = env::var("FEEDBACKMONK_SMTP_FROM").unwrap_or_else(|_| "no-reply@feedbackmonk.local".into());
@@ -499,7 +516,10 @@ fn build_email_notifier(
                 .ok()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(1025);
-            Ok(Arc::new(LettreEmailNotifier::mailpit(tenants, &host, port, &from)?))
+            Ok(Arc::new(
+                LettreEmailNotifier::mailpit(tenants, &host, port, &from)?
+                    .with_translator(translation_provider),
+            ))
         }
         "smtp" => {
             // Reuse the env-driven SMTP relay; we only need the lettre
@@ -524,7 +544,10 @@ fn build_email_notifier(
                 .port(port)
                 .credentials(Credentials::new(user, pass))
                 .build();
-            Ok(Arc::new(LettreEmailNotifier::from_transport(tenants, transport, &from)))
+            Ok(Arc::new(
+                LettreEmailNotifier::from_transport(tenants, transport, &from)
+                    .with_translator(translation_provider),
+            ))
         }
         other => Err(anyhow::anyhow!(
             "FEEDBACKMONK_MAILER must be 'mailpit' or 'smtp', got {other}"

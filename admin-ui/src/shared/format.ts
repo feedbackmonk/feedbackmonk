@@ -6,15 +6,13 @@
 // on an English browser used to read German chrome next to English-formatted
 // dates. Pass the active locale from `useLocale()`.
 //
-// The parameter is optional ONLY so that the admin-console call sites, whose
-// strings are extracted in Stage 2 (W-D), keep compiling unchanged in the
-// meantime — they still get today's browser-default behaviour. W-D passes the
-// active locale at the remaining sites and makes this parameter required; see
-// the localization plan § W-B step 5 / § W-D.
+// `locale` is REQUIRED (Stage 2 / W-D, D-FBR-31): every call site in the SPA
+// now has a `useLocale()` in scope, so there is no remaining caller that needs
+// the interim optional-parameter escape hatch.
 
 export function formatRelative(
   iso: string,
-  locale?: string,
+  locale: string,
   now: Date = new Date(),
 ): string {
   const ts = new Date(iso).getTime();
@@ -31,7 +29,7 @@ export function formatRelative(
   return rtf.format(Math.round(diffSec / (86400 * 365)), "year");
 }
 
-export function formatAbsolute(iso: string, locale?: string): string {
+export function formatAbsolute(iso: string, locale: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleString(locale);

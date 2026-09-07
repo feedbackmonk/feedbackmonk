@@ -1,31 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchFeedbackDetail } from "../shared/ApiClient";
-import {
-  KIND_LABELS,
-  STATUS_LABELS,
-  type FeedbackSubmitter,
-} from "../shared/types.gen";
+import { type FeedbackSubmitter } from "../shared/types.gen";
 import { StatusBadge } from "../components/StatusBadge";
 import { SentimentBadge } from "../components/SentimentBadge";
 import { StatusControls } from "../components/StatusControls";
 import { ReplyComposer } from "../components/ReplyComposer";
 import { PromoteButton } from "./roadmap/PromoteButton";
 import { formatAbsolute, formatRelative } from "../shared/format";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../i18n";
+import { useLabels } from "../i18n/useLabels";
+import { useLocale } from "../i18n/useLocale";
 
 interface FeedbackDrawerProps {
   feedbackId: string;
   onClose: () => void;
 }
 
-function submitterLabel(s: FeedbackSubmitter): string {
+type SimpleT = (key: string, options?: Record<string, unknown>) => string;
+
+function submitterLabel(s: FeedbackSubmitter, t: SimpleT): string {
   if (s.kind === "authenticated") {
-    return s.name ?? s.email ?? s.sub ?? "(authenticated user)";
+    return s.name ?? s.email ?? s.sub ?? t("admin.feedbackDrawer.submitterAuthenticatedFallback");
   }
-  return s.email ? `anonymous (${s.email})` : "anonymous";
+  return s.email
+    ? t("admin.feedbackDrawer.submitterAnonymousWithEmail", { email: s.email })
+    : t("admin.feedbackDrawer.submitterAnonymous");
 }
 
 export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
+  const { locale } = useLocale();
   const [tab, setTab] = useState<"public" | "internal">("public");
   // FR-FBR-30 (#3): show the English translation in place of the verbatim
   // original. Off by default — the admin sees the original first (Q24/authenticity).
@@ -78,32 +85,32 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
             type="button"
             className="drawer-close"
             onClick={onClose}
-            aria-label="Close drawer"
+            aria-label={t("admin.feedbackDrawer.closeAria")}
           >
             ×
           </button>
         </header>
 
         {query.isPending ? (
-          <p className="muted">Loading…</p>
+          <p className="muted">{t("admin.common.loading")}</p>
         ) : query.isError || !detail ? (
           <div role="alert" className="error-block">
-            Failed to load feedback.{" "}
+            {t("admin.feedbackDrawer.loadError")}{" "}
             <button type="button" onClick={() => query.refetch()}>
-              Retry
+              {t("admin.common.retry")}
             </button>
           </div>
         ) : (
           <>
             <section className="drawer-meta">
               <dl>
-                <dt>Status</dt>
+                <dt>{t("admin.feedbackDrawer.fields.status")}</dt>
                 <dd>
                   <StatusBadge status={detail.status} />
                 </dd>
-                <dt>Kind</dt>
-                <dd>{KIND_LABELS[detail.kind]}</dd>
-                <dt>Sentiment</dt>
+                <dt>{t("admin.feedbackDrawer.fields.kind")}</dt>
+                <dd>{labels.kind(detail.kind)}</dd>
+                <dt>{t("admin.feedbackDrawer.fields.sentiment")}</dt>
                 <dd>
                   {detail.sentiment ? (
                     <SentimentBadge sentiment={detail.sentiment} />
@@ -111,20 +118,20 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                     <span className="muted">—</span>
                   )}
                 </dd>
-                <dt>Submitted</dt>
+                <dt>{t("admin.feedbackDrawer.fields.submitted")}</dt>
                 <dd>
                   <time dateTime={detail.submitted_at}>
-                    {formatAbsolute(detail.submitted_at)} (
-                    {formatRelative(detail.submitted_at)})
+                    {formatAbsolute(detail.submitted_at, locale)} (
+                    {formatRelative(detail.submitted_at, locale)})
                   </time>
                 </dd>
-                <dt>From</dt>
-                <dd>{submitterLabel(detail.submitter)}</dd>
+                <dt>{t("admin.feedbackDrawer.fields.from")}</dt>
+                <dd>{submitterLabel(detail.submitter, t)}</dd>
               </dl>
             </section>
 
             <section aria-labelledby="drawer-body-label">
-              <h3 id="drawer-body-label">Body</h3>
+              <h3 id="drawer-body-label">{t("admin.feedbackDrawer.bodyHeading")}</h3>
               {/*
                   Body is rendered as plain text. Submitter-provided content
                   MUST NOT pass through dangerouslySetInnerHTML — stored-XSS
@@ -144,21 +151,29 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                     onClick={() => setShowTranslated((v) => !v)}
                   >
                     {showTranslated
-                      ? "Show original"
-                      : `Show translation${
-                          detail.source_lang ? ` (from ${detail.source_lang})` : ""
-                        }`}
+                      ? t("admin.feedbackDrawer.showOriginal")
+                      : detail.source_lang
+                        ? t("admin.feedbackDrawer.showTranslationFrom", {
+                            lang: detail.source_lang,
+                          })
+                        : t("admin.feedbackDrawer.showTranslation")}
                   </button>{" "}
                   {showTranslated ? (
                     <span className="muted">
-                      Machine translation
-                      {detail.source_lang ? ` from ${detail.source_lang}` : ""} —
-                      original preserved.
+                      {detail.source_lang
+                        ? t("admin.feedbackDrawer.machineTranslationFrom", {
+                            lang: detail.source_lang,
+                          })
+                        : t("admin.feedbackDrawer.machineTranslation")}
                     </span>
                   ) : null}
                 </div>
               ) : null}
-              <p className="feedback-body" lang={showTranslated ? "en" : undefined}>
+              <p
+                className="feedback-body"
+                lang={showTranslated ? "en" : undefined}
+                dir="auto"
+              >
                 {showTranslated && detail.body_translated
                   ? detail.body_translated
                   : detail.body}
@@ -166,30 +181,39 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
             </section>
 
             <section aria-labelledby="drawer-history-label">
-              <h3 id="drawer-history-label">Status history</h3>
+              <h3 id="drawer-history-label">{t("admin.feedbackDrawer.historyHeading")}</h3>
               {detail.status_history.length === 0 ? (
-                <p className="muted">No status changes yet.</p>
+                <p className="muted">{t("admin.feedbackDrawer.noHistory")}</p>
               ) : (
                 <ol className="status-history">
                   {detail.status_history.map((entry, i) => (
                     <li key={`${entry.transitioned_at}-${i}`}>
                       <span className="status-history-arrow">
-                        {STATUS_LABELS[entry.from_status]} →{" "}
-                        {STATUS_LABELS[entry.to_status]}
+                        {labels.status(entry.from_status)} →{" "}
+                        {labels.status(entry.to_status)}
                       </span>
                       <span className="muted">
                         {" "}
-                        by {entry.transitioned_by} ·{" "}
-                        <time dateTime={entry.transitioned_at}>
-                          {formatRelative(entry.transitioned_at)}
-                        </time>
+                        <Trans
+                          i18nKey="admin.feedbackDrawer.historyByAt"
+                          t={t}
+                          values={{
+                            actor: entry.transitioned_by,
+                            when: formatRelative(entry.transitioned_at, locale),
+                          }}
+                          components={{
+                            time: <time dateTime={entry.transitioned_at} />,
+                          }}
+                        />
                       </span>
                       {entry.reason_note ? (
-                        <p className="reason-note">{entry.reason_note}</p>
+                        <p className="reason-note" dir="auto">{entry.reason_note}</p>
                       ) : null}
                       {entry.duplicate_of_feedback_id ? (
                         <p className="muted mono">
-                          duplicate of {entry.duplicate_of_feedback_id}
+                          {t("admin.feedbackDrawer.duplicateOf", {
+                            id: entry.duplicate_of_feedback_id,
+                          })}
                         </p>
                       ) : null}
                     </li>
@@ -199,8 +223,12 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
             </section>
 
             <section aria-labelledby="drawer-replies-label">
-              <h3 id="drawer-replies-label">Replies</h3>
-              <div role="tablist" aria-label="Reply visibility" className="tabs">
+              <h3 id="drawer-replies-label">{t("admin.feedbackDrawer.repliesHeading")}</h3>
+              <div
+                role="tablist"
+                aria-label={t("admin.feedbackDrawer.replyVisibilityAria")}
+                className="tabs"
+              >
                 <button
                   type="button"
                   role="tab"
@@ -208,7 +236,9 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                   onClick={() => setTab("public")}
                   className={tab === "public" ? "tab tab-active" : "tab"}
                 >
-                  Public ({replies.filter((r) => r.visibility === "public").length})
+                  {t("admin.feedbackDrawer.publicTab", {
+                    count: replies.filter((r) => r.visibility === "public").length,
+                  })}
                 </button>
                 <button
                   type="button"
@@ -217,12 +247,17 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                   onClick={() => setTab("internal")}
                   className={tab === "internal" ? "tab tab-active" : "tab"}
                 >
-                  Internal (
-                  {replies.filter((r) => r.visibility === "internal").length})
+                  {t("admin.feedbackDrawer.internalTab", {
+                    count: replies.filter((r) => r.visibility === "internal").length,
+                  })}
                 </button>
               </div>
               {visibleReplies.length === 0 ? (
-                <p className="muted">No {tab} replies yet.</p>
+                <p className="muted">
+                  {tab === "public"
+                    ? t("admin.feedbackDrawer.noPublicReplies")
+                    : t("admin.feedbackDrawer.noInternalReplies")}
+                </p>
               ) : (
                 <ol className="reply-list">
                   {visibleReplies.map((r) => (
@@ -231,11 +266,11 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                         <strong>{r.author}</strong>{" "}
                         <span className="muted">
                           <time dateTime={r.created_at}>
-                            {formatRelative(r.created_at)}
+                            {formatRelative(r.created_at, locale)}
                           </time>
                         </span>
                       </header>
-                      <p className="reply-body">{r.body}</p>
+                      <p className="reply-body" dir="auto">{r.body}</p>
                     </li>
                   ))}
                 </ol>

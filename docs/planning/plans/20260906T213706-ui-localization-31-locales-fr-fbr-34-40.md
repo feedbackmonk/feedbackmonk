@@ -357,3 +357,79 @@ Outcome: all four lanes COMPLETE; CI-parity + tests green; 17/17 oracles; admin 
 6. Remove the English label constants from `types.gen.ts` and stop the generator emitting them; all consumers via `useLabels()`.
 
 **Stage 2 (W-E outbound translation, standard) brief inputs**: `tenants.translate_outbound` + `TenantRepo` accessors exist; `send.rs` already resolves a `Locale`; add the additive `code` field on `ApiError` bodies + C39/adoption-doc line (see above).
+
+## Convergence notes — Stage 2 (collab-20260907-034037, 2026-09-07)
+
+Outcome: **FR-FBR-38 and FR-FBR-40 DONE**; five lanes COMPLETE; critic verdict **CONCERN, no VETO**
+(17/0 oracles, 5/5 compositions). Post-remediation gate: `ci-local.sh --tests` green, 17/17 oracles,
+admin 219 vitest / 54 e2e, widget 163 vitest / 29 e2e, `widget-bundle-size` 30,010 B / 30,720 (**710 B**).
+
+**Plan text this stage supersedes** (corrections, not drift):
+
+- **`email.machine_translated` → `email.machineTranslated`.** The plan's § W-E spelling was snake_case;
+  C35 rule 3 says camelCase leaves and every existing `email.*` leaf is camelCase. The shipped key is
+  camelCase; this plan's earlier line is the stale one.
+- **"stop the generator emitting them" (§ W-D task 6) describes machinery that does not exist.**
+  `admin-ui/src/shared/types.gen.ts` is hand-rolled — its own header says so — despite the `.gen` name.
+  The 14 `*_LABELS` constants were simply deleted; no generator changed.
+- **`TranslationProvider` needed no trait change.** `translate(text, target_lang: &str)` already took the
+  target; W-E added `provider_target_code(Locale)` + a `translate_to` helper over the existing trait.
+- **The FR-FBR-40 gate is NOT `resolve_recipient_locale`** (§ W-E step 5 said the resolved recipient locale).
+  That ladder's second rung is `tenants.locale` — the admin's own language, i.e. most likely the note's
+  *source* language — so it would translate text into the language it was written in. The shipped gate keys
+  on the **submitter's own captured locale** only.
+- **A third worker was added** (W-F): the `_catalog.py` `OTHER_ONLY` correction the Stage-1 finalize
+  surfaced, split out of W-D rather than folded in — different language, zero file overlap, and a CLDR
+  correctness call under a two-way ratchet does not belong in a cheap-tier mechanical lane.
+- **R-SEC was spawned early, not at converge.** The plan's reason for holding both reviewers was a moving
+  tree; that applied to the *repo*, not to *each reviewer's subject*. The entire security surface belonged to
+  W-E and W-F, both done, and W-D's remaining lane added no input path or sink. R-A11Y did wait — it needed
+  W-D's RTL pass and `de` runs.
+
+**LD rulings (GUIDE § 11 + channel), binding on later stages:**
+
+- **R-1** — the four *shared* enum families stay in `status.json` (`include_str!`-compiled into the Rust
+  binary for 31 locales); admin-only families live in `admin.json` under `admin.enum.<family>.<wireValue>`
+  behind a new `useAdminLabels()`. W-D shipped **12** such families, two beyond the ten named (`moderationStatus`,
+  `tokenLifecycle`) — an in-scope extension, since the alternative was leaving that enum text unlocalized.
+- **R-2** — the `ApiError.code` vocabulary is chosen against the widget's existing keys, **except** that
+  `forbidden` is distinct from `unauthorized`: `code` is a machine contract with an external consumer and
+  collapsing 401/403 is a defect in a contract, whatever the widget renders.
+- **R-4** — the Rust-vs-ICU plural divergence at n=0 (`fa`, `fr`, `pt-BR`, and `ga`/`is`/`si` more broadly)
+  is OUT of scope and stays ratcheted; only the `OTHER_ONLY` catalog partition moved.
+- **Q24 ruling on `dir="auto"`** — `PublicBoard.tsx`'s *"do not wrap `item.body` in anything"* guards
+  **attribution**; `dir="auto"` is an attribute on the existing element, adds no wrapper and no
+  submitter-derived value, and does not touch Q24. Exposing `submitter_locale` publicly to set an exact
+  `lang` was considered and **rejected** (it is in `public-board-moderation-gate`'s `PII_FIELDS`).
+
+**Reviews.** R-SEC: CONCERN (low) — `in`/index reads on generated tables walk the prototype chain, so
+`constructor` passed the locale gate and blank-paged a public board. Fixed at the generator + 7 sites; the
+ratchet test, written *before* the fix and against the defect class, found **two more holes than the review
+traced**. R-A11Y: CONCERN, 8 findings — six fixed in-wave (`dir="auto"` on user content, language-change
+announcement, an unmirrored glyph, a raw BCP-47 tag where an endonym belongs, a `tabIndex={-1}` blocking
+keyboard access to show-password, a dangling `aria-controls`); **A-1** (`isAdminPath` missing `/feedback`,
+which flipped the console's language *and direction* mid-session) fixed; **A-2 escalated to the owner** —
+see below.
+
+**OPEN, owner's call — A-2 (`lang` over permanently-English content).** `fa, ga, ml, is, si` carry
+`_meta.status: "english-fallback — provider unsupported"`, so English is their *shipped steady state*, not an
+interim one — and `fa` is the only RTL locale we ship. We assert `<html lang="fa">` over English words, so a
+screen reader reads English with Persian phonology. `/1-translate` fixes 25 of 30 and never fixes these five.
+R-A11Y's fix: for a locale whose `_meta.status` starts `english-fallback`, do not assert that code in `lang`
+— keep `dir` from the table and `Intl` on the user's locale. The LD **recommends adopting it** (the deciding
+metadata already exists and is machine-readable) but did not take it: it qualifies FR-FBR-34's ratified
+"every surface sets `lang` and `dir` from the active locale", which makes it a spec amendment.
+
+**Carried to `docs/planning/observations-ledger.md`** (7 lines this stage): the Q24 oracle's Probe B is a
+substring proxy with an empty `assertion.asserts` and no self-test (renaming an identifier clears it);
+`i18n-catalog-integrity` Probe D is **vacuous on this tree** — every non-`en` catalog is a 10-leaf skeleton
+with zero plural keys, so it returns PASS identically with or without the `fa`/`tr` fix, whose only
+falsifiability evidence is an out-of-tree temp mirror; the admin vitest suite flakes on a **cold** run
+(i18next in every render pushes the slowest tests past the 5 s default; CI does not run vitest); the SPA has
+**no React error boundary** anywhere; stray `.claude/session-state/` dirs inside `admin-ui/`; four
+`admin-ui/src` directories are modules with no README and `module-index` is structurally blind to that; and a
+CSI registry-write race that erased a worker entry and self-recorded.
+
+**Jig candidate** (critic advisory): W-F hand-built a throwaway `i18n/` mirror twice — once to demonstrate
+Probe D's teeth, once for its own red-first proofs. The fixture-mirror/sandbox archetype would have replaced
+both and left a `docs/falsifiability/` receipt as a side effect.

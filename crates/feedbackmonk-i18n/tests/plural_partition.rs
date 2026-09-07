@@ -147,7 +147,7 @@ fn rust_reachable_categories_match_the_fixture() {
 /// back ENGLISH — a translated email rendering an English sentence at some
 /// counts and the target language at others.
 ///
-/// Eight locales violate this today (measured 2026-09-07). They are pinned in
+/// Six locales violate this today (measured 2026-09-07). They are pinned in
 /// the fixture ledger so the set cannot grow silently; shrinking it is the goal.
 #[test]
 fn selected_category_is_one_the_catalog_ships_except_for_the_pinned_ledger() {

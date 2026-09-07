@@ -48,7 +48,8 @@
       "boardUnavailableBody": "This project hasn’t published a public feedback board."
     },
     "switcher": {
-      "label": "Language"
+      "label": "Language",
+      "changed": "Language changed to {{name}}."
     }
   }
 }

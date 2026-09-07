@@ -78,8 +78,8 @@ class PluralPartitionFixtures(unittest.TestCase):
 
         A locale diverges when the renderer can select a category this side
         never writes -- the lookup then misses the target catalog and the
-        reader gets English. The ledger pins the eight locales measured on
-        2026-09-07 so a ninth cannot appear silently.
+        reader gets English. The ledger pins the six locales measured on
+        2026-09-07 so a seventh cannot appear silently.
         """
         pinned = set(self.fx["ledger"]["english_fallback_locales"]["codes"])
         measured = set()

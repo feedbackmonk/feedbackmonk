@@ -1,4 +1,7 @@
 import { useId } from "react";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
+import { useLocale } from "../../i18n/useLocale";
 
 interface UsageMeterProps {
   /** Human-readable resource label, e.g., "Projects" or "Monthly feedback". */
@@ -21,6 +24,8 @@ interface UsageMeterProps {
 //
 // Unlimited case (limit === null) renders an "unlimited" status with no bar.
 export function UsageMeter({ label, current, limit }: UsageMeterProps) {
+  const { t } = useTranslation("admin");
+  const { locale } = useLocale();
   const labelId = useId();
 
   if (limit === null) {
@@ -31,7 +36,9 @@ export function UsageMeter({ label, current, limit }: UsageMeterProps) {
             {label}
           </span>
           <span className="usage-meter-counts">
-            {current.toLocaleString()} / unlimited
+            {t("admin.usageMeter.unlimitedCount", {
+              current: current.toLocaleString(locale),
+            })}
           </span>
         </div>
       </div>
@@ -44,11 +51,17 @@ export function UsageMeter({ label, current, limit }: UsageMeterProps) {
     ratio > 0.95 ? "danger" : ratio >= 0.7 ? "warn" : "ok";
   const stateLabel =
     state === "danger"
-      ? "Over cap"
+      ? t("admin.usageMeter.stateDanger")
       : state === "warn"
-        ? "Approaching cap"
-        : "OK";
-  const valueText = `${current.toLocaleString()} of ${limit.toLocaleString()} ${label.toLowerCase()} used (${pct}%, ${stateLabel.toLowerCase()})`;
+        ? t("admin.usageMeter.stateWarn")
+        : t("admin.usageMeter.stateOk");
+  const valueText = t("admin.usageMeter.valueText", {
+    current: current.toLocaleString(locale),
+    limit: limit.toLocaleString(locale),
+    label: label.toLowerCase(),
+    pct,
+    state: stateLabel.toLowerCase(),
+  });
 
   return (
     <div className={`usage-meter usage-meter-${state}`}>
@@ -57,9 +70,16 @@ export function UsageMeter({ label, current, limit }: UsageMeterProps) {
           {label}
         </span>
         <span className="usage-meter-counts">
-          {current.toLocaleString()} / {limit.toLocaleString()}
-          {" — "}
-          <span className="usage-meter-state">{stateLabel}</span>
+          <Trans
+            i18nKey="admin.usageMeter.countsRow"
+            t={t}
+            values={{
+              current: current.toLocaleString(locale),
+              limit: limit.toLocaleString(locale),
+              stateLabel,
+            }}
+            components={{ state: <span className="usage-meter-state" /> }}
+          />
         </span>
       </div>
       <div

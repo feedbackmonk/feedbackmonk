@@ -8,20 +8,22 @@ import {
 } from "../../shared/boardModerationApi";
 import { useToast } from "../../components/Toast";
 import { useAdminProject } from "../autopilot/useAdminProject";
+import { useTranslation } from "../../i18n";
 
 // /admin/settings/board — per-project public-board settings (migration 00016
 // columns `public_board_enabled` + `board_requires_moderation`). Mirrors the
 // RunnerTokens project-resolution wrapper + TierSettings card chrome.
 export function BoardSettings() {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="board-settings-page" aria-busy="true">
         <header className="page-header">
-          <h1>Public board</h1>
+          <h1>{t("admin.boardSettings.title")}</h1>
         </header>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -29,10 +31,10 @@ export function BoardSettings() {
     return (
       <main className="board-settings-page">
         <header className="page-header">
-          <h1>Public board</h1>
+          <h1>{t("admin.boardSettings.title")}</h1>
         </header>
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -41,6 +43,7 @@ export function BoardSettings() {
 }
 
 function BoardSettingsInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
   const enabledId = useId();
   const moderationId = useId();
   const queryClient = useQueryClient();
@@ -58,9 +61,9 @@ function BoardSettingsInner({ projectId }: { projectId: string }) {
     onSuccess: (data) => {
       // Reflect the server's authoritative settings immediately.
       queryClient.setQueryData<BoardSettingsShape>(queryKey, data);
-      notify("Board settings saved.", "success");
+      notify(t("admin.boardSettings.saved"), "success");
     },
-    onError: () => notify("Could not save board settings.", "error"),
+    onError: () => notify(t("admin.boardSettings.saveFailed"), "error"),
   });
 
   const settings = query.data;
@@ -69,29 +72,28 @@ function BoardSettingsInner({ projectId }: { projectId: string }) {
   return (
     <main className="board-settings-page" aria-labelledby="board-settings-title">
       <header className="page-header">
-        <h1 id="board-settings-title">Public board</h1>
-        <p className="muted">
-          The public board lets end-users see and vote on feedback you’ve
-          approved. It’s off by default — no feedback is ever public until you
-          enable the board and approve items in the moderation queue.
-        </p>
+        <h1 id="board-settings-title">{t("admin.boardSettings.title")}</h1>
+        <p className="muted">{t("admin.boardSettings.intro")}</p>
       </header>
 
       {query.isError ? (
         <div role="alert" className="error-block">
-          Failed to load board settings.{" "}
+          {t("admin.boardSettings.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : null}
 
       {query.isPending ? (
         <p className="muted" aria-busy="true">
-          Loading…
+          {t("admin.common.loading")}
         </p>
       ) : settings ? (
-        <section className="board-settings-card" aria-label="Board settings">
+        <section
+          className="board-settings-card"
+          aria-label={t("admin.boardSettings.cardAria")}
+        >
           <div className="settings-toggle">
             <input
               id={enabledId}
@@ -103,12 +105,10 @@ function BoardSettingsInner({ projectId }: { projectId: string }) {
               }
             />
             <div className="settings-toggle-text">
-              <label htmlFor={enabledId}>Enable public board</label>
-              <p className="muted">
-                When on, approved feedback is visible at your public board URL.
-                Turning it off hides the board entirely (existing approvals are
-                kept).
-              </p>
+              <label htmlFor={enabledId}>
+                {t("admin.boardSettings.enableLabel")}
+              </label>
+              <p className="muted">{t("admin.boardSettings.enableNote")}</p>
             </div>
           </div>
 
@@ -127,10 +127,11 @@ function BoardSettingsInner({ projectId }: { projectId: string }) {
               aria-describedby={`${moderationId}-note`}
             />
             <div className="settings-toggle-text">
-              <label htmlFor={moderationId}>Require moderation</label>
+              <label htmlFor={moderationId}>
+                {t("admin.boardSettings.requireModerationLabel")}
+              </label>
               <p id={`${moderationId}-note`} className="muted">
-                Always on in v1 — every item is reviewed before it can appear on
-                the board. Auto-approve is reserved for a future release.
+                {t("admin.boardSettings.requireModerationNote")}
               </p>
             </div>
           </div>

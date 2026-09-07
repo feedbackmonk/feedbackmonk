@@ -1,7 +1,6 @@
 import { useId, useMemo, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ROADMAP_STATUS_LABELS,
   type AdminRoadmapCreateRequest,
   type AdminRoadmapPatchRequest,
   type RoadmapItem,
@@ -14,6 +13,8 @@ import {
   postCreateRoadmapItem,
 } from "../../shared/ApiClient";
 import { useToast } from "../../components/Toast";
+import { useTranslation } from "../../i18n";
+import { useLabels } from "../../i18n/useLabels";
 
 const ALL_STATUSES: RoadmapItemStatus[] = [
   "considering",
@@ -26,6 +27,7 @@ const ALL_STATUSES: RoadmapItemStatus[] = [
 // Resolves the admin's sole project id (P0/P1 invariant: one project per
 // tenant in practice). Multi-project URL routing is deferred to P3.
 export function AdminRoadmap() {
+  const { t } = useTranslation("admin");
   const projectQuery = useQuery({
     queryKey: ["admin-projects"],
     queryFn: fetchAdminProjects,
@@ -35,17 +37,17 @@ export function AdminRoadmap() {
   if (projectQuery.isPending) {
     return (
       <main className="admin-roadmap" aria-busy="true">
-        <h1>Roadmap (admin)</h1>
-        <p>Loading…</p>
+        <h1>{t("admin.adminRoadmap.title")}</h1>
+        <p>{t("admin.common.loading")}</p>
       </main>
     );
   }
   if (projectQuery.isError || !projectQuery.data?.projects.length) {
     return (
       <main className="admin-roadmap">
-        <h1>Roadmap (admin)</h1>
+        <h1>{t("admin.adminRoadmap.title")}</h1>
         <div role="alert" className="error-block">
-          No projects configured. Create one before managing the roadmap.
+          {t("admin.adminRoadmap.noProjects")}
         </div>
       </main>
     );
@@ -55,6 +57,8 @@ export function AdminRoadmap() {
 }
 
 function AdminRoadmapInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
   const queryClient = useQueryClient();
   const { notify } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
@@ -85,23 +89,23 @@ function AdminRoadmapInner({ projectId }: { projectId: string }) {
   return (
     <main className="admin-roadmap" aria-labelledby="admin-roadmap-title">
       <header className="admin-roadmap-header">
-        <h1 id="admin-roadmap-title">Roadmap (admin)</h1>
+        <h1 id="admin-roadmap-title">{t("admin.adminRoadmap.title")}</h1>
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
           className="primary"
         >
-          New item
+          {t("admin.adminRoadmap.newItem")}
         </button>
       </header>
 
       {listQuery.isPending ? (
-        <p aria-busy="true">Loading…</p>
+        <p aria-busy="true">{t("admin.common.loading")}</p>
       ) : listQuery.isError ? (
         <div role="alert" className="error-block">
-          Failed to load roadmap.{" "}
+          {t("admin.adminRoadmap.loadError")}{" "}
           <button type="button" onClick={() => listQuery.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : (
@@ -114,11 +118,11 @@ function AdminRoadmapInner({ projectId }: { projectId: string }) {
               className={`roadmap-section roadmap-section-${status}`}
             >
               <h2 id={`admin-roadmap-${status}-label`}>
-                {ROADMAP_STATUS_LABELS[status]}{" "}
+                {labels.roadmapStatus(status)}{" "}
                 <span className="muted">({items.length})</span>
               </h2>
               {items.length === 0 ? (
-                <p className="muted">No items.</p>
+                <p className="muted">{t("admin.adminRoadmap.noItems")}</p>
               ) : (
                 <ul className="roadmap-admin-list">
                   {items.map((it) => (
@@ -128,13 +132,21 @@ function AdminRoadmapInner({ projectId }: { projectId: string }) {
                         <code className="muted">/{it.slug}</code>
                         {it.origin_feedback_id ? (
                           <span className="muted">
-                            {" "}· promoted from {it.origin_feedback_id}
+                            {" "}
+                            ·{" "}
+                            {t("admin.adminRoadmap.promotedFrom", {
+                              id: it.origin_feedback_id,
+                            })}
                           </span>
                         ) : null}
-                        <div className="muted">{it.vote_count} votes</div>
+                        <div className="muted">
+                          {t("admin.adminRoadmap.voteCount", {
+                            count: it.vote_count,
+                          })}
+                        </div>
                       </div>
                       <button type="button" onClick={() => setEditing(it)}>
-                        Edit
+                        {t("admin.common.edit")}
                       </button>
                     </li>
                   ))}
@@ -150,7 +162,7 @@ function AdminRoadmapInner({ projectId }: { projectId: string }) {
           projectId={projectId}
           onClose={() => setCreateOpen(false)}
           onSuccess={() => {
-            notify("Roadmap item created.", "success");
+            notify(t("admin.adminRoadmap.created"), "success");
             invalidate();
             setCreateOpen(false);
           }}
@@ -163,7 +175,7 @@ function AdminRoadmapInner({ projectId }: { projectId: string }) {
           item={editing}
           onClose={() => setEditing(null)}
           onSuccess={() => {
-            notify("Roadmap item updated.", "success");
+            notify(t("admin.adminRoadmap.updated"), "success");
             invalidate();
             setEditing(null);
           }}
@@ -184,6 +196,8 @@ function CreateModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
   const dialogId = useId();
   const [slug, setSlug] = useState("");
   const [title, setTitle] = useState("");
@@ -202,14 +216,14 @@ function CreateModal({
       return postCreateRoadmapItem(projectId, body_);
     },
     onSuccess,
-    onError: () => setInlineError("Create failed. Please try again."),
+    onError: () => setInlineError(t("admin.adminRoadmap.createFailed")),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setInlineError(null);
     if (!slug.trim() || !title.trim() || !body.trim()) {
-      setInlineError("Slug, title, and body are required.");
+      setInlineError(t("admin.adminRoadmap.requiredFields"));
       return;
     }
     mutation.mutate();
@@ -223,9 +237,11 @@ function CreateModal({
       className="dialog dialog-overlay"
     >
       <form onSubmit={onSubmit} className="dialog-body">
-        <h2 id={`${dialogId}-title`}>New roadmap item</h2>
+        <h2 id={`${dialogId}-title`}>{t("admin.adminRoadmap.newItemTitle")}</h2>
 
-        <label htmlFor={`${dialogId}-slug`}>Slug (kebab-case, 1–80 chars)</label>
+        <label htmlFor={`${dialogId}-slug`}>
+          {t("admin.adminRoadmap.slugLabel")}
+        </label>
         <input
           id={`${dialogId}-slug`}
           type="text"
@@ -236,7 +252,9 @@ function CreateModal({
           autoFocus
         />
 
-        <label htmlFor={`${dialogId}-title-input`}>Title</label>
+        <label htmlFor={`${dialogId}-title-input`}>
+          {t("admin.adminRoadmap.titleLabel")}
+        </label>
         <input
           id={`${dialogId}-title-input`}
           type="text"
@@ -246,7 +264,7 @@ function CreateModal({
           maxLength={200}
         />
 
-        <label htmlFor={`${dialogId}-body`}>Body</label>
+        <label htmlFor={`${dialogId}-body`}>{t("admin.adminRoadmap.bodyLabel")}</label>
         <textarea
           id={`${dialogId}-body`}
           value={body}
@@ -256,7 +274,9 @@ function CreateModal({
           rows={6}
         />
 
-        <label htmlFor={`${dialogId}-status`}>Initial status</label>
+        <label htmlFor={`${dialogId}-status`}>
+          {t("admin.adminRoadmap.initialStatusLabel")}
+        </label>
         <select
           id={`${dialogId}-status`}
           value={status}
@@ -264,7 +284,7 @@ function CreateModal({
         >
           {ALL_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {ROADMAP_STATUS_LABELS[s]}
+              {labels.roadmapStatus(s)}
             </option>
           ))}
         </select>
@@ -277,10 +297,12 @@ function CreateModal({
 
         <div className="dialog-actions">
           <button type="button" onClick={onClose} disabled={mutation.isPending}>
-            Cancel
+            {t("admin.common.cancel")}
           </button>
           <button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Creating…" : "Create"}
+            {mutation.isPending
+              ? t("admin.adminRoadmap.creating")
+              : t("admin.common.create")}
           </button>
         </div>
       </form>
@@ -301,6 +323,8 @@ function EditModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
   const dialogId = useId();
   const [title, setTitle] = useState(item.title);
   const [body, setBody] = useState(item.body);
@@ -316,7 +340,7 @@ function EditModal({
       return patchRoadmapItem(projectId, item.slug, patch);
     },
     onSuccess,
-    onError: () => setInlineError("Update failed. Please try again."),
+    onError: () => setInlineError(t("admin.adminRoadmap.updateFailed")),
   });
 
   function onSubmit(e: FormEvent) {
@@ -334,10 +358,12 @@ function EditModal({
     >
       <form onSubmit={onSubmit} className="dialog-body">
         <h2 id={`${dialogId}-title`}>
-          Edit <code>{item.slug}</code>
+          {t("admin.adminRoadmap.editHeading")} <code>{item.slug}</code>
         </h2>
 
-        <label htmlFor={`${dialogId}-title-input`}>Title</label>
+        <label htmlFor={`${dialogId}-title-input`}>
+          {t("admin.adminRoadmap.titleLabel")}
+        </label>
         <input
           id={`${dialogId}-title-input`}
           type="text"
@@ -347,7 +373,7 @@ function EditModal({
           maxLength={200}
         />
 
-        <label htmlFor={`${dialogId}-body`}>Body</label>
+        <label htmlFor={`${dialogId}-body`}>{t("admin.adminRoadmap.bodyLabel")}</label>
         <textarea
           id={`${dialogId}-body`}
           value={body}
@@ -357,7 +383,9 @@ function EditModal({
           rows={6}
         />
 
-        <label htmlFor={`${dialogId}-status`}>Status</label>
+        <label htmlFor={`${dialogId}-status`}>
+          {t("admin.adminRoadmap.statusLabel")}
+        </label>
         <select
           id={`${dialogId}-status`}
           value={status}
@@ -365,7 +393,7 @@ function EditModal({
         >
           {ALL_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {ROADMAP_STATUS_LABELS[s]}
+              {labels.roadmapStatus(s)}
             </option>
           ))}
         </select>
@@ -378,10 +406,12 @@ function EditModal({
 
         <div className="dialog-actions">
           <button type="button" onClick={onClose} disabled={mutation.isPending}>
-            Cancel
+            {t("admin.common.cancel")}
           </button>
           <button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Saving…" : "Save"}
+            {mutation.isPending
+              ? t("admin.adminRoadmap.saving")
+              : t("admin.common.save")}
           </button>
         </div>
       </form>

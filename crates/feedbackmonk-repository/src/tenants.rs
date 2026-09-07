@@ -142,15 +142,18 @@ pub trait TenantRepo: Send + Sync {
     /// constraint and the validation has to live one layer up.
     async fn set_locale(&self, scope: &TenantScope, locale: Option<&str>) -> Result<()>;
 
-    /// Read the tenant's outbound-translation preference.
+    /// Read the tenant's outbound-translation preference (FR-FBR-40).
     ///
-    /// RESERVED for FR-FBR-40 (Stage 2): persisted and served by the C38
-    /// settings endpoint so the setting survives, consulted by no send path in
-    /// this stage. `false` for every existing row.
+    /// `true` means: machine-translate the team's own status notes and public
+    /// replies into the submitter's language before emailing them. Read by the
+    /// email send chokepoint on every notification, and served by the C38
+    /// settings endpoint. `false` for every existing row and every new one
+    /// (migration `00032`) — egress is opt-in per tenant, on top of the
+    /// provider being opt-in per deployment (DEC-FBR-IMPL-26).
     async fn get_translate_outbound(&self, scope: &TenantScope) -> Result<bool>;
 
     /// Set the tenant's outbound-translation preference. See
-    /// [`TenantRepo::get_translate_outbound`] — inert until W-E wires it.
+    /// [`TenantRepo::get_translate_outbound`].
     async fn set_translate_outbound(&self, scope: &TenantScope, enabled: bool) -> Result<()>;
 
     /// Append an operator-mutation audit row for the target tenant `scope`

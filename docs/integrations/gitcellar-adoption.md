@@ -438,6 +438,20 @@ Authorization: Bearer <jwt>
 | `<FB-ID>` not owned by the caller's `sub` (or anonymous, or another tenant/project) | `404` | `{"error":"not found"}` |
 | Unknown `<PROJECT_ID>` | `404` | `{"error":"not found"}` |
 
+> **Every framework error body now also carries `code` and `message` (additive, capability `errors.code`).**
+> Bodies produced by the API's shared error type — the `404`s above, `400` validation failures, `403`,
+> `409`, `410`, `413`, `500`, and the structured tier-cap body — are now
+> `{"error": "<unchanged prose>", "code": "<stable token>", "message": "<same prose>"}`. **`error` is
+> byte-identical to what it has always been**, so nothing you parse today moves; `code` is the field to
+> branch on instead of the HTTP status. The vocabulary is
+> `invalid_input` · `unauthorized` (401) · `forbidden` (403) · `not_found` · `conflict` · `gone` ·
+> `payload_too_large` · `tier_cap` · `internal`. 401 and 403 are deliberately distinct tokens even
+> though some clients render them identically — the code is a machine contract, not a presentation
+> choice. Two exceptions to be aware of: the **JWT** 401s above
+> carry the `JwtError` variant in `error` and are built separately (no `code`), as are the public submit
+> path's bare `402`, the `429` rate-limit body and the attachment `415`. Feature-detect on
+> `"errors.code"` in `GET /api/v1/capabilities` (§8) rather than on the API version.
+
 > **Polling note**: Desktop's tray `poll_for_updates` should call §6.1 with `since=<last-seen>` (cheap,
 > returns only changed rows) and open a thread (§6.2) on demand. Mint a fresh short-TTL JWT per poll
 > (§5.4) rather than caching tokens. `updated_at` + `reply_count` (§6.1) are the unseen-reply signal.
@@ -692,7 +706,8 @@ GET /api/v1/capabilities                      (no auth, no project scope)
       "feedback.severity", "feedback.idempotency", "feedback.attachments",
       "feedback.erase_all",
       "hosting.subdomains", "hosting.custom_domain",                  // FR-FBR-32/33
-      "i18n.locales", "feedback.submitter_locale"                     // FR-FBR-34..38
+      "i18n.locales", "feedback.submitter_locale",                    // FR-FBR-34..38
+      "errors.code"                                                   // FR-FBR-40
     ],
     "feedback": {
       "sentiment":   { "field":"sentiment", "values":["negative","neutral","positive"], "body_optional": true },
@@ -718,7 +733,8 @@ GET /api/v1/capabilities                      (no auth, no project scope)
 **Detection contract**: treat the **presence of a string in `capabilities`** as authoritative —
 `"feedback.sentiment"` for §9, `"solicitation.v1"` for §10, and the Phase A strings for their surfaces
 (`"feedback.delete"` §6.4, `"feedback.export"` §6.5, `"feedback.reply_state"` §6.1, `"feedback.attachments"`
-§6.6, `"feedback.severity"`/`"feedback.idempotency"`/`"feedback.submitter_locale"` §5.5). Do NOT parse
+§6.6, `"feedback.severity"`/`"feedback.idempotency"`/`"feedback.submitter_locale"` §5.5, `"errors.code"` §6.3).
+Do NOT parse
 the semver `version`; it is
 informational and the capability array is the stable, additive negotiation surface. An older
 deployment that predates these features simply omits the strings (and 404s the new routes), so a
@@ -786,6 +802,16 @@ rating is entirely unaffected; one that does can feature-detect before sending.
 ---
 
 ## Change log
+- 2026-09-07 (FR-FBR-40 — outbound reply translation + machine-readable error codes) — ADDITIVE.
+  Every error body produced by the API's shared error type gained **`code`** and **`message`**
+  beside the unchanged `error` field (§6.3), advertised as capability **`errors.code`** (§11): branch
+  on `code` instead of on the HTTP status. `error` is byte-identical, so nothing you parse today
+  moves, and the hand-built bodies (JWT 401s, the bare submit 402, the 429, the attachment 415) are
+  unchanged and carry no `code`. Separately, a tenant may now opt into having **their own** status
+  notes and public replies machine-translated into the submitter's language before emailing (the
+  original always accompanies the translation) — an admin-only setting with no consumer-facing API
+  surface, off by default, and inert unless the deployment configured a translation provider
+  (`docs/operations/SELFHOST_ENV.md` § Translation Provider).
 - 2026-09-06 (FR-FBR-34..38 — UI localization, Stage 1) — ADDITIVE, no existing field or response
   shape changes. §5.5 gained an optional **`locale`** submit field (capability
   `feedback.submitter_locale`, migration `00031`): the submitter's UI language, recorded and used to

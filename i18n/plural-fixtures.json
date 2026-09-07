@@ -315,6 +315,7 @@
     },
     "tr": {
       "catalog_categories": [
+        "one",
         "other"
       ],
       "rust_reachable": [
@@ -378,6 +379,7 @@
     },
     "fa": {
       "catalog_categories": [
+        "one",
         "other"
       ],
       "rust_reachable": [
@@ -493,8 +495,6 @@
         "ko",
         "zh-HK",
         "zh-TW",
-        "tr",
-        "fa",
         "id"
       ]
     },

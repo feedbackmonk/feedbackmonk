@@ -53,6 +53,15 @@ Client + type mirror: `admin-ui/src/shared/boardModerationApi.ts` (kept off the 
 
 ## Decision Log
 
+- **Stage 2 (W-D) localization** — every string in both files now comes from
+  `i18n/locales/en/admin.json` via `useTranslation("admin")`. `ModerationStatus`
+  is not one of R-1's ten `types.gen.ts` families (it isn't defined there at
+  all — it's `shared/boardModerationApi.ts`'s own type), so its labels were
+  added as an eleventh family, `admin.enum.moderationStatus.*`, in
+  `i18n/useAdminLabels.ts::moderationStatus()` rather than left hardcoded.
+  `boardModerationApi.ts`'s own `MODERATION_STATUS_LABELS` constant is now
+  unused by this module (that file is not owned here — see its own header);
+  neither file in this directory imports it any more.
 - **Separate client file (`shared/boardModerationApi.ts`) instead of editing `ApiClient.ts`/`types.gen.ts`** — the *public* board client (C29) lives in `ApiClient.ts`/`types.gen.ts`; keeping the *admin* moderation surface in its own file keeps the two clients cleanly separated while reusing the shared axios `api` instance read-only.
 - **Queue-read shape = `{feedback_id, kind, moderation_status, body_excerpt, submitted_at, submitter_label}`** — Contract C28 froze the `moderate` POST; the queue row is confirmed to these fields (no `reply_count`, no triage `status`). Isolated in `MODERATION_PATHS`/the interfaces so it reconciles in one place if `list_pending_for_admin` returns a different shape.
 - **Mirror `StatusControls` rather than invent a new control** — the moderation gate is the same class of state-machine confirmation surface; reusing the proven, axe-clean pattern keeps a11y guarantees and UX consistent.

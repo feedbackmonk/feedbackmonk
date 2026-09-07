@@ -2,7 +2,6 @@ import { useId, useState, type FormEvent } from "react";
 import axios from "axios";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ACTION_TYPE_LABELS,
   type ActionType,
   type AutonomyRung,
   type CreateOwnerWorkOrderRequest,
@@ -12,6 +11,9 @@ import { Link, useRouter } from "../../shared/router";
 import { useToast } from "../../components/Toast";
 import { useAdminProject } from "./useAdminProject";
 import { AutonomyRungDial } from "./AutonomyRungDial";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
 
 // Action types offered when an owner authors a story from scratch. `no_action`
 // is excluded on purpose — like Rung 0, it means "no work order", which is not
@@ -37,13 +39,14 @@ const SELECTABLE_ACTION_TYPES: ActionType[] = [
 // authored, like `owner_overrides`) — but they are still rendered as escaped
 // React text everywhere they surface downstream.
 export function NewStory() {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -52,7 +55,7 @@ export function NewStory() {
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -61,6 +64,8 @@ export function NewStory() {
 }
 
 function NewStoryInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
   const fieldId = useId();
   const queryClient = useQueryClient();
   const { navigate } = useRouter();
@@ -93,7 +98,7 @@ function NewStoryInner({ projectId }: { projectId: string }) {
       return createWorkOrder(projectId, body);
     },
     onSuccess: (draft) => {
-      notify("Work order drafted.", "success");
+      notify(t("admin.newStory.drafted"), "success");
       queryClient.invalidateQueries({
         queryKey: ["autopilot-work-orders", projectId],
       });
@@ -101,18 +106,18 @@ function NewStoryInner({ projectId }: { projectId: string }) {
       // deliberate act there — this form never approves.
       navigate(`/admin/autopilot/work-orders/${encodeURIComponent(draft.id)}`);
     },
-    onError: (err) => setInlineError(renderCreateError(err)),
+    onError: (err) => setInlineError(renderCreateError(err, t)),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setInlineError(null);
     if (!title.trim()) {
-      setInlineError("A title is required.");
+      setInlineError(t("admin.newStory.errors.titleRequired"));
       return;
     }
     if (!instructions.trim()) {
-      setInlineError("Instructions are required.");
+      setInlineError(t("admin.newStory.errors.instructionsRequired"));
       return;
     }
     mutation.mutate();
@@ -122,16 +127,12 @@ function NewStoryInner({ projectId }: { projectId: string }) {
     <main className="ap-page" aria-labelledby="ap-new-story-title">
       <BackLink />
       <header className="page-header">
-        <h1 id="ap-new-story-title">New story</h1>
-        <p className="muted">
-          Author a work order directly — not derived from feedback. It is
-          created as a draft; nothing runs until you approve it on the next
-          screen.
-        </p>
+        <h1 id="ap-new-story-title">{t("admin.newStory.title")}</h1>
+        <p className="muted">{t("admin.newStory.intro")}</p>
       </header>
 
       <form onSubmit={onSubmit} aria-labelledby="ap-new-story-title">
-        <label htmlFor={`${fieldId}-title`}>Title</label>
+        <label htmlFor={`${fieldId}-title`}>{t("admin.newStory.titleLabel")}</label>
         <input
           id={`${fieldId}-title`}
           type="text"
@@ -142,7 +143,9 @@ function NewStoryInner({ projectId }: { projectId: string }) {
           autoFocus
         />
 
-        <label htmlFor={`${fieldId}-instructions`}>Instructions</label>
+        <label htmlFor={`${fieldId}-instructions`}>
+          {t("admin.newStory.instructionsLabel")}
+        </label>
         <textarea
           id={`${fieldId}-instructions`}
           value={instructions}
@@ -152,7 +155,9 @@ function NewStoryInner({ projectId }: { projectId: string }) {
           rows={8}
         />
 
-        <label htmlFor={`${fieldId}-action-type`}>Action type</label>
+        <label htmlFor={`${fieldId}-action-type`}>
+          {t("admin.newStory.actionTypeLabel")}
+        </label>
         <select
           id={`${fieldId}-action-type`}
           value={actionType}
@@ -160,7 +165,7 @@ function NewStoryInner({ projectId }: { projectId: string }) {
         >
           {SELECTABLE_ACTION_TYPES.map((at) => (
             <option key={at} value={at}>
-              {ACTION_TYPE_LABELS[at]}
+              {adminLabels.actionType(at)}
             </option>
           ))}
         </select>
@@ -173,7 +178,7 @@ function NewStoryInner({ projectId }: { projectId: string }) {
         />
 
         <label htmlFor={`${fieldId}-routing-label`}>
-          Routing label (optional)
+          {t("admin.newStory.routingLabelLabel")}
         </label>
         <input
           id={`${fieldId}-routing-label`}
@@ -184,8 +189,11 @@ function NewStoryInner({ projectId }: { projectId: string }) {
           aria-describedby={`${fieldId}-routing-help`}
         />
         <p id={`${fieldId}-routing-help`} className="muted">
-          Runner identity (token <code>sub</code>) that must execute this order.
-          Leave empty for any runner.
+          <Trans
+            i18nKey="admin.common.routingHelp"
+            t={t}
+            components={{ code: <code /> }}
+          />
         </p>
 
         {inlineError ? (
@@ -196,10 +204,12 @@ function NewStoryInner({ projectId }: { projectId: string }) {
 
         <div className="dialog-actions">
           <Link to="/admin/autopilot/work-orders" className="ap-back-link">
-            Cancel
+            {t("admin.common.cancel")}
           </Link>
           <button type="submit" className="primary" disabled={mutation.isPending}>
-            {mutation.isPending ? "Creating…" : "Create draft"}
+            {mutation.isPending
+              ? t("admin.newStory.creating")
+              : t("admin.newStory.createDraft")}
           </button>
         </div>
       </form>
@@ -212,7 +222,10 @@ function NewStoryInner({ projectId }: { projectId: string }) {
 // conflict surfaces as 409. Exact server shapes are announced by CLAUDE-A —
 // until then, render defensively: prefer the server's `error` string if
 // present, else a generic message keyed on status.
-function renderCreateError(err: unknown): string {
+function renderCreateError(
+  err: unknown,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
   if (axios.isAxiosError(err)) {
     const status = err.response?.status;
     const data = err.response?.data;
@@ -222,22 +235,25 @@ function renderCreateError(err: unknown): string {
         : null;
     if (status === 400) {
       return serverError
-        ? `The work order was rejected: ${serverError}`
-        : "The work order was rejected — check the title, instructions, and action type.";
+        ? t("admin.newStory.errors.rejectedWithReason", { reason: serverError })
+        : t("admin.newStory.errors.rejectedGeneric");
     }
     if (status === 409) {
       return serverError
-        ? `Routing conflict: ${serverError}`
-        : "Routing conflict — that runner label could not be assigned.";
+        ? t("admin.newStory.errors.routingConflictWithReason", {
+            reason: serverError,
+          })
+        : t("admin.newStory.errors.routingConflictGeneric");
     }
   }
-  return "Could not create the work order. Please try again.";
+  return t("admin.newStory.errors.generic");
 }
 
 function BackLink() {
+  const { t } = useTranslation("admin");
   return (
     <Link to="/admin/autopilot/work-orders" className="ap-back-link">
-      ← Back to work orders
+      {t("admin.common.backToWorkOrders")}
     </Link>
   );
 }

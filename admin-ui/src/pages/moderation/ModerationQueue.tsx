@@ -2,13 +2,15 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchModerationQueue,
-  MODERATION_STATUS_LABELS,
   type ModerationStatus,
 } from "../../shared/boardModerationApi";
-import { KIND_LABELS } from "../../shared/types.gen";
 import { useSearchParams } from "../../shared/router";
 import { formatRelative } from "../../shared/format";
 import { ModerationActions } from "./ModerationActions";
+import { useTranslation } from "../../i18n";
+import { useLabels } from "../../i18n/useLabels";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
+import { useLocale } from "../../i18n/useLocale";
 
 // The three moderation states (migration 00016 / `feedbackmonk-core::moderation`).
 // `pending` is the default queue view; `approved`/`rejected` are review filters.
@@ -42,6 +44,10 @@ function parseParams(p: URLSearchParams): ParsedParams {
 // feedback awaiting an approve/reject decision; approving publishes the row to
 // the public board. Mirrors the FeedbackList table + WorkOrderList chrome.
 export function ModerationQueue() {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
+  const adminLabels = useAdminLabels();
+  const { locale } = useLocale();
   const [params, setParams] = useSearchParams();
   const parsed = useMemo(() => parseParams(params), [params]);
 
@@ -83,14 +89,14 @@ export function ModerationQueue() {
   return (
     <main className="moderation-queue-page" aria-labelledby="moderation-title">
       <header className="page-header">
-        <h1 id="moderation-title">Moderation</h1>
-        <p className="muted">
-          Approve feedback to publish it to your public board; reject to keep it
-          private.
-        </p>
+        <h1 id="moderation-title">{t("admin.moderationQueue.title")}</h1>
+        <p className="muted">{t("admin.moderationQueue.intro")}</p>
       </header>
 
-      <nav className="status-filters" aria-label="Filter by moderation status">
+      <nav
+        className="status-filters"
+        aria-label={t("admin.moderationQueue.filterAria")}
+      >
         {MODERATION_FILTERS.map((key) => {
           const active = parsed.status === key;
           return (
@@ -101,7 +107,7 @@ export function ModerationQueue() {
               aria-pressed={active}
               onClick={() => setStatus(key)}
             >
-              {MODERATION_STATUS_LABELS[key]}
+              {adminLabels.moderationStatus(key)}
             </button>
           );
         })}
@@ -109,39 +115,42 @@ export function ModerationQueue() {
 
       {query.isError ? (
         <div role="alert" className="error-block">
-          Failed to load the moderation queue.{" "}
+          {t("admin.moderationQueue.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : null}
 
       {query.isPending ? (
         <p className="muted" aria-busy="true">
-          Loading…
+          {t("admin.common.loading")}
         </p>
       ) : items.length === 0 ? (
         <div className="empty-state">
           <p>
             {parsed.status === "pending"
-              ? "Nothing awaiting moderation. New feedback appears here for review."
-              : `No ${MODERATION_STATUS_LABELS[parsed.status].toLowerCase()} feedback.`}
+              ? t("admin.moderationQueue.emptyPending")
+              : t("admin.moderationQueue.emptyOther", {
+                  status: adminLabels.moderationStatus(parsed.status).toLowerCase(),
+                })}
           </p>
         </div>
       ) : (
         <table className="feedback-table moderation-table">
           <caption className="visually-hidden">
-            Feedback {MODERATION_STATUS_LABELS[parsed.status].toLowerCase()} for
-            moderation, newest first.
+            {t("admin.moderationQueue.tableCaption", {
+              status: adminLabels.moderationStatus(parsed.status).toLowerCase(),
+            })}
           </caption>
           <thead>
             <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Kind</th>
-              <th scope="col">Excerpt</th>
-              <th scope="col">From</th>
-              <th scope="col">Submitted</th>
-              <th scope="col">Actions</th>
+              <th scope="col">{t("admin.moderationQueue.columns.id")}</th>
+              <th scope="col">{t("admin.moderationQueue.columns.kind")}</th>
+              <th scope="col">{t("admin.moderationQueue.columns.excerpt")}</th>
+              <th scope="col">{t("admin.moderationQueue.columns.from")}</th>
+              <th scope="col">{t("admin.moderationQueue.columns.submitted")}</th>
+              <th scope="col">{t("admin.moderationQueue.columns.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -150,7 +159,7 @@ export function ModerationQueue() {
                 <td className="mono">{row.feedback_id}</td>
                 <td>
                   <span className={`kind-badge kind-${row.kind}`}>
-                    {KIND_LABELS[row.kind]}
+                    {labels.kind(row.kind)}
                   </span>
                 </td>
                 {/*
@@ -158,11 +167,11 @@ export function ModerationQueue() {
                   dangerouslySetInnerHTML (stored-XSS defense, same invariant as
                   FeedbackDrawer / Contract C8).
                 */}
-                <td className="excerpt">{row.body_excerpt}</td>
+                <td className="excerpt" dir="auto">{row.body_excerpt}</td>
                 <td>{row.submitter_label}</td>
                 <td>
                   <time dateTime={row.submitted_at}>
-                    {formatRelative(row.submitted_at)}
+                    {formatRelative(row.submitted_at, locale)}
                   </time>
                 </td>
                 <td>
@@ -180,21 +189,25 @@ export function ModerationQueue() {
 
       <footer className="pagination">
         <span aria-live="polite">
-          {rangeStart}&ndash;{rangeEnd} of {total}
+          {t("admin.moderationQueue.paginationRange", {
+            start: rangeStart,
+            end: rangeEnd,
+            total,
+          })}
         </span>
         <button
           type="button"
           onClick={() => setOffset(Math.max(0, offset - limit))}
           disabled={offset === 0 || query.isPending}
         >
-          Previous
+          {t("admin.common.previous")}
         </button>
         <button
           type="button"
           onClick={() => setOffset(offset + limit)}
           disabled={offset + items.length >= total || query.isPending}
         >
-          Next
+          {t("admin.common.next")}
         </button>
       </footer>
     </main>

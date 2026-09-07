@@ -97,61 +97,71 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
-test.describe("Hosting-settings a11y smoke (WCAG 2.1 AA)", () => {
-  for (const scenario of [
-    "pro_empty",
-    "pro_with_rows",
-    "free",
-    "self_host",
-  ] as const) {
-    test(`hosting view '${scenario}' has zero WCAG 2.1 AA violations`, async ({
+// Locale matrix (FR-FBR-38 / Stage 2 W-D). `de-DE` proves hosting-settings
+// stays axe-clean once the admin console has a locale to resolve — the German
+// catalog is a skeleton this arc (DEC-FBR-17), so the same English strings
+// render per C35 rule 6 per-key fallback. Mirrors a11y.spec.ts.
+const LOCALES = ["en-US", "de-DE"] as const;
+
+for (const browser of LOCALES) {
+  test.describe(`Hosting-settings a11y smoke (WCAG 2.1 AA, ${browser})`, () => {
+    test.use({ locale: browser });
+
+    for (const scenario of [
+      "pro_empty",
+      "pro_with_rows",
+      "free",
+      "self_host",
+    ] as const) {
+      test(`hosting view '${scenario}' has zero WCAG 2.1 AA violations`, async ({
+        page,
+      }) => {
+        test.skip(!FAKE_API, "Real-backend mode requires a seeded tenant per tier");
+
+        await installFakeApi(page, scenario);
+        await page.goto("/admin/settings/hosting");
+
+        await expect(
+          page.getByRole("heading", { name: /^Public address$/, level: 1 }),
+        ).toBeVisible();
+        // Wait for the data-bound section to settle before axe runs.
+        await expect(
+          page.getByRole("heading", { name: /^Subdomain$/, level: 2 }),
+        ).toBeVisible();
+
+        await expectNoAxeViolations(page, `hosting-settings ${scenario} (${browser})`);
+      });
+    }
+
+    test("each Remove control carries its own domain in its accessible name", async ({
       page,
     }) => {
-      test.skip(!FAKE_API, "Real-backend mode requires a seeded tenant per tier");
+      test.skip(!FAKE_API, "Real-backend mode requires a seeded tenant");
 
-      await installFakeApi(page, scenario);
+      await installFakeApi(page, "pro_with_rows");
       await page.goto("/admin/settings/hosting");
 
+      // Two rows, two buttons, two DISTINCT names. Without the visually-hidden
+      // suffix a screen-reader user hears "Remove, Remove" and cannot tell which
+      // domain they are about to delete.
       await expect(
-        page.getByRole("heading", { name: /^Public address$/, level: 1 }),
+        page.getByRole("button", { name: /Remove feedback\.acme\.example/ }),
       ).toBeVisible();
-      // Wait for the data-bound section to settle before axe runs.
       await expect(
-        page.getByRole("heading", { name: /^Subdomain$/, level: 2 }),
+        page.getByRole("button", { name: /Remove ideas\.acme\.example/ }),
       ).toBeVisible();
-
-      await expectNoAxeViolations(page, `hosting-settings ${scenario}`);
     });
-  }
 
-  test("each Remove control carries its own domain in its accessible name", async ({
-    page,
-  }) => {
-    test.skip(!FAKE_API, "Real-backend mode requires a seeded tenant");
+    test("status is readable as text, not conveyed by colour alone (WCAG 1.4.1)", async ({
+      page,
+    }) => {
+      test.skip(!FAKE_API, "Real-backend mode requires a seeded tenant");
 
-    await installFakeApi(page, "pro_with_rows");
-    await page.goto("/admin/settings/hosting");
+      await installFakeApi(page, "pro_with_rows");
+      await page.goto("/admin/settings/hosting");
 
-    // Two rows, two buttons, two DISTINCT names. Without the visually-hidden
-    // suffix a screen-reader user hears "Remove, Remove" and cannot tell which
-    // domain they are about to delete.
-    await expect(
-      page.getByRole("button", { name: /Remove feedback\.acme\.example/ }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /Remove ideas\.acme\.example/ }),
-    ).toBeVisible();
+      await expect(page.getByText("Live", { exact: true })).toBeVisible();
+      await expect(page.getByText("Waiting for DNS", { exact: true })).toBeVisible();
+    });
   });
-
-  test("status is readable as text, not conveyed by colour alone (WCAG 1.4.1)", async ({
-    page,
-  }) => {
-    test.skip(!FAKE_API, "Real-backend mode requires a seeded tenant");
-
-    await installFakeApi(page, "pro_with_rows");
-    await page.goto("/admin/settings/hosting");
-
-    await expect(page.getByText("Live", { exact: true })).toBeVisible();
-    await expect(page.getByText("Waiting for DNS", { exact: true })).toBeVisible();
-  });
-});
+}

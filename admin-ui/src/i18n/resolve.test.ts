@@ -58,4 +58,32 @@ describe("validateLocale — external input gate", () => {
     expect(validateLocale(42)).toBeNull();
     expect(validateLocale({ code: "de" })).toBeNull();
   });
+
+  it("rejects Object.prototype names, `constructor` included (R-SEC, collab-20260907-034037)", () => {
+    // The shipped-code gate used to be `code in BY_CODE`, and `in` walks the
+    // prototype chain. Canonicalisation mangles every other Object.prototype
+    // name (`__proto__` -> `--proto--`, `toString` -> `tostring`), so exactly
+    // one survived and passed the gate: `constructor`, in any casing. It then
+    // reached `formatRelative`, where `Intl` throws a RangeError, and with no
+    // React error boundary in the SPA a crafted `?lang=constructor` link
+    // rendered a BLANK public board for whoever followed it.
+    for (const hostile of ["constructor", "CONSTRUCTOR", "Constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(validateLocale(hostile), `validateLocale(${hostile})`).toBeNull();
+    }
+  });
+
+  it("resolveLocale keeps its ALWAYS-a-shipped-code contract for the same inputs", () => {
+    // The gate was not the only prototype-chain read: `resolveOne`'s
+    // `BARE_DEFAULTS[base]` and `TAG_OVERRIDES[prefix]` are plain index reads,
+    // which walk the chain exactly as `in` does — so `resolveLocale` used to
+    // hand back the `Object` constructor, and this function's docstring
+    // promises callers they may pass its result straight to `<html lang>`,
+    // `changeLanguage` and the catalog `import()` without re-validating.
+    for (const hostile of ["constructor", "CONSTRUCTOR", "__proto__", "toString", "valueOf"]) {
+      expect(resolveLocale([hostile]), `resolveLocale([${hostile}])`).toBe("en");
+      expect(typeof resolveLocale([hostile]), `typeof resolveLocale([${hostile}])`).toBe("string");
+    }
+    // A real candidate list still resolves normally.
+    expect(resolveLocale(["constructor", "de-AT"])).toBe("de");
+  });
 });

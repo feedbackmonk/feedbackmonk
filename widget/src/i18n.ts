@@ -26,6 +26,20 @@ export type Args = Record<string, string | number>;
 export type Translate = (key: string, args?: Args) => string;
 
 /**
+ * OWN-property lookup on the three generated tables.
+ *
+ * `k in TABLE` and `TABLE[k]` both walk the prototype chain, so `constructor` --
+ * the one `Object.prototype` name that survives canonicalisation (`__proto__` ->
+ * `--proto--`, `toString` -> `tostring`) -- passed the shipped-code gate AND made
+ * `BARE_DEFAULTS[base]` hand back the `Object` constructor itself, which
+ * `resolveOne` then returned as if it were a locale code. R-SEC finding,
+ * collab-20260907-034037; widget bytes authorised by the LD.
+ */
+function own(table: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(table, key);
+}
+
+/**
  * Is `code` one of the 31 shipped locales (C34)?
  *
  * The shipped set is read off the generated loader map, so "a locale we ship"
@@ -34,7 +48,7 @@ export type Translate = (key: string, args?: Args) => string;
  * projects the C34 table instead of importing `locales.gen.ts`.
  */
 function isShipped(code: string): boolean {
-  return code === DEFAULT_LOCALE || code in LOADERS;
+  return code === DEFAULT_LOCALE || own(LOADERS, code);
 }
 
 let loc: string = DEFAULT_LOCALE;
@@ -87,12 +101,12 @@ export function resolveOne(candidate: string): string | null {
   // so `zh-Hant-CN` is Traditional despite the CN.
   const parts = tag.split("-");
   for (let n = parts.length; n >= 2; n--) {
-    const override = TAG_OVERRIDES[parts.slice(0, n).join("-")];
-    if (override) return override;
+    const prefix = parts.slice(0, n).join("-");
+    if (own(TAG_OVERRIDES, prefix)) return TAG_OVERRIDES[prefix];
   }
   const base = parts[0];
   if (isShipped(base)) return base;
-  return BARE_DEFAULTS[base] ?? null;
+  return own(BARE_DEFAULTS, base) ? BARE_DEFAULTS[base] : null;
 }
 
 /**
@@ -150,9 +164,19 @@ export function dir(): Dir {
   return RTL.indexOf(loc) >= 0 ? "rtl" : "ltr";
 }
 
-/** True when `key` renders a real string (active catalog or the `en` source). */
+/**
+ * True when `key` renders a real string (active catalog or the `en` source).
+ *
+ * OWN properties only, for the same reason as `own` above: `key in EN` is true
+ * for `constructor` and every other `Object.prototype` name, so `t()` would
+ * report a key it cannot render. Unreachable today — `t()` takes literal
+ * developer-authored keys and the one constructed key is prefixed
+ * (`"widget.error." + code`) — and closed anyway so widening `t()` to a dynamic
+ * key later cannot reopen it (LD ruling, collab-20260907-034037: close the
+ * class, not the reachable instances).
+ */
 export function hasKey(key: string): boolean {
-  return key in active || key in EN;
+  return own(active, key) || own(EN, key);
 }
 
 function category(n: number): string {
@@ -177,7 +201,7 @@ export const t: Translate = (key, args) => {
     if (hasKey(key + c)) k = key + c;
     else if (hasKey(key + "_other")) k = key + "_other";
   }
-  let s = k in active ? active[k] : k in EN ? EN[k] : key;
+  let s = own(active, k) ? active[k] : own(EN, k) ? EN[k] : key;
   if (args) {
     for (const name in args) {
       s = s.split("{{" + name + "}}").join(String(args[name]));
@@ -196,7 +220,7 @@ export const t: Translate = (key, args) => {
 export async function loadLocale(code: string): Promise<void> {
   setLocale(code);
   const target = loc;
-  const load = LOADERS[target];
+  const load = own(LOADERS, target) ? LOADERS[target] : undefined;
   if (!load) return;
   try {
     const mod = await load();

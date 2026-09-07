@@ -1,11 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ACTION_TYPE_LABELS,
-  AUTONOMY_RUNG_LABELS,
-  WORK_ORDER_EVENT_LABELS,
   WORK_ORDER_OWNER_TRANSITIONS,
-  WORK_ORDER_STATE_LABELS,
   WORK_ORDER_TERMINAL_STATES,
   type AutonomyRung,
   type OwnerOverrides,
@@ -18,20 +14,32 @@ import { formatAbsolute, formatRelative } from "../../shared/format";
 import { useToast } from "../../components/Toast";
 import { useAdminProject } from "./useAdminProject";
 import { WorkOrderStateBadge } from "./badges";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
+import { useLocale } from "../../i18n/useLocale";
+
+type SimpleT = (key: string, options?: Record<string, unknown>) => string;
 
 // Owner-facing label + tone for each owner-authored transition (C22 authz
 // table, owner-only rows). `approve` is NOT here — it routes through the
 // dedicated /approve security gate on the recommendation card, never folded in.
-const EVENT_META: Record<
+function eventMeta(
+  t: SimpleT,
+): Record<
   WorkOrderOwnerEventType,
   { label: string; danger?: boolean; needsOverrides?: boolean }
-> = {
-  accept: { label: "Accept result" },
-  "request-changes": { label: "Request changes", needsOverrides: true },
-  reject: { label: "Reject", danger: true },
-  cancel: { label: "Cancel order", danger: true },
-  retry: { label: "Retry" },
-};
+> {
+  return {
+    accept: { label: t("admin.workOrderDetail.eventMeta.acceptLabel") },
+    "request-changes": {
+      label: t("admin.workOrderDetail.eventMeta.requestChangesLabel"),
+      needsOverrides: true,
+    },
+    reject: { label: t("admin.workOrderDetail.eventMeta.rejectLabel"), danger: true },
+    cancel: { label: t("admin.workOrderDetail.eventMeta.cancelLabel"), danger: true },
+    retry: { label: t("admin.workOrderDetail.eventMeta.retryLabel") },
+  };
+}
 
 // FR-FBR-21 — work-order detail. The order's current state, the full append-only
 // event ledger (the audit trail), and the owner transitions legal from the
@@ -40,13 +48,14 @@ const EVENT_META: Record<
 // (Q17). The ledger is the trust record — it is shown verbatim, untrusted
 // `detail` rendered as escaped data.
 export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -55,7 +64,7 @@ export function WorkOrderDetail({ workOrderId }: { workOrderId: string }) {
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -72,17 +81,28 @@ function WorkOrderDetailInner({
   projectId: string;
   workOrderId: string;
 }) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
+  const { locale } = useLocale();
+  const meta = eventMeta(t);
   const query = useQuery({
     queryKey: ["autopilot-work-order", projectId, workOrderId],
     queryFn: () => fetchWorkOrderDetail(projectId, workOrderId),
   });
   const [pending, setPending] = useState<WorkOrderOwnerEventType | null>(null);
 
+  function rungLabel(rung: number): string {
+    if (rung >= 0 && rung <= 3) {
+      return adminLabels.autonomyRungLabel(rung as AutonomyRung);
+    }
+    return t("admin.boardCard.rung", { rung });
+  }
+
   if (query.isPending) {
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading work order…</p>
+        <p className="muted">{t("admin.workOrderDetail.loadingOrder")}</p>
       </main>
     );
   }
@@ -91,9 +111,9 @@ function WorkOrderDetailInner({
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          Failed to load this work order.{" "}
+          {t("admin.workOrderDetail.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       </main>
@@ -112,50 +132,57 @@ function WorkOrderDetailInner({
         <WorkOrderStateBadge state={wo.state} />
       </header>
 
-      <section className="drawer-meta" aria-label="Work-order metadata">
+      <section
+        className="drawer-meta"
+        aria-label={t("admin.workOrderDetail.metadataAria")}
+      >
         <dl>
-          <dt>Action</dt>
-          <dd>{ACTION_TYPE_LABELS[wo.action_type]}</dd>
+          <dt>{t("admin.workOrderDetail.fields.action")}</dt>
+          <dd>{adminLabels.actionType(wo.action_type)}</dd>
           {/* C31 (P6) provenance: recommendation_id === null ⇔ owner-authored
               ("New story"), no feedback provenance. The pair is both-null or
               both-set (migration 00028 CHECK), so recommendation_id alone
               decides. */}
-          <dt>Provenance</dt>
+          <dt>{t("admin.workOrderDetail.fields.provenance")}</dt>
           <dd>
             {wo.recommendation_id === null
-              ? "Owner-authored"
-              : "From feedback recommendation"}
+              ? t("admin.workOrderDetail.provenanceOwnerAuthored")
+              : t("admin.workOrderDetail.provenanceFromRecommendation")}
           </dd>
-          <dt>Autonomy rung</dt>
+          <dt>{t("admin.workOrderDetail.fields.autonomyRung")}</dt>
           <dd>{rungLabel(wo.autonomy_rung)}</dd>
-          <dt>State</dt>
-          <dd>{WORK_ORDER_STATE_LABELS[wo.state]}</dd>
+          <dt>{t("admin.workOrderDetail.fields.state")}</dt>
+          <dd>{adminLabels.workOrderState(wo.state)}</dd>
           {/* C31 named-runner routing — always shown. A label pins the order to
               one runner identity (token sub); null is first-claim-wins. */}
-          <dt>Routing</dt>
+          <dt>{t("admin.workOrderDetail.fields.routing")}</dt>
           <dd>
-            {wo.routing_label ? `Routed to: ${wo.routing_label}` : "Any runner"}
+            {wo.routing_label
+              ? t("admin.workOrderDetail.routedTo", { label: wo.routing_label })
+              : t("admin.workOrderDetail.anyRunner")}
           </dd>
           {wo.claimed_by_runner ? (
             <>
-              <dt>Claimed by</dt>
+              <dt>{t("admin.workOrderDetail.fields.claimedBy")}</dt>
               <dd>{wo.claimed_by_runner}</dd>
             </>
           ) : null}
           {wo.approved_at ? (
             <>
-              <dt>Approved</dt>
+              <dt>{t("admin.workOrderDetail.fields.approved")}</dt>
               <dd>
                 <time dateTime={wo.approved_at}>
-                  {formatAbsolute(wo.approved_at)}
+                  {formatAbsolute(wo.approved_at, locale)}
                 </time>
-                {wo.approved_by ? ` by ${wo.approved_by}` : null}
+                {wo.approved_by
+                  ? t("admin.workOrderDetail.approvedBy", { by: wo.approved_by })
+                  : null}
               </dd>
             </>
           ) : null}
           {wo.failure_reason ? (
             <>
-              <dt>Failure</dt>
+              <dt>{t("admin.workOrderDetail.fields.failure")}</dt>
               <dd className="ap-wo-failure">{wo.failure_reason}</dd>
             </>
           ) : null}
@@ -163,40 +190,41 @@ function WorkOrderDetailInner({
       </section>
 
       <section aria-labelledby="ap-wo-instructions-label">
-        <h2 id="ap-wo-instructions-label">Instructions</h2>
+        <h2 id="ap-wo-instructions-label">
+          {t("admin.workOrderDetail.instructionsHeading")}
+        </h2>
         {/* Authoritative order text — the owner_overrides already merged in by
             the server. Rendered as escaped data. */}
         <p className="ap-rec-text">{wo.instructions}</p>
       </section>
 
       <section aria-labelledby="ap-wo-ledger-label">
-        <h2 id="ap-wo-ledger-label">Event ledger</h2>
-        <p className="muted">
-          Append-only audit trail. Every state change is recorded here in the
-          same transaction it happens.
-        </p>
+        <h2 id="ap-wo-ledger-label">{t("admin.workOrderDetail.ledgerHeading")}</h2>
+        <p className="muted">{t("admin.workOrderDetail.ledgerExplain")}</p>
         {wo.events.length === 0 ? (
-          <p className="muted">No events yet.</p>
+          <p className="muted">{t("admin.workOrderDetail.noEvents")}</p>
         ) : (
           <ol className="status-history ap-wo-ledger">
             {wo.events.map((ev) => (
               <li key={ev.id}>
                 <span className="status-history-arrow">
                   {ev.from_state
-                    ? `${WORK_ORDER_STATE_LABELS[ev.from_state]} → `
+                    ? `${adminLabels.workOrderState(ev.from_state)} → `
                     : ""}
-                  {WORK_ORDER_STATE_LABELS[ev.to_state]}
+                  {adminLabels.workOrderState(ev.to_state)}
                 </span>
                 <span className="muted">
                   {" "}
-                  · {WORK_ORDER_EVENT_LABELS[ev.event_type] ?? ev.event_type} ·{" "}
-                  {ev.actor}
-                  {ev.actor_id ? ` (${ev.actor_id})` : ""} ·{" "}
-                  <time dateTime={ev.at}>{formatRelative(ev.at)}</time>
+                  {t("admin.workOrderDetail.eventMetaLine", {
+                    eventType: adminLabels.workOrderEvent(ev.event_type),
+                    actor: ev.actor,
+                    actorId: ev.actor_id ? ` (${ev.actor_id})` : "",
+                    when: formatRelative(ev.at, locale),
+                  })}
                 </span>
                 {ev.detail ? (
                   <p className="reason-note ap-wo-event-detail">
-                    {summarizeDetail(ev.detail)}
+                    {summarizeDetail(ev.detail, t)}
                   </p>
                 ) : null}
               </li>
@@ -206,26 +234,29 @@ function WorkOrderDetailInner({
       </section>
 
       <section aria-labelledby="ap-wo-actions-label" className="ap-wo-actions">
-        <h2 id="ap-wo-actions-label">Owner actions</h2>
+        <h2 id="ap-wo-actions-label">{t("admin.workOrderDetail.ownerActionsHeading")}</h2>
         {terminal ? (
           <p className="muted">
-            This order is {WORK_ORDER_STATE_LABELS[wo.state].toLowerCase()} —
-            terminal, no further actions.
+            {t("admin.workOrderDetail.terminalNote", {
+              state: adminLabels.workOrderState(wo.state).toLowerCase(),
+            })}
           </p>
         ) : transitions.length === 0 ? (
-          <p className="muted">
-            Waiting on the agent — no owner action is available in this state.
-          </p>
+          <p className="muted">{t("admin.workOrderDetail.waitingOnAgent")}</p>
         ) : (
-          <div role="group" aria-label="Owner actions" className="status-choices">
+          <div
+            role="group"
+            aria-label={t("admin.workOrderDetail.ownerActionsHeading")}
+            className="status-choices"
+          >
             {transitions.map((ev) => (
               <button
                 key={ev}
                 type="button"
-                className={EVENT_META[ev].danger ? "ap-danger" : undefined}
+                className={meta[ev].danger ? "ap-danger" : undefined}
                 onClick={() => setPending(ev)}
               >
-                {EVENT_META[ev].label}
+                {meta[ev].label}
               </button>
             ))}
           </div>
@@ -260,10 +291,11 @@ function TransitionDialog({
   wo: WorkOrderDetailShape;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin");
   const dialogId = useId();
   const queryClient = useQueryClient();
   const { notify } = useToast();
-  const meta = EVENT_META[event];
+  const meta = eventMeta(t)[event];
   const [note, setNote] = useState("");
   const [title, setTitle] = useState(wo.title);
   const [instructions, setInstructions] = useState(wo.instructions);
@@ -288,7 +320,12 @@ function TransitionDialog({
       });
     },
     onSuccess: () => {
-      notify(`${meta.label} recorded.`, "success");
+      notify(
+        t("admin.workOrderDetail.transitionDialog.recorded", {
+          label: meta.label,
+        }),
+        "success",
+      );
       queryClient.invalidateQueries({
         queryKey: ["autopilot-work-order", projectId, workOrderId],
       });
@@ -297,7 +334,8 @@ function TransitionDialog({
       });
       onClose();
     },
-    onError: () => setInlineError("Action failed. Please try again."),
+    onError: () =>
+      setInlineError(t("admin.workOrderDetail.transitionDialog.errorGeneric")),
   });
 
   function onSubmit(e: FormEvent) {
@@ -319,10 +357,11 @@ function TransitionDialog({
         {meta.needsOverrides ? (
           <>
             <p className="muted">
-              Requesting changes re-opens the order for another pass. Your edits
-              are authoritative — they override the prior instructions.
+              {t("admin.workOrderDetail.transitionDialog.requestChangesExplain")}
             </p>
-            <label htmlFor={`${dialogId}-title-input`}>Title</label>
+            <label htmlFor={`${dialogId}-title-input`}>
+              {t("admin.workOrderDetail.transitionDialog.titleLabel")}
+            </label>
             <input
               id={`${dialogId}-title-input`}
               type="text"
@@ -331,7 +370,9 @@ function TransitionDialog({
               maxLength={200}
               autoFocus
             />
-            <label htmlFor={`${dialogId}-instructions`}>Instructions</label>
+            <label htmlFor={`${dialogId}-instructions`}>
+              {t("admin.workOrderDetail.transitionDialog.instructionsLabel")}
+            </label>
             <textarea
               id={`${dialogId}-instructions`}
               value={instructions}
@@ -342,7 +383,9 @@ function TransitionDialog({
           </>
         ) : null}
 
-        <label htmlFor={`${dialogId}-note`}>Note (optional)</label>
+        <label htmlFor={`${dialogId}-note`}>
+          {t("admin.workOrderDetail.transitionDialog.noteLabel")}
+        </label>
         <textarea
           id={`${dialogId}-note`}
           value={note}
@@ -360,14 +403,16 @@ function TransitionDialog({
 
         <div className="dialog-actions">
           <button type="button" onClick={onClose} disabled={mutation.isPending}>
-            Cancel
+            {t("admin.common.cancel")}
           </button>
           <button
             type="submit"
             className={meta.danger ? "ap-danger" : "primary"}
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? "Working…" : meta.label}
+            {mutation.isPending
+              ? t("admin.workOrderDetail.transitionDialog.working")
+              : meta.label}
           </button>
         </div>
       </form>
@@ -378,27 +423,30 @@ function TransitionDialog({
 // Render an event's untrusted jsonb `detail` as a short, escaped summary —
 // never a raw dump. Surfaces a note + whether authoritative overrides were
 // attached, without echoing arbitrary nested content.
-function summarizeDetail(detail: Record<string, unknown>): string {
+function summarizeDetail(
+  detail: Record<string, unknown>,
+  t: SimpleT,
+): string {
   const parts: string[] = [];
   if (typeof detail.note === "string" && detail.note) parts.push(detail.note);
   if (detail.owner_overrides && typeof detail.owner_overrides === "object") {
     const keys = Object.keys(detail.owner_overrides as object);
     if (keys.length > 0) {
-      parts.push(`(authoritative overrides: ${keys.join(", ")})`);
+      parts.push(
+        t("admin.workOrderDetail.authoritativeOverrides", {
+          keys: keys.join(", "),
+        }),
+      );
     }
   }
   return parts.length > 0 ? parts.join(" ") : "—";
 }
 
-function rungLabel(rung: number): string {
-  if (rung >= 0 && rung <= 3) return AUTONOMY_RUNG_LABELS[rung as AutonomyRung];
-  return `Rung ${rung}`;
-}
-
 function BackLink() {
+  const { t } = useTranslation("admin");
   return (
     <Link to="/admin/autopilot/work-orders" className="ap-back-link">
-      ← Back to work orders
+      {t("admin.common.backToWorkOrders")}
     </Link>
   );
 }

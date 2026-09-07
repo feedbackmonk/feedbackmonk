@@ -2,5 +2,670 @@
   "_meta": {
     "language": "English",
     "status": "source"
+  },
+  "admin": {
+    "common": {
+      "loading": "Loading…",
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "create": "Create",
+      "save": "Save",
+      "edit": "Edit",
+      "next": "Next",
+      "previous": "Previous",
+      "noProjects": "No projects configured.",
+      "backToDigest": "← Back to digest",
+      "backToWorkOrders": "← Back to work orders",
+      "routingHelp": "Runner identity (token <code>sub</code>) that must execute this order. Leave empty for any runner."
+    },
+    "login": {
+      "title": "feedbackmonk Admin",
+      "subtitle": "Sign in to triage feedback.",
+      "emailLabel": "Email",
+      "passwordLabel": "Password",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "signIn": "Sign in",
+      "signingIn": "Signing in…",
+      "errors": {
+        "invalidCredentials": "Invalid email or password.",
+        "tenantUnverified": "Tenant not yet verified. Check your inbox.",
+        "generic": "Login failed. Please try again."
+      }
+    },
+    "searchBox": {
+      "label": "Search feedback",
+      "placeholder": "Search feedback…",
+      "clear": "Clear search",
+      "tips": "Tips: <code1>\"exact phrase\"</code1> · <code2>-exclude</code2> · <code3>this OR that</code3>",
+      "tipsShortcut": " · press <kbd>{{key}}</kbd> to search"
+    },
+    "sentimentTrend": {
+      "empty": "No sentiment data yet",
+      "summary": "{{total}} classified feedback — {{pct}}% positive ({{positive}} positive, {{neutral}} neutral, {{negative}} negative), bucketed by {{bucket}}.",
+      "pctPositive": "{{pct}}% positive",
+      "acrossClassified": "across {{total}} classified",
+      "segmentTitle": "{{when}}: {{count}} {{sentiment}}",
+      "periodStart": "Period start",
+      "total": "Total",
+      "totals": "Totals"
+    },
+    "statusControls": {
+      "terminal": "Terminal — no further transitions.",
+      "heading": "Transition status",
+      "fromTo": "From {{status}} to:",
+      "transitionTo": "Transition to {{status}}",
+      "duplicateOfLabel": "Duplicate of (required, e.g. FB-XXXXXX)",
+      "reasonNoteLabel": "Reason note (optional)",
+      "submitting": "Submitting…",
+      "transitionedTo": "Transitioned to {{status}}.",
+      "errors": {
+        "illegalTransition": "That transition is not allowed from the current status.",
+        "duplicateRequired": "A duplicate target (FB-XXXXXX) is required.",
+        "duplicateTargetMissing": "The duplicate target was not found in this project.",
+        "duplicateSelfReference": "A feedback item cannot be a duplicate of itself.",
+        "transitionRejected": "Transition rejected. Please try again.",
+        "generic": "Transition failed. Please try again."
+      }
+    },
+    "replyComposer": {
+      "heading": "Reply",
+      "visibilityLegend": "Visibility",
+      "visibilityPublic": "Public (emailed to submitter)",
+      "visibilityInternal": "Internal (note for tenant admins only)",
+      "bodyLabel": "Reply body",
+      "replySent": "Reply sent",
+      "noteSaved": "Internal note saved",
+      "sending": "Sending…",
+      "sendReply": "Send reply",
+      "saveNote": "Save internal note",
+      "errors": {
+        "rejected": "Reply rejected by the server (validation).",
+        "generic": "Failed to send reply. Please try again.",
+        "empty": "Reply cannot be empty.",
+        "tooLong": "Reply exceeds {{max}} characters."
+      }
+    },
+    "feedbackList": {
+      "title": "Feedback",
+      "satisfactionTrend": "Satisfaction trend",
+      "trendLoadError": "Failed to load satisfaction trend.",
+      "filterByStatusAria": "Filter by status",
+      "allStatuses": "All",
+      "resultsSummaryBoth_one": "{{count}} result for “{{query}}” in {{status}}",
+      "resultsSummaryBoth_other": "{{count}} results for “{{query}}” in {{status}}",
+      "resultsSummarySearch_one": "{{count}} result for “{{query}}”",
+      "resultsSummarySearch_other": "{{count}} results for “{{query}}”",
+      "resultsSummaryStatus_one": "{{count}} result in {{status}}",
+      "resultsSummaryStatus_other": "{{count}} results in {{status}}",
+      "resetAllAction": "Reset all",
+      "loadError": "Failed to load feedback.",
+      "emptyStatusQuery": "No {{status}} feedback matches “{{query}}”.",
+      "emptyQuery": "No feedback matches “{{query}}”.",
+      "emptyFilter": "No feedback matches this filter.",
+      "clearSearchAction": "Clear search",
+      "clearFilterAction": "Clear filter",
+      "tableCaption": "Feedback items, sorted newest first.",
+      "columns": {
+        "id": "ID",
+        "kind": "Kind",
+        "status": "Status",
+        "sentiment": "Sentiment",
+        "excerpt": "Excerpt",
+        "submitted": "Submitted",
+        "from": "From",
+        "replies": "Replies"
+      },
+      "noSentiment": "No sentiment",
+      "openRow": "Open {{id}}",
+      "paginationRange": "{{start}}–{{end}} of {{total}}"
+    },
+    "feedbackDrawer": {
+      "closeAria": "Close drawer",
+      "loadError": "Failed to load feedback.",
+      "fields": {
+        "status": "Status",
+        "kind": "Kind",
+        "sentiment": "Sentiment",
+        "submitted": "Submitted",
+        "from": "From"
+      },
+      "submitterAuthenticatedFallback": "(authenticated user)",
+      "submitterAnonymousWithEmail": "anonymous ({{email}})",
+      "submitterAnonymous": "anonymous",
+      "bodyHeading": "Body",
+      "showOriginal": "Show original",
+      "showTranslation": "Show translation",
+      "showTranslationFrom": "Show translation (from {{lang}})",
+      "machineTranslation": "Machine translation — original preserved.",
+      "machineTranslationFrom": "Machine translation from {{lang}} — original preserved.",
+      "historyHeading": "Status history",
+      "noHistory": "No status changes yet.",
+      "historyByAt": "by {{actor}} · <time>{{when}}</time>",
+      "duplicateOf": "duplicate of {{id}}",
+      "repliesHeading": "Replies",
+      "replyVisibilityAria": "Reply visibility",
+      "publicTab_one": "Public ({{count}})",
+      "publicTab_other": "Public ({{count}})",
+      "internalTab_one": "Internal ({{count}})",
+      "internalTab_other": "Internal ({{count}})",
+      "noPublicReplies": "No public replies yet.",
+      "noInternalReplies": "No internal replies yet."
+    },
+    "moderationQueue": {
+      "title": "Moderation",
+      "intro": "Approve feedback to publish it to your public board; reject to keep it private.",
+      "filterAria": "Filter by moderation status",
+      "loadError": "Failed to load the moderation queue.",
+      "emptyPending": "Nothing awaiting moderation. New feedback appears here for review.",
+      "emptyOther": "No {{status}} feedback.",
+      "tableCaption": "Feedback {{status}} for moderation, newest first.",
+      "columns": {
+        "id": "ID",
+        "kind": "Kind",
+        "excerpt": "Excerpt",
+        "from": "From",
+        "submitted": "Submitted",
+        "actions": "Actions"
+      },
+      "paginationRange": "{{start}}–{{end}} of {{total}}"
+    },
+    "moderationActions": {
+      "movedTo": "{{feedbackId}} → {{status}}.",
+      "errors": {
+        "illegalTransition": "That moderation change is not allowed from the current state.",
+        "generic": "Moderation failed. Please try again."
+      },
+      "moderateAria": "Moderate {{feedbackId}}",
+      "setTo": "Set {{feedbackId}} to {{status}}",
+      "explainApprove": "Approving publishes this feedback to the public board.",
+      "explainReject": "Rejecting keeps this feedback off the public board.",
+      "explainReset": "Resetting returns this feedback to the moderation queue.",
+      "confirm": "Confirm {{status}}"
+    },
+    "adminRoadmap": {
+      "title": "Roadmap (admin)",
+      "noProjects": "No projects configured. Create one before managing the roadmap.",
+      "newItem": "New item",
+      "loadError": "Failed to load roadmap.",
+      "noItems": "No items.",
+      "promotedFrom": "promoted from {{id}}",
+      "voteCount_one": "{{count}} vote",
+      "voteCount_other": "{{count}} votes",
+      "created": "Roadmap item created.",
+      "updated": "Roadmap item updated.",
+      "newItemTitle": "New roadmap item",
+      "slugLabel": "Slug (kebab-case, 1–80 chars)",
+      "titleLabel": "Title",
+      "bodyLabel": "Body",
+      "initialStatusLabel": "Initial status",
+      "createFailed": "Create failed. Please try again.",
+      "requiredFields": "Slug, title, and body are required.",
+      "creating": "Creating…",
+      "editHeading": "Edit",
+      "statusLabel": "Status",
+      "updateFailed": "Update failed. Please try again.",
+      "saving": "Saving…"
+    },
+    "promoteButton": {
+      "alreadyPromoted": "This feedback was already promoted to the roadmap.",
+      "promoted": "Promoted to roadmap.",
+      "cta": "Promote to roadmap",
+      "explain": "Creates a public roadmap item from {{feedbackId}} and marks the source as a duplicate.",
+      "slugLabel": "Slug (kebab-case, 1–80 chars)",
+      "titleLabel": "Title (optional — defaults to the feedback body trimmed)",
+      "titlePlaceholder": "(auto from feedback body)",
+      "promoting": "Promoting…",
+      "promote": "Promote",
+      "errors": {
+        "invalidCategory": "Only feature-request feedback can be promoted.",
+        "invalidSlug": "Slug must be 1–80 kebab-case chars (a-z, 0-9, -).",
+        "notFound": "This feedback could not be found.",
+        "slugTaken": "That slug is already in use — choose another.",
+        "internal": "Server error while promoting. Please try again.",
+        "rejected": "Promote rejected. Please try again.",
+        "generic": "Promote failed. Please try again.",
+        "slugRequired": "Slug is required."
+      }
+    },
+    "boardSettings": {
+      "title": "Public board",
+      "saved": "Board settings saved.",
+      "saveFailed": "Could not save board settings.",
+      "intro": "The public board lets end-users see and vote on feedback you’ve approved. It’s off by default — no feedback is ever public until you enable the board and approve items in the moderation queue.",
+      "loadError": "Failed to load board settings.",
+      "cardAria": "Board settings",
+      "enableLabel": "Enable public board",
+      "enableNote": "When on, approved feedback is visible at your public board URL. Turning it off hides the board entirely (existing approvals are kept).",
+      "requireModerationLabel": "Require moderation",
+      "requireModerationNote": "Always on in v1 — every item is reviewed before it can appear on the board. Auto-approve is reserved for a future release."
+    },
+    "hostingSettings": {
+      "title": "Public address",
+      "intro": "Where your feedback board and widget live on the internet.",
+      "loadError": "Failed to load hosting settings.",
+      "saving": "Saving…",
+      "subdomain": {
+        "saved": "Public address updated.",
+        "saveFailed": "Could not update your public address.",
+        "heading": "Subdomain",
+        "noSubdomains": "This deployment doesn’t use tenant subdomains — your board and widget are served on whatever hostname this instance answers on.",
+        "boardAt": "Your board is at <code>https://{{host}}</code>",
+        "fieldLabel": "Your subdomain",
+        "help": "Lowercase letters, numbers and hyphens; 3–63 characters. Changing it moves your board — any link you’ve already shared will stop working."
+      },
+      "customDomain": {
+        "added": "Domain added. Point your DNS at us to finish.",
+        "addFailed": "Could not add that domain.",
+        "removed": "Domain removed.",
+        "removeFailed": "Could not remove that domain.",
+        "heading": "Your own domain",
+        "intro": "Serve your board <em>and</em> your widget from a hostname you own, like <code1>feedback.yourcompany.com</code1>. A first-party endpoint isn’t blocked by tracker blocklists and passes a strict <code2>connect-src</code2> policy.",
+        "step1": "Add your hostname below.",
+        "step2": "Create a CNAME record pointing it at <code>{{target}}</code>.",
+        "step3": "We issue the HTTPS certificate automatically once DNS resolves.",
+        "hostnameLabel": "Hostname",
+        "adding": "Adding…",
+        "addDomain": "Add domain",
+        "upgradeMessage": "Custom domains are available on the Pro plan and above.",
+        "tableCaption": "Your custom domains",
+        "columns": {
+          "domain": "Domain",
+          "status": "Status",
+          "actions": "Actions"
+        },
+        "statusLive": "Live",
+        "statusWaiting": "Waiting for DNS",
+        "remove": "Remove"
+      }
+    },
+    "settings": {
+      "language": {
+        "saved": "Language saved.",
+        "errors": {
+          "invalidLocale": "That language isn’t one feedbackmonk ships.",
+          "saveFailed": "Could not save the language setting."
+        },
+        "title": "Language",
+        "intro": "The language your admin pages open in, and the language we write your emails in when we have nothing else to go on. People reading your public board always choose their own.",
+        "loadError": "Failed to load the language setting.",
+        "defaultLanguageLabel": "Default language",
+        "browserDefault": "Browser default",
+        "workspaceNote": "Everyone in this workspace sees the admin in this language unless they pick another one.",
+        "followingBrowser": "Following this browser — currently {{locale}}.",
+        "translateOutbound": {
+          "label": "Translate our replies into the submitter's language",
+          "description": "When someone writes to you in another language, machine-translate your status notes and public replies into that language before emailing them. The original text is always included below the translation. This needs a translation provider configured on the server — without one, turning this on changes nothing."
+        }
+      }
+    },
+    "runnerTokens": {
+      "title": "Runner tokens",
+      "explainerAria": "How runners authenticate",
+      "explainer": "A <strong1>runner</strong1> is an autonomous agent that polls for owner-approved work orders, runs them against your repository, and reports back. It authenticates with a short-lived <em>runner write-token</em> — a JWT you mint yourself from the private half of a registered <code>runner</code>-class key. <strong2>feedbackmonk never holds your private key.</strong2>",
+      "securityNote": "A runner token can drive a <em>dispatched</em> order but can <strong>never approve one</strong> — approval is an admin-only action (Contract C22). So even a fully compromised runner token cannot bypass your approval gate, which is why issuing them is safe to automate.",
+      "keyForm": {
+        "heading": "Register a runner key",
+        "explainer": "Generate an Ed25519 keypair on the runner host and register the <strong>public</strong> half here as a <code>runner</code>-class key. Unlike an identity key, a runner key can only verify runner write-tokens — it can never mint an end-user identity.",
+        "labelField": "Label",
+        "publicKeyLabel": "Public key (base64)",
+        "publicKeyPlaceholder": "base64 of the 32-byte raw Ed25519 public key",
+        "registered": "Runner key “{{label}}” registered.",
+        "registerFailed": "Registration failed. The public key must be standard base64 of a 32-byte Ed25519 public key, and the label 1–100 characters.",
+        "required": "Both a label and a base64 public key are required.",
+        "registering": "Registering…",
+        "submit": "Register runner key"
+      },
+      "tokenForm": {
+        "heading": "Register an issued token",
+        "explainer": "Optional. After minting a token with <code1>feedbackmonk-runner mint-token</code1>, record its <code2>jti</code2> here so it appears in the list below and can be revoked. Registration is purely for visibility — a runner can authenticate whether or not its token is registered.",
+        "jtiLabel": "Token ID (jti)",
+        "jtiPlaceholder": "the token's jti claim (a UUID)",
+        "labelField": "Label",
+        "expiresLabel": "Expires (optional)",
+        "registered": "Token “{{label}}” registered.",
+        "registerFailed": "Registration failed. Check the jti and label (1–200 / 1–100 chars).",
+        "required": "Both a token ID (jti) and a label are required.",
+        "registering": "Registering…",
+        "submit": "Register token"
+      },
+      "labelPlaceholder": "ci-runner"
+    },
+    "runnerTokenCard": {
+      "revoked": "Token “{{label}}” revoked.",
+      "revokeFailed": "Revoke failed. Please try again.",
+      "confirmRevoke": "Revoke token “{{label}}”? This cannot be undone — the runner using it must mint a new token to keep working.",
+      "jtiLabel": "Token ID (jti)",
+      "registeredLabel": "Registered",
+      "expiresLabel": "Expires",
+      "noExpiry": "no expiry recorded",
+      "revokedLabel": "Revoked",
+      "revoking": "Revoking…",
+      "revokeAction": "Revoke"
+    },
+    "runnerTokensList": {
+      "heading": "Registered tokens",
+      "loading": "Loading tokens…",
+      "loadError": "Failed to load runner tokens.",
+      "empty": "No tokens registered yet. Registering a token here is optional — it only adds it to this list for visibility and revocation. A runner can authenticate the moment it mints a token from a registered runner key."
+    },
+    "tierSettings": {
+      "title": "Plan & usage",
+      "loadError": "Failed to load tier status.",
+      "currentPlanLabel": "Current plan:",
+      "usageHeading": "Usage",
+      "projectsLabel": "Projects",
+      "monthlyFeedbackLabel": "Monthly feedback",
+      "usagePeriod": "Rolling 30-day window since {{date}}.",
+      "capabilitiesHeading": "Capabilities",
+      "capabilities": {
+        "customBranding": "Custom branding",
+        "customDomain": "Custom domain",
+        "euResidency": "EU data residency",
+        "freeTierFooter": "Free-tier footer (“powered by feedbackmonk”)"
+      },
+      "enabledPrefix": "Enabled: ",
+      "disabledPrefix": "Disabled: ",
+      "notImplementedNote": "(configurable; implementation pending)"
+    },
+    "usageMeter": {
+      "unlimitedCount": "{{current}} / unlimited",
+      "stateOk": "OK",
+      "stateWarn": "Approaching cap",
+      "stateDanger": "Over cap",
+      "valueText": "{{current}} of {{limit}} {{label}} used ({{pct}}%, {{state}})",
+      "countsRow": "{{current}} / {{limit}} — <state>{{stateLabel}}</state>"
+    },
+    "upgradePrompt": {
+      "aria": "Upgrade options",
+      "defaultMessage": {
+        "free": "You're on {{tier}}. Upgrade to Starter for 3 projects per org and 500 monthly feedback.",
+        "starter": "You're on {{tier}}. Upgrade to Pro for unlimited projects, 10,000 monthly feedback, custom domain, and EU residency.",
+        "pro": "You're on {{tier}}. Self-hosting available for unlimited usage."
+      },
+      "cta": "Contact support to upgrade"
+    },
+    "badges": {
+      "executingAria": "{{state}} (agent executing)",
+      "confidenceTitle": "Model confidence {{pct}}%",
+      "confidenceLabel": "Confidence",
+      "confidencePercentAria": "Confidence {{pct}} percent"
+    },
+    "autopilotBoard": {
+      "columns": {
+        "draft": "Draft",
+        "approved": "Approved",
+        "inFlight": "In flight",
+        "reported": "Reported",
+        "done": "Done",
+        "halted": "Halted"
+      },
+      "title": "Board",
+      "listView": "List view →",
+      "loadingBoard": "Loading board…",
+      "loadError": "Failed to load the board.",
+      "truncationNote": "Showing the {{shown}} most recent work orders. Older orders are in the <link>full list</link>.",
+      "truncationNoteWithTotal": "Showing the {{shown}} most recent work orders of {{total}}. Older orders are in the <link>full list</link>.",
+      "columnsAria": "Work orders by state",
+      "columnEmpty": "Nothing here.",
+      "columnOrdersAria": "{{label}} work orders",
+      "moreLink_one": "+{{count}} more →",
+      "moreLink_other": "+{{count}} more →"
+    },
+    "boardCard": {
+      "rung": "Rung {{rung}}",
+      "ownerAuthoredTitle": "Owner-authored story",
+      "ownerAuthored": "Owner-authored",
+      "routedTitle": "Routed to runner",
+      "routedToLabel": "Routed to:",
+      "claimedTitle": "Claimed by runner",
+      "claimedBy": "claimed · {{runner}}"
+    },
+    "autopilotDigest": {
+      "title": "Autopilot",
+      "noProjects": "No projects configured. Create one before reviewing the autopilot digest.",
+      "newStory": "+ New story",
+      "boardView": "Board view →",
+      "workOrders": "Work orders →",
+      "changesHeading": "What changed since the last sweep",
+      "loadingDigest": "Loading digest…",
+      "sweepMeta": "Last sweep <time>{{when}}</time> ({{trigger}}) · {{status}} · {{touched}} clusters touched · {{emitted}} recommendations",
+      "triggerScheduled": "scheduled",
+      "triggerOnDemand": "on demand",
+      "noDigestSummary": "No digest summary recorded for this sweep.",
+      "noSweepYet": "No analysis sweep has run yet. Clusters below are formed continuously as feedback arrives.",
+      "clustersHeading": "Clusters",
+      "loadingClusters": "Loading clusters…",
+      "clustersLoadError": "Failed to load clusters.",
+      "noClusters": "No clusters yet. They form automatically as feedback arrives.",
+      "priorityHeading": "{{priority}} priority",
+      "clusterMeta_one": "{{status}} · {{count}} item",
+      "clusterMeta_other": "{{status}} · {{count}} items",
+      "whyThisPriority": "Why this priority: "
+    },
+    "autonomyRungDial": {
+      "legend": "Autonomy rung",
+      "hint": "How far the agent may walk before it needs your signature. You approve every work order regardless of rung — the rung governs what happens <em>after</em> approval."
+    },
+    "clusterDetail": {
+      "loadingCluster": "Loading cluster…",
+      "loadError": "Failed to load this cluster.",
+      "summaryHeading": "Summary",
+      "lastSwept": "Last swept <time>{{when}}</time>",
+      "recommendationsHeading": "Recommendations",
+      "noRecommendations": "No recommendations yet. They are emitted by analysis sweeps.",
+      "groupedFeedbackHeading": "Grouped feedback",
+      "noMembers": "No feedback in this cluster."
+    },
+    "newStory": {
+      "title": "New story",
+      "intro": "Author a work order directly — not derived from feedback. It is created as a draft; nothing runs until you approve it on the next screen.",
+      "titleLabel": "Title",
+      "instructionsLabel": "Instructions",
+      "actionTypeLabel": "Action type",
+      "routingLabelLabel": "Routing label (optional)",
+      "cancel": "Cancel",
+      "creating": "Creating…",
+      "createDraft": "Create draft",
+      "drafted": "Work order drafted.",
+      "errors": {
+        "titleRequired": "A title is required.",
+        "instructionsRequired": "Instructions are required.",
+        "rejectedWithReason": "The work order was rejected: {{reason}}",
+        "rejectedGeneric": "The work order was rejected — check the title, instructions, and action type.",
+        "routingConflictWithReason": "Routing conflict: {{reason}}",
+        "routingConflictGeneric": "Routing conflict — that runner label could not be assigned.",
+        "generic": "Could not create the work order. Please try again."
+      }
+    },
+    "recommendationCard": {
+      "detailAria": "Recommendation detail",
+      "rationaleHeading": "Rationale",
+      "sourcesAria": "Source references",
+      "groundingHeading": "Grounding evidence",
+      "decisionAria": "Recommendation decision",
+      "approveAction": "Approve…",
+      "tweakAction": "Tweak…",
+      "rejectAction": "Reject…",
+      "decisionRecorded": "Decision recorded: {{status}}.",
+      "approveDialog": {
+        "tweakedApproved": "Tweaked work order approved.",
+        "approved": "Work order approved.",
+        "errorGeneric": "Could not create and approve the work order. Please try again.",
+        "tweakHeading": "Tweak & approve",
+        "approveHeading": "Approve work order",
+        "tweakExplain": "Your edits are authoritative — they override the recommendation when the work order is dispatched.",
+        "approveExplain": "Approving creates a work order and records your owner approval. Nothing the agent does to your code can happen without this signature.",
+        "titleLabel": "Title (authoritative)",
+        "instructionsLabel": "Instructions (authoritative)",
+        "previewAria": "Recommendation",
+        "approving": "Approving…",
+        "submitTweak": "Approve tweaked order",
+        "submitApprove": "Approve & create work order"
+      },
+      "rejectDialog": {
+        "rejected": "Recommendation rejected.",
+        "errorGeneric": "Could not reject. Please try again.",
+        "heading": "Reject recommendation",
+        "explain": "This marks the recommendation rejected. No work order is created and nothing runs.",
+        "reasonLabel": "Reason (optional)",
+        "rejecting": "Rejecting…",
+        "submit": "Reject recommendation"
+      }
+    },
+    "sourceRefList": {
+      "empty": "No source references cited.",
+      "unlabeled": "(reference)"
+    },
+    "workOrderList": {
+      "title": "Work orders",
+      "loadError": "Failed to load work orders.",
+      "empty": "No work orders yet. Approve a recommendation to create the first one.",
+      "tableCaption": "Work orders, newest first.",
+      "columns": {
+        "title": "Title",
+        "action": "Action",
+        "state": "State",
+        "rung": "Rung",
+        "updated": "Updated"
+      }
+    },
+    "workOrderDetail": {
+      "eventMeta": {
+        "acceptLabel": "Accept result",
+        "requestChangesLabel": "Request changes",
+        "rejectLabel": "Reject",
+        "cancelLabel": "Cancel order",
+        "retryLabel": "Retry"
+      },
+      "loadingOrder": "Loading work order…",
+      "loadError": "Failed to load this work order.",
+      "metadataAria": "Work-order metadata",
+      "fields": {
+        "action": "Action",
+        "provenance": "Provenance",
+        "autonomyRung": "Autonomy rung",
+        "state": "State",
+        "routing": "Routing",
+        "claimedBy": "Claimed by",
+        "approved": "Approved",
+        "failure": "Failure"
+      },
+      "provenanceOwnerAuthored": "Owner-authored",
+      "provenanceFromRecommendation": "From feedback recommendation",
+      "routedTo": "Routed to: {{label}}",
+      "anyRunner": "Any runner",
+      "approvedBy": " by {{by}}",
+      "instructionsHeading": "Instructions",
+      "ledgerHeading": "Event ledger",
+      "ledgerExplain": "Append-only audit trail. Every state change is recorded here in the same transaction it happens.",
+      "noEvents": "No events yet.",
+      "eventMetaLine": "· {{eventType}} · {{actor}}{{actorId}} · {{when}}",
+      "authoritativeOverrides": "(authoritative overrides: {{keys}})",
+      "ownerActionsHeading": "Owner actions",
+      "terminalNote": "This order is {{state}} — terminal, no further actions.",
+      "waitingOnAgent": "Waiting on the agent — no owner action is available in this state.",
+      "transitionDialog": {
+        "recorded": "{{label}} recorded.",
+        "errorGeneric": "Action failed. Please try again.",
+        "requestChangesExplain": "Requesting changes re-opens the order for another pass. Your edits are authoritative — they override the prior instructions.",
+        "titleLabel": "Title",
+        "instructionsLabel": "Instructions",
+        "noteLabel": "Note (optional)",
+        "working": "Working…"
+      }
+    },
+    "enum": {
+      "tier": {
+        "free": "Free",
+        "starter": "Starter",
+        "pro": "Pro",
+        "self_host": "Self-host"
+      },
+      "resource": {
+        "project": "projects",
+        "feedback_in_rolling_month": "monthly feedback"
+      },
+      "workOrderState": {
+        "draft": "Draft",
+        "approved": "Approved",
+        "dispatched": "Dispatched",
+        "claimed": "Claimed",
+        "building": "Building",
+        "verifying": "Verifying",
+        "reported": "Reported",
+        "completed": "Completed",
+        "failed": "Failed",
+        "cancelled": "Cancelled"
+      },
+      "actionType": {
+        "bug_fix": "Bug fix",
+        "feature_implementation": "Feature",
+        "enhancement": "Enhancement",
+        "investigation": "Investigation",
+        "no_action": "No action"
+      },
+      "clusterPriority": {
+        "high": "High",
+        "medium": "Medium",
+        "low": "Low",
+        "none": "None"
+      },
+      "clusterStatus": {
+        "open": "Open",
+        "actioned": "Actioned",
+        "dismissed": "Dismissed",
+        "merged": "Merged"
+      },
+      "recommendationStatus": {
+        "proposed": "Proposed",
+        "approved": "Approved",
+        "tweaked_approved": "Approved (tweaked)",
+        "rejected": "Rejected",
+        "superseded": "Superseded"
+      },
+      "autonomyRung": {
+        "label": {
+          "0": "Rung 0 — Organize",
+          "1": "Rung 1 — Draft",
+          "2": "Rung 2 — Auto-execute low-stakes",
+          "3": "Rung 3 — Act & report"
+        },
+        "description": {
+          "0": "Cluster & prioritize only. No work order is ever created. (Not selectable here — Rung 0 means no order.)",
+          "1": "The agent drafts a work order for your review. Nothing runs until you approve. You sign every order.",
+          "2": "Low-stakes actions auto-execute after approval; anything riskier is escalated back to you for a signature.",
+          "3": "The agent acts on approved orders and reports back. You review results, not every step. Highest autonomy."
+        }
+      },
+      "workOrderEvent": {
+        "approve": "Approved",
+        "cancel": "Cancelled",
+        "dispatch": "Dispatched",
+        "claim": "Claimed",
+        "building": "Building",
+        "verifying": "Verifying",
+        "reported": "Reported",
+        "accept": "Accepted",
+        "request-changes": "Requested changes",
+        "reject": "Rejected",
+        "retry": "Retried"
+      },
+      "keyClass": {
+        "identity": "Identity (end-user submissions)",
+        "runner": "Runner (autonomous agent)"
+      },
+      "moderationStatus": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected"
+      },
+      "tokenLifecycle": {
+        "active": "Active",
+        "revoked": "Revoked",
+        "expired": "Expired"
+      }
+    }
   }
 }

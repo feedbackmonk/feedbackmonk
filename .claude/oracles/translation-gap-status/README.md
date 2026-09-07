@@ -1,5 +1,9 @@
 # translation-gap-status — Oracle (project-state, advisory)
 
+
+## Synopsis
+
+Answers the owner's release-gate question — *is a translation pass due?* — by wrapping `scripts/i18n/check-gaps.py --json` into one line: MISSING keys (never translated) and DRIFTED keys (English changed since, per the per-key SHA-256 sidecar) per locale and namespace, plus an approximate character count. Advisory and always exit 0; finalize reports it, never blocks on it.
 ## Assertion
 
 > The owner can tell, before cutting a release, whether `/1-translate` needs

@@ -159,10 +159,18 @@ describe("Board page", () => {
       total: 1,
     });
     renderWithClient(<Board />, { withRouter: true });
+    // The routing tag's arrow is `aria-hidden` with a visually-hidden text
+    // label (R-A11Y A-5 — a bare "→" doesn't mirror in RTL and isn't a text
+    // node on its own), so the runner value is asserted via the tag's stable
+    // `title`, not the glyph.
     await waitFor(() =>
-      expect(screen.getByText(/→ ci-runner/)).toBeInTheDocument(),
+      expect(screen.getByTitle("Routed to runner")).toHaveTextContent(
+        "ci-runner",
+      ),
     );
-    expect(screen.getByText(/claimed · ci-runner/)).toBeInTheDocument();
+    expect(screen.getByTitle("Claimed by runner")).toHaveTextContent(
+      "claimed · ci-runner",
+    );
   });
 
   it("renders an owner-authored (null-provenance) card cleanly", async () => {

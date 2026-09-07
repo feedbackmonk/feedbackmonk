@@ -125,14 +125,91 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
-test.describe("Admin UI a11y smoke", () => {
+// Locale matrix (FR-FBR-38 / Stage 2 W-D). Mirrors public-board-a11y.spec.ts:
+// `de-DE` proves the admin flow still renders and stays axe-clean once the
+// admin console itself has a locale to resolve — the German catalog is a
+// skeleton this arc (DEC-FBR-17), so the SAME English strings are asserted
+// per C35 rule 6 per-key fallback; only the machinery (lang/dir resolution)
+// differs across locales, not the copy.
+const LOCALE_MATRIX = [
+  { browser: "en-US", expectLang: "en" },
+  { browser: "de-DE", expectLang: "de" },
+] as const;
+
+for (const { browser, expectLang } of LOCALE_MATRIX) {
+  test.describe(`Admin UI a11y smoke (${browser})`, () => {
+    test.use({ locale: browser });
+
+    test.beforeEach(async ({ page }) => {
+      if (FAKE_API) {
+        await installFakeApi(page);
+      }
+    });
+
+    test("login → list → drawer → reply → transition has zero axe violations", async ({
+      page,
+    }) => {
+      test.skip(
+        !FAKE_API,
+        "Real-backend mode requires a seeded admin (FIXME(stage-3): seed admin in e2e-p1-curl.sh)",
+      );
+
+      // 1. Login page
+      await page.goto("/login");
+      await expect(page.locator("html")).toHaveAttribute("lang", expectLang);
+      await expectNoAxeViolations(page, "/login");
+
+      // Fill + submit
+      await page.getByLabel("Email").fill("admin@example.com");
+      await page.getByLabel("Password", { exact: true }).fill("hunter2");
+      await page.getByRole("button", { name: /Sign in/i }).click();
+
+      // 2. List page
+      await page.waitForURL("**/feedback");
+      await expect(
+        page.getByRole("heading", { name: "Feedback" }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, "/feedback (list)");
+
+      // 3. Drawer
+      await page.getByRole("row", { name: /Open FB-ABCDEF/ }).click();
+      await expect(
+        page.getByRole("dialog", { name: /FB-ABCDEF/ }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, "/feedback drawer");
+
+      // 4. Reply
+      await page.getByLabel("Reply body").fill("Thanks for the report.");
+      await page.getByRole("button", { name: /Send reply/i }).click();
+      await expectNoAxeViolations(page, "after reply submit");
+
+      // 5. Transition — scope to within the drawer dialog (the page also has a
+      // "Triaged" status-filter pill in the list-page nav, blocked by the scrim).
+      const drawer = page.getByRole("dialog", { name: /FB-ABCDEF/ });
+      await drawer.getByRole("button", { name: "Triaged" }).click();
+      await expect(
+        page.getByRole("dialog", { name: /Transition to Triaged/i }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, "transition dialog");
+    });
+  });
+}
+
+// RTL smoke (FR-FBR-38). Axe cannot judge visual direction, so this is the
+// one machine check that the admin shell actually wires `dir="rtl"` and does
+// not overflow horizontally when it does — same rationale as
+// public-board-a11y.spec.ts's `fa-IR` row. A full RTL matrix across every
+// admin a11y spec is not asked for (GUIDE task file step 7); this is the one.
+test.describe("Admin UI RTL smoke (fa-IR)", () => {
+  test.use({ locale: "fa-IR" });
+
   test.beforeEach(async ({ page }) => {
     if (FAKE_API) {
       await installFakeApi(page);
     }
   });
 
-  test("login → list → drawer → reply → transition has zero axe violations", async ({
+  test("login page resolves dir=rtl and never overflows horizontally", async ({
     page,
   }) => {
     test.skip(
@@ -140,41 +217,19 @@ test.describe("Admin UI a11y smoke", () => {
       "Real-backend mode requires a seeded admin (FIXME(stage-3): seed admin in e2e-p1-curl.sh)",
     );
 
-    // 1. Login page
     await page.goto("/login");
-    await expectNoAxeViolations(page, "/login");
+    const html = page.locator("html");
+    await expect(html).toHaveAttribute("lang", "fa");
+    await expect(html).toHaveAttribute("dir", "rtl");
 
-    // Fill + submit
-    await page.getByLabel("Email").fill("admin@example.com");
-    await page.getByLabel("Password", { exact: true }).fill("hunter2");
-    await page.getByRole("button", { name: /Sign in/i }).click();
+    const [scrollWidth, clientWidth] = await page.evaluate(() => [
+      document.documentElement.scrollWidth,
+      document.documentElement.clientWidth,
+    ]);
+    expect(scrollWidth, "no horizontal overflow in RTL").toBeLessThanOrEqual(
+      clientWidth,
+    );
 
-    // 2. List page
-    await page.waitForURL("**/feedback");
-    await expect(
-      page.getByRole("heading", { name: "Feedback" }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "/feedback (list)");
-
-    // 3. Drawer
-    await page.getByRole("row", { name: /Open FB-ABCDEF/ }).click();
-    await expect(
-      page.getByRole("dialog", { name: /FB-ABCDEF/ }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "/feedback drawer");
-
-    // 4. Reply
-    await page.getByLabel("Reply body").fill("Thanks for the report.");
-    await page.getByRole("button", { name: /Send reply/i }).click();
-    await expectNoAxeViolations(page, "after reply submit");
-
-    // 5. Transition — scope to within the drawer dialog (the page also has a
-    // "Triaged" status-filter pill in the list-page nav, blocked by the scrim).
-    const drawer = page.getByRole("dialog", { name: /FB-ABCDEF/ });
-    await drawer.getByRole("button", { name: "Triaged" }).click();
-    await expect(
-      page.getByRole("dialog", { name: /Transition to Triaged/i }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "transition dialog");
+    await expectNoAxeViolations(page, "/login (fa-IR)");
   });
 });

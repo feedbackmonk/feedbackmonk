@@ -96,50 +96,60 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
-test.describe("Moderation + board-settings a11y smoke (WCAG 2.1 AA)", () => {
-  test.beforeEach(async ({ page }) => {
-    test.skip(
-      !FAKE_API,
-      "Real-backend mode requires a seeded tenant with pending feedback",
-    );
-    await installFakeApi(page);
+// Locale matrix (FR-FBR-38 / Stage 2 W-D). `de-DE` proves the moderation
+// surface stays axe-clean once the admin console has a locale to resolve —
+// the German catalog is a skeleton this arc (DEC-FBR-17), so the same English
+// strings render per C35 rule 6 per-key fallback. Mirrors a11y.spec.ts.
+const LOCALES = ["en-US", "de-DE"] as const;
+
+for (const browser of LOCALES) {
+  test.describe(`Moderation + board-settings a11y smoke (WCAG 2.1 AA, ${browser})`, () => {
+    test.use({ locale: browser });
+
+    test.beforeEach(async ({ page }) => {
+      test.skip(
+        !FAKE_API,
+        "Real-backend mode requires a seeded tenant with pending feedback",
+      );
+      await installFakeApi(page);
+    });
+
+    test("moderation queue + moderate dialog have zero violations", async ({
+      page,
+    }) => {
+      await page.goto("/admin/moderation");
+      await expect(
+        page.getByRole("heading", { name: /^Moderation$/, level: 1 }),
+      ).toBeVisible();
+      await expect(page.getByText("FB-000123")).toBeVisible();
+
+      // Hostile injection text is present as inert escaped data.
+      await expect(
+        page.getByText(new RegExp("Ignore previous instructions")),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, `moderation queue (${browser})`);
+
+      // Open the moderate confirmation dialog — the trust-boundary surface — and
+      // assert it is also axe-clean (labelled textarea, modal).
+      await page
+        .getByRole("group", { name: /Moderate FB-000123/ })
+        .getByRole("button", { name: /^Approved$/ })
+        .click();
+      await expect(
+        page.getByRole("dialog", { name: /Set FB-000123 to Approved/i }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, `moderate dialog (${browser})`);
+    });
+
+    test("board settings page has zero violations", async ({ page }) => {
+      await page.goto("/admin/settings/board");
+      await expect(
+        page.getByRole("heading", { name: /^Public board$/, level: 1 }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("checkbox", { name: /Enable public board/ }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, `board settings (${browser})`);
+    });
   });
-
-  test("moderation queue + moderate dialog have zero violations", async ({
-    page,
-  }) => {
-    await page.goto("/admin/moderation");
-    await expect(
-      page.getByRole("heading", { name: /^Moderation$/, level: 1 }),
-    ).toBeVisible();
-    await expect(page.getByText("FB-000123")).toBeVisible();
-
-    // Hostile injection text is present as inert escaped data.
-    await expect(
-      page.getByText(new RegExp("Ignore previous instructions")),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "moderation queue");
-
-    // Open the moderate confirmation dialog — the trust-boundary surface — and
-    // assert it is also axe-clean (labelled textarea, modal).
-    await page
-      .getByRole("group", { name: /Moderate FB-000123/ })
-      .getByRole("button", { name: /^Approved$/ })
-      .click();
-    await expect(
-      page.getByRole("dialog", { name: /Set FB-000123 to Approved/i }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "moderate dialog");
-  });
-
-  test("board settings page has zero violations", async ({ page }) => {
-    await page.goto("/admin/settings/board");
-    await expect(
-      page.getByRole("heading", { name: /^Public board$/, level: 1 }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("checkbox", { name: /Enable public board/ }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "board settings");
-  });
-});
+}

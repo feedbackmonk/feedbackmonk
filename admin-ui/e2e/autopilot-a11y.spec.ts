@@ -184,71 +184,81 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
-test.describe("Autopilot a11y smoke (WCAG 2.1 AA)", () => {
-  test.beforeEach(async ({ page }) => {
-    test.skip(
-      !FAKE_API,
-      "Real-backend mode requires a seeded tenant with clusters + work orders",
-    );
-    await installFakeApi(page);
+// Locale matrix (FR-FBR-38 / Stage 2 W-D). `de-DE` proves the autopilot review
+// surface stays axe-clean once the admin console has a locale to resolve —
+// the German catalog is a skeleton this arc (DEC-FBR-17), so the same English
+// strings render per C35 rule 6 per-key fallback. Mirrors a11y.spec.ts.
+const LOCALES = ["en-US", "de-DE"] as const;
+
+for (const browser of LOCALES) {
+  test.describe(`Autopilot a11y smoke (WCAG 2.1 AA, ${browser})`, () => {
+    test.use({ locale: browser });
+
+    test.beforeEach(async ({ page }) => {
+      test.skip(
+        !FAKE_API,
+        "Real-backend mode requires a seeded tenant with clusters + work orders",
+      );
+      await installFakeApi(page);
+    });
+
+    test("digest view has zero violations", async ({ page }) => {
+      await page.goto("/admin/autopilot");
+      await expect(
+        page.getByRole("heading", { name: /^Autopilot$/, level: 1 }),
+      ).toBeVisible();
+      await expect(page.getByText(/Login fails on Safari/)).toBeVisible();
+      await expectNoAxeViolations(page, `autopilot digest (${browser})`);
+    });
+
+    test("cluster detail + approve dialog have zero violations", async ({
+      page,
+    }) => {
+      await page.goto(`/admin/autopilot/clusters/${CLUSTER_ID}`);
+      await expect(
+        page.getByRole("heading", { name: /Login fails on Safari/, level: 1 }),
+      ).toBeVisible();
+
+      // Hostile injection text is present as inert escaped data.
+      await expect(page.getByText(new RegExp("Ignore previous instructions"))).toBeVisible();
+      await expectNoAxeViolations(page, `cluster detail (${browser})`);
+
+      // Open the approval gate dialog — the security-boundary surface — and
+      // assert it is also axe-clean (radiogroup, labelled inputs, modal).
+      await page.getByRole("button", { name: /^Approve…$/ }).click();
+      await expect(
+        page.getByRole("dialog", { name: /Approve work order/i }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, `approve dialog (${browser})`);
+    });
+
+    test("work-order detail has zero violations", async ({ page }) => {
+      await page.goto(`/admin/autopilot/work-orders/${WORK_ORDER_ID}`);
+      await expect(
+        page.getByRole("heading", { name: /Fix Safari login button handler/, level: 1 }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: /Event ledger/ }),
+      ).toBeVisible();
+      await expectNoAxeViolations(page, `work-order detail (${browser})`);
+    });
+
+    // C31 §3 (P6) — the owner-authored "New story" create form. Labelled inputs,
+    // a select, the autonomy-rung radiogroup, and the optional routing input must
+    // all be axe-clean. Route MUST resolve to the form (not a work-order :id) —
+    // this witnesses the App.tsx `new`-before-`:id` ordering as well.
+    test("new-story form has zero violations", async ({ page }) => {
+      await page.goto("/admin/autopilot/work-orders/new");
+      await expect(
+        page.getByRole("heading", { name: /^New story$/, level: 1 }),
+      ).toBeVisible();
+      // The form fields render (labelled) and the rung dial radiogroup is present.
+      await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole("radiogroup", { name: /Autonomy rung/i }),
+      ).toBeVisible();
+      await expect(page.getByLabel(/Routing label/i)).toBeVisible();
+      await expectNoAxeViolations(page, `new-story form (${browser})`);
+    });
   });
-
-  test("digest view has zero violations", async ({ page }) => {
-    await page.goto("/admin/autopilot");
-    await expect(
-      page.getByRole("heading", { name: /^Autopilot$/, level: 1 }),
-    ).toBeVisible();
-    await expect(page.getByText(/Login fails on Safari/)).toBeVisible();
-    await expectNoAxeViolations(page, "autopilot digest");
-  });
-
-  test("cluster detail + approve dialog have zero violations", async ({
-    page,
-  }) => {
-    await page.goto(`/admin/autopilot/clusters/${CLUSTER_ID}`);
-    await expect(
-      page.getByRole("heading", { name: /Login fails on Safari/, level: 1 }),
-    ).toBeVisible();
-
-    // Hostile injection text is present as inert escaped data.
-    await expect(page.getByText(new RegExp("Ignore previous instructions"))).toBeVisible();
-    await expectNoAxeViolations(page, "cluster detail");
-
-    // Open the approval gate dialog — the security-boundary surface — and
-    // assert it is also axe-clean (radiogroup, labelled inputs, modal).
-    await page.getByRole("button", { name: /^Approve…$/ }).click();
-    await expect(
-      page.getByRole("dialog", { name: /Approve work order/i }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "approve dialog");
-  });
-
-  test("work-order detail has zero violations", async ({ page }) => {
-    await page.goto(`/admin/autopilot/work-orders/${WORK_ORDER_ID}`);
-    await expect(
-      page.getByRole("heading", { name: /Fix Safari login button handler/, level: 1 }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("heading", { name: /Event ledger/ }),
-    ).toBeVisible();
-    await expectNoAxeViolations(page, "work-order detail");
-  });
-
-  // C31 §3 (P6) — the owner-authored "New story" create form. Labelled inputs,
-  // a select, the autonomy-rung radiogroup, and the optional routing input must
-  // all be axe-clean. Route MUST resolve to the form (not a work-order :id) —
-  // this witnesses the App.tsx `new`-before-`:id` ordering as well.
-  test("new-story form has zero violations", async ({ page }) => {
-    await page.goto("/admin/autopilot/work-orders/new");
-    await expect(
-      page.getByRole("heading", { name: /^New story$/, level: 1 }),
-    ).toBeVisible();
-    // The form fields render (labelled) and the rung dial radiogroup is present.
-    await expect(page.getByLabel("Title", { exact: true })).toBeVisible();
-    await expect(
-      page.getByRole("radiogroup", { name: /Autonomy rung/i }),
-    ).toBeVisible();
-    await expect(page.getByLabel(/Routing label/i)).toBeVisible();
-    await expectNoAxeViolations(page, "new-story form");
-  });
-});
+}

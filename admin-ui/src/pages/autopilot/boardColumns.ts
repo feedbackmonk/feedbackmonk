@@ -1,5 +1,5 @@
 import {
-  WORK_ORDER_STATE_LABELS,
+  WORK_ORDER_OWNER_TRANSITIONS,
   type WorkOrderState,
 } from "../../shared/types.gen";
 
@@ -24,17 +24,18 @@ export type BoardColumnId =
 
 export interface BoardColumn {
   id: BoardColumnId;
-  label: string;
+  /** i18n key, e.g. `admin.autopilotBoard.columns.draft` — resolve with `t()`. */
+  labelKey: string;
 }
 
 // Display order, left→right. Mirrors the lifecycle flow.
 export const BOARD_COLUMNS: readonly BoardColumn[] = [
-  { id: "draft", label: "Draft" },
-  { id: "approved", label: "Approved" },
-  { id: "in-flight", label: "In flight" },
-  { id: "reported", label: "Reported" },
-  { id: "done", label: "Done" },
-  { id: "halted", label: "Halted" },
+  { id: "draft", labelKey: "admin.autopilotBoard.columns.draft" },
+  { id: "approved", labelKey: "admin.autopilotBoard.columns.approved" },
+  { id: "in-flight", labelKey: "admin.autopilotBoard.columns.inFlight" },
+  { id: "reported", labelKey: "admin.autopilotBoard.columns.reported" },
+  { id: "done", labelKey: "admin.autopilotBoard.columns.done" },
+  { id: "halted", labelKey: "admin.autopilotBoard.columns.halted" },
 ] as const;
 
 // The single source of truth for state→column. Exhaustive by construction.
@@ -55,11 +56,11 @@ export function columnForState(state: WorkOrderState): BoardColumnId {
   return COLUMN_BY_STATE[state];
 }
 
-// Every work-order state known at runtime, from the canonical label Record in
-// types.gen.ts (the same Record `tsc` forces to stay exhaustive). Used by the
-// board test to prove the mapping covers all states.
+// Every work-order state known at runtime, from the canonical exhaustive Record
+// in types.gen.ts (`tsc` forces it to stay exhaustive). Used by the board test
+// to prove the mapping covers all states.
 export function allWorkOrderStates(): WorkOrderState[] {
-  return Object.keys(WORK_ORDER_STATE_LABELS) as WorkOrderState[];
+  return Object.keys(WORK_ORDER_OWNER_TRANSITIONS) as WorkOrderState[];
 }
 
 // Group work orders into their columns, preserving input order within each

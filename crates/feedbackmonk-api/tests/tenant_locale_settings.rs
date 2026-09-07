@@ -12,8 +12,10 @@
 //!      controls without either resetting the other.
 //!   4. `unknown_code_is_400_invalid_locale` — the machine-readable body C38
 //!      specifies, with the stored value left untouched by the failed write.
-//!   5. `translate_outbound_round_trips_independently` — the FR-FBR-40 reserve
-//!      persists now even though nothing consults it yet.
+//!   5. `translate_outbound_round_trips_independently` — the FR-FBR-40 setting
+//!      persists and echoes on its own. Since FR-FBR-40 shipped it is no longer
+//!      inert: the email send chokepoint reads it per notification
+//!      (`email::outbound_translation`, `tests/outbound_translation.rs`).
 //!   6. `requires_an_admin_session` — both verbs are 401 without a session.
 //!   7. `settings_are_tenant_scoped` — tenant A's PUT is invisible to tenant B.
 //!      The multi-tenant invariant (DEC-FBR-03) at the newest write surface.

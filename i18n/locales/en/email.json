@@ -29,6 +29,7 @@
       "subject": "Reply from the team",
       "intro": "The {{brandName}} team replied to your feedback {{feedbackId}}."
     },
+    "machineTranslated": "Translated automatically. Original text below:",
     "footer": {
       "receivingBecause": "You are receiving this because you submitted feedback to {{brandName}}.",
       "contact": "Reply to this email or contact {{supportEmail}}.",

@@ -4,12 +4,12 @@
 // never change; only how we spell them for a human does. This hook is the one
 // place that mapping lives for localized surfaces.
 //
-// WHY THE ENGLISH CONSTANTS IN `types.gen.ts` STAY (this stage): the admin
-// console still renders them directly and is not extracted until Stage 2
-// (W-D). They double as this hook's fallback, so a key that has not been added
-// to `status.json` yet renders the same English word it renders today rather
-// than a raw `status.wontfix`. W-D deletes them once every consumer is on this
-// hook.
+// Every admin-console consumer of the four shared families now reads this
+// hook (Stage 2 / W-D) — the `*_LABELS` English constants that used to double
+// as its fallback are gone from `types.gen.ts` (R-1/R-3), so the fallback is
+// the wire value itself. `status.json` is the only source now; a key missing
+// from it falls back to the wire value only if `en` itself is missing the key
+// (a defensive floor, not the normal path — `en/status.json` always has it).
 //
 // KEY GRAMMAR (announced to the Rust side, which reads the same file):
 //   status.<FeedbackStatus>          kind.<FeedbackKind>
@@ -17,15 +17,11 @@
 
 import { useMemo } from "react";
 import { useTranslation } from "./index";
-import {
-  KIND_LABELS,
-  ROADMAP_STATUS_LABELS,
-  SENTIMENT_LABELS,
-  STATUS_LABELS,
-  type FeedbackKind,
-  type FeedbackStatus,
-  type RoadmapItemStatus,
-  type SentimentValue,
+import type {
+  FeedbackKind,
+  FeedbackStatus,
+  RoadmapItemStatus,
+  SentimentValue,
 } from "../shared/types.gen";
 
 export interface Labels {
@@ -40,18 +36,11 @@ export function useLabels(): Labels {
 
   return useMemo<Labels>(
     () => ({
-      status: (value) =>
-        t(`status.${value}`, { defaultValue: STATUS_LABELS[value] ?? value }),
-      kind: (value) =>
-        t(`kind.${value}`, { defaultValue: KIND_LABELS[value] ?? value }),
-      sentiment: (value) =>
-        t(`sentiment.${value}`, {
-          defaultValue: SENTIMENT_LABELS[value] ?? value,
-        }),
+      status: (value) => t(`status.${value}`, { defaultValue: value }),
+      kind: (value) => t(`kind.${value}`, { defaultValue: value }),
+      sentiment: (value) => t(`sentiment.${value}`, { defaultValue: value }),
       roadmapStatus: (value) =>
-        t(`roadmapStatus.${value}`, {
-          defaultValue: ROADMAP_STATUS_LABELS[value] ?? value,
-        }),
+        t(`roadmapStatus.${value}`, { defaultValue: value }),
     }),
     [t],
   );

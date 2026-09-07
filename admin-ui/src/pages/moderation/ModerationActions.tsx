@@ -3,12 +3,13 @@ import axios from "axios";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   LEGAL_MODERATION_TRANSITIONS,
-  MODERATION_STATUS_LABELS,
   isModerationErrorBody,
   postModerate,
   type ModerationStatus,
 } from "../../shared/boardModerationApi";
 import { useToast } from "../../components/Toast";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
 
 interface ModerationActionsProps {
   feedbackId: string;
@@ -31,6 +32,8 @@ export function ModerationActions({
   currentStatus,
   invalidateKey,
 }: ModerationActionsProps) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
   const choices = LEGAL_MODERATION_TRANSITIONS[currentStatus];
   const [pendingTarget, setPendingTarget] = useState<ModerationStatus | null>(
     null,
@@ -50,7 +53,10 @@ export function ModerationActions({
       }),
     onSuccess: (_res, target) => {
       notify(
-        `${feedbackId} → ${MODERATION_STATUS_LABELS[target]}.`,
+        t("admin.moderationActions.movedTo", {
+          feedbackId,
+          status: adminLabels.moderationStatus(target),
+        }),
         "success",
       );
       queryClient.invalidateQueries({ queryKey: invalidateKey });
@@ -62,11 +68,9 @@ export function ModerationActions({
         err.response?.status === 409 &&
         isModerationErrorBody(err.response.data)
       ) {
-        setInlineError(
-          "That moderation change is not allowed from the current state.",
-        );
+        setInlineError(t("admin.moderationActions.errors.illegalTransition"));
       } else {
-        setInlineError("Moderation failed. Please try again.");
+        setInlineError(t("admin.moderationActions.errors.generic"));
       }
     },
   });
@@ -97,7 +101,7 @@ export function ModerationActions({
       <div
         className="moderation-choices"
         role="group"
-        aria-label={`Moderate ${feedbackId}`}
+        aria-label={t("admin.moderationActions.moderateAria", { feedbackId })}
       >
         {choices.map((target) => (
           <button
@@ -107,7 +111,7 @@ export function ModerationActions({
             onClick={() => openDialog(target)}
             disabled={mutation.isPending}
           >
-            {MODERATION_STATUS_LABELS[target]}
+            {adminLabels.moderationStatus(target)}
           </button>
         ))}
       </div>
@@ -123,17 +127,22 @@ export function ModerationActions({
         >
           <form onSubmit={onConfirm}>
             <h4 id={`${dialogId}-title`}>
-              Set {feedbackId} to {MODERATION_STATUS_LABELS[pendingTarget]}
+              {t("admin.moderationActions.setTo", {
+                feedbackId,
+                status: adminLabels.moderationStatus(pendingTarget),
+              })}
             </h4>
             <p className="muted">
               {pendingTarget === "approved"
-                ? "Approving publishes this feedback to the public board."
+                ? t("admin.moderationActions.explainApprove")
                 : pendingTarget === "rejected"
-                  ? "Rejecting keeps this feedback off the public board."
-                  : "Resetting returns this feedback to the moderation queue."}
+                  ? t("admin.moderationActions.explainReject")
+                  : t("admin.moderationActions.explainReset")}
             </p>
 
-            <label htmlFor={`${dialogId}-reason`}>Reason note (optional)</label>
+            <label htmlFor={`${dialogId}-reason`}>
+              {t("admin.statusControls.reasonNoteLabel")}
+            </label>
             <textarea
               id={`${dialogId}-reason`}
               value={reasonNote}
@@ -154,12 +163,14 @@ export function ModerationActions({
                 onClick={closeDialog}
                 disabled={mutation.isPending}
               >
-                Cancel
+                {t("admin.common.cancel")}
               </button>
               <button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending
-                  ? "Submitting…"
-                  : `Confirm ${MODERATION_STATUS_LABELS[pendingTarget]}`}
+                  ? t("admin.statusControls.submitting")
+                  : t("admin.moderationActions.confirm", {
+                      status: adminLabels.moderationStatus(pendingTarget),
+                    })}
               </button>
             </div>
           </form>

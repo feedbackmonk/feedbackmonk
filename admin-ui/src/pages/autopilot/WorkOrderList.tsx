@@ -1,26 +1,26 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  ACTION_TYPE_LABELS,
-  AUTONOMY_RUNG_LABELS,
-  type AutonomyRung,
-} from "../../shared/types.gen";
+import { type AutonomyRung } from "../../shared/types.gen";
 import { fetchWorkOrders } from "../../shared/ApiClient";
 import { Link } from "../../shared/router";
 import { formatRelative } from "../../shared/format";
 import { useAdminProject } from "./useAdminProject";
 import { WorkOrderStateBadge } from "./badges";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
+import { useLocale } from "../../i18n/useLocale";
 
 // FR-FBR-21 — the work-order list. Every approved decision becomes a work
 // order; this is the owner's audit-forward view of them. Read-only here;
 // per-order owner actions live in the detail page.
 export function WorkOrderList() {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -29,7 +29,7 @@ export function WorkOrderList() {
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -38,6 +38,9 @@ export function WorkOrderList() {
 }
 
 function WorkOrderListInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
+  const { locale } = useLocale();
   const query = useQuery({
     queryKey: ["autopilot-work-orders", projectId],
     queryFn: () => fetchWorkOrders(projectId),
@@ -45,48 +48,53 @@ function WorkOrderListInner({ projectId }: { projectId: string }) {
 
   const items = query.data?.items ?? [];
 
+  function rungLabel(rung: number): string {
+    if (rung >= 0 && rung <= 3) {
+      return adminLabels.autonomyRungLabel(rung as AutonomyRung);
+    }
+    return t("admin.boardCard.rung", { rung });
+  }
+
   return (
     <main className="ap-page" aria-labelledby="ap-wo-list-title">
       <BackLink />
       <header className="page-header">
-        <h1 id="ap-wo-list-title">Work orders</h1>
+        <h1 id="ap-wo-list-title">{t("admin.workOrderList.title")}</h1>
         <Link to="/admin/autopilot/work-orders/new" className="ap-nav-link">
-          + New story
+          {t("admin.autopilotDigest.newStory")}
         </Link>
         <Link to="/admin/autopilot/board" className="ap-nav-link">
-          Board view →
+          {t("admin.autopilotDigest.boardView")}
         </Link>
       </header>
 
       {query.isPending ? (
         <p className="muted" aria-busy="true">
-          Loading…
+          {t("admin.common.loading")}
         </p>
       ) : query.isError ? (
         <div role="alert" className="error-block">
-          Failed to load work orders.{" "}
+          {t("admin.workOrderList.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : items.length === 0 ? (
         <div className="empty-state">
-          <p>
-            No work orders yet. Approve a recommendation to create the first one.
-          </p>
+          <p>{t("admin.workOrderList.empty")}</p>
         </div>
       ) : (
         <table className="feedback-table">
           <caption className="visually-hidden">
-            Work orders, newest first.
+            {t("admin.workOrderList.tableCaption")}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Title</th>
-              <th scope="col">Action</th>
-              <th scope="col">State</th>
-              <th scope="col">Rung</th>
-              <th scope="col">Updated</th>
+              <th scope="col">{t("admin.workOrderList.columns.title")}</th>
+              <th scope="col">{t("admin.workOrderList.columns.action")}</th>
+              <th scope="col">{t("admin.workOrderList.columns.state")}</th>
+              <th scope="col">{t("admin.workOrderList.columns.rung")}</th>
+              <th scope="col">{t("admin.workOrderList.columns.updated")}</th>
             </tr>
           </thead>
           <tbody>
@@ -99,14 +107,14 @@ function WorkOrderListInner({ projectId }: { projectId: string }) {
                     {wo.title}
                   </Link>
                 </td>
-                <td>{ACTION_TYPE_LABELS[wo.action_type]}</td>
+                <td>{adminLabels.actionType(wo.action_type)}</td>
                 <td>
                   <WorkOrderStateBadge state={wo.state} />
                 </td>
                 <td>{rungLabel(wo.autonomy_rung)}</td>
                 <td>
                   <time dateTime={wo.updated_at}>
-                    {formatRelative(wo.updated_at)}
+                    {formatRelative(wo.updated_at, locale)}
                   </time>
                 </td>
               </tr>
@@ -118,15 +126,11 @@ function WorkOrderListInner({ projectId }: { projectId: string }) {
   );
 }
 
-function rungLabel(rung: number): string {
-  if (rung >= 0 && rung <= 3) return AUTONOMY_RUNG_LABELS[rung as AutonomyRung];
-  return `Rung ${rung}`;
-}
-
 function BackLink() {
+  const { t } = useTranslation("admin");
   return (
     <Link to="/admin/autopilot" className="ap-back-link">
-      ← Back to digest
+      {t("admin.common.backToDigest")}
     </Link>
   );
 }

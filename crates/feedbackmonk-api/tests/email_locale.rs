@@ -366,6 +366,10 @@ async fn rendering_in_the_resolved_locale_never_emits_a_raw_key(pool: PgPool) {
                 from_status: FeedbackStatus::Submitted,
                 to_status: FeedbackStatus::Triaged,
                 reason_note: None,
+                // FR-FBR-40 (additive): no outbound machine translation here —
+                // this test is about the catalog, and `None` renders exactly the
+                // pre-FR-FBR-40 body.
+                translated_reason_note: None,
             },
             locale,
         );

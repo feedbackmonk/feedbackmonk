@@ -18,8 +18,13 @@
 //!   `null` means *never chosen* — the console follows the browser and emails
 //!   fall to English. It is deliberately not the same as `"en"`, which means
 //!   *chose English* and should survive the admin opening the console abroad.
-//! - `translate_outbound` — RESERVED for FR-FBR-40 (Stage 2). Persisted here so
-//!   the setting survives; consulted by no send path in this stage.
+//! - `translate_outbound` — FR-FBR-40. When on, the email chokepoint machine-
+//!   translates the team's own status notes and public replies into the
+//!   submitter's language, rendering the translation above the original. Off by
+//!   default, and inert unless the deployment also configured a translation
+//!   provider (which is itself off by default — DEC-FBR-IMPL-26). Turning it on
+//!   sends that team-authored text to the configured provider; the disclosure
+//!   lives in `docs/operations/SELFHOST_ENV.md` (Contract C21).
 //!
 //! ## PUT semantics: absent ≠ null
 //!
@@ -56,7 +61,8 @@ use crate::state::AppState;
 pub struct LocaleSettingsResponse {
     /// A C34 canonical code, or `null` when the tenant has never chosen one.
     pub locale: Option<String>,
-    /// FR-FBR-40 (Stage 2) reserve. Always `false` until W-E wires it.
+    /// FR-FBR-40: translate outbound team-authored text into the submitter's
+    /// language. `false` by default; see the module docs.
     pub translate_outbound: bool,
 }
 

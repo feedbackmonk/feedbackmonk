@@ -138,29 +138,6 @@ export interface ReplyResponse {
   email_queued: boolean;
 }
 
-// Display labels — kept here so UI never hardcodes status strings elsewhere.
-export const STATUS_LABELS: Record<FeedbackStatus, string> = {
-  submitted: "Submitted",
-  triaged: "Triaged",
-  "in-progress": "In Progress",
-  shipped: "Shipped",
-  wontfix: "Won't Fix",
-  duplicate: "Duplicate",
-};
-
-export const KIND_LABELS: Record<FeedbackKind, string> = {
-  bug: "Bug",
-  feature: "Feature",
-  question: "Question",
-  other: "Other",
-};
-
-export const SENTIMENT_LABELS: Record<SentimentValue, string> = {
-  negative: "Negative",
-  neutral: "Neutral",
-  positive: "Positive",
-};
-
 // Stable order for stacked-bar segments + summary tallies (most → least
 // favourable, bottom-up the stack reads negative → neutral → positive).
 export const SENTIMENT_ORDER: SentimentValue[] = [
@@ -220,14 +197,6 @@ export type RoadmapItemStatus =
   | "in-progress"
   | "shipped"
   | "wontfix";
-
-export const ROADMAP_STATUS_LABELS: Record<RoadmapItemStatus, string> = {
-  considering: "Considering",
-  planned: "Planned",
-  "in-progress": "In Progress",
-  shipped: "Shipped",
-  wontfix: "Won't Do",
-};
 
 // Public order — what end-users see top-down on /public/.../roadmap.
 export const ROADMAP_STATUS_PUBLIC_ORDER: RoadmapItemStatus[] = [
@@ -451,19 +420,6 @@ export function isTierCapExceeded(body: unknown): body is TierCapExceededBody {
   );
 }
 
-// Display labels — kept here so UI never hardcodes tier strings elsewhere.
-export const TIER_LABELS: Record<Tier, string> = {
-  free: "Free",
-  starter: "Starter",
-  pro: "Pro",
-  self_host: "Self-host",
-};
-
-export const RESOURCE_LABELS: Record<ResourceKind, string> = {
-  project: "projects",
-  feedback_in_rolling_month: "monthly feedback",
-};
-
 // ─────────────────────────────────────────────────────────────────────────
 // P5a — Agentic feedback-resolution loop (recommend-only). Contracts C22/C23.
 //
@@ -498,19 +454,6 @@ export type WorkOrderState =
   | "failed"
   | "cancelled";
 
-export const WORK_ORDER_STATE_LABELS: Record<WorkOrderState, string> = {
-  draft: "Draft",
-  approved: "Approved",
-  dispatched: "Dispatched",
-  claimed: "Claimed",
-  building: "Building",
-  verifying: "Verifying",
-  reported: "Reported",
-  completed: "Completed",
-  failed: "Failed",
-  cancelled: "Cancelled",
-};
-
 // States for which `is_execution_state` is true in the core crate — i.e. the
 // agent is acting on the customer's code. Surfaced so the UI can visually
 // distinguish "the agent is executing this" from "awaiting a human". Mirrors
@@ -537,24 +480,9 @@ export type ActionType =
   | "investigation"
   | "no_action";
 
-export const ACTION_TYPE_LABELS: Record<ActionType, string> = {
-  bug_fix: "Bug fix",
-  feature_implementation: "Feature",
-  enhancement: "Enhancement",
-  investigation: "Investigation",
-  no_action: "No action",
-};
-
 // --- C23: cluster + recommendation + sweep enums ----------------------------
 
 export type ClusterPriority = "high" | "medium" | "low" | "none";
-
-export const CLUSTER_PRIORITY_LABELS: Record<ClusterPriority, string> = {
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-  none: "None",
-};
 
 // Digest ordering — highest-priority clusters first.
 export const CLUSTER_PRIORITY_ORDER: ClusterPriority[] = [
@@ -566,28 +494,12 @@ export const CLUSTER_PRIORITY_ORDER: ClusterPriority[] = [
 
 export type ClusterStatus = "open" | "actioned" | "dismissed" | "merged";
 
-export const CLUSTER_STATUS_LABELS: Record<ClusterStatus, string> = {
-  open: "Open",
-  actioned: "Actioned",
-  dismissed: "Dismissed",
-  merged: "Merged",
-};
-
 export type RecommendationStatus =
   | "proposed"
   | "approved"
   | "tweaked_approved"
   | "rejected"
   | "superseded";
-
-export const RECOMMENDATION_STATUS_LABELS: Record<RecommendationStatus, string> =
-  {
-    proposed: "Proposed",
-    approved: "Approved",
-    tweaked_approved: "Approved (tweaked)",
-    rejected: "Rejected",
-    superseded: "Superseded",
-  };
 
 export type SweepTrigger = "schedule" | "on_demand";
 export type SweepStatus = "running" | "completed" | "failed";
@@ -802,22 +714,6 @@ export interface OwnerOverrides {
 // create dial offers 1..3 only; 0 is surfaced for explanation, not selection.
 export type AutonomyRung = 0 | 1 | 2 | 3;
 
-export const AUTONOMY_RUNG_LABELS: Record<AutonomyRung, string> = {
-  0: "Rung 0 — Organize",
-  1: "Rung 1 — Draft",
-  2: "Rung 2 — Auto-execute low-stakes",
-  3: "Rung 3 — Act & report",
-};
-
-// What each rung AUTHORIZES — surfaced in the dial so the owner sees the
-// blast radius of the rung they pick (this is a security control, not UX sugar).
-export const AUTONOMY_RUNG_DESCRIPTIONS: Record<AutonomyRung, string> = {
-  0: "Cluster & prioritize only. No work order is ever created. (Not selectable here — Rung 0 means no order.)",
-  1: "The agent drafts a work order for your review. Nothing runs until you approve. You sign every order.",
-  2: "Low-stakes actions auto-execute after approval; anything riskier is escalated back to you for a signature.",
-  3: "The agent acts on approved orders and reports back. You review results, not every step. Highest autonomy.",
-};
-
 // Owner-authored transition event types (the `/transition` endpoint body).
 // Excludes `approve` (its own `/approve` endpoint) and all runner/system
 // events (claim/dispatch/building/…). Mirrors the C22 authz table's
@@ -828,20 +724,6 @@ export type WorkOrderOwnerEventType =
   | "request-changes"
   | "reject"
   | "retry";
-
-export const WORK_ORDER_EVENT_LABELS: Record<string, string> = {
-  approve: "Approved",
-  cancel: "Cancelled",
-  dispatch: "Dispatched",
-  claim: "Claimed",
-  building: "Building",
-  verifying: "Verifying",
-  reported: "Reported",
-  accept: "Accepted",
-  "request-changes": "Requested changes",
-  reject: "Rejected",
-  retry: "Retried",
-};
 
 // C31 (P6): a work order is created from EXACTLY ONE of the two variants —
 // derived from an analyst recommendation, or owner-authored ("New story", no
@@ -923,11 +805,6 @@ export const WORK_ORDER_OWNER_TRANSITIONS: Record<
 // runner's `scope:"runner:write"` tokens. Registering a `runner`-class key is
 // how an owner enables runner-token minting.
 export type KeyClass = "identity" | "runner";
-
-export const KEY_CLASS_LABELS: Record<KeyClass, string> = {
-  identity: "Identity (end-user submissions)",
-  runner: "Runner (autonomous agent)",
-};
 
 // --- C25: signing-key registration (key_class field, P5b) -------------------
 

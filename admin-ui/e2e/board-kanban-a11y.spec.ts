@@ -120,39 +120,49 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
-test.describe("Board Kanban a11y smoke (WCAG 2.1 AA)", () => {
-  test.beforeEach(async ({ page }) => {
-    test.skip(
-      !FAKE_API,
-      "Real-backend mode requires a seeded tenant with work orders",
-    );
-    await installFakeApi(page);
-  });
+// Locale matrix (FR-FBR-38 / Stage 2 W-D). `de-DE` proves the Kanban board
+// stays axe-clean once the admin console has a locale to resolve — the German
+// catalog is a skeleton this arc (DEC-FBR-17), so the same English strings
+// render per C35 rule 6 per-key fallback. Mirrors a11y.spec.ts.
+const LOCALES = ["en-US", "de-DE"] as const;
 
-  test("board view has zero violations across all columns", async ({ page }) => {
-    await page.goto("/admin/autopilot/board");
+for (const browser of LOCALES) {
+  test.describe(`Board Kanban a11y smoke (WCAG 2.1 AA, ${browser})`, () => {
+    test.use({ locale: browser });
 
-    await expect(
-      page.getByRole("heading", { name: /^Board$/, level: 1 }),
-    ).toBeVisible();
+    test.beforeEach(async ({ page }) => {
+      test.skip(
+        !FAKE_API,
+        "Real-backend mode requires a seeded tenant with work orders",
+      );
+      await installFakeApi(page);
+    });
 
-    // Every column heading is a labelled region landmark.
-    for (const col of ["Draft", "Approved", "In flight", "Reported", "Done", "Halted"]) {
+    test("board view has zero violations across all columns", async ({ page }) => {
+      await page.goto("/admin/autopilot/board");
+
       await expect(
-        page.getByRole("heading", { name: new RegExp(`^${col} `) }),
+        page.getByRole("heading", { name: /^Board$/, level: 1 }),
       ).toBeVisible();
-    }
 
-    // Hostile injection text is present as inert, escaped data.
-    await expect(
-      page.getByText(/ignore previous instructions/),
-    ).toBeVisible();
-    // …and never smuggled in as a live element.
-    expect(await page.locator("img").count()).toBe(0);
+      // Every column heading is a labelled region landmark.
+      for (const col of ["Draft", "Approved", "In flight", "Reported", "Done", "Halted"]) {
+        await expect(
+          page.getByRole("heading", { name: new RegExp(`^${col} `) }),
+        ).toBeVisible();
+      }
 
-    // Runner routing tag rendered on the claimed card.
-    await expect(page.getByText(/→ ci-runner/)).toBeVisible();
+      // Hostile injection text is present as inert, escaped data.
+      await expect(
+        page.getByText(/ignore previous instructions/),
+      ).toBeVisible();
+      // …and never smuggled in as a live element.
+      expect(await page.locator("img").count()).toBe(0);
 
-    await expectNoAxeViolations(page, "autopilot board");
+      // Runner routing tag rendered on the claimed card.
+      await expect(page.getByText(/→ ci-runner/)).toBeVisible();
+
+      await expectNoAxeViolations(page, `autopilot board (${browser})`);
+    });
   });
-});
+}

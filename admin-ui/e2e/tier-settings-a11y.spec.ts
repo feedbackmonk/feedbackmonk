@@ -106,34 +106,44 @@ async function expectNoAxeViolations(page: Page, label: string) {
   expect(results.violations, `axe violations on ${label}`).toEqual([]);
 }
 
-test.describe("Tier-settings a11y smoke (per-tier WCAG 2.1 AA)", () => {
-  for (const tier of ["free", "starter", "pro", "self_host"] as const) {
-    test(`tier-view '${tier}' has zero WCAG 2.1 AA violations`, async ({
-      page,
-    }) => {
-      test.skip(
-        !FAKE_API,
-        "Real-backend mode requires a seeded tenant per tier (TIER_OVERRIDE.md)",
-      );
+// Locale matrix (FR-FBR-38 / Stage 2 W-D). `de-DE` proves tier-settings stays
+// axe-clean once the admin console has a locale to resolve — the German
+// catalog is a skeleton this arc (DEC-FBR-17), so the same English strings
+// render per C35 rule 6 per-key fallback. Mirrors a11y.spec.ts.
+const LOCALES = ["en-US", "de-DE"] as const;
 
-      await installFakeApi(page, tier);
-      await page.goto("/admin/settings/tier");
+for (const browser of LOCALES) {
+  test.describe(`Tier-settings a11y smoke (per-tier WCAG 2.1 AA, ${browser})`, () => {
+    test.use({ locale: browser });
 
-      await expect(
-        page.getByRole("heading", { name: /^Plan & usage$/, level: 1 }),
-      ).toBeVisible();
+    for (const tier of ["free", "starter", "pro", "self_host"] as const) {
+      test(`tier-view '${tier}' has zero WCAG 2.1 AA violations`, async ({
+        page,
+      }) => {
+        test.skip(
+          !FAKE_API,
+          "Real-backend mode requires a seeded tenant per tier (TIER_OVERRIDE.md)",
+        );
 
-      // Wait for the tier label to appear so the data-bound state has
-      // settled before axe runs.
-      const tierLabels: Record<Tier, RegExp> = {
-        free: /\bFree\b/,
-        starter: /\bStarter\b/,
-        pro: /\bPro\b/,
-        self_host: /\bSelf-host\b/,
-      };
-      await expect(page.getByText(tierLabels[tier]).first()).toBeVisible();
+        await installFakeApi(page, tier);
+        await page.goto("/admin/settings/tier");
 
-      await expectNoAxeViolations(page, `tier-settings ${tier}`);
-    });
-  }
-});
+        await expect(
+          page.getByRole("heading", { name: /^Plan & usage$/, level: 1 }),
+        ).toBeVisible();
+
+        // Wait for the tier label to appear so the data-bound state has
+        // settled before axe runs.
+        const tierLabels: Record<Tier, RegExp> = {
+          free: /\bFree\b/,
+          starter: /\bStarter\b/,
+          pro: /\bPro\b/,
+          self_host: /\bSelf-host\b/,
+        };
+        await expect(page.getByText(tierLabels[tier]).first()).toBeVisible();
+
+        await expectNoAxeViolations(page, `tier-settings ${tier} (${browser})`);
+      });
+    }
+  });
+}

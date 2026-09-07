@@ -3,6 +3,7 @@ import axios from "axios";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { postReply } from "../shared/ApiClient";
 import { useToast } from "./Toast";
+import { useTranslation } from "../i18n";
 
 export const REPLY_MIN = 1;
 export const REPLY_MAX = 16384;
@@ -15,6 +16,7 @@ interface ReplyComposerProps {
 // toolbar). Body length matches the backend's 1..16384 range so the UI
 // rejects locally before the request hits Contract C7's validator.
 export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
+  const { t } = useTranslation("admin");
   const [body, setBody] = useState("");
   const [visibility, setVisibility] = useState<"public" | "internal">("public");
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,9 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
       postReply(feedbackId, { body, visibility }),
     onSuccess: () => {
       notify(
-        visibility === "public" ? "Reply sent" : "Internal note saved",
+        visibility === "public"
+          ? t("admin.replyComposer.replySent")
+          : t("admin.replyComposer.noteSaved"),
         "success",
       );
       queryClient.invalidateQueries({
@@ -43,9 +47,9 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
     },
     onError: (err) => {
       if (axios.isAxiosError(err) && err.response?.status === 400) {
-        setError("Reply rejected by the server (validation).");
+        setError(t("admin.replyComposer.errors.rejected"));
       } else {
-        setError("Failed to send reply. Please try again.");
+        setError(t("admin.replyComposer.errors.generic"));
       }
     },
   });
@@ -54,11 +58,11 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
     e.preventDefault();
     if (mutation.isPending) return;
     if (tooShort) {
-      setError("Reply cannot be empty.");
+      setError(t("admin.replyComposer.errors.empty"));
       return;
     }
     if (tooLong) {
-      setError(`Reply exceeds ${REPLY_MAX} characters.`);
+      setError(t("admin.replyComposer.errors.tooLong", { max: REPLY_MAX }));
       return;
     }
     setError(null);
@@ -67,10 +71,10 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
 
   return (
     <form className="reply-composer" onSubmit={onSubmit}>
-      <h3>Reply</h3>
+      <h3>{t("admin.replyComposer.heading")}</h3>
 
       <fieldset className="visibility-fieldset">
-        <legend>Visibility</legend>
+        <legend>{t("admin.replyComposer.visibilityLegend")}</legend>
         <label>
           <input
             type="radio"
@@ -79,7 +83,7 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
             checked={visibility === "public"}
             onChange={() => setVisibility("public")}
           />
-          Public (emailed to submitter)
+          {t("admin.replyComposer.visibilityPublic")}
         </label>
         <label>
           <input
@@ -89,11 +93,11 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
             checked={visibility === "internal"}
             onChange={() => setVisibility("internal")}
           />
-          Internal (note for tenant admins only)
+          {t("admin.replyComposer.visibilityInternal")}
         </label>
       </fieldset>
 
-      <label htmlFor={`${fieldId}-body`}>Reply body</label>
+      <label htmlFor={`${fieldId}-body`}>{t("admin.replyComposer.bodyLabel")}</label>
       <textarea
         id={`${fieldId}-body`}
         value={body}
@@ -118,10 +122,10 @@ export function ReplyComposer({ feedbackId }: ReplyComposerProps) {
 
       <button type="submit" disabled={mutation.isPending || tooShort || tooLong}>
         {mutation.isPending
-          ? "Sending…"
+          ? t("admin.replyComposer.sending")
           : visibility === "public"
-            ? "Send reply"
-            : "Save internal note"}
+            ? t("admin.replyComposer.sendReply")
+            : t("admin.replyComposer.saveNote")}
       </button>
     </form>
   );

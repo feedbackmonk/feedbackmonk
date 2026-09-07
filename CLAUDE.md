@@ -117,7 +117,7 @@ Verification Oracles built so far + scheduled:
 |---|---|---|
 | `multi-tenant-isolation-check` | P0 Task Zero | ✅ LIVE (built P0 Stage 1) |
 | `pii-scrub-audit` | P1 | ✅ LIVE (built P1 Stage 1) |
-| `widget-bundle-size` | P2 (start) | ✅ LIVE (built P2 Task Zero) — **amended 1.1.0 (2026-09-07, UI-localization Stage 1)**: Probe A measures the English page-load set (top-level `dist/*`), new Probe C caps each lazy `dist/locales/<code>.js` at 4,096 B, Probe B (trackers) still scans recursively, `SIZE_CAP_BYTES` untouched; 29,836 B / 30,720 at Stage-1 converge — defends <30KB cap (FR-FBR-04) + DEC-FBR-02 no-trackers brand promise as code-level invariants; active-PASS. Probe C's falsifiability demonstrated 2026-09-07 (`docs/falsifiability/2026-09-07-widget-bundle-size-probe-c.md`); the oracle still declares no `--self-test` (observations-ledger 2026-09-07). |
+| `widget-bundle-size` | P2 (start) | ✅ LIVE (built P2 Task Zero) — **amended 1.1.0 (2026-09-07, UI-localization Stage 1)**: Probe A measures the English page-load set (top-level `dist/*`), new Probe C caps each lazy `dist/locales/<code>.js` at 4,096 B, Probe B (trackers) still scans recursively, `SIZE_CAP_BYTES` untouched; 30,010 B / 30,720 at Stage-2 converge (710 B headroom; was 29,836 B at Stage 1) — defends <30KB cap (FR-FBR-04) + DEC-FBR-02 no-trackers brand promise as code-level invariants; active-PASS. Probe C's falsifiability demonstrated 2026-09-07 (`docs/falsifiability/2026-09-07-widget-bundle-size-probe-c.md`); the oracle still declares no `--self-test` (observations-ledger 2026-09-07). |
 | `tier-enforcement-status` | P3 (start) | ✅ LIVE (built P3 Stage 1 Task Zero) — defends cap-firing + free-tier footer (FR-FBR-14) + Contract C19 `tier_quotas()` shape as code-level invariants; three-probe (AST handler coverage + config-shape + integration smoke gated behind `--full`); active-PASS with Probe C smoke trio (Free 2nd project → 409, Free 51st feedback → 402, widget-config footer flip Free/Pro) |
 | `selfhost-compose-smoke` | P4 (start) | ✅ LIVE (built P4 Stage 2 Task Zero) — defends FR-FBR-17 `docker compose up` distribution + Contract C21 env-catalog SSOT (`docs/operations/SELFHOST_ENV.md`) as code-level invariants; three-probe (yaml-lint + env-doc cross-reference against C21 + `--full` clean-state smoke against `/health/ready`); cold-start vacuous-PASS; active-PASS post-Phase-1 with compose env-refs ⊆ C21 catalog + Probe C `/health/ready` 200 in <90s |
 | `cors-allowlist-enforcement` | post-v1 (DEC-FBR-IMPL-09) | ✅ LIVE (built 2026-06-03) — defends the credentialed CORS posture on the public widget endpoints (DEC-FBR-IMPL-09 / DEC-FBR-04) as code-level invariants; closes the gap that `tests/cors_preflight.rs` tests the layer in isolation and can't catch `.layer(cors)` wiring removal from `build_app`; two static probes (A: `main.rs` wires the layer from `FEEDBACKMONK_CORS_ORIGINS` to submit + attachments; B: `cors.rs` keeps `allow_credentials` + `AllowOrigin::list`, never wildcard) + `--full` runs the `cors_preflight` integration test; active-PASS |
@@ -126,7 +126,7 @@ Verification Oracles built so far + scheduled:
 | `host-tenant-binding` | FR-FBR-32/33 (commercial hosting shape) | ✅ LIVE (authored 2026-08-30; **installed 2026-09-01** from an owner session via the staged `install.sh`, which also appended the two `multi-tenant-isolation-check` allow-list entries FR-FBR-32 needs; staging dir deleted, `scripts/ci-local.sh` 15/15 PASS). Defends the **host→tenant binding** trust boundary (DEC-FBR-13 / DEC-FBR-IMPL-28): on a host that resolves to tenant T, no public route may reach another tenant's resource, and admin is reachable on exactly one host. NOT covered by `multi-tenant-isolation-check`, which polices the *repository scope* axis — a router merged without the host guard passes that oracle unchanged, and the failure is invisible (a missing guard renders a correct-looking page of someone else's feedback on your origin). Probe A (guard coverage in `build_app`, the anti-treadmill leg modelled on `public-route-ceiling`) + B (admin exclusivity, 404-not-403, `X-Forwarded-Host` gated on the trusted proxy) + C (one resolution path, in the repository crate) + D (`--full`: `tests/host_tenant_binding.rs` + `domains_repo.rs`). Adversarially self-tested: dropping a guard and flipping 404→403 both go red. |
 | `translation-egress-q24-isolation` | FR-FBR-30 (multilingual translation) | ✅ LIVE (built FR-FBR-30 Stream E, 2026-06-21) — defends the **privacy posture** (DEC-FBR-IMPL-26) + **Q24 read-isolation** invariant (DEC-FBR-IMPL-25 / DEC-FBR-02) of the multilingual-translation pipeline. Detection-from-code, NOT a self-reported flag: Probe A (provider DEFAULTS `off` + no unconditional cloud provider in `main.rs::build_translation_provider`), Probe B (NO **public/end-user/board** read of `body_translated` — every referent must be in a tiny allowlist: the analyst consumer `list_member_bodies_for_cluster`, the worker writer `set_translation`, and the one scoped admin-controller reader `get_translation_for_admin` + its handler `get_admin_feedback`), Probe C (writer uniqueness — only `set_translation` writes the column, and ONLY `translation/worker.rs` calls it), Probe D (latest `body_tsv` migration sources from `coalesce(body_translated, body)`); `--full` runs `tests/translation_worker.rs`. A/B/C/D all GREEN. Providers: `off` (default) / `deepl` (cloud) / `libretranslate` (no-egress, self-hosted). |
 | `i18n-catalog-integrity` | FR-FBR-34/39 (UI localization) | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — defends **Contract C35** (catalog shape) + **C41** (generated locale tables): Probe A (`gen-locales.py --check` — the three `locales.gen.*` byte-equal `i18n/locales.json`), B (every `i18n/locales/<code>/<ns>.json` parses + `_meta`), C (keys ⊆ `en` + `{{placeholder}}` set equality per key), D (CLDR plural categories present), E (mojibake / leaked entities). C/D/E delegate to `scripts/i18n/validate.py` so the contract has one implementation. `--self-test` mechanised. Green is the exit gate of every localization stage. |
-| `i18n-literal-ratchet` | FR-FBR-35/36/38 (UI localization) | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — defends the **no-hard-coded-user-facing-literal** invariant: scans `widget/src` DOM-building calls and `admin-ui/src` JSX text / `aria-label` / `title` / `placeholder` / `notify(...)`; match set must be ⊆ `i18n/literal-baseline.json`; `--freeze` rewrites the baseline only when it shrank. Baseline frozen at Stage-1 converge: 191 literals / 30 files, all `admin-ui/src` (Stage 2 drives it to 0); widget 0; public pages 0. |
+| `i18n-literal-ratchet` | FR-FBR-35/36/38 (UI localization) | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — defends the **no-hard-coded-user-facing-literal** invariant: scans `widget/src` DOM-building calls and `admin-ui/src` JSX text / `aria-label` / `title` / `placeholder` / `notify(...)`; match set must be ⊆ `i18n/literal-baseline.json`; `--freeze` rewrites the baseline only when it shrank. **Baseline is now 0 literals / 0 files** — Stage 2 drove `admin-ui/src` from 191 across 30 files to zero; widget 0; public pages 0. Any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is now a hard failure with nothing to hide behind. |
 | `translation-gap-status` | FR-FBR-39 / DEC-FBR-17 | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — **project-state**, advisory: wraps `scripts/i18n/check-gaps.py --json` → `30 locales | N missing | D drifted | ~C chars | translation pass: DUE/NOT DUE`. The owner's release-gate question; finalize reports it, never blocks. Translation itself runs only via `/1-translate` on the owner's word. |
 
 ## Constraints not in spec artifacts
@@ -143,19 +143,40 @@ Verification Oracles built so far + scheduled:
 
 ## Pending Follow-Ups
 
-- **UI localization (FR-FBR-34..41) — Stage 1 SHIPPED 2026-09-07, Stage 2 PENDING**: widget, public
-  board/roadmap/tenant-host pages and all emails render in the user's language (31 locales, DEC-FBR-15);
-  `feedback.submitter_locale` + `tenants.locale` (migrations 00031/00032); tooling + three oracles live.
-  **No translation has run** — by design (DEC-FBR-17): every non-`en` catalog is a skeleton and every
-  surface falls back to English per key. **Before the next release the owner runs `/1-translate`**
-  (`translation-gap-status` currently reads 30 locales · 3,525 missing · DUE). **Stage 2** = admin-console
-  string extraction + `format.ts` required-locale flip (W-D, cheap), outbound reply translation FR-FBR-40
-  (W-E), security + a11y reviews — inputs in the plan § Convergence notes
-  (`docs/planning/plans/20260906T213706-ui-localization-31-locales-fr-fbr-34-40.md`). Widget headroom is
-  now **884 B** of the 30,720 cap (critic C-004): no further widget bytes without spending the documented
-  `widget.`-prefix lever (~735 B, `widget/README.md`). **Dev DB**: `feedbackmonk_dev` is unrepairable by
-  migration (see `docs/operations/LOCAL_DEV.md` § Known state); recreate is owner-gated (destructive).
-  GitCellar must re-vendor the whole `widget/dist/` tree (`dist/locales/` is new) — filed to that repo.
+- **UI localization (FR-FBR-34..40) — SHIPPED 2026-09-07 (Stages 1 + 2). Two owner actions remain.**
+  Widget, public board/roadmap/tenant-host pages, all emails **and the full admin console** render in the
+  user's language (31 locales, DEC-FBR-15); outbound team-authored replies/status notes are machine-translated
+  into the submitter's language, opt-in per tenant and off by default at two independent levels (FR-FBR-40).
+  `feedback.submitter_locale` + `tenants.locale` + `tenants.translate_outbound` (migrations 00031/00032, no
+  new migration in Stage 2). Five oracles live; `i18n-literal-ratchet` baseline is **0** (was 191).
+  FR-FBR-41 (marketing site) stays DEFERRED until `feedbackmonk.com` is live.
+
+  **① OWNER ACTION — run `/1-translate` before the next release.** No translation has ever run, by design
+  (DEC-FBR-17): every non-`en` catalog is a skeleton and every surface falls back to English per key.
+  `translation-gap-status` now reads **30 locales · 16,500 missing · 0 drifted · ~471k chars · DUE** (up from
+  3,525 — Stage 2 added the whole admin namespace). This is the release gate; nothing else waits on it.
+
+  **② OWNER DECISION — `lang` over permanently-English content (R-A11Y finding A-2, MEDIUM).** Five locales
+  — **`fa, ga, ml, is, si`** — carry `_meta.status: "english-fallback — provider unsupported"`, so English is
+  their *shipped steady state*, not an interim one, and `/1-translate` will never clear them. **`fa` is the
+  only RTL locale we ship**, so that surface is permanently English text, declared as Persian, presented
+  right-to-left — a screen reader switches to a Persian voice and reads English words with Persian phonology
+  (WCAG 3.1.1/3.1.2 in substance). Proposed fix: for a locale whose `_meta.status` starts `english-fallback`,
+  do not assert that code in `<html lang>`; keep `dir` from the shipped table and keep `Intl` formatting on
+  the user's locale. **The LD recommends adopting it** — the deciding metadata already exists and is
+  machine-readable, so the change is small and local — but it qualifies FR-FBR-34's ratified *"every surface
+  sets `lang` and `dir` from the active locale"*, which makes it a **spec amendment, not a bug fix**, hence
+  the owner's call. Full reasoning: plan § Convergence notes — Stage 2.
+
+  **Widget headroom is now 710 B** of the 30,720 cap (was 884 B; Stage 2 spent 176 B on a locale-gate
+  prototype-chain fix and a restored 5xx error message). No further widget bytes without spending the
+  documented `widget.`-prefix lever (~735 B, `widget/README.md`).
+
+  **Dev DB**: `feedbackmonk_dev` is unrepairable by migration (`docs/operations/LOCAL_DEV.md` § Known state);
+  recreate is owner-gated (destructive). The Rust suite runs against `feedbackmonk_prepare`.
+
+  **GitCellar must re-vendor the whole `widget/dist/` tree** (`dist/locales/` is new, and `widget.js` moved
+  again in Stage 2) — filed to that repo.
 <!-- /0-uldf-schedule writes here -->
 
 - **🚨 BLOCKED / RESUME HERE — Railway cannot create containers for `feedbackmonk-api`**: the

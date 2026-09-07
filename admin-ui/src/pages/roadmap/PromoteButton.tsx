@@ -9,6 +9,7 @@ import {
 import { postPromoteFeedback } from "../../shared/ApiClient";
 import { useToast } from "../../components/Toast";
 import { useRouter } from "../../shared/router";
+import { useTranslation } from "../../i18n";
 
 interface PromoteButtonProps {
   feedbackId: string;
@@ -39,6 +40,7 @@ function PromoteButtonInner({
   feedbackId: string;
   bodyPreview: string;
 }) {
+  const { t } = useTranslation("admin");
   const dialogId = useId();
   const { notify } = useToast();
   const { navigate } = useRouter();
@@ -58,12 +60,9 @@ function PromoteButtonInner({
       }),
     onSuccess: (res) => {
       if (res.already_promoted) {
-        notify(
-          "This feedback was already promoted to the roadmap.",
-          "info",
-        );
+        notify(t("admin.promoteButton.alreadyPromoted"), "info");
       } else {
-        notify("Promoted to roadmap.", "success");
+        notify(t("admin.promoteButton.promoted"), "success");
       }
       setOpen(false);
       // Admin route does NOT include the project segment (server resolves
@@ -78,9 +77,9 @@ function PromoteButtonInner({
     onError: (err) => {
       if (axios.isAxiosError(err) && err.response?.status === 400) {
         const body = err.response.data as PromoteErrorBody | undefined;
-        setInlineError(messageForError(body?.error));
+        setInlineError(messageForError(body?.error, t));
       } else {
-        setInlineError("Promote failed. Please try again.");
+        setInlineError(t("admin.promoteButton.errors.generic"));
       }
     },
   });
@@ -89,7 +88,7 @@ function PromoteButtonInner({
     e.preventDefault();
     setInlineError(null);
     if (!slug.trim()) {
-      setInlineError("Slug is required.");
+      setInlineError(t("admin.promoteButton.errors.slugRequired"));
       return;
     }
     mutation.mutate();
@@ -108,7 +107,7 @@ function PromoteButtonInner({
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        Promote to roadmap
+        {t("admin.promoteButton.cta")}
       </button>
 
       {open ? (
@@ -119,14 +118,13 @@ function PromoteButtonInner({
           className="dialog dialog-overlay"
         >
           <form onSubmit={onSubmit} className="dialog-body">
-            <h2 id={`${dialogId}-title`}>Promote to roadmap</h2>
+            <h2 id={`${dialogId}-title`}>{t("admin.promoteButton.cta")}</h2>
             <p className="muted">
-              Creates a public roadmap item from {feedbackId} and marks the
-              source as a duplicate.
+              {t("admin.promoteButton.explain", { feedbackId })}
             </p>
 
             <label htmlFor={`${dialogId}-slug`}>
-              Slug (kebab-case, 1–80 chars)
+              {t("admin.promoteButton.slugLabel")}
             </label>
             <input
               id={`${dialogId}-slug`}
@@ -139,7 +137,7 @@ function PromoteButtonInner({
             />
 
             <label htmlFor={`${dialogId}-title-input`}>
-              Title (optional — defaults to the feedback body trimmed)
+              {t("admin.promoteButton.titleLabel")}
             </label>
             <input
               id={`${dialogId}-title-input`}
@@ -147,7 +145,7 @@ function PromoteButtonInner({
               value={titleOverride}
               onChange={(e) => setTitleOverride(e.target.value)}
               maxLength={200}
-              placeholder="(auto from feedback body)"
+              placeholder={t("admin.promoteButton.titlePlaceholder")}
             />
 
             {inlineError ? (
@@ -162,10 +160,12 @@ function PromoteButtonInner({
                 onClick={() => setOpen(false)}
                 disabled={mutation.isPending}
               >
-                Cancel
+                {t("admin.common.cancel")}
               </button>
               <button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? "Promoting…" : "Promote"}
+                {mutation.isPending
+                  ? t("admin.promoteButton.promoting")
+                  : t("admin.promoteButton.promote")}
               </button>
             </div>
           </form>
@@ -185,19 +185,22 @@ export function slugSuggest(text: string): string {
   return trimmed.slice(0, 80);
 }
 
-function messageForError(code?: PromoteErrorBody["error"]): string {
+function messageForError(
+  code: PromoteErrorBody["error"] | undefined,
+  t: (key: string) => string,
+): string {
   switch (code) {
     case "InvalidCategory":
-      return "Only feature-request feedback can be promoted.";
+      return t("admin.promoteButton.errors.invalidCategory");
     case "InvalidSlug":
-      return "Slug must be 1–80 kebab-case chars (a-z, 0-9, -).";
+      return t("admin.promoteButton.errors.invalidSlug");
     case "FeedbackNotFound":
-      return "This feedback could not be found.";
+      return t("admin.promoteButton.errors.notFound");
     case "SlugTaken":
-      return "That slug is already in use — choose another.";
+      return t("admin.promoteButton.errors.slugTaken");
     case "InternalError":
-      return "Server error while promoting. Please try again.";
+      return t("admin.promoteButton.errors.internal");
     default:
-      return "Promote rejected. Please try again.";
+      return t("admin.promoteButton.errors.rejected");
   }
 }

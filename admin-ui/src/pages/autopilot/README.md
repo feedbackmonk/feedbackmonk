@@ -31,7 +31,7 @@ the owner actively submits, which drives the C22 `create → approve` flow.
 | `WorkOrderDetail.tsx` | One work order: state, provenance (owner-authored vs. feedback-derived, C31), routing target + claimed runner, the append-only event ledger, and owner transitions legal from the current state (C22 authz table). |
 | `Board.tsx` | Read-only Kanban of work orders grouped into 6 lifecycle columns (C31 §7). No drag-to-transition (D-P6-4); cards link to detail where the transition dialogs live. Explicit "+N more" on any capped column (no silent drop). |
 | `BoardCard.tsx` | One board card: title (escaped) + action/state badges, rung, `routing_label` + `claimed_by_runner` tags, owner-authored marker (null provenance). Whole card links to detail. |
-| `boardColumns.ts` | Pure state→column model for the board: `columnForState` / `groupByColumn` / `BOARD_COLUMNS`. `Record<WorkOrderState, …>` makes the mapping exhaustive by construction (a new state fails `tsc`). |
+| `boardColumns.ts` | Pure state→column model for the board: `columnForState` / `groupByColumn` / `BOARD_COLUMNS`. `Record<WorkOrderState, …>` makes the mapping exhaustive by construction (a new state fails `tsc`). Column labels are i18n keys (`labelKey`, Stage 2 / W-D) resolved with `t()` at render time — this module-level data has no hook. |
 | `badges.tsx` | `PriorityBadge` / `ActionTypeBadge` / `WorkOrderStateBadge` / `ConfidenceMeter` — color paired with a text label (WCAG 1.4.1). |
 | `SourceRefList.tsx` | Renders recommendation `source_refs` as citations, never content dumps (exfiltration defense, C24 case f). |
 | `useAdminProject.ts` | Resolves the admin's sole project id (shared cache key with the roadmap admin page). |
@@ -91,6 +91,14 @@ Data access is via `shared/ApiClient.ts` (`fetchClusters`, `fetchClusterDetail`,
 
 ## 6. Decision Log
 
+- **Stage 2 (W-D) localization** — every string in this module now comes from
+  `i18n/locales/en/admin.json` via `useTranslation("admin")`, and every enum
+  label (`ActionType`, `WorkOrderState`, `ClusterPriority`, `ClusterStatus`,
+  `RecommendationStatus`, `AutonomyRung`, `WorkOrderEvent`) via
+  `i18n/useAdminLabels.ts` instead of the `types.gen.ts` `*_LABELS` constants,
+  which are deleted (R-1/R-3). `boardColumns.ts`'s `BOARD_COLUMNS` carries
+  `labelKey` strings (not rendered text) for exactly this reason — it is plain
+  module data, outside any component, so it cannot call a hook itself.
 - **Project-less admin URLs + sole-project resolution** — mirrors the established
   `/admin/roadmap` convention rather than introducing a project segment (multi-
   project URL routing remains deferred).

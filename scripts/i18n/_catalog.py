@@ -53,7 +53,8 @@ def deepl_target(code: str) -> Optional[str]:
 # --------------------------------------------------------------------------
 #
 # Source: Unicode CLDR plural-rules chart (cldr.unicode.org/index/cldr-spec/
-# plural-rules), cross-checked 2026-09-06. Three buckets beyond the universal
+# plural-rules), re-measured 2026-09-07 against Node's ICU-backed
+# `Intl.PluralRules` over counts 0..=1000. Three buckets beyond the universal
 # "other":
 #
 #   EXTRA_FEW_MANY -- Slavic languages whose cardinal rule set is
@@ -62,9 +63,11 @@ def deepl_target(code: str) -> Optional[str]:
 #   EXTRA_ZERO -- Latvian, whose rule set is {zero, one, other}.
 #   OTHER_ONLY -- languages CLDR gives a single "other" category to (no
 #     grammatical singular/plural distinction is ever selected): the
-#     "Asian" family (Chinese, Japanese, Korean) plus Indonesian, Persian
-#     and Turkish, all confirmed to collapse n=1 into "other" rather than
-#     a distinct "one".
+#     "Asian" family (Chinese, Japanese, Korean) plus Indonesian, which
+#     collapse n=1 into "other" rather than selecting a distinct "one".
+#     Persian (fa) and Turkish (tr) do NOT belong here -- CLDR gives each
+#     of them {one, other} (fa selects "one" at n=0 and n=1, tr at n=1),
+#     so their catalogs must carry a `_one` form.
 #
 # This table matches i18n/README.md (Contract C35) rule 5 EXACTLY -- it is
 # the frozen locale-category contract the i18n-catalog-integrity oracle's
@@ -77,7 +80,7 @@ def deepl_target(code: str) -> Optional[str]:
 # script -- see the CLAUDE-D work-log for the discovery record.
 EXTRA_FEW_MANY = {"ru", "uk", "pl", "cs", "sk"}
 EXTRA_ZERO = {"lv"}
-OTHER_ONLY = {"ja", "ko", "zh-CN", "zh-HK", "zh-TW", "id", "fa", "tr"}
+OTHER_ONLY = {"ja", "ko", "zh-CN", "zh-HK", "zh-TW", "id"}
 
 
 def plural_categories(code: str) -> Tuple[str, ...]:

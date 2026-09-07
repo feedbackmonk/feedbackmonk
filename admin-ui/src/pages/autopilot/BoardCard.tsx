@@ -2,6 +2,8 @@ import { type WorkOrder } from "../../shared/types.gen";
 import { Link } from "../../shared/router";
 import { formatRelative } from "../../shared/format";
 import { ActionTypeBadge, WorkOrderStateBadge } from "./badges";
+import { useTranslation } from "../../i18n";
+import { useLocale } from "../../i18n/useLocale";
 
 // One work-order card on the Kanban board. Read-only: the whole card is a link
 // to the detail page, where the owner transitions (approve / accept /
@@ -12,6 +14,8 @@ import { ActionTypeBadge, WorkOrderStateBadge } from "./badges";
 // `title` is untrusted-adjacent owner/analyst text; it is rendered as an escaped
 // React text node, never markup.
 export function BoardCard({ order }: { order: WorkOrder }) {
+  const { t } = useTranslation("admin");
+  const { locale } = useLocale();
   const ownerAuthored = order.recommendation_id === null;
   return (
     <li className="ap-board-card">
@@ -24,29 +28,45 @@ export function BoardCard({ order }: { order: WorkOrder }) {
       <div className="ap-board-card-tags">
         <ActionTypeBadge actionType={order.action_type} />
         <WorkOrderStateBadge state={order.state} />
-        <span className="ap-board-card-rung">Rung {order.autonomy_rung}</span>
+        <span className="ap-board-card-rung">
+          {t("admin.boardCard.rung", { rung: order.autonomy_rung })}
+        </span>
         {ownerAuthored ? (
-          <span className="ap-board-card-owner" title="Owner-authored story">
-            Owner-authored
+          <span
+            className="ap-board-card-owner"
+            title={t("admin.boardCard.ownerAuthoredTitle")}
+          >
+            {t("admin.boardCard.ownerAuthored")}
           </span>
         ) : null}
       </div>
       {order.routing_label || order.claimed_by_runner ? (
         <div className="ap-board-card-runner">
           {order.routing_label ? (
-            <span className="ap-board-card-routing" title="Routed to runner">
-              → {order.routing_label}
+            <span
+              className="ap-board-card-routing"
+              title={t("admin.boardCard.routedTitle")}
+            >
+              <span className="visually-hidden">
+                {t("admin.boardCard.routedToLabel")}{" "}
+              </span>
+              <span aria-hidden="true">→</span> {order.routing_label}
             </span>
           ) : null}
           {order.claimed_by_runner ? (
-            <span className="ap-board-card-claimed" title="Claimed by runner">
-              claimed · {order.claimed_by_runner}
+            <span
+              className="ap-board-card-claimed"
+              title={t("admin.boardCard.claimedTitle")}
+            >
+              {t("admin.boardCard.claimedBy", {
+                runner: order.claimed_by_runner,
+              })}
             </span>
           ) : null}
         </div>
       ) : null}
       <time className="ap-board-card-time muted" dateTime={order.updated_at}>
-        {formatRelative(order.updated_at)}
+        {formatRelative(order.updated_at, locale)}
       </time>
     </li>
   );

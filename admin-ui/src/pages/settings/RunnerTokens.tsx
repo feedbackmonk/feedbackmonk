@@ -7,6 +7,8 @@ import {
 import { useToast } from "../../components/Toast";
 import { useAdminProject } from "../autopilot/useAdminProject";
 import { RunnerTokensList } from "./RunnerTokensList";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
 
 // /admin/settings/runner-tokens — FR-FBR-24 / Contract C25. The complete
 // "enable a runner" surface for a project owner:
@@ -21,15 +23,16 @@ import { RunnerTokensList } from "./RunnerTokensList";
 // token compromise cannot bypass the owner-approval gate. That is why automating
 // runner-token lifecycle is safe.
 export function RunnerTokens() {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="runner-tokens-page" aria-busy="true">
         <header className="page-header">
-          <h1>Runner tokens</h1>
+          <h1>{t("admin.runnerTokens.title")}</h1>
         </header>
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -37,10 +40,10 @@ export function RunnerTokens() {
     return (
       <main className="runner-tokens-page">
         <header className="page-header">
-          <h1>Runner tokens</h1>
+          <h1>{t("admin.runnerTokens.title")}</h1>
         </header>
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -49,26 +52,38 @@ export function RunnerTokens() {
 }
 
 function RunnerTokensInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
   return (
     <main className="runner-tokens-page" aria-labelledby="runner-tokens-title">
       <header className="page-header">
-        <h1 id="runner-tokens-title">Runner tokens</h1>
+        <h1 id="runner-tokens-title">{t("admin.runnerTokens.title")}</h1>
       </header>
 
-      <section className="runner-tokens-explainer" aria-label="How runners authenticate">
+      <section
+        className="runner-tokens-explainer"
+        aria-label={t("admin.runnerTokens.explainerAria")}
+      >
         <p>
-          A <strong>runner</strong> is an autonomous agent that polls for
-          owner-approved work orders, runs them against your repository, and
-          reports back. It authenticates with a short-lived{" "}
-          <em>runner write-token</em> — a JWT you mint yourself from the private
-          half of a registered <code>runner</code>-class key.{" "}
-          <strong>feedbackmonk never holds your private key.</strong>
+          <Trans
+            i18nKey="admin.runnerTokens.explainer"
+            t={t}
+            components={{
+              strong1: <strong />,
+              em: <em />,
+              code: <code />,
+              strong2: <strong />,
+            }}
+          />
         </p>
         <p className="runner-tokens-security">
-          A runner token can drive a <em>dispatched</em> order but can{" "}
-          <strong>never approve one</strong> — approval is an admin-only action
-          (Contract C22). So even a fully compromised runner token cannot bypass
-          your approval gate, which is why issuing them is safe to automate.
+          <Trans
+            i18nKey="admin.runnerTokens.securityNote"
+            t={t}
+            components={{
+              em: <em />,
+              strong: <strong />,
+            }}
+          />
         </p>
       </section>
 
@@ -82,6 +97,7 @@ function RunnerTokensInner({ projectId }: { projectId: string }) {
 // ─── Register a runner-class signing key ────────────────────────────────────
 
 function RegisterRunnerKeyForm({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
   const fieldId = useId();
   const { notify } = useToast();
   const [label, setLabel] = useState("");
@@ -96,22 +112,22 @@ function RegisterRunnerKeyForm({ projectId }: { projectId: string }) {
         key_class: "runner",
       }),
     onSuccess: (res) => {
-      notify(`Runner key “${res.label}” registered.`, "success");
+      notify(
+        t("admin.runnerTokens.keyForm.registered", { label: res.label }),
+        "success",
+      );
       setLabel("");
       setPublicKey("");
     },
     onError: () =>
-      setInlineError(
-        "Registration failed. The public key must be standard base64 of a " +
-          "32-byte Ed25519 public key, and the label 1–100 characters.",
-      ),
+      setInlineError(t("admin.runnerTokens.keyForm.registerFailed")),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setInlineError(null);
     if (!label.trim() || !publicKey.trim()) {
-      setInlineError("Both a label and a base64 public key are required.");
+      setInlineError(t("admin.runnerTokens.keyForm.required"));
       return;
     }
     mutation.mutate();
@@ -122,32 +138,40 @@ function RegisterRunnerKeyForm({ projectId }: { projectId: string }) {
       className="runner-key-register"
       aria-labelledby={`${fieldId}-heading`}
     >
-      <h2 id={`${fieldId}-heading`}>Register a runner key</h2>
+      <h2 id={`${fieldId}-heading`}>{t("admin.runnerTokens.keyForm.heading")}</h2>
       <p className="muted">
-        Generate an Ed25519 keypair on the runner host and register the{" "}
-        <strong>public</strong> half here as a <code>runner</code>-class key.
-        Unlike an identity key, a runner key can only verify runner write-tokens
-        — it can never mint an end-user identity.
+        <Trans
+          i18nKey="admin.runnerTokens.keyForm.explainer"
+          t={t}
+          components={{
+            strong: <strong />,
+            code: <code />,
+          }}
+        />
       </p>
       <form onSubmit={onSubmit} className="runner-token-form">
-        <label htmlFor={`${fieldId}-label`}>Label</label>
+        <label htmlFor={`${fieldId}-label`}>
+          {t("admin.runnerTokens.keyForm.labelField")}
+        </label>
         <input
           id={`${fieldId}-label`}
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           maxLength={100}
-          placeholder="ci-runner"
+          placeholder={t("admin.runnerTokens.labelPlaceholder")}
           autoComplete="off"
         />
 
-        <label htmlFor={`${fieldId}-key`}>Public key (base64)</label>
+        <label htmlFor={`${fieldId}-key`}>
+          {t("admin.runnerTokens.keyForm.publicKeyLabel")}
+        </label>
         <textarea
           id={`${fieldId}-key`}
           value={publicKey}
           onChange={(e) => setPublicKey(e.target.value)}
           rows={2}
-          placeholder="base64 of the 32-byte raw Ed25519 public key"
+          placeholder={t("admin.runnerTokens.keyForm.publicKeyPlaceholder")}
           autoComplete="off"
           spellCheck={false}
         />
@@ -160,7 +184,9 @@ function RegisterRunnerKeyForm({ projectId }: { projectId: string }) {
 
         <div className="runner-token-form-actions">
           <button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Registering…" : "Register runner key"}
+            {mutation.isPending
+              ? t("admin.runnerTokens.keyForm.registering")
+              : t("admin.runnerTokens.keyForm.submit")}
           </button>
         </div>
       </form>
@@ -171,6 +197,7 @@ function RegisterRunnerKeyForm({ projectId }: { projectId: string }) {
 // ─── Register an issued token (optional visibility bookkeeping) ──────────────
 
 function RegisterRunnerTokenForm({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
   const fieldId = useId();
   const queryClient = useQueryClient();
   const { notify } = useToast();
@@ -189,7 +216,10 @@ function RegisterRunnerTokenForm({ projectId }: { projectId: string }) {
         expires_at: expiresAt ? new Date(expiresAt).toISOString() : undefined,
       }),
     onSuccess: () => {
-      notify(`Token “${label.trim()}” registered.`, "success");
+      notify(
+        t("admin.runnerTokens.tokenForm.registered", { label: label.trim() }),
+        "success",
+      );
       setJti("");
       setLabel("");
       setExpiresAt("");
@@ -198,16 +228,14 @@ function RegisterRunnerTokenForm({ projectId }: { projectId: string }) {
       });
     },
     onError: () =>
-      setInlineError(
-        "Registration failed. Check the jti and label (1–200 / 1–100 chars).",
-      ),
+      setInlineError(t("admin.runnerTokens.tokenForm.registerFailed")),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setInlineError(null);
     if (!jti.trim() || !label.trim()) {
-      setInlineError("Both a token ID (jti) and a label are required.");
+      setInlineError(t("admin.runnerTokens.tokenForm.required"));
       return;
     }
     mutation.mutate();
@@ -218,39 +246,48 @@ function RegisterRunnerTokenForm({ projectId }: { projectId: string }) {
       className="runner-token-register"
       aria-labelledby={`${fieldId}-heading`}
     >
-      <h2 id={`${fieldId}-heading`}>Register an issued token</h2>
+      <h2 id={`${fieldId}-heading`}>{t("admin.runnerTokens.tokenForm.heading")}</h2>
       <p className="muted">
-        Optional. After minting a token with{" "}
-        <code>feedbackmonk-runner mint-token</code>, record its <code>jti</code>{" "}
-        here so it appears in the list below and can be revoked. Registration is
-        purely for visibility — a runner can authenticate whether or not its
-        token is registered.
+        <Trans
+          i18nKey="admin.runnerTokens.tokenForm.explainer"
+          t={t}
+          components={{
+            code1: <code />,
+            code2: <code />,
+          }}
+        />
       </p>
       <form onSubmit={onSubmit} className="runner-token-form">
-        <label htmlFor={`${fieldId}-jti`}>Token ID (jti)</label>
+        <label htmlFor={`${fieldId}-jti`}>
+          {t("admin.runnerTokens.tokenForm.jtiLabel")}
+        </label>
         <input
           id={`${fieldId}-jti`}
           type="text"
           value={jti}
           onChange={(e) => setJti(e.target.value)}
           maxLength={200}
-          placeholder="the token's jti claim (a UUID)"
+          placeholder={t("admin.runnerTokens.tokenForm.jtiPlaceholder")}
           autoComplete="off"
           spellCheck={false}
         />
 
-        <label htmlFor={`${fieldId}-label`}>Label</label>
+        <label htmlFor={`${fieldId}-label`}>
+          {t("admin.runnerTokens.tokenForm.labelField")}
+        </label>
         <input
           id={`${fieldId}-label`}
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           maxLength={100}
-          placeholder="ci-runner"
+          placeholder={t("admin.runnerTokens.labelPlaceholder")}
           autoComplete="off"
         />
 
-        <label htmlFor={`${fieldId}-exp`}>Expires (optional)</label>
+        <label htmlFor={`${fieldId}-exp`}>
+          {t("admin.runnerTokens.tokenForm.expiresLabel")}
+        </label>
         <input
           id={`${fieldId}-exp`}
           type="datetime-local"
@@ -266,7 +303,9 @@ function RegisterRunnerTokenForm({ projectId }: { projectId: string }) {
 
         <div className="runner-token-form-actions">
           <button type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? "Registering…" : "Register token"}
+            {mutation.isPending
+              ? t("admin.runnerTokens.tokenForm.registering")
+              : t("admin.runnerTokens.tokenForm.submit")}
           </button>
         </div>
       </form>

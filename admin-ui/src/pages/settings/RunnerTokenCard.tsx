@@ -3,6 +3,9 @@ import { revokeRunnerToken } from "../../shared/ApiClient";
 import { formatAbsolute, formatRelative } from "../../shared/format";
 import { useToast } from "../../components/Toast";
 import type { RunnerTokenView } from "../../shared/types.gen";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
+import { useLocale } from "../../i18n/useLocale";
 
 type TokenLifecycle = "active" | "revoked" | "expired";
 
@@ -20,12 +23,6 @@ export function tokenLifecycle(
   return "active";
 }
 
-const LIFECYCLE_LABELS: Record<TokenLifecycle, string> = {
-  active: "Active",
-  revoked: "Revoked",
-  expired: "Expired",
-};
-
 // One registered runner token. The `jti` is the load-bearing identity — the
 // label is owner-supplied UNTRUSTED text, rendered as an escaped React text
 // node only (never dangerouslySetInnerHTML). Revoke writes the jti to the
@@ -37,6 +34,9 @@ export function RunnerTokenCard({
   projectId: string;
   token: RunnerTokenView;
 }) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
+  const { locale } = useLocale();
   const queryClient = useQueryClient();
   const { notify } = useToast();
   const lifecycle = tokenLifecycle(token);
@@ -45,12 +45,15 @@ export function RunnerTokenCard({
   const mutation = useMutation({
     mutationFn: () => revokeRunnerToken(projectId, token.jti),
     onSuccess: () => {
-      notify(`Token “${token.label}” revoked.`, "success");
+      notify(
+        t("admin.runnerTokenCard.revoked", { label: token.label }),
+        "success",
+      );
       queryClient.invalidateQueries({
         queryKey: ["runner-tokens", projectId],
       });
     },
-    onError: () => notify("Revoke failed. Please try again.", "error"),
+    onError: () => notify(t("admin.runnerTokenCard.revokeFailed"), "error"),
   });
 
   function onRevoke() {
@@ -58,8 +61,7 @@ export function RunnerTokenCard({
     if (
       typeof window !== "undefined" &&
       !window.confirm(
-        `Revoke token “${token.label}”? This cannot be undone — the runner ` +
-          `using it must mint a new token to keep working.`,
+        t("admin.runnerTokenCard.confirmRevoke", { label: token.label }),
       )
     ) {
       return;
@@ -74,36 +76,38 @@ export function RunnerTokenCard({
         <span
           className={`runner-token-status runner-token-status-${lifecycle}`}
         >
-          {LIFECYCLE_LABELS[lifecycle]}
+          {adminLabels.tokenLifecycle(lifecycle)}
         </span>
       </div>
       <dl className="runner-token-meta">
-        <dt>Token ID (jti)</dt>
+        <dt>{t("admin.runnerTokenCard.jtiLabel")}</dt>
         <dd>
           <code>{token.jti}</code>
         </dd>
-        <dt>Registered</dt>
+        <dt>{t("admin.runnerTokenCard.registeredLabel")}</dt>
         <dd>
           <time dateTime={token.created_at}>
-            {formatRelative(token.created_at)}
+            {formatRelative(token.created_at, locale)}
           </time>
         </dd>
-        <dt>Expires</dt>
+        <dt>{t("admin.runnerTokenCard.expiresLabel")}</dt>
         <dd>
           {token.expires_at ? (
             <time dateTime={token.expires_at}>
-              {formatAbsolute(token.expires_at)}
+              {formatAbsolute(token.expires_at, locale)}
             </time>
           ) : (
-            <span className="muted">no expiry recorded</span>
+            <span className="muted">
+              {t("admin.runnerTokenCard.noExpiry")}
+            </span>
           )}
         </dd>
         {token.revoked_at ? (
           <>
-            <dt>Revoked</dt>
+            <dt>{t("admin.runnerTokenCard.revokedLabel")}</dt>
             <dd>
               <time dateTime={token.revoked_at}>
-                {formatAbsolute(token.revoked_at)}
+                {formatAbsolute(token.revoked_at, locale)}
               </time>
             </dd>
           </>
@@ -117,10 +121,10 @@ export function RunnerTokenCard({
           disabled={revoked || mutation.isPending}
         >
           {revoked
-            ? "Revoked"
+            ? adminLabels.tokenLifecycle("revoked")
             : mutation.isPending
-              ? "Revoking…"
-              : "Revoke"}
+              ? t("admin.runnerTokenCard.revoking")
+              : t("admin.runnerTokenCard.revokeAction")}
         </button>
       </div>
     </li>

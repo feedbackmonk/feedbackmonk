@@ -5,11 +5,7 @@ import {
   fetchSentimentTrend,
   searchFeedback,
 } from "../shared/ApiClient";
-import {
-  KIND_LABELS,
-  STATUS_LABELS,
-  type FeedbackStatus,
-} from "../shared/types.gen";
+import { type FeedbackStatus } from "../shared/types.gen";
 import { StatusBadge } from "../components/StatusBadge";
 import { SentimentBadge } from "../components/SentimentBadge";
 import { SentimentTrendChart } from "../components/SentimentTrendChart";
@@ -17,6 +13,9 @@ import { SearchBox } from "../components/SearchBox";
 import { useRouter, useSearchParams } from "../shared/router";
 import { formatRelative } from "../shared/format";
 import { highlightMatches } from "../shared/highlight";
+import { useTranslation } from "../i18n";
+import { useLabels } from "../i18n/useLabels";
+import { useLocale } from "../i18n/useLocale";
 
 const STATUS_FILTERS: (FeedbackStatus | "all")[] = [
   "all",
@@ -57,6 +56,9 @@ function parseParams(p: URLSearchParams): ParsedParams {
 }
 
 export function FeedbackList() {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
+  const { locale } = useLocale();
   const [params, setParams] = useSearchParams();
   const { navigate } = useRouter();
   const parsed = useMemo(() => parseParams(params), [params]);
@@ -144,13 +146,13 @@ export function FeedbackList() {
   const offset = parsed.offset;
   const rangeStart = items.length === 0 ? 0 : offset + 1;
   const rangeEnd = offset + items.length;
-  const statusLabel = parsed.status ? STATUS_LABELS[parsed.status] : null;
+  const statusLabel = parsed.status ? labels.status(parsed.status) : null;
   const narrowed = searching || parsed.status !== undefined;
 
   return (
     <main className="feedback-list-page">
       <header className="page-header">
-        <h1>Feedback</h1>
+        <h1>{t("admin.feedbackList.title")}</h1>
         <SearchBox value={parsed.q} onSearch={setQuery} />
       </header>
 
@@ -159,21 +161,21 @@ export function FeedbackList() {
           type="button"
           className="satisfaction-toggle"
           aria-expanded={trendOpen}
-          aria-controls="satisfaction-trend"
+          aria-controls={trendOpen ? "satisfaction-trend" : undefined}
           onClick={() => setTrendOpen((v) => !v)}
         >
-          <span aria-hidden="true">{trendOpen ? "▾" : "▸"}</span> Satisfaction
-          trend
+          <span aria-hidden="true">{trendOpen ? "▾" : "▸"}</span>{" "}
+          {t("admin.feedbackList.satisfactionTrend")}
         </button>
         {trendOpen ? (
           <div id="satisfaction-trend" className="satisfaction-body">
             {trendQuery.isPending ? (
-              <p className="muted">Loading…</p>
+              <p className="muted">{t("admin.common.loading")}</p>
             ) : trendQuery.isError ? (
               <div role="alert" className="error-block">
-                Failed to load satisfaction trend.{" "}
+                {t("admin.feedbackList.trendLoadError")}{" "}
                 <button type="button" onClick={() => trendQuery.refetch()}>
-                  Retry
+                  {t("admin.common.retry")}
                 </button>
               </div>
             ) : (
@@ -183,7 +185,10 @@ export function FeedbackList() {
         ) : null}
       </section>
 
-      <nav className="status-filters" aria-label="Filter by status">
+      <nav
+        className="status-filters"
+        aria-label={t("admin.feedbackList.filterByStatusAria")}
+      >
         {STATUS_FILTERS.map((key) => {
           const active = parsed.statusKey === key;
           return (
@@ -194,7 +199,7 @@ export function FeedbackList() {
               aria-pressed={active}
               onClick={() => setStatus(key)}
             >
-              {key === "all" ? "All" : STATUS_LABELS[key]}
+              {key === "all" ? t("admin.feedbackList.allStatuses") : labels.status(key)}
             </button>
           );
         })}
@@ -205,23 +210,25 @@ export function FeedbackList() {
           className={`results-summary ${query.isPlaceholderData ? "muted" : ""}`}
         >
           <span>
-            <strong>{total}</strong> {total === 1 ? "result" : "results"}
-            {searching ? (
-              <>
-                {" "}
-                for <strong>“{parsed.q}”</strong>
-              </>
-            ) : null}
-            {statusLabel ? (
-              <>
-                {" "}
-                in <strong>{statusLabel}</strong>
-              </>
-            ) : null}
+            {searching && statusLabel
+              ? t("admin.feedbackList.resultsSummaryBoth", {
+                  count: total,
+                  query: parsed.q,
+                  status: statusLabel,
+                })
+              : searching
+                ? t("admin.feedbackList.resultsSummarySearch", {
+                    count: total,
+                    query: parsed.q,
+                  })
+                : t("admin.feedbackList.resultsSummaryStatus", {
+                    count: total,
+                    status: statusLabel,
+                  })}
           </span>
           {searching && statusLabel ? (
             <button type="button" className="link-button" onClick={resetAll}>
-              Reset all
+              {t("admin.feedbackList.resetAllAction")}
             </button>
           ) : null}
         </p>
@@ -229,38 +236,41 @@ export function FeedbackList() {
 
       {query.isError ? (
         <div role="alert" className="error-block">
-          Failed to load feedback.{" "}
+          {t("admin.feedbackList.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : null}
 
       {query.isPending ? (
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       ) : items.length === 0 ? (
         <div className="empty-state">
           <p>
             {searching && statusLabel
-              ? `No ${statusLabel.toLowerCase()} feedback matches “${parsed.q}”.`
+              ? t("admin.feedbackList.emptyStatusQuery", {
+                  status: statusLabel.toLowerCase(),
+                  query: parsed.q,
+                })
               : searching
-                ? `No feedback matches “${parsed.q}”.`
-                : "No feedback matches this filter."}
+                ? t("admin.feedbackList.emptyQuery", { query: parsed.q })
+                : t("admin.feedbackList.emptyFilter")}
           </p>
           <div className="empty-actions">
             {searching ? (
               <button type="button" onClick={() => setQuery("")}>
-                Clear search
+                {t("admin.feedbackList.clearSearchAction")}
               </button>
             ) : null}
             {parsed.status ? (
               <button type="button" onClick={() => setStatus("all")}>
-                Clear filter
+                {t("admin.feedbackList.clearFilterAction")}
               </button>
             ) : null}
             {searching && parsed.status ? (
               <button type="button" onClick={resetAll}>
-                Reset all
+                {t("admin.feedbackList.resetAllAction")}
               </button>
             ) : null}
           </div>
@@ -268,18 +278,18 @@ export function FeedbackList() {
       ) : (
         <table className="feedback-table">
           <caption className="visually-hidden">
-            Feedback items, sorted newest first.
+            {t("admin.feedbackList.tableCaption")}
           </caption>
           <thead>
             <tr>
-              <th scope="col">ID</th>
-              <th scope="col">Kind</th>
-              <th scope="col">Status</th>
-              <th scope="col">Sentiment</th>
-              <th scope="col">Excerpt</th>
-              <th scope="col">Submitted</th>
-              <th scope="col">From</th>
-              <th scope="col">Replies</th>
+              <th scope="col">{t("admin.feedbackList.columns.id")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.kind")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.status")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.sentiment")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.excerpt")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.submitted")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.from")}</th>
+              <th scope="col">{t("admin.feedbackList.columns.replies")}</th>
             </tr>
           </thead>
           <tbody>
@@ -298,12 +308,14 @@ export function FeedbackList() {
                     );
                   }
                 }}
-                aria-label={`Open ${row.feedback_id}`}
+                aria-label={t("admin.feedbackList.openRow", {
+                  id: row.feedback_id,
+                })}
               >
                 <td className="mono">{row.feedback_id}</td>
                 <td>
                   <span className={`kind-badge kind-${row.kind}`}>
-                    {KIND_LABELS[row.kind]}
+                    {labels.kind(row.kind)}
                   </span>
                 </td>
                 <td>
@@ -313,19 +325,22 @@ export function FeedbackList() {
                   {row.sentiment ? (
                     <SentimentBadge sentiment={row.sentiment} />
                   ) : (
-                    <span className="muted" aria-label="No sentiment">
+                    <span
+                      className="muted"
+                      aria-label={t("admin.feedbackList.noSentiment")}
+                    >
                       —
                     </span>
                   )}
                 </td>
-                <td className="excerpt">
+                <td className="excerpt" dir="auto">
                   {searching
                     ? highlightMatches(row.body_excerpt, parsed.q)
                     : row.body_excerpt}
                 </td>
                 <td>
                   <time dateTime={row.submitted_at}>
-                    {formatRelative(row.submitted_at)}
+                    {formatRelative(row.submitted_at, locale)}
                   </time>
                 </td>
                 <td>{row.submitter_label}</td>
@@ -338,21 +353,25 @@ export function FeedbackList() {
 
       <footer className="pagination">
         <span aria-live="polite">
-          {rangeStart}&ndash;{rangeEnd} of {total}
+          {t("admin.feedbackList.paginationRange", {
+            start: rangeStart,
+            end: rangeEnd,
+            total,
+          })}
         </span>
         <button
           type="button"
           onClick={() => setOffset(Math.max(0, offset - limit))}
           disabled={offset === 0 || query.isPending}
         >
-          Previous
+          {t("admin.common.previous")}
         </button>
         <button
           type="button"
           onClick={() => setOffset(offset + limit)}
           disabled={offset + items.length >= total || query.isPending}
         >
-          Next
+          {t("admin.common.next")}
         </button>
       </footer>
     </main>

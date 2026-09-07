@@ -236,7 +236,7 @@ function RoadmapItemRow({ item, onVote, onRetract, busy }: RoadmapItemRowProps) 
           {statusLabel}
         </span>
       </header>
-      <p className="roadmap-item-body">{item.body}</p>
+      <p className="roadmap-item-body" dir="auto">{item.body}</p>
       <div className="roadmap-item-actions">
         {item.voted_by_me ? (
           <button

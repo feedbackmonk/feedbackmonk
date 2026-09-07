@@ -75,8 +75,12 @@ def render_ts(data: dict) -> str:
     lines += ["};", "",
               "export const LOCALE_CODES: readonly string[] = LOCALES.map((l) => l.code);",
               "const BY_CODE: Readonly<Record<string, LocaleEntry>> = Object.fromEntries(LOCALES.map((l) => [l.code, l]));",
-              "export const localeByCode = (code: string): LocaleEntry | undefined => BY_CODE[code];",
-              "export const isShippedLocale = (code: string): boolean => code in BY_CODE;",
+              "// OWN properties only. `code in BY_CODE` walks the prototype chain, so `constructor`",
+              "// (the one Object.prototype name that survives canonicalisation) passed the gate and",
+              "// localeByCode returned the Function itself -- R-SEC finding, collab-20260907-034037.",
+              "const hasShippedCode = (code: string): boolean => Object.prototype.hasOwnProperty.call(BY_CODE, code);",
+              "export const localeByCode = (code: string): LocaleEntry | undefined => (hasShippedCode(code) ? BY_CODE[code] : undefined);",
+              "export const isShippedLocale = (code: string): boolean => hasShippedCode(code);",
               ""]
     return "\n".join(lines)
 

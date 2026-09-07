@@ -90,6 +90,29 @@ describe("external inputs are validated, never echoed", () => {
     expect(readQueryLocale()).toBeNull();
   });
 
+  it("ignores `constructor` on every external path (R-SEC, collab-20260907-034037)", () => {
+    // `constructor` is the one Object.prototype name that survives
+    // canonicalisation, and the shipped-code gate used to be `code in BY_CODE`,
+    // which walks the prototype chain. All three external inputs accepted it:
+    // `?lang=`, the localStorage READ path, and the tenant locale from C38.
+    // Downstream it reached `formatRelative`, `Intl` threw, and with no React
+    // error boundary the page rendered blank.
+    setSearch("?lang=constructor");
+    expect(readQueryLocale()).toBeNull();
+    expect(resolveInitialLocale()).toBe("de");
+
+    setSearch("?lang=CONSTRUCTOR");
+    expect(readQueryLocale()).toBeNull();
+
+    setSearch("");
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, "constructor");
+    expect(readStoredLocale()).toBeNull();
+    expect(resolveInitialLocale()).toBe("de");
+    window.localStorage.clear();
+
+    expect(resolveInitialLocale({ tenantLocale: "constructor" })).toBe("de");
+  });
+
   it("ignores a junk localStorage value", () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, "klingon");
     expect(readStoredLocale()).toBeNull();

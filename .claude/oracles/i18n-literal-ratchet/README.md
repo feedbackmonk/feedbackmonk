@@ -1,5 +1,9 @@
 # i18n-literal-ratchet — Verification Oracle
 
+
+## Synopsis
+
+Fails when a new hard-coded user-facing English literal appears in a localized surface — JSX text, `aria-label`, `title`, `placeholder` and `notify(...)` in `admin-ui/src`, DOM-building calls in `widget/src` — beyond the frozen baseline in `i18n/literal-baseline.json`. The baseline shrinks only, via `--freeze`, and is now **0**: every user-facing string in both trees comes from the catalog.
 ## Assertion
 
 > No user-visible string can reach a widget, public-page or admin screen

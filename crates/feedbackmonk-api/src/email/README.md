@@ -12,7 +12,7 @@ Agent Context Header (ULADP):
 
 ## Synopsis
 
-Outbound feedback-notification email module (FR-FBR-09, plain-text). Every confirmation / status-change / public-reply email funnels through one `EmailNotifier::send_email` chokepoint so brand parameterisation (Contract C10) is uniform. Holds the `Mailer` trait + plain-text template renderers + the env-selected send path (Mailpit in dev, lettre SMTP in prod). **Localized since FR-FBR-37**: every `Mailer` method and `render_*` takes a required `Locale`, and all copy comes from the `email.*` catalog namespace with per-key English fallback — recipient language resolves `feedback.submitter_locale` → `tenants.locale` → `en`. Two things not to break: Contract C10's subject shape `[{prefix} #{fb_id}] {short_subject}` is structural (words localize, structure does not), and English output is byte-locked by insta snapshots.
+Outbound feedback-notification email module (FR-FBR-09, plain-text). Every confirmation / status-change / public-reply email funnels through one `EmailNotifier::send_email` chokepoint so brand parameterisation (Contract C10) is uniform. Holds the `Mailer` trait + plain-text template renderers + the env-selected send path (Mailpit in dev, lettre SMTP in prod). **Localized since FR-FBR-37**: every `Mailer` method and `render_*` takes a required `Locale`, and all copy comes from the `email.*` catalog namespace with per-key English fallback — recipient language resolves `feedback.submitter_locale` → `tenants.locale` → `en`. **Outbound machine translation since FR-FBR-40**: when the tenant opted in and a provider is configured (both off by default), the chokepoint translates the team's own status note / public reply into the submitter's language and the template renders it ABOVE the original — every failure mode sends the original unchanged. Two things not to break: Contract C10's subject shape `[{prefix} #{fb_id}] {short_subject}` is structural (words localize, structure does not), and English output is byte-locked by insta snapshots.
 
 ## 1. Purpose & Responsibilities
 
@@ -44,8 +44,8 @@ adds per-tenant brand resolution that the signup path doesn't need.
 | File | One-line summary |
 |------|---|
 | `mod.rs` | Module surface — `pub use` re-exports of every type Worker A's handlers consume. |
-| `templates.rs` | Plain-text template renderers: `render_confirmation`, `render_status_change`, `render_public_reply`. Brand- AND locale-parameterised; every literal comes from `i18n/locales/<code>/email.json`. English is locked byte-for-byte by `insta` snapshots. |
-| `send.rs` | `EmailNotifier` trait + `LettreEmailNotifier` (lettre SMTP) + `RecordingEmailNotifier` (test). `is_submitter_visible_transition` filters re-open/un-merge from the email path. `resolve_recipient_locale` / `resolve_account_locale` are the two FR-FBR-37 language ladders. |
+| `templates.rs` | Plain-text template renderers: `render_confirmation`, `render_status_change`, `render_public_reply`. Brand- AND locale-parameterised; every literal comes from `i18n/locales/<code>/email.json`. English is locked byte-for-byte by `insta` snapshots. `with_optional_translation` renders the FR-FBR-40 machine translation above the original. |
+| `send.rs` | `EmailNotifier` trait + `LettreEmailNotifier` (lettre SMTP) + `RecordingEmailNotifier` (test). `is_submitter_visible_transition` filters re-open/un-merge from the email path. `resolve_recipient_locale` / `resolve_account_locale` are the two FR-FBR-37 language ladders. `outbound_translation` is the whole FR-FBR-40 decision (FR-FBR-40). |
 | `mailpit.rs` | P0 signup-verification + password-reset mailer over Mailpit (dev), plus the four catalog-driven body renderers both mailers share. Not part of FR-FBR-09 — kept here for module cohesion with `env_smtp.rs`. |
 | `env_smtp.rs` | P0 signup-verification mailer over env-driven SMTP (prod). |
 | `README.md` | This file. |
@@ -133,6 +133,9 @@ if is_submitter_visible_transition(to_status) {
   locales for every catalog state, including today's untranslated skeletons.
 - **Tenant-authored text is never translated.** `footer_signature` is the customer's own sign-off;
   brand names (`feedbackmonk`, the tenant's `brand_name`) are names. Both pass through verbatim.
+- **Outbound machine translation renders ABOVE the original, and the original is always present (FR-FBR-40).** When the tenant has `translate_outbound` on AND a provider is configured AND the submitter's own captured locale is known and not English AND that locale has a provider target code, the team's `reason_note` / `reply_body` is translated and the body reads: translation, blank line, the localized `email.machineTranslated` line, then the original. A machine translation is evidence about the original, not a replacement for it — a mistranslated status decision must stay checkable. Exactly two strings are eligible; the confirmation `body_excerpt` is the SUBMITTER's own words (the string Q24 is about) and is never translated, and the chrome never needs to be (it comes from the catalog in all 31 languages).
+- **A translation problem can never delay or drop an email.** Provider absent, tenant opted out, tenant-flag read failure, no submitter locale, English recipient, no provider target code (`ga fa ml is si`), provider error, empty or echoed response — all of them send today's email unchanged. `outbound_translation` returns `Option`, not `Result`.
+- **No new state.** The outbound path writes nothing and reads no feedback column — it is not the FR-FBR-30 pipeline and must never become a reader of the stored translation (Q24; `translation-egress-q24-isolation` Probe B).
 - **Re-open transitions are silent.** `Submitted → Submitted` is not a real
   transition (rejected by the state machine). `WontFix/Duplicate → Submitted`
   is a re-open / un-merge — Contract C6 admin-internal correction. The
@@ -158,6 +161,10 @@ if is_submitter_visible_transition(to_status) {
   settings endpoint in `handlers/tenant_settings.rs`.
 
 ## 6. Decision Log
+
+- **The outbound translation provider is a builder (`with_translator`), not a constructor argument.** Translation is optional in the strongest sense — absent by default, absent in every test that does not ask for it, absent in every deployment that has not opted in — so threading it through both constructors would make every call site restate `None`, including the Mailpit integration test that has nothing to do with it.
+- **The FR-FBR-40 decision takes the tenant opt-in as a `bool`, not a repo handle.** `outbound_translation(provider, tenant_opted_in, kind, ctx)` lifts the one database read out to its caller, which makes every branch — opted out, no provider, English recipient, no provider code, provider error, nothing team-authored — testable with a fake provider and no database, no SMTP server and no network. The notifier method is then a five-line delegation around one repo read.
+- **Only the submitter's OWN captured locale triggers an outbound translation, not the recipient-locale ladder.** The ladder's second rung is the tenant setting, which is the ADMIN's language — i.e. most likely the language the note was written in. Translating into it would pay a provider to translate text into its own source language. A `None` submitter locale is not a request for a translation.
 
 - **Plain-text only, not multipart.** FR-FBR-09 deferred-decisions resolution.
   Plain text renders identically across every email client, dodges the entire

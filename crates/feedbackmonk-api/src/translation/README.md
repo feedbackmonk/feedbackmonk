@@ -10,7 +10,7 @@ Agent Context Header (ULADP):
 
 ## Synopsis
 
-Pluggable, **default-OFF** translation provider (`TranslationProvider` trait + DeepL adapter + no-op) plus the async **translate-after-accept** worker. Non-English feedback is translated to a canonical language (English, v1) by a background poll-loop — NEVER on the public submit path — so English-assuming consumers (sentiment, the agentic loop / clustering, admin FTS) work correctly, while the verbatim `body` is never overwritten (Q24). Egress is a conscious, disclosed, opt-in choice.
+Pluggable, **default-OFF** translation provider (`TranslationProvider` trait + DeepL adapter + no-op) plus the async **translate-after-accept** worker. Non-English feedback is translated to a canonical language (English, v1) by a background poll-loop — NEVER on the public submit path — so English-assuming consumers (sentiment, the agentic loop / clustering, admin FTS) work correctly, while the verbatim `body` is never overwritten (Q24). Egress is a conscious, disclosed, opt-in choice. Since FR-FBR-40 the same provider has a **second, unrelated consumer**: `translate_to()` translates the *team's* outbound status notes and public replies into the submitter's language for one email — a different string, persisted nowhere (§ Two consumers below).
 
 ## 1. Purpose & Responsibilities
 
@@ -21,11 +21,28 @@ Implements **FR-FBR-30** under **DEC-FBR-IMPL-25** (data/processing model) and *
 
 The per-row storage + the four worklist repository methods (`claim_pending_translations` / `set_translation` / `mark_translation_skipped` / `mark_translation_failed`) live in `feedbackmonk-repository::feedback`; this module is the provider + worker only.
 
+### Two consumers, two different strings (FR-FBR-30 vs FR-FBR-40)
+
+The provider is built once and shared. What each consumer sends it is not the same kind of text, and conflating them is the mistake worth naming here:
+
+| | **Inbound** (FR-FBR-30, `worker.rs`) | **Outbound** (FR-FBR-40, `translate_to`) |
+|---|---|---|
+| Whose words | the **submitter's** feedback body | the **team's** status note / public reply |
+| Into what | the canonical content language (English) | the **submitter's** own UI language |
+| Trigger | a row stamped `pending`, drained off the request path | one email being sent |
+| Stored | `feedback.body_translated` + `source_lang` | **nothing** |
+| Gate | the provider being configured | the provider **and** `tenants.translate_outbound` (both default off) |
+| Failure | row marked `failed`, bounded retry | the original text is sent, unchanged |
+
+The outbound path reads and writes **no feedback column at all** — which is precisely why FR-FBR-40 leaves the Q24 read-isolation invariant (and the `translation-egress-q24-isolation` oracle's Probe B allowlist) untouched. A future change that makes the outbound path read the stored translation is not an optimisation; it is a Q24 violation.
+
+Locale → provider code goes through `provider_target_code()`, which reads the C34 table's `deepl` column. Five locales (`ga`, `fa`, `ml`, `is`, `si`) have no target code and are English by design — `translate_to` returns `Ok(None)`, never an error.
+
 ## 2. File Index
 
 | File | One-line summary |
 |------|---|
-| `mod.rs` | Module surface — `TranslationProvider` trait + `TranslateOutput` + re-exports. |
+| `mod.rs` | Module surface — `TranslationProvider` trait + `TranslateOutput` + re-exports, plus the FR-FBR-40 outbound helpers `provider_target_code(Locale)` and `translate_to(provider, text, target)`. |
 | `deepl.rs` | DeepL **cloud** adapter (`reqwest` 0.12 rustls) — egress. Auto-detects source language; routes free (`…:fx`) vs Pro keys by host. |
 | `libretranslate.rs` | LibreTranslate adapter — the **no-egress** option (self-hosted, AGPL). Operator-supplied URL + optional api key; `source: "auto"` returns the detected language. |
 | `noop.rs` | `NoOpTranslator` — the default-off contract type; returns input unchanged (detected == target → worker marks `skipped`). |
@@ -43,7 +60,13 @@ if let Some(p) = provider {
 }
 ```
 
-Tests substitute a `FakeTranslator` implementing `TranslationProvider` and drive `translate_once(provider, repo, target_lang)` directly (the trait is the test seam; the real DeepL call is non-deterministic and exercised only on demand).
+```rust
+// email/send.rs (FR-FBR-40): translate ONE outbound, team-authored string.
+// Ok(None) = "send the original" and is a normal outcome, not a failure.
+let mt: Option<String> = translate_to(provider, reason_note, submitter_locale).await?;
+```
+
+Tests substitute a `FakeTranslator` implementing `TranslationProvider` and drive `translate_once(provider, repo, target_lang)` directly (the trait is the test seam; the real DeepL call is non-deterministic and exercised only on demand). The outbound path's own decision function is `email::outbound_translation`, which takes the tenant opt-in as a `bool` so every branch is testable with no database and no network (`crates/feedbackmonk-api/tests/outbound_translation.rs`).
 
 ## 4. Constraints & Business Rules (load-bearing — never silently relax)
 
@@ -53,11 +76,14 @@ Tests substitute a `FakeTranslator` implementing `TranslationProvider` and drive
 - **Public surfaces read the verbatim original.** The machine consumer `list_member_bodies_for_cluster` reads the translation (with fallback to the original), and the data-controller admin may view it via the ONE scoped reader `get_translation_for_admin` (the admin-UI original↔translation toggle, FR-FBR-30 #3). No **public / end-user / board** read may select `body_translated` (Q24; oracle Probe B allowlist).
 - **Lazy backfill + manual escape hatch.** Only feedback accepted after a provider is enabled is translated. The operator endpoint `POST /api/v1/ops/translation/backfill` (behind `FEEDBACKMONK_OPS_TOKEN`) stamps pre-existing body-bearing rows `pending` so the worker picks them up (FR-FBR-30 #5).
 - **Provider outage is never user-visible.** A failed translation marks the row `failed` (re-pollable until the attempts cap); every consumer falls back to the verbatim `body` while a row is un-translated.
-- **No body in logs.** The worker logs only `feedback_id` + error on failure; the DeepL adapter never logs the response body verbatim.
+- **No body in logs.** The worker logs only `feedback_id` + error on failure; the DeepL adapter never logs the response body verbatim. The outbound path logs `feedback_id` + the error and never the note or reply text.
+- **Outbound translation never blocks a send (FR-FBR-40).** Provider absent, tenant opted out, no submitter locale, an English recipient, a locale with no provider code, a provider error, an empty or echoed response — every one of them sends the original email unchanged. `outbound_translation` returns `Option`, not `Result`, so there is nothing for a caller to `?` into a dropped notification.
+- **Outbound translation is opt-in TWICE.** The provider defaults `off` (deployment), and `tenants.translate_outbound` defaults `false` (tenant, migration `00032`). Neither default moves without re-opening DEC-FBR-IMPL-26.
 
 ## 5. Relationships & Dependencies
 
-- **Consumes** `feedbackmonk_repository::FeedbackRepo` (the four worklist methods + the `TranslationFlag` enablement flag).
+- **Consumes** `feedbackmonk_repository::FeedbackRepo` (the four worklist methods + the `TranslationFlag` enablement flag), and `feedbackmonk_i18n::Locale` for the outbound target mapping.
+- **Consumed by** `email::send::LettreEmailNotifier` (FR-FBR-40), which holds an `Option<Arc<dyn TranslationProvider>>` set via `with_translator` and reads `TenantRepo::get_translate_outbound` per send.
 - **Constructed by** `main.rs::build_translation_provider()` + spawned beside the voting-cache tick.
 - **Config** via `FEEDBACKMONK_TRANSLATION_*` env vars (`docs/operations/SELFHOST_ENV.md` Contract C21).
 - **Guarded by** the `translation-egress-q24-isolation` Verification Oracle (`.claude/oracles/`).

@@ -100,6 +100,34 @@ describe("resolveLocale — C36 precedence", () => {
     }
   });
 
+  it("rejects Object.prototype names, `constructor` included (R-SEC, collab-20260907-034037)", () => {
+    // The gate used to read `code in LOADERS`, and `in` walks the prototype
+    // chain. Canonicalisation mangles every other Object.prototype name
+    // (`__proto__` -> `--proto--`, `toString` -> `tostring`), so exactly one
+    // value survived it and passed: `constructor`, in any casing. The widget's
+    // own failure was benign — LOADERS.constructor is a Function, calling it
+    // yields no `default`, so it stayed English — but the SPA's identical hole
+    // blank-paged a public board, and this is the sibling implementation.
+    for (const hostile of ["constructor", "CONSTRUCTOR", "Constructor", "__proto__", "toString", "valueOf", "hasOwnProperty"]) {
+      expect(validateLocale(hostile), `validateLocale(${hostile})`).toBeNull();
+      expect(resolveLocale([hostile]), `resolveLocale([${hostile}])`).toBe("en");
+      expect(resolveOne(hostile), `resolveOne(${hostile})`).toBeNull();
+    }
+  });
+
+  it("hasKey/t report only OWN catalog keys, never Object.prototype names", () => {
+    // Third instance of the same root cause (LD ruling: close the class).
+    // `key in EN` was true for `constructor`, so hasKey claimed a key t()
+    // cannot render. Unreachable through today's call sites; closed so that
+    // widening `t()` to a dynamic key cannot reopen it.
+    for (const name of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
+      expect(hasKey(name), `hasKey(${name})`).toBe(false);
+      expect(t(name), `t(${name})`).toBe(name); // renders the key itself, not a Function
+    }
+    // The real ones still work.
+    expect(hasKey("widget.launcher.label")).toBe(true);
+  });
+
   it("exposes the same helpers as the SPA resolver", () => {
     // Parity with admin-ui/src/i18n/resolve.ts (LEAD 22:42): same names, same
     // semantics, one fixture file.

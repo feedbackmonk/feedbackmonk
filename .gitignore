@@ -39,6 +39,16 @@ pnpm-debug.log*
 **/.claude/aria-telemetry-archive-*.jsonl
 **/.claude/collaboration/archived/
 
+# LIVE PODS session directories — task files, channels and work-logs, i.e. the
+# team's internal notes. `archived/` above was ignored but the live sibling was
+# not, so a single unscoped `git add -A` would have published this wave's whole
+# collaboration tree to a PUBLIC remote (critic C-002, collab-20260907-034037).
+**/.claude/collaboration/collab-*/
+
+# Framework debris at the collaboration root (registration failures, and any
+# future underscore-prefixed CSI log) — machine-local, never project content.
+**/.claude/collaboration/_*.jsonl
+
 # CSI registry (mutates every session-start)
 **/.claude/collaboration/active-sessions.json
 **/.claude/collaboration/active-sessions.json.*

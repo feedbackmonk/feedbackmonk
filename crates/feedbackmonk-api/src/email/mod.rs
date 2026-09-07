@@ -21,7 +21,8 @@ pub use env_smtp::{EnvSmtpConfig, EnvSmtpMailer};
 pub use mailpit::MailpitMailer;
 pub use send::{
     EmailContext, EmailError, EmailKind, EmailNotifier, LettreEmailNotifier, SendOutcome,
-    is_submitter_visible_transition, resolve_account_locale, resolve_recipient_locale,
+    is_submitter_visible_transition, outbound_translation, outbound_translation_target,
+    resolve_account_locale, resolve_recipient_locale,
 };
 pub use templates::{
     render_confirmation, render_public_reply, render_status_change, ConfirmationContext,

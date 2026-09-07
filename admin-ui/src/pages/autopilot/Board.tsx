@@ -6,6 +6,8 @@ import { Link } from "../../shared/router";
 import { useAdminProject } from "./useAdminProject";
 import { BoardCard } from "./BoardCard";
 import { BOARD_COLUMNS, groupByColumn, type BoardColumnId } from "./boardColumns";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
 
 // C31 §7 — read-only Kanban view of work orders, grouped into 6 lifecycle
 // columns (see boardColumns.ts). No drag-to-transition (D-P6-4): every state
@@ -20,13 +22,14 @@ const FETCH_LIMIT = 200;
 const COLUMN_CARD_CAP = 25;
 
 export function Board() {
+  const { t } = useTranslation("admin");
   const project = useAdminProject();
 
   if (project.status === "pending") {
     return (
       <main className="ap-page" aria-busy="true">
         <BackLink />
-        <p className="muted">Loading…</p>
+        <p className="muted">{t("admin.common.loading")}</p>
       </main>
     );
   }
@@ -35,7 +38,7 @@ export function Board() {
       <main className="ap-page">
         <BackLink />
         <div role="alert" className="error-block">
-          No projects configured.
+          {t("admin.common.noProjects")}
         </div>
       </main>
     );
@@ -44,6 +47,7 @@ export function Board() {
 }
 
 function BoardInner({ projectId }: { projectId: string }) {
+  const { t } = useTranslation("admin");
   const query = useQuery({
     queryKey: ["autopilot-board", projectId],
     queryFn: () => fetchWorkOrders(projectId, { limit: FETCH_LIMIT }),
@@ -63,40 +67,51 @@ function BoardInner({ projectId }: { projectId: string }) {
     <main className="ap-page ap-board-page" aria-labelledby="ap-board-title">
       <BackLink />
       <header className="page-header">
-        <h1 id="ap-board-title">Board</h1>
+        <h1 id="ap-board-title">{t("admin.autopilotBoard.title")}</h1>
         <Link to="/admin/autopilot/work-orders" className="ap-nav-link">
-          List view →
+          {t("admin.autopilotBoard.listView")}
         </Link>
       </header>
 
       {query.isPending ? (
         <p className="muted" aria-busy="true">
-          Loading board…
+          {t("admin.autopilotBoard.loadingBoard")}
         </p>
       ) : query.isError ? (
         <div role="alert" className="error-block">
-          Failed to load the board.{" "}
+          {t("admin.autopilotBoard.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : (
         <>
           {overFetchWindow ? (
             <p className="muted ap-board-truncation-note">
-              Showing the {items.length} most recent work orders
-              {typeof total === "number" ? ` of ${total}` : ""}. Older orders are
-              in the{" "}
-              <Link to="/admin/autopilot/work-orders">full list</Link>.
+              <Trans
+                i18nKey={
+                  typeof total === "number"
+                    ? "admin.autopilotBoard.truncationNoteWithTotal"
+                    : "admin.autopilotBoard.truncationNote"
+                }
+                t={t}
+                values={{ shown: items.length, total }}
+                components={{
+                  link: <Link to="/admin/autopilot/work-orders">{null}</Link>,
+                }}
+              />
             </p>
           ) : null}
           <div className="ap-board-scroll">
-            <ol className="ap-board-columns" aria-label="Work orders by state">
+            <ol
+              className="ap-board-columns"
+              aria-label={t("admin.autopilotBoard.columnsAria")}
+            >
               {BOARD_COLUMNS.map((col) => (
                 <BoardColumn
                   key={col.id}
                   columnId={col.id}
-                  label={col.label}
+                  label={t(col.labelKey)}
                   orders={groups[col.id]}
                 />
               ))}
@@ -117,6 +132,7 @@ function BoardColumn({
   label: string;
   orders: WorkOrder[];
 }) {
+  const { t } = useTranslation("admin");
   const headingId = `ap-board-col-${columnId}`;
   const shown = orders.slice(0, COLUMN_CARD_CAP);
   const overflow = orders.length - shown.length;
@@ -127,9 +143,14 @@ function BoardColumn({
           {label} <span className="muted">({orders.length})</span>
         </h2>
         {orders.length === 0 ? (
-          <p className="muted ap-board-column-empty">Nothing here.</p>
+          <p className="muted ap-board-column-empty">
+            {t("admin.autopilotBoard.columnEmpty")}
+          </p>
         ) : (
-          <ol className="ap-board-card-list" aria-label={`${label} work orders`}>
+          <ol
+            className="ap-board-card-list"
+            aria-label={t("admin.autopilotBoard.columnOrdersAria", { label })}
+          >
             {shown.map((order) => (
               <BoardCard key={order.id} order={order} />
             ))}
@@ -140,7 +161,7 @@ function BoardColumn({
             to="/admin/autopilot/work-orders"
             className="ap-board-column-more"
           >
-            +{overflow} more →
+            {t("admin.autopilotBoard.moreLink", { count: overflow })}
           </Link>
         ) : null}
       </section>
@@ -149,9 +170,10 @@ function BoardColumn({
 }
 
 function BackLink() {
+  const { t } = useTranslation("admin");
   return (
     <Link to="/admin/autopilot" className="ap-back-link">
-      ← Back to digest
+      {t("admin.common.backToDigest")}
     </Link>
   );
 }

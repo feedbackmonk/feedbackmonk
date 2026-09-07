@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { SentimentBadge } from "./SentimentBadge";
-import {
-  SENTIMENT_LABELS,
-  SENTIMENT_ORDER,
-  type SentimentValue,
-} from "../shared/types.gen";
+import { SENTIMENT_ORDER, type SentimentValue } from "../shared/types.gen";
 
 const EXPECTED_ICONS: Record<SentimentValue, string> = {
   negative: "▽",
   neutral: "○",
   positive: "△",
+};
+
+// English catalog values (`i18n/locales/en/status.json` `sentiment.*`) —
+// SentimentBadge now reads them via `useLabels().sentiment`, not a hardcoded
+// constant (Stage 2 / W-D, R-1/R-3).
+const EXPECTED_LABELS: Record<SentimentValue, string> = {
+  negative: "Negative",
+  neutral: "Neutral",
+  positive: "Positive",
 };
 
 describe("SentimentBadge — icon + label invariant (WCAG 1.4.1)", () => {
@@ -19,7 +24,7 @@ describe("SentimentBadge — icon + label invariant (WCAG 1.4.1)", () => {
     (sentiment) => {
       render(<SentimentBadge sentiment={sentiment} />);
       expect(
-        screen.getByText(SENTIMENT_LABELS[sentiment]),
+        screen.getByText(EXPECTED_LABELS[sentiment]),
       ).toBeInTheDocument();
     },
   );

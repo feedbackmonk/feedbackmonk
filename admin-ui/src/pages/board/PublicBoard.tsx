@@ -205,7 +205,7 @@ function BoardItemRow({
           {statusLabel}
         </span>
       </header>
-      <p className="board-item-body">{item.body}</p>
+      <p className="board-item-body" dir="auto">{item.body}</p>
       <div className="board-item-meta">
         <div className="board-item-actions">
           {item.voted_by_me ? (

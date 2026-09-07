@@ -1,5 +1,9 @@
 # i18n-catalog-integrity — Verification Oracle
 
+
+## Synopsis
+
+Verifies the shared catalog tree is structurally sound and the three generated locale tables still equal `i18n/locales.json`: every `i18n/locales/<code>/<ns>.json` parses and carries `_meta`, keys are a subset of `en`, `{{placeholder}}` sets match per key, CLDR plural categories are present, and no mojibake or leaked entities. Probes C/D/E delegate to `scripts/i18n/validate.py` so the C35 contract has exactly one implementation.
 ## Assertion
 
 > Every runtime (widget, SPA, Rust) will read a consistent catalog: no key can

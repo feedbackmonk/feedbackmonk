@@ -1,7 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  RECOMMENDATION_STATUS_LABELS,
   type AutonomyRung,
   type OwnerOverrides,
   type Recommendation,
@@ -15,6 +14,9 @@ import { useToast } from "../../components/Toast";
 import { ActionTypeBadge, ConfidenceMeter } from "./badges";
 import { SourceRefList } from "./SourceRefList";
 import { AutonomyRungDial } from "./AutonomyRungDial";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
 
 type Mode = null | "approve" | "tweak" | "reject";
 
@@ -41,6 +43,8 @@ export function RecommendationCard({
   rec: Recommendation;
   projectId: string;
 }) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
   const [mode, setMode] = useState<Mode>(null);
   const actionable = rec.status === "proposed";
 
@@ -53,26 +57,36 @@ export function RecommendationCard({
         <div className="ap-rec-tags">
           <ActionTypeBadge actionType={rec.action_type} />
           <span className={`ap-rec-status ap-rec-status-${rec.status}`}>
-            {RECOMMENDATION_STATUS_LABELS[rec.status]}
+            {adminLabels.recommendationStatus(rec.status)}
           </span>
         </div>
       </header>
 
       <ConfidenceMeter confidence={rec.confidence} />
 
-      <section aria-label="Recommendation detail" className="ap-rec-body">
+      <section
+        aria-label={t("admin.recommendationCard.detailAria")}
+        className="ap-rec-body"
+      >
         {/* Untrusted analyst-derived text — plain escaped text only. */}
-        <p className="ap-rec-text">{rec.body}</p>
+        <p className="ap-rec-text" dir="auto">{rec.body}</p>
         {rec.rationale ? (
           <>
-            <h5 className="ap-rec-subhead">Rationale</h5>
+            <h5 className="ap-rec-subhead">
+              {t("admin.recommendationCard.rationaleHeading")}
+            </h5>
             <p className="ap-rec-text muted">{rec.rationale}</p>
           </>
         ) : null}
       </section>
 
-      <section aria-label="Source references" className="ap-rec-sources">
-        <h5 className="ap-rec-subhead">Grounding evidence</h5>
+      <section
+        aria-label={t("admin.recommendationCard.sourcesAria")}
+        className="ap-rec-sources"
+      >
+        <h5 className="ap-rec-subhead">
+          {t("admin.recommendationCard.groundingHeading")}
+        </h5>
         <SourceRefList refs={rec.source_refs} />
       </section>
 
@@ -80,29 +94,31 @@ export function RecommendationCard({
         <div
           className="ap-rec-actions"
           role="group"
-          aria-label="Recommendation decision"
+          aria-label={t("admin.recommendationCard.decisionAria")}
         >
           <button
             type="button"
             className="primary"
             onClick={() => setMode("approve")}
           >
-            Approve…
+            {t("admin.recommendationCard.approveAction")}
           </button>
           <button type="button" onClick={() => setMode("tweak")}>
-            Tweak…
+            {t("admin.recommendationCard.tweakAction")}
           </button>
           <button
             type="button"
             className="ap-danger"
             onClick={() => setMode("reject")}
           >
-            Reject…
+            {t("admin.recommendationCard.rejectAction")}
           </button>
         </div>
       ) : (
         <p className="muted ap-rec-decided">
-          Decision recorded: {RECOMMENDATION_STATUS_LABELS[rec.status]}.
+          {t("admin.recommendationCard.decisionRecorded", {
+            status: adminLabels.recommendationStatus(rec.status),
+          })}
         </p>
       )}
 
@@ -138,6 +154,7 @@ function ApproveDialog({
   tweak: boolean;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin");
   const dialogId = useId();
   const queryClient = useQueryClient();
   const { notify } = useToast();
@@ -183,7 +200,9 @@ function ApproveDialog({
     },
     onSuccess: () => {
       notify(
-        tweak ? "Tweaked work order approved." : "Work order approved.",
+        tweak
+          ? t("admin.recommendationCard.approveDialog.tweakedApproved")
+          : t("admin.recommendationCard.approveDialog.approved"),
         "success",
       );
       queryClient.invalidateQueries({
@@ -195,16 +214,14 @@ function ApproveDialog({
       onClose();
     },
     onError: () =>
-      setInlineError(
-        "Could not create and approve the work order. Please try again.",
-      ),
+      setInlineError(t("admin.recommendationCard.approveDialog.errorGeneric")),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setInlineError(null);
     if (tweak && !title.trim()) {
-      setInlineError("A title is required.");
+      setInlineError(t("admin.newStory.errors.titleRequired"));
       return;
     }
     mutation.mutate();
@@ -219,17 +236,21 @@ function ApproveDialog({
     >
       <form onSubmit={onSubmit} className="dialog-body">
         <h3 id={`${dialogId}-title`}>
-          {tweak ? "Tweak & approve" : "Approve work order"}
+          {tweak
+            ? t("admin.recommendationCard.approveDialog.tweakHeading")
+            : t("admin.recommendationCard.approveDialog.approveHeading")}
         </h3>
         <p className="muted">
           {tweak
-            ? "Your edits are authoritative — they override the recommendation when the work order is dispatched."
-            : "Approving creates a work order and records your owner approval. Nothing the agent does to your code can happen without this signature."}
+            ? t("admin.recommendationCard.approveDialog.tweakExplain")
+            : t("admin.recommendationCard.approveDialog.approveExplain")}
         </p>
 
         {tweak ? (
           <>
-            <label htmlFor={`${dialogId}-title-input`}>Title (authoritative)</label>
+            <label htmlFor={`${dialogId}-title-input`}>
+              {t("admin.recommendationCard.approveDialog.titleLabel")}
+            </label>
             <input
               id={`${dialogId}-title-input`}
               type="text"
@@ -240,7 +261,7 @@ function ApproveDialog({
               autoFocus
             />
             <label htmlFor={`${dialogId}-instructions`}>
-              Instructions (authoritative)
+              {t("admin.recommendationCard.approveDialog.instructionsLabel")}
             </label>
             <textarea
               id={`${dialogId}-instructions`}
@@ -251,9 +272,12 @@ function ApproveDialog({
             />
           </>
         ) : (
-          <section className="ap-approve-preview" aria-label="Recommendation">
+          <section
+            className="ap-approve-preview"
+            aria-label={t("admin.recommendationCard.approveDialog.previewAria")}
+          >
             <strong>{rec.title}</strong>
-            <p className="ap-rec-text">{rec.body}</p>
+            <p className="ap-rec-text" dir="auto">{rec.body}</p>
           </section>
         )}
 
@@ -264,7 +288,9 @@ function ApproveDialog({
           idPrefix={dialogId}
         />
 
-        <label htmlFor={`${dialogId}-routing`}>Routing label (optional)</label>
+        <label htmlFor={`${dialogId}-routing`}>
+          {t("admin.newStory.routingLabelLabel")}
+        </label>
         <input
           id={`${dialogId}-routing`}
           type="text"
@@ -275,8 +301,11 @@ function ApproveDialog({
           aria-describedby={`${dialogId}-routing-help`}
         />
         <p id={`${dialogId}-routing-help`} className="muted">
-          Runner identity (token <code>sub</code>) that must execute this order.
-          Leave empty for any runner.
+          <Trans
+            i18nKey="admin.common.routingHelp"
+            t={t}
+            components={{ code: <code /> }}
+          />
         </p>
 
         {inlineError ? (
@@ -287,16 +316,16 @@ function ApproveDialog({
 
         <div className="dialog-actions">
           <button type="button" onClick={onClose} disabled={mutation.isPending}>
-            Cancel
+            {t("admin.common.cancel")}
           </button>
           {/* The deliberate approval submit — never auto-focused, never a
               default-checked convenience. */}
           <button type="submit" className="primary" disabled={mutation.isPending}>
             {mutation.isPending
-              ? "Approving…"
+              ? t("admin.recommendationCard.approveDialog.approving")
               : tweak
-                ? "Approve tweaked order"
-                : "Approve & create work order"}
+                ? t("admin.recommendationCard.approveDialog.submitTweak")
+                : t("admin.recommendationCard.approveDialog.submitApprove")}
           </button>
         </div>
       </form>
@@ -315,6 +344,7 @@ function RejectDialog({
   projectId: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("admin");
   const dialogId = useId();
   const queryClient = useQueryClient();
   const { notify } = useToast();
@@ -325,13 +355,14 @@ function RejectDialog({
     mutationFn: () =>
       rejectRecommendation(projectId, rec.id, reason.trim() || undefined),
     onSuccess: () => {
-      notify("Recommendation rejected.", "success");
+      notify(t("admin.recommendationCard.rejectDialog.rejected"), "success");
       queryClient.invalidateQueries({
         queryKey: ["autopilot-cluster", projectId, rec.cluster_id],
       });
       onClose();
     },
-    onError: () => setInlineError("Could not reject. Please try again."),
+    onError: () =>
+      setInlineError(t("admin.recommendationCard.rejectDialog.errorGeneric")),
   });
 
   function onSubmit(e: FormEvent) {
@@ -348,12 +379,15 @@ function RejectDialog({
       className="dialog dialog-overlay"
     >
       <form onSubmit={onSubmit} className="dialog-body">
-        <h3 id={`${dialogId}-title`}>Reject recommendation</h3>
+        <h3 id={`${dialogId}-title`}>
+          {t("admin.recommendationCard.rejectDialog.heading")}
+        </h3>
         <p className="muted">
-          This marks the recommendation rejected. No work order is created and
-          nothing runs.
+          {t("admin.recommendationCard.rejectDialog.explain")}
         </p>
-        <label htmlFor={`${dialogId}-reason`}>Reason (optional)</label>
+        <label htmlFor={`${dialogId}-reason`}>
+          {t("admin.recommendationCard.rejectDialog.reasonLabel")}
+        </label>
         <textarea
           id={`${dialogId}-reason`}
           value={reason}
@@ -369,14 +403,16 @@ function RejectDialog({
         ) : null}
         <div className="dialog-actions">
           <button type="button" onClick={onClose} disabled={mutation.isPending}>
-            Cancel
+            {t("admin.common.cancel")}
           </button>
           <button
             type="submit"
             className="ap-danger"
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? "Rejecting…" : "Reject recommendation"}
+            {mutation.isPending
+              ? t("admin.recommendationCard.rejectDialog.rejecting")
+              : t("admin.recommendationCard.rejectDialog.submit")}
           </button>
         </div>
       </form>

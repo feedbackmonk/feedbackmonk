@@ -603,3 +603,87 @@ the never-reorganize rule both forbid. Worth considering afterwards whether a `c
 already have one.
 
 **Status**: [PROPOSED]
+
+## UI localization Stage 2 (2026-09-07)
+
+### D-FBR-36: A test written against the defect *class*, before the fix, found two holes a security review's trace had missed — and the authorised fix would have relocated the bug rather than closed it
+
+**Surfaced by**: CLAUDE-F of PODS `collab-20260907-034037`, while implementing R-SEC's finding.
+
+**Type**: `generalizable-insight`.
+
+**What happened**: the security reviewer (frontier tier, read-only, fresh context) demonstrated end to end
+that `validateLocale("constructor")` passed the locale gate — JavaScript's `in` operator walks the prototype
+chain, and the canonicaliser's lowercasing kills every other `Object.prototype` name (`__proto__` →
+`--proto--`, `toString` → `tostring`), leaving exactly one survivor. It traced the cause to
+`isShippedLocale = (code) => code in BY_CODE` and recommended a one-token fix. The LD verified the finding
+independently, priced the fix against that trace, and authorised it.
+
+The implementing worker wrote the ratchet test **first**, and **against the class** — "prototype-chain read
+on a generated table" — rather than against the reported instance. It went red on a case nobody had named:
+
+```
+× rejects Object.prototype names, `constructor` included
+  → resolveLocale([constructor]): expected [Function Object] to be 'en'
+```
+
+`resolveOne` ends with `BARE_DEFAULTS[base] ?? null`. **A plain index read walks the prototype chain exactly
+like `in` does**, so `BARE_DEFAULTS["constructor"]` is the `Object` constructor — truthy, and returned as if
+it were a locale code. `TAG_OVERRIDES[prefix]` in the same function is the same shape. Fixing only the gate
+would have moved the hole one step down the call chain, and every gate test would still have passed.
+
+Closing the third instance the LD then named (`hasKey`) surfaced two more of the same shape in `t()` and
+`loadLocale`. Final count: **7 sites, from a review that found 1.**
+
+**Generalizable insight**: a reviewer reports the instance it can *demonstrate*; that is its job and it did
+it well. But an instance is a sample of a class, and **the fix should be scoped to the class even when the
+authorisation was priced against the sample**. The mechanism that converts one into the other is writing the
+test first and aiming it at the *property* ("no lookup on a generated table may return a prototype member")
+rather than the *symptom* ("`?lang=constructor` must not blank the board"). A test written after the fix,
+against the reported case, is guaranteed to pass and guaranteed to teach nothing.
+
+**Where this pays off again**: any finding phrased as "X is unsafe at call site Y". Before authorising, ask
+what *kind* of mistake X is and grep for the kind. The two follow-on questions that worked here: *what else
+in this file has the same shape?* and *what does the fixed function hand to its caller?*
+
+**Status**: [RESOLVED] — 7 sites closed, ratchet tests added in all three runtimes, each proved red-first by
+reverting the source.
+
+---
+
+### D-FBR-37: An independent reviewer's conclusion was right and its cited evidence was wrong — and the LD propagated the citation as fact
+
+**Surfaced by**: CLAUDE-E of PODS `collab-20260907-034037`, when the LD dispatched a critic finding to it.
+
+**Type**: `generalizable-insight`.
+
+**What happened**: the convergence critic reported that adding a machine-readable `code` to `ApiError` bodies
+regressed a user-facing message, and cited `handlers/attachments.rs:213,247,461` as the reachable path. The
+conclusion was correct. The citation was not: `widget.ts:289` wraps `uploadAttachments` in
+`catch { attachOk = false }` — a deliberate soft failure so a submission is never lost to a failed
+attachment — and renders a toast, never `showError`. **An attachment-upload 500 has never reached the
+error-key map at all.**
+
+The real path is *broader* than the one cited: `submitFeedback` and `fetchWidgetConfig` throw into the outer
+catch, and any database failure on those handlers becomes `ApiError::Internal` through the `From` impls — not
+three call sites, but every fallible repository call on the public submit path.
+
+**The LD read the citation, believed it, and dispatched it to the implementing worker as established fact.**
+The worker re-derived from the call graph anyway, and put the correction in the observations ledger rather
+than quietly fixing it, so the next reader does not re-walk the same wrong path from the same citation.
+
+**Generalizable insight**: **a correct conclusion suppresses scrutiny of its evidence.** This is the harder
+failure to catch precisely because nothing looks wrong — the finding is real, the fix is right, and the
+only thing broken is the reason, which is the part that gets copied forward into commit messages, ledgers and
+the next person's mental model. The same lane had already produced two wrong ledger lines from the same root
+cause and diagnosed it itself: it had been reasoning from the *artefact* (which message keys exist) instead
+of the *call graph* (which codes can reach a client). Both halves of that lesson generalise — verify the
+citation, not just the claim; and enumerate construction sites rather than inferring reachability from a
+catalog.
+
+**Where this pays off again**: any time a review, an oracle or a critic hands over a finding with a file:line.
+The claim and the citation are two assertions, and accepting the first is not accepting the second. Cheap
+test: can you get from the cited line to the observed symptom by reading only code?
+
+**Status**: [RESOLVED] — reachability re-derived by construction-site enumeration for all nine codes; the
+corrected attribution is recorded in `docs/planning/observations-ledger.md` (2026-09-07).

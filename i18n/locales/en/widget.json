@@ -68,13 +68,14 @@
       "sentAttachmentsFailed": "Feedback sent — but attachments couldn't be uploaded."
     },
     "error": {
-      "invalid_input": "Subject and message are required.",
+      "invalid_input": "Check your entry and try again.",
       "network_error": "Could not send. Try again in a moment.",
       "payload_too_large": "That's too large to send. Try removing an attachment.",
       "rate_limited": "Too many submissions just now. Please try again in a minute.",
       "tier_cap": "This project has reached its feedback limit. Please contact the site owner.",
       "unauthorized": "Your session has expired. Reload the page and try again.",
       "not_found": "This feedback form is no longer available.",
+      "internal": "Something went wrong on our side. Please try again shortly.",
       "http_4xx": "Could not send. Check your entry and try again.",
       "http_5xx": "Something went wrong on our side. Please try again shortly.",
       "generic": "Could not send. Try again in a moment."

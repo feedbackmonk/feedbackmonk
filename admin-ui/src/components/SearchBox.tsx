@@ -1,4 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../i18n";
 
 export const SEARCH_DEBOUNCE_MS = 250;
 /** Default single-key shortcut that focuses the search field from anywhere on the page. */
@@ -38,10 +40,13 @@ export function SearchBox({
   value,
   onSearch,
   delayMs = SEARCH_DEBOUNCE_MS,
-  label = "Search feedback",
-  placeholder = "Search feedback…",
+  label,
+  placeholder,
   focusKey = SEARCH_FOCUS_KEY,
 }: SearchBoxProps) {
+  const { t } = useTranslation("admin");
+  const resolvedLabel = label ?? t("admin.searchBox.label");
+  const resolvedPlaceholder = placeholder ?? t("admin.searchBox.placeholder");
   const fieldId = useId();
   const hintId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -97,14 +102,14 @@ export function SearchBox({
   return (
     <div className="search-box" role="search">
       <div className="search-box-head">
-        <label htmlFor={fieldId}>{label}</label>
+        <label htmlFor={fieldId}>{resolvedLabel}</label>
         {text ? (
           <button
             type="button"
             className="link-button search-clear"
             onClick={clear}
           >
-            Clear search
+            {t("admin.searchBox.clear")}
           </button>
         ) : null}
       </div>
@@ -123,7 +128,7 @@ export function SearchBox({
           id={fieldId}
           type="search"
           value={text}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           autoComplete="off"
           aria-describedby={hintId}
           aria-keyshortcuts={focusKey ?? undefined}
@@ -142,13 +147,22 @@ export function SearchBox({
         ) : null}
       </div>
       <p id={hintId} className="search-hint">
-        Tips: <code>"exact phrase"</code> · <code>-exclude</code> ·{" "}
-        <code>this OR that</code>
+        <Trans
+          i18nKey="admin.searchBox.tips"
+          t={t}
+          components={{
+            code1: <code />,
+            code2: <code />,
+            code3: <code />,
+          }}
+        />
         {focusKey ? (
-          <>
-            {" "}
-            · press <kbd>{focusKey}</kbd> to search
-          </>
+          <Trans
+            i18nKey="admin.searchBox.tipsShortcut"
+            t={t}
+            values={{ key: focusKey }}
+            components={{ kbd: <kbd /> }}
+          />
         ) : null}
       </p>
     </div>

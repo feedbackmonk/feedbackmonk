@@ -33,9 +33,12 @@ export interface LocaleSettings {
    */
   locale: string | null;
   /**
-   * Reserved for FR-FBR-40 (outbound reply translation, Stage 2 / W-E). Read
-   * and round-tripped here so the settings page never drops a field it does
-   * not yet render a control for.
+   * FR-FBR-40 — outbound reply translation. When on, the server machine-
+   * translates the team's own status notes and public replies into the
+   * submitter's language before emailing them (the original is always included
+   * below the translation). Off by default, and inert unless the deployment
+   * also configured a translation provider, which is itself off by default —
+   * so ticking this on a deployment with no provider changes nothing.
    */
   translate_outbound: boolean;
 }

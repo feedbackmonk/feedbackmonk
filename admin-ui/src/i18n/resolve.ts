@@ -59,10 +59,15 @@ export function resolveOne(candidate: string): string | null {
   // 2. An explicit decision covers this tag (or a prefix of it). Longest
   //    prefix first, so `zh-Hans-CN` hits `zh-Hans`; script beats region, so
   //    `zh-Hant-CN` is Traditional despite the CN.
+  //    OWN properties only: a plain `TABLE[key]` read walks the prototype
+  //    chain exactly as `in` does, so `constructor` used to come back as the
+  //    `Object` constructor itself — truthy, and returned as if it were a
+  //    locale code, breaking this function's ALWAYS-a-shipped-code contract
+  //    (R-SEC finding + the widget ratchet, collab-20260907-034037).
   const parts = tag.split("-");
   for (let n = parts.length; n >= 2; n--) {
-    const override = TAG_OVERRIDES[parts.slice(0, n).join("-")];
-    if (override) return override;
+    const prefix = parts.slice(0, n).join("-");
+    if (Object.prototype.hasOwnProperty.call(TAG_OVERRIDES, prefix)) return TAG_OVERRIDES[prefix];
   }
 
   // 3. The base language ships its own catalog: de-AT → de.
@@ -70,8 +75,7 @@ export function resolveOne(candidate: string): string | null {
   if (isShippedLocale(base)) return base;
 
   // 4. The base ships only regional catalogs: pt → pt-BR, zh → zh-CN.
-  const bare = BARE_DEFAULTS[base];
-  if (bare) return bare;
+  if (Object.prototype.hasOwnProperty.call(BARE_DEFAULTS, base)) return BARE_DEFAULTS[base];
 
   // 5. Not a language we ship.
   return null;

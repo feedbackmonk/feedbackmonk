@@ -1,17 +1,16 @@
-# `pages/settings/` — Admin tier settings page (P3 Stage 2)
+# `pages/settings/` — Admin settings pages (P3 Stage 2 tier; Stage 2 W-D consolidation)
 
 ## Synopsis
 
-`/admin/settings/tier` "Plan & usage" page — current-tier card, per-resource UsageMeter, capability matrix, UpgradePrompt CTA. Read-only consumer of `GET /api/v1/admin/tier` (Contract C17), closing the user-facing loop for FR-FBR-14. Polar billing deferred per DEC-FBR-DEFER-01 — the Upgrade button is an explicit "Contact support to upgrade" mailto stub.
+The five `/admin/settings/*` pages: **tier** (Plan & usage — current-tier card, UsageMeter, capability matrix, UpgradePrompt CTA; Contract C17, FR-FBR-14), **language** (the tenant's default UI locale; Contract C38, FR-FBR-38), **board** (public-board enable + moderation toggles; migration 00016), **hosting** (tenant subdomain + custom domains; FR-FBR-32/33), and **runner-tokens** (runner key + write-token lifecycle; Contract C25, FR-FBR-24). All five are now fully localized (`useTranslation("admin")`), consolidating what earlier stages left split across file-header docs (this index used to cover only the tier page — see Decision Log).
 
 ## Purpose & Responsibilities
 
-Renders the user-facing surface for FR-FBR-14 (Tier enforcement). Stage 1 (commit `d2266ae`) shipped the backend tier model + caps + free-tier footer + admin tier-status endpoint; this module closes the user-facing loop with:
-
-- **Current-plan card** — tier badge (Free / Starter / Pro / Self-host)
-- **Usage meters** — accessible progressbars for projects-per-org and monthly-feedback-volume, with WCAG 2.1 AA color + text dual-encoding
-- **Capability matrix** — custom branding, custom domain, EU residency, free-tier footer (with inverted semantics, see Decision Log)
-- **Upgrade prompt** — tier-aware CTA (mailto stub until Polar lands)
+- **`TierSettings.tsx`** — read-only consumer of `GET /api/v1/admin/tier`. Current-plan card, accessible usage meters (WCAG 2.1 AA color + text dual-encoding), capability matrix (custom branding, custom domain, EU residency, free-tier footer — inverted semantics, see Decision Log), tier-aware upgrade CTA (mailto stub until Polar lands, DEC-FBR-DEFER-01).
+- **`LanguageSettings.tsx`** — the tenant's default admin/email locale. A DEFAULT, not an override: a visitor's own choice and an end-user's submitted locale both win over it. "Browser default" (`null`) is a real, persisted choice.
+- **`BoardSettings.tsx`** — per-project `public_board_enabled` toggle + a read-only `board_requires_moderation` explainer (v1 always requires moderation; the flag is reserved for a future auto-approve relaxation).
+- **`HostingSettings.tsx`** — the tenant's public address: an explicit edit→save subdomain control (changing it moves the board) and the paid custom-domain claim flow, gated by `UpgradePrompt` when the tier lacks the capability.
+- **`RunnerTokens.tsx` / `RunnerTokenCard.tsx` / `RunnerTokensList.tsx`** — the complete "enable a runner" surface: register a `runner`-class signing key, optionally register an issued token for visibility, list + revoke tokens. Structural security property surfaced in copy: a runner token can never author `approved` (C22 inv. 2).
 
 ## File Index
 
@@ -23,10 +22,15 @@ Renders the user-facing surface for FR-FBR-14 (Tier enforcement). Stage 1 (commi
 | `__tests__/TierSettings.test.tsx` | Vitest suite — 13 tests; **inlined Contract C19 fixture is the Stage-2-side drift surface** paired with `tier-enforcement-status` Probe B |
 | `LanguageSettings.tsx` | `/admin/settings/language` — the tenant's default UI locale (FR-FBR-38, Contract C38); applies the saved language immediately |
 | `__tests__/LanguageSettings.test.tsx` | Vitest suite — precedence of "Browser default" (null), PUT shape, immediate application, `invalid_locale` rejection |
+| `BoardSettings.tsx` | `/admin/settings/board` — public-board enable + moderation-required explainer (Contract C28, migration 00016) |
+| `HostingSettings.tsx` | `/admin/settings/hosting` — subdomain edit + custom-domain claim/release (FR-FBR-32/33) |
+| `__tests__/HostingSettings.test.tsx` | Vitest suite — subdomain save/dirty-state, claim form gated on `custom_domain_available` |
+| `RunnerTokens.tsx` | `/admin/settings/runner-tokens` — page shell: the explainer + both register forms + the list (Contract C25, FR-FBR-24) |
+| `RunnerTokenCard.tsx` | One registered token row: lifecycle badge (active/revoked/expired), metadata, revoke action + confirm |
+| `RunnerTokensList.tsx` | Fetches + renders the registered-token list; empty state explains registration is optional bookkeeping |
+| `__tests__/RunnerTokens.test.tsx` | Vitest suite — key registration, token registration, revoke confirm flow |
 
-> This directory has grown past the tier page it was originally written for: `BoardSettings.tsx`, `HostingSettings.tsx`, `RunnerTokens.tsx` and `RunnerTokenCard.tsx` also live here and are documented in their own file headers rather than this index. Consolidating them is Stage-2 (W-D) work, listed in that lane's deltas.
-
-E2E a11y coverage lives in `admin-ui/e2e/tier-settings-a11y.spec.ts` (Playwright + axe-core, 4/4 PASS, 0 violations on Free / Starter / Pro / Self-host).
+E2E a11y coverage: `admin-ui/e2e/tier-settings-a11y.spec.ts`, `hosting-settings-a11y.spec.ts` (Playwright + axe-core, per-scenario, `en-US`+`de-DE`), and `moderation-a11y.spec.ts` covers `BoardSettings.tsx`.
 
 ## Public API & Usage
 
@@ -56,10 +60,18 @@ Data shape consumed verbatim from Contract C17 (`TierStatusResponse`) — see `s
 ## Relationships & Dependencies
 
 - **`shared/ApiClient.ts`** — `fetchTierStatus()` is the single read path. The 402/409 axios interceptor (`err.tierCapExceeded`) and `extractTierCapExceeded(err)` helper are NOT consumed in this module — they exist for future mutation `onError` callers.
-- **`shared/types.gen.ts`** — `TierStatus` / `TierQuotas` / `Tier` / `TIER_LABELS` / `TierCapExceededBody` / `isTierCapExceeded` are all consumed.
+- **`shared/types.gen.ts`** — `TierStatus` / `TierQuotas` / `Tier` / `TierCapExceededBody` / `isTierCapExceeded` are all consumed. The tier label itself comes from `i18n/useAdminLabels.ts::tier()` (Stage 2 / W-D, R-1) — `TIER_LABELS` no longer exists on this file.
 - **Backend pair**: `crates/feedbackmonk-api/src/handlers/admin_tier.rs` is the server side of Contract C17. The `tier-enforcement-status` Verification Oracle (`.claude/oracles/tier-enforcement-status/`) Probe B asserts the canonical four-tier shape from the Rust side; **this module's `TierSettings.test.tsx` fixture asserts the same canonical shape from the React side**. Both must update together if Contract C19 rebases.
 
 ## Decision Log
+
+### Stage-2 (W-D) index consolidation
+
+**Decision**: This README now indexes all five settings pages instead of only `TierSettings.tsx`'s trio; the earlier note deferring `BoardSettings.tsx`/`HostingSettings.tsx`/`RunnerTokens.tsx`/`RunnerTokenCard.tsx` to their own file headers is retired.
+
+**Rationale**: ULADP documentation parity — the directory grew to five pages before Stage 2, and a module README that only covers 60% of its files misleads an agent orienting from it. The consolidation was explicitly deferred to Stage 2 / W-D by the earlier note; this is that follow-through, done in the same commit as the localization pass that touches every file here.
+
+**Implementation**: File Index above; every page's own header comment still carries its detailed contract notes (Contract C17/C25/C28/C38, FR-FBR-14/24/32/33/38) — this index is the map, not a duplicate of them.
 
 ### Current
 

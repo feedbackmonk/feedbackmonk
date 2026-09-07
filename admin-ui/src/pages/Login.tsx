@@ -2,8 +2,10 @@ import { useState, type FormEvent } from "react";
 import axios from "axios";
 import { postLogin } from "../shared/ApiClient";
 import { useRouter } from "../shared/router";
+import { useTranslation } from "../i18n";
 
 export function Login() {
+  const { t } = useTranslation("admin");
   const { search, navigate } = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,11 +27,11 @@ export function Login() {
       });
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 401) {
-        setError("Invalid email or password.");
+        setError(t("admin.login.errors.invalidCredentials"));
       } else if (axios.isAxiosError(err) && err.response?.status === 403) {
-        setError("Tenant not yet verified. Check your inbox.");
+        setError(t("admin.login.errors.tenantUnverified"));
       } else {
-        setError("Login failed. Please try again.");
+        setError(t("admin.login.errors.generic"));
       }
     } finally {
       setSubmitting(false);
@@ -39,10 +41,10 @@ export function Login() {
   return (
     <main className="login-page">
       <form className="login-card" onSubmit={onSubmit} noValidate>
-        <h1>feedbackmonk Admin</h1>
-        <p className="muted">Sign in to triage feedback.</p>
+        <h1>{t("admin.login.title")}</h1>
+        <p className="muted">{t("admin.login.subtitle")}</p>
 
-        <label htmlFor="login-email">Email</label>
+        <label htmlFor="login-email">{t("admin.login.emailLabel")}</label>
         <input
           id="login-email"
           name="email"
@@ -54,7 +56,7 @@ export function Login() {
           disabled={submitting}
         />
 
-        <label htmlFor="login-password">Password</label>
+        <label htmlFor="login-password">{t("admin.login.passwordLabel")}</label>
         <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
           <input
             id="login-password"
@@ -72,10 +74,17 @@ export function Login() {
             className="login-password-toggle"
             onClick={() => setShowPassword((v) => !v)}
             disabled={submitting}
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={
+              showPassword
+                ? t("admin.login.hidePassword")
+                : t("admin.login.showPassword")
+            }
             aria-pressed={showPassword}
-            title={showPassword ? "Hide password" : "Show password"}
-            tabIndex={-1}
+            title={
+              showPassword
+                ? t("admin.login.hidePassword")
+                : t("admin.login.showPassword")
+            }
             style={{
               position: "absolute",
               right: "0.5rem",
@@ -133,7 +142,7 @@ export function Login() {
         ) : null}
 
         <button type="submit" disabled={submitting || !email || !password}>
-          {submitting ? "Signing in…" : "Sign in"}
+          {submitting ? t("admin.login.signingIn") : t("admin.login.signIn")}
         </button>
       </form>
     </main>

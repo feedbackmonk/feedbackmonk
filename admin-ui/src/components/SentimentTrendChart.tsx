@@ -1,10 +1,12 @@
 import { useId } from "react";
 import {
-  SENTIMENT_LABELS,
   SENTIMENT_ORDER,
   type SentimentTrendResponse,
 } from "../shared/types.gen";
 import { formatAbsolute } from "../shared/format";
+import { useTranslation } from "../i18n";
+import { useLabels } from "../i18n/useLabels";
+import { useLocale } from "../i18n/useLocale";
 
 interface SentimentTrendChartProps {
   data: SentimentTrendResponse;
@@ -28,6 +30,9 @@ const PAD_X = 4;
 const PAD_TOP = 4;
 
 export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
+  const { t } = useTranslation("admin");
+  const labels = useLabels();
+  const { locale } = useLocale();
   const captionId = useId();
   const tableId = useId();
   const { buckets, totals, bucket } = data;
@@ -36,7 +41,9 @@ export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
   if (buckets.length === 0 || totals.total === 0) {
     return (
       <figure className="sentiment-trend sentiment-trend-empty">
-        <figcaption className="muted">No sentiment data yet</figcaption>
+        <figcaption className="muted">
+          {t("admin.sentimentTrend.empty")}
+        </figcaption>
       </figure>
     );
   }
@@ -48,14 +55,25 @@ export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
   const svgWidth = innerWidth + PAD_X * 2;
   const svgHeight = CHART_HEIGHT + PAD_TOP;
 
-  const summary = `${totals.total.toLocaleString()} classified feedback — ${pctPositive}% positive (${totals.positive.toLocaleString()} positive, ${totals.neutral.toLocaleString()} neutral, ${totals.negative.toLocaleString()} negative), bucketed by ${bucket}.`;
+  const summary = t("admin.sentimentTrend.summary", {
+    total: totals.total.toLocaleString(locale),
+    pct: pctPositive,
+    positive: totals.positive.toLocaleString(locale),
+    neutral: totals.neutral.toLocaleString(locale),
+    negative: totals.negative.toLocaleString(locale),
+    bucket,
+  });
 
   return (
     <figure className="sentiment-trend" aria-describedby={tableId}>
       <figcaption id={captionId} className="sentiment-trend-summary">
-        <span className="sentiment-trend-pct">{pctPositive}% positive</span>{" "}
+        <span className="sentiment-trend-pct">
+          {t("admin.sentimentTrend.pctPositive", { pct: pctPositive })}
+        </span>{" "}
         <span className="muted">
-          across {totals.total.toLocaleString()} classified
+          {t("admin.sentimentTrend.acrossClassified", {
+            total: totals.total.toLocaleString(locale),
+          })}
         </span>
       </figcaption>
 
@@ -90,7 +108,11 @@ export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
                     height={segHeight}
                   >
                     <title>
-                      {`${formatAbsolute(b.bucket_start)}: ${count} ${SENTIMENT_LABELS[s].toLowerCase()}`}
+                      {t("admin.sentimentTrend.segmentTitle", {
+                        when: formatAbsolute(b.bucket_start, locale),
+                        count,
+                        sentiment: labels.sentiment(s).toLowerCase(),
+                      })}
                     </title>
                   </rect>
                 );
@@ -106,17 +128,17 @@ export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
         <caption>{summary}</caption>
         <thead>
           <tr>
-            <th scope="col">Period start</th>
-            <th scope="col">{SENTIMENT_LABELS.negative}</th>
-            <th scope="col">{SENTIMENT_LABELS.neutral}</th>
-            <th scope="col">{SENTIMENT_LABELS.positive}</th>
-            <th scope="col">Total</th>
+            <th scope="col">{t("admin.sentimentTrend.periodStart")}</th>
+            <th scope="col">{labels.sentiment("negative")}</th>
+            <th scope="col">{labels.sentiment("neutral")}</th>
+            <th scope="col">{labels.sentiment("positive")}</th>
+            <th scope="col">{t("admin.sentimentTrend.total")}</th>
           </tr>
         </thead>
         <tbody>
           {buckets.map((b) => (
             <tr key={b.bucket_start}>
-              <th scope="row">{formatAbsolute(b.bucket_start)}</th>
+              <th scope="row">{formatAbsolute(b.bucket_start, locale)}</th>
               <td>{b.negative}</td>
               <td>{b.neutral}</td>
               <td>{b.positive}</td>
@@ -126,7 +148,7 @@ export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
         </tbody>
         <tfoot>
           <tr>
-            <th scope="row">Totals</th>
+            <th scope="row">{t("admin.sentimentTrend.totals")}</th>
             <td>{totals.negative}</td>
             <td>{totals.neutral}</td>
             <td>{totals.positive}</td>
@@ -142,7 +164,7 @@ export function SentimentTrendChart({ data }: SentimentTrendChartProps) {
         {SENTIMENT_ORDER.map((s) => (
           <li key={s} className={`sentiment-legend-${s}`}>
             <span className={`sentiment-legend-swatch sentiment-fill-${s}`} />
-            {SENTIMENT_LABELS[s]}
+            {labels.sentiment(s)}
           </li>
         ))}
       </ul>

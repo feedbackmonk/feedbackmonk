@@ -10,6 +10,8 @@ import {
 import { extractTierCapExceeded } from "../../shared/ApiClient";
 import { useToast } from "../../components/Toast";
 import { UpgradePrompt } from "./UpgradePrompt";
+import { Trans } from "react-i18next";
+import { useTranslation } from "../../i18n";
 
 // /admin/settings/hosting — tenant subdomain + custom domains (FR-FBR-32/33).
 //
@@ -25,6 +27,7 @@ import { UpgradePrompt } from "./UpgradePrompt";
 //
 // Chrome mirrors BoardSettings / TierSettings.
 export function HostingSettings() {
+  const { t } = useTranslation("admin");
   const queryClient = useQueryClient();
   const { notify } = useToast();
   const queryKey = ["admin-hosting"];
@@ -35,24 +38,22 @@ export function HostingSettings() {
   return (
     <main className="hosting-settings-page" aria-labelledby="hosting-title">
       <header className="page-header">
-        <h1 id="hosting-title">Public address</h1>
-        <p className="muted">
-          Where your feedback board and widget live on the internet.
-        </p>
+        <h1 id="hosting-title">{t("admin.hostingSettings.title")}</h1>
+        <p className="muted">{t("admin.hostingSettings.intro")}</p>
       </header>
 
       {query.isError ? (
         <div role="alert" className="error-block">
-          Failed to load hosting settings.{" "}
+          {t("admin.hostingSettings.loadError")}{" "}
           <button type="button" onClick={() => query.refetch()}>
-            Retry
+            {t("admin.common.retry")}
           </button>
         </div>
       ) : null}
 
       {query.isPending ? (
         <p className="muted" aria-busy="true">
-          Loading…
+          {t("admin.common.loading")}
         </p>
       ) : settings ? (
         <>
@@ -83,6 +84,7 @@ function SubdomainCard({
   onSaved: (next: HostingShape) => void;
   notify: Notify;
 }) {
+  const { t } = useTranslation("admin");
   const inputId = useId();
   const [value, setValue] = useState(settings.subdomain ?? "");
 
@@ -90,10 +92,13 @@ function SubdomainCard({
     mutationFn: (label: string | null) => putSubdomain(label),
     onSuccess: (next) => {
       onSaved(next);
-      notify("Public address updated.", "success");
+      notify(t("admin.hostingSettings.subdomain.saved"), "success");
     },
     onError: (err: unknown) => {
-      notify(errorMessage(err, "Could not update your public address."), "error");
+      notify(
+        errorMessage(err, t("admin.hostingSettings.subdomain.saveFailed")),
+        "error",
+      );
     },
   });
 
@@ -103,11 +108,8 @@ function SubdomainCard({
   if (settings.cname_target === null && settings.subdomain === null) {
     return (
       <section className="settings-card" aria-labelledby="subdomain-heading">
-        <h2 id="subdomain-heading">Subdomain</h2>
-        <p className="muted">
-          This deployment doesn’t use tenant subdomains — your board and widget
-          are served on whatever hostname this instance answers on.
-        </p>
+        <h2 id="subdomain-heading">{t("admin.hostingSettings.subdomain.heading")}</h2>
+        <p className="muted">{t("admin.hostingSettings.subdomain.noSubdomains")}</p>
       </section>
     );
   }
@@ -116,10 +118,15 @@ function SubdomainCard({
 
   return (
     <section className="settings-card" aria-labelledby="subdomain-heading">
-      <h2 id="subdomain-heading">Subdomain</h2>
+      <h2 id="subdomain-heading">{t("admin.hostingSettings.subdomain.heading")}</h2>
       {settings.public_host ? (
         <p className="muted">
-          Your board is at <code>https://{settings.public_host}</code>
+          <Trans
+            i18nKey="admin.hostingSettings.subdomain.boardAt"
+            t={t}
+            values={{ host: settings.public_host }}
+            components={{ code: <code /> }}
+          />
         </p>
       ) : null}
 
@@ -130,7 +137,7 @@ function SubdomainCard({
           mutation.mutate(trimmed === "" ? null : trimmed);
         }}
       >
-        <label htmlFor={inputId}>Your subdomain</label>
+        <label htmlFor={inputId}>{t("admin.hostingSettings.subdomain.fieldLabel")}</label>
         <input
           id={inputId}
           type="text"
@@ -142,11 +149,12 @@ function SubdomainCard({
           aria-describedby={`${inputId}-help`}
         />
         <p id={`${inputId}-help`} className="muted">
-          Lowercase letters, numbers and hyphens; 3–63 characters. Changing it
-          moves your board — any link you’ve already shared will stop working.
+          {t("admin.hostingSettings.subdomain.help")}
         </p>
         <button type="submit" disabled={!dirty || mutation.isPending}>
-          {mutation.isPending ? "Saving…" : "Save"}
+          {mutation.isPending
+            ? t("admin.hostingSettings.saving")
+            : t("admin.common.save")}
         </button>
       </form>
     </section>
@@ -162,6 +170,7 @@ function CustomDomainCard({
   onChanged: () => void;
   notify: Notify;
 }) {
+  const { t } = useTranslation("admin");
   const inputId = useId();
   const [value, setValue] = useState("");
 
@@ -170,19 +179,23 @@ function CustomDomainCard({
     onSuccess: () => {
       setValue("");
       onChanged();
-      notify("Domain added. Point your DNS at us to finish.", "success");
+      notify(t("admin.hostingSettings.customDomain.added"), "success");
     },
     onError: (err: unknown) =>
-      notify(errorMessage(err, "Could not add that domain."), "error"),
+      notify(
+        errorMessage(err, t("admin.hostingSettings.customDomain.addFailed")),
+        "error",
+      ),
   });
 
   const release = useMutation({
     mutationFn: (id: string) => releaseDomain(id),
     onSuccess: () => {
       onChanged();
-      notify("Domain removed.", "success");
+      notify(t("admin.hostingSettings.customDomain.removed"), "success");
     },
-    onError: () => notify("Could not remove that domain.", "error"),
+    onError: () =>
+      notify(t("admin.hostingSettings.customDomain.removeFailed"), "error"),
   });
 
   // Custom domains need a CNAME target, which only exists once this deployment
@@ -194,25 +207,34 @@ function CustomDomainCard({
 
   return (
     <section className="settings-card" aria-labelledby="custom-domain-heading">
-      <h2 id="custom-domain-heading">Your own domain</h2>
+      <h2 id="custom-domain-heading">
+        {t("admin.hostingSettings.customDomain.heading")}
+      </h2>
       <p className="muted">
-        Serve your board <em>and</em> your widget from a hostname you own, like{" "}
-        <code>feedback.yourcompany.com</code>. A first-party endpoint isn’t
-        blocked by tracker blocklists and passes a strict <code>connect-src</code>{" "}
-        policy.
+        <Trans
+          i18nKey="admin.hostingSettings.customDomain.intro"
+          t={t}
+          components={{
+            em: <em />,
+            code1: <code />,
+            code2: <code />,
+          }}
+        />
       </p>
 
       {settings.custom_domain_available ? (
         <>
           <ol className="muted">
-            <li>Add your hostname below.</li>
+            <li>{t("admin.hostingSettings.customDomain.step1")}</li>
             <li>
-              Create a CNAME record pointing it at{" "}
-              <code>{settings.cname_target}</code>.
+              <Trans
+                i18nKey="admin.hostingSettings.customDomain.step2"
+                t={t}
+                values={{ target: settings.cname_target }}
+                components={{ code: <code /> }}
+              />
             </li>
-            <li>
-              We issue the HTTPS certificate automatically once DNS resolves.
-            </li>
+            <li>{t("admin.hostingSettings.customDomain.step3")}</li>
           </ol>
 
           <form
@@ -222,7 +244,9 @@ function CustomDomainCard({
               if (trimmed) claim.mutate(trimmed);
             }}
           >
-            <label htmlFor={inputId}>Hostname</label>
+            <label htmlFor={inputId}>
+              {t("admin.hostingSettings.customDomain.hostnameLabel")}
+            </label>
             <input
               id={inputId}
               type="text"
@@ -234,26 +258,32 @@ function CustomDomainCard({
               onChange={(e) => setValue(e.target.value)}
             />
             <button type="submit" disabled={!value.trim() || claim.isPending}>
-              {claim.isPending ? "Adding…" : "Add domain"}
+              {claim.isPending
+                ? t("admin.hostingSettings.customDomain.adding")
+                : t("admin.hostingSettings.customDomain.addDomain")}
             </button>
           </form>
         </>
       ) : (
         <UpgradePrompt
           currentTier={settings.tier}
-          message="Custom domains are available on the Pro plan and above."
+          message={t("admin.hostingSettings.customDomain.upgradeMessage")}
         />
       )}
 
       {settings.domains.length > 0 ? (
         <table className="domain-table">
-          <caption className="visually-hidden">Your custom domains</caption>
+          <caption className="visually-hidden">
+            {t("admin.hostingSettings.customDomain.tableCaption")}
+          </caption>
           <thead>
             <tr>
-              <th scope="col">Domain</th>
-              <th scope="col">Status</th>
+              <th scope="col">{t("admin.hostingSettings.customDomain.columns.domain")}</th>
+              <th scope="col">{t("admin.hostingSettings.customDomain.columns.status")}</th>
               <th scope="col">
-                <span className="visually-hidden">Actions</span>
+                <span className="visually-hidden">
+                  {t("admin.hostingSettings.customDomain.columns.actions")}
+                </span>
               </th>
             </tr>
           </thead>
@@ -266,7 +296,9 @@ function CustomDomainCard({
                 <td>
                   {/* WCAG 1.4.1: status is conveyed by the word, not by colour
                       alone — the same dual-encoding rule UsageMeter follows. */}
-                  {d.status === "active" ? "Live" : "Waiting for DNS"}
+                  {d.status === "active"
+                    ? t("admin.hostingSettings.customDomain.statusLive")
+                    : t("admin.hostingSettings.customDomain.statusWaiting")}
                 </td>
                 <td>
                   <button
@@ -274,7 +306,7 @@ function CustomDomainCard({
                     disabled={release.isPending}
                     onClick={() => release.mutate(d.id)}
                   >
-                    Remove
+                    {t("admin.hostingSettings.customDomain.remove")}
                     <span className="visually-hidden"> {d.domain}</span>
                   </button>
                 </td>

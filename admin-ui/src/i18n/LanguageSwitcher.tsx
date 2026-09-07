@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { LOCALES } from "./locales.gen";
 import { useLocale } from "./useLocale";
 import { useTranslation } from "./index";
@@ -21,6 +21,18 @@ export function LanguageSwitcher({ className }: { className?: string }) {
   const { locale, setLocale } = useLocale();
   const { t } = useTranslation("public");
   const id = useId();
+  // R-A11Y A-4: a runtime language change swaps the whole page's text with no
+  // announcement. `setLocale` is awaited so `t` below is already bound to the
+  // NEW language by the time this renders the confirmation — a screen-reader
+  // user hears the change confirmed in the language it changed TO, not the one
+  // it changed FROM.
+  const [announcement, setAnnouncement] = useState("");
+
+  async function onChange(code: string) {
+    await setLocale(code);
+    const name = LOCALES.find((l) => l.code === code)?.name ?? code;
+    setAnnouncement(t("public.switcher.changed", { name }));
+  }
 
   return (
     <div className={className ?? "language-switcher"}>
@@ -29,7 +41,7 @@ export function LanguageSwitcher({ className }: { className?: string }) {
         className="language-switcher-select"
         aria-label={t("public.switcher.label")}
         value={locale}
-        onChange={(e) => setLocale(e.target.value)}
+        onChange={(e) => void onChange(e.target.value)}
       >
         {LOCALES.map((l) => (
           <option key={l.code} value={l.code} lang={l.code}>
@@ -37,6 +49,9 @@ export function LanguageSwitcher({ className }: { className?: string }) {
           </option>
         ))}
       </select>
+      <span role="status" className="visually-hidden">
+        {announcement}
+      </span>
     </div>
   );
 }

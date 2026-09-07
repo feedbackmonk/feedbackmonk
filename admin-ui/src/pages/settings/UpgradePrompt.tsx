@@ -1,4 +1,6 @@
-import { TIER_LABELS, type Tier } from "../../shared/types.gen";
+import { type Tier } from "../../shared/types.gen";
+import { useTranslation } from "../../i18n";
+import { useAdminLabels } from "../../i18n/useAdminLabels";
 
 interface UpgradePromptProps {
   /** Current tier — drives whether the upgrade button renders. */
@@ -15,23 +17,35 @@ interface UpgradePromptProps {
 //
 // Self-host tier renders no CTA at all (no upsell from the cap-free tier).
 export function UpgradePrompt({ currentTier, message }: UpgradePromptProps) {
+  const { t } = useTranslation("admin");
+  const adminLabels = useAdminLabels();
   if (currentTier === "self_host") return null;
 
   const defaultMessage =
     currentTier === "free"
-      ? `You're on ${TIER_LABELS.free}. Upgrade to Starter for 3 projects per org and 500 monthly feedback.`
+      ? t("admin.upgradePrompt.defaultMessage.free", {
+          tier: adminLabels.tier("free"),
+        })
       : currentTier === "starter"
-        ? `You're on ${TIER_LABELS.starter}. Upgrade to Pro for unlimited projects, 10,000 monthly feedback, custom domain, and EU residency.`
-        : `You're on ${TIER_LABELS.pro}. Self-hosting available for unlimited usage.`;
+        ? t("admin.upgradePrompt.defaultMessage.starter", {
+            tier: adminLabels.tier("starter"),
+          })
+        : t("admin.upgradePrompt.defaultMessage.pro", {
+            tier: adminLabels.tier("pro"),
+          });
 
   return (
-    <div className="upgrade-prompt" role="region" aria-label="Upgrade options">
+    <div
+      className="upgrade-prompt"
+      role="region"
+      aria-label={t("admin.upgradePrompt.aria")}
+    >
       <p className="upgrade-prompt-message">{message ?? defaultMessage}</p>
       <a
         className="upgrade-prompt-button"
         href="mailto:support@feedbackmonk.com?subject=Upgrade%20request"
       >
-        Contact support to upgrade
+        {t("admin.upgradePrompt.cta")}
       </a>
     </div>
   );
