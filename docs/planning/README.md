@@ -83,6 +83,12 @@ A command that invokes a write (e.g., `/0-uldf-ldis-intake`) generates its path 
 | `intakes/*.md` | `/0-uldf-ldis-intake` | Task perception, specification analysis, calibration, engagement strategy, collaboration assessment |
 | `plans/*.md` | `/0-uldf-ldis-plan`, `/0-uldf-ltads-start` | Execution strategy, decomposition, agent assignments, sync points |
 | `ideations/*.md` | `/0-uldf-ldis-ideate` | Exploration summary, feature domains, scope thinking, early decisions |
+| `deferred/*.md` | `/0-uldf-inject` | DEFER briefs — work filed for later or for another repo |
+| `handoffs/*.md` | hand-written | Frozen interface contracts passed between phases |
+| `20260907-claude-md-cut-archive.md` | hand-written | The prose the 2026-09-07 project-index cut removed, verbatim. History; see also `docs/pending-followups.md` |
+| `feedbackmonk-deploy-state.md` | hand-written | Pointer to the authoritative deploy record in the GitCellar repo |
+| `observations-ledger.md` | `/0-uldf-oracle` | Standing observations about this project's oracles |
+| `proceed-trail.md` | `/0-uldf-proceed` | The topology each phase boundary chose, and why |
 
 **Note**: Specification artifacts live in `docs/specs/` (managed by `/0-uldf-ldis-spec`), not here. That directory holds the project's canonical living spec (state), not per-invocation snapshots (events).
 

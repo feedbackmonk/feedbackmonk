@@ -1,6 +1,6 @@
 {
   "name": "feedbackmonk",
-  "renameNote": "Working name changed from 'Feedbackr' to 'feedbackmonk' on 2026-05-14 per DEC-FBR-11. ID prefixes DEC-FBR-* / FR-FBR-* are stable and do NOT rename. Code-level rename of feedbackr-* crates / FEEDBACKR_* env vars completed in PF-RENAME-01. Working-dir rename remains tracked in CLAUDE.md Pending Follow-Ups (PF-RENAME-02 is user-action).",
+  "renameNote": "Working name changed from 'Feedbackr' to 'feedbackmonk' on 2026-05-14 per DEC-FBR-11. ID prefixes DEC-FBR-* / FR-FBR-* are stable and do NOT rename. The code-level rename (feedbackr-* crates, FEEDBACKR_* env vars) and the working-directory rename are both complete; no rename work is outstanding.",
   "description": "Standalone open-source SaaS user-feedback platform. Submission widget + status-workflow triage + public roadmap with voting + status emails. Multi-product per tenant. AGPL-3.0-or-later.",
   "license": "AGPL-3.0-or-later",
   "stage": "pre-P0",
