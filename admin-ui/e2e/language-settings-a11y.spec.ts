@@ -77,7 +77,10 @@ test.describe("Language settings a11y smoke (WCAG 2.1 AA)", () => {
     await select.selectOption("fa");
 
     // The document follows the saved setting — including direction.
-    await expect(page.locator("html")).toHaveAttribute("lang", "fa");
+    // R-A11Y A-2: `fa` has no MT provider, so its catalog is English permanently.
+    // `lang` states the language of the WORDS (en); `dir` still follows the
+    // chosen locale, so the mirrored RTL layout survives.
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     await expectNoAxeViolations(page, "language settings after save (fa, RTL)");
   });

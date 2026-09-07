@@ -219,7 +219,10 @@ test.describe("Admin UI RTL smoke (fa-IR)", () => {
 
     await page.goto("/login");
     const html = page.locator("html");
-    await expect(html).toHaveAttribute("lang", "fa");
+    // R-A11Y A-2: `fa` has no MT provider, so its catalog is English permanently.
+    // `lang` states the language of the WORDS (en); `dir` still follows the
+    // chosen locale, so the mirrored RTL layout survives.
+    await expect(html).toHaveAttribute("lang", "en");
     await expect(html).toHaveAttribute("dir", "rtl");
 
     const [scrollWidth, clientWidth] = await page.evaluate(() => [

@@ -5,6 +5,7 @@ import {
   activeLocale,
   applyCatalog,
   canonicalise,
+  contentLang,
   dir,
   hasKey,
   loadLocale,
@@ -258,6 +259,34 @@ describe("setLocale / loadLocale / dir", () => {
     setLocale("fa");
     expect(activeLocale()).toBe("fa");
     expect(dir()).toBe("rtl");
+  });
+
+  // R-A11Y finding A-2. `ga, fa, ml, is, si` have no MT provider, so their
+  // catalogs are English PERMANENTLY -- `/1-translate` fills the other 25 and
+  // never these. `.fbm-root lang="fa"` over English words makes a screen reader
+  // read English with Persian phonology. `dir()` deliberately does NOT change:
+  // the visitor keeps the mirrored layout their locale asks for.
+  it("contentLang reports the language the words are IN, not the active locale", () => {
+    for (const code of ["ga", "fa", "ml", "is", "si"]) {
+      setLocale(code);
+      expect(activeLocale()).toBe(code);
+      expect(contentLang()).toBe("en");
+    }
+    setLocale("fa");
+    expect(dir()).toBe("rtl");
+  });
+
+  it("contentLang reports the locale itself when a provider covers it", () => {
+    // No `if` guard: a code that stopped being shipped must FAIL here rather
+    // than silently skip. (`zh-Hant` was in this list and is not a shipped
+    // code, so its iteration asserted nothing — test-mod judge, A-2 record.)
+    for (const code of ["de", "ja", "pt-BR", "zh-TW"]) {
+      setLocale(code);
+      expect(activeLocale()).toBe(code);
+      expect(contentLang()).toBe(code);
+    }
+    setLocale("en");
+    expect(contentLang()).toBe("en");
   });
 
   it("loads a shipped locale's chunk without throwing", async () => {

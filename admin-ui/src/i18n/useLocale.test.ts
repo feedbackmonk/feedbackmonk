@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   LOCALE_STORAGE_KEY,
   applyDocumentLocale,
+  contentLanguageOf,
   browserLocale,
   clearStoredLocale,
   dirOf,
@@ -158,9 +159,42 @@ describe("applying a locale", () => {
 
   it("sets dir=rtl for an RTL locale", async () => {
     await setLocale("fa");
-    expect(document.documentElement.lang).toBe("fa");
     expect(document.documentElement.dir).toBe("rtl");
     expect(dirOf("fa")).toBe("rtl");
+  });
+
+  // R-A11Y finding A-2. `fa` has no MT provider, so its catalog is English
+  // PERMANENTLY -- `/1-translate` fills the other 25 and never this one. The
+  // old assertion here was `lang === "fa"`, which declared Persian over English
+  // words and made a screen reader read English with Persian phonology.
+  // `dir` deliberately still follows the CHOSEN locale: the visitor keeps the
+  // mirrored layout they asked for, announced in a voice that can pronounce
+  // what is actually on screen.
+  it("declares the language the words are IN, not the locale, for an english-fallback locale", async () => {
+    await setLocale("fa");
+    expect(document.documentElement.lang).toBe("en");
+    expect(document.documentElement.dir).toBe("rtl");
+    expect(i18n.language).toBe("fa");
+  });
+
+  it.each(["ga", "ml", "is", "si"])(
+    "declares lang=en for english-fallback locale %s",
+    async (code) => {
+      await setLocale(code);
+      expect(document.documentElement.lang).toBe("en");
+      expect(i18n.language).toBe(code);
+    },
+  );
+
+  it("still declares the locale itself when a provider covers it", async () => {
+    await setLocale("de");
+    expect(document.documentElement.lang).toBe("de");
+    expect(contentLanguageOf("de")).toBe("de");
+    expect(contentLanguageOf("pt-BR")).toBe("pt-BR");
+  });
+
+  it("contentLanguageOf falls back to en for an unknown code", () => {
+    expect(contentLanguageOf("klingon")).toBe("en");
   });
 
   it("does not persist a default the visitor did not choose", async () => {

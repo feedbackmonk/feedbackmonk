@@ -362,7 +362,7 @@ Outcome: all four lanes COMPLETE; CI-parity + tests green; 17/17 oracles; admin 
 
 Outcome: **FR-FBR-38 and FR-FBR-40 DONE**; five lanes COMPLETE; critic verdict **CONCERN, no VETO**
 (17/0 oracles, 5/5 compositions). Post-remediation gate: `ci-local.sh --tests` green, 17/17 oracles,
-admin 219 vitest / 54 e2e, widget 163 vitest / 29 e2e, `widget-bundle-size` 30,010 B / 30,720 (**710 B**).
+admin 226 vitest / 54 e2e, widget 166 vitest / 29 e2e, `widget-bundle-size` 30,031 B / 30,720 (**689 B**) — final numbers, after the A-2 amendment below.
 
 **Plan text this stage supersedes** (corrections, not drift):
 
@@ -411,14 +411,29 @@ keyboard access to show-password, a dangling `aria-controls`); **A-1** (`isAdmin
 which flipped the console's language *and direction* mid-session) fixed; **A-2 escalated to the owner** —
 see below.
 
-**OPEN, owner's call — A-2 (`lang` over permanently-English content).** `fa, ga, ml, is, si` carry
-`_meta.status: "english-fallback — provider unsupported"`, so English is their *shipped steady state*, not an
-interim one — and `fa` is the only RTL locale we ship. We assert `<html lang="fa">` over English words, so a
-screen reader reads English with Persian phonology. `/1-translate` fixes 25 of 30 and never fixes these five.
-R-A11Y's fix: for a locale whose `_meta.status` starts `english-fallback`, do not assert that code in `lang`
-— keep `dir` from the table and `Intl` on the user's locale. The LD **recommends adopting it** (the deciding
-metadata already exists and is machine-readable) but did not take it: it qualifies FR-FBR-34's ratified
-"every surface sets `lang` and `dir` from the active locale", which makes it a spec amendment.
+**RESOLVED on the owner's word, 2026-09-07 — A-2 (`lang` over permanently-English content).**
+`fa, ga, ml, is, si` carry `_meta.status: "english-fallback — provider unsupported"`, so English is
+their *shipped steady state*, not an interim one — and `fa` is the only RTL locale we ship, so we were
+asserting `<html lang="fa">` over English words and a screen reader read English with Persian
+phonology. `/1-translate` fixes 25 of 30 and never fixes these five. The LD recommended adopting
+R-A11Y's fix but did not take it, because it qualifies FR-FBR-34's ratified *"every surface sets `lang`
+and `dir` from the active locale"* and is therefore a spec amendment. **The owner approved it**; FR-FBR-34
+is amended and the fix shipped in the same arc.
+
+What shipped: `contentLanguageOf()` (SPA, `useLocale.ts`) and `contentLang()` (widget, `i18n.ts`) return
+the language the TEXT is in; `applyDocumentLocale` and `createRoot` use it for `lang` and leave `dir` on
+the chosen locale, so the mirrored layout the visitor selected survives. Keyed on the C34 table's
+`deepl === null` rather than on a new generated flag or on the `_meta` string — that field is the *cause*
+of the fallback, so the derivation self-corrects the day a provider covers Irish, with no second list to
+maintain. The widget's build-time projection gained `ENGLISH_FALLBACK` beside `RTL` (both derived the same
+way in `slice-locales.mjs`). Cost: **21 widget bytes**, 710 B → 689 B headroom, `widget-bundle-size` PASS.
+
+Test evolution: eight test files re-pointed from `lang === "fa"` to `lang === "en"` with `dir === "rtl"`
+retained (and newly *added* in two places, to pin that `dir` did not move), plus positive tests that the
+other 26 locales still declare themselves. The two public-page e2e matrices gained an `expectSelected`
+field — the failure exposed a real conflation in the old tests, which used one value for both the
+`<html lang>` attribute and the language switcher's selected option; those are now different facts, and a
+Persian visitor sees "فارسی" selected while `lang` honestly says `en`.
 
 **Carried to `docs/planning/observations-ledger.md`** (7 lines this stage): the Q24 oracle's Probe B is a
 substring proxy with an empty `assertion.asserts` and no self-test (renaming an identifier clears it);

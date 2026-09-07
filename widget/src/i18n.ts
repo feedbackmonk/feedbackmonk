@@ -2,6 +2,7 @@ import type { Dir } from "./locales.gen.js";
 import {
   BARE_DEFAULTS,
   DEFAULT_LOCALE,
+  ENGLISH_FALLBACK,
   LOADERS,
   RTL,
   TAG_OVERRIDES,
@@ -162,6 +163,21 @@ export function applyCatalog(code: string, map: Catalog): void {
 
 export function dir(): Dir {
   return RTL.indexOf(loc) >= 0 ? "rtl" : "ltr";
+}
+
+/**
+ * The language the widget's words are actually WRITTEN IN — not always the
+ * active locale (R-A11Y finding A-2).
+ *
+ * `ga, fa, ml, is, si` have no MT provider, so their catalogs stay English
+ * permanently: `/1-translate` fills the other 25 and never these. Declaring
+ * `lang="fa"` over English words makes a screen reader read English with
+ * Persian phonology, and `fa` is the only RTL locale we ship. `dir()` is
+ * deliberately NOT adjusted — the visitor still gets the mirrored layout their
+ * locale asks for, announced in a voice that can pronounce what is on screen.
+ */
+export function contentLang(): string {
+  return ENGLISH_FALLBACK.indexOf(loc) >= 0 ? DEFAULT_LOCALE : loc;
 }
 
 /**

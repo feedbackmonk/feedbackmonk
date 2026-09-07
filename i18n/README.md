@@ -41,6 +41,14 @@ Per-namespace files exist so that no two workers ever write the same file.
 2. **Every file starts with `_meta`**: `{"_meta": {"language": "<endonym>", "status": "<status>"}}`.
    `status` ∈ `source` (English) · `untranslated` · `machine-translated — community review welcome` ·
    `english-fallback — provider unsupported` (`ga, fa, ml, is, si`).
+   **`english-fallback` is a permanent state, and it changes what a surface declares.** No MT
+   provider covers those five, so `/1-translate` fills the other 25 and never them. Every runtime
+   therefore sets `lang="en"` on those locales' surfaces — the language the words are actually in —
+   while keeping the locale's own `dir`, so a Persian visitor still gets the mirrored layout they
+   chose and gets it announced in a voice that can pronounce what is on screen. Runtimes key this on
+   the C34 table's `deepl === null` rather than on this string, because that field is the *cause*:
+   the day a provider covers Irish, `ga` stops being English-fallback with no second list to update.
+   *Added 2026-09-07 on the owner's word, from R-A11Y finding A-2 (see FR-FBR-34).*
 3. **Keys are dotted, namespaced, camelCase leaves**: `widget.form.subject`, `email.status.subject`,
    `status.wontfix`. Nested JSON objects are allowed; the runtimes flatten to dotted keys. The
    first segment equals the file's namespace — **except `status.json`, the shared-enum namespace,

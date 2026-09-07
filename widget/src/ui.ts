@@ -1,5 +1,5 @@
 import type { WidgetConfig, WidgetTheme } from "./types.js";
-import { dir as localeDir, activeLocale, hasKey, t } from "./i18n.js";
+import { dir as localeDir, contentLang, hasKey, t } from "./i18n.js";
 
 // DOM construction helpers for the feedbackmonk widget. CSP-safe:
 //   - No `innerHTML` with user input.
@@ -97,10 +97,16 @@ const LAUNCHER_ICON_SVG =
 /// `<html lang>`, which misdeclares it to a screen reader whenever the two
 /// differ (WCAG 3.1.2) — the D-FBR-31 defect. `dir` is what makes the Persian
 /// layout mirror; both values come from the C34 table, never from raw input.
+///
+/// `lang` is `contentLang()`, not `activeLocale()`: for the five locales with no
+/// MT provider the catalog is permanently English, and declaring `lang="fa"`
+/// over English words is a worse lie to a screen reader than declaring the
+/// English it is actually reading (R-A11Y A-2). `dir` still follows the chosen
+/// locale, so the mirrored layout survives.
 export function createRoot(): HTMLDivElement {
   const root = createElement("div", "fbm-root");
   root.setAttribute("data-fbm-root", "");
-  root.lang = activeLocale();
+  root.lang = contentLang();
   root.dir = localeDir();
   return root;
 }

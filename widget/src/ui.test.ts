@@ -116,11 +116,22 @@ describe("the widget root declares its own language and direction (C36)", () => 
     expect(root.dir).toBe("ltr");
   });
 
-  it("carries lang and dir for a right-to-left locale", () => {
+  // R-A11Y A-2. `fa` has no MT provider, so its catalog is English PERMANENTLY;
+  // the old assertion here was `lang === "fa"`, which declared Persian over
+  // English words. `dir` is deliberately unchanged — the mirrored layout is what
+  // the visitor's locale asks for and is still correct.
+  it("carries the CONTENT language and the locale's dir for an english-fallback RTL locale", () => {
     setLocale("fa");
     const root = createRoot();
-    expect(root.lang).toBe("fa");
+    expect(root.lang).toBe("en");
     expect(root.dir).toBe("rtl");
+  });
+
+  it("carries the locale itself when a provider covers it", () => {
+    setLocale("de");
+    const root = createRoot();
+    expect(root.lang).toBe("de");
+    expect(root.dir).toBe("ltr");
   });
 });
 

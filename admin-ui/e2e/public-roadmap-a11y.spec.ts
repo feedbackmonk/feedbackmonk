@@ -123,12 +123,14 @@ async function expectNoAxeViolations(page: Page, label: string) {
 // `public-board-a11y.spec.ts` for why text is not asserted per locale while
 // the catalogs are still skeletons, and why `fa` is in the matrix.
 const LOCALE_MATRIX = [
-  { browser: "en-US", expectLang: "en", expectDir: "ltr" },
-  { browser: "de-DE", expectLang: "de", expectDir: "ltr" },
-  { browser: "fa-IR", expectLang: "fa", expectDir: "rtl" },
+  { browser: "en-US", expectLang: "en", expectDir: "ltr", expectSelected: "en" },
+  { browser: "de-DE", expectLang: "de", expectDir: "ltr", expectSelected: "de" },
+  // R-A11Y A-2: `fa` has no MT provider, so its catalog is English permanently.
+  // `lang` states the language of the WORDS; `dir` still follows the chosen locale.
+  { browser: "fa-IR", expectLang: "en", expectDir: "rtl", expectSelected: "fa" },
 ] as const;
 
-for (const { browser, expectLang, expectDir } of LOCALE_MATRIX) {
+for (const { browser, expectLang, expectDir, expectSelected } of LOCALE_MATRIX) {
   test.describe(`Public roadmap in ${browser}`, () => {
     test.use({ locale: browser });
 
@@ -147,7 +149,10 @@ for (const { browser, expectLang, expectDir } of LOCALE_MATRIX) {
 
       const switcher = page.getByRole("combobox", { name: "Language" });
       await expect(switcher).toBeVisible();
-      await expect(switcher).toHaveValue(expectLang);
+      // The switcher shows the locale the visitor is ON, which since R-A11Y A-2
+      // is not always the language the words are in: a Persian visitor sees
+      // "فارسی" selected while <html lang> honestly says "en".
+      await expect(switcher).toHaveValue(expectSelected);
 
       await expectNoAxeViolations(page, `public roadmap ${browser}`);
     });
@@ -163,7 +168,7 @@ test.describe("Public roadmap locale precedence", () => {
     await installFakeApi(page);
     await page.goto(`/public/projects/${PROJECT_ID}/roadmap?lang=fa`);
     await expect(page.getByText("CSV export")).toBeVisible();
-    await expect(page.locator("html")).toHaveAttribute("lang", "fa");
+    await expect(page.locator("html")).toHaveAttribute("lang", "en");
     await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
     const stored = await page.evaluate(() =>
       window.localStorage.getItem("fbm_lang"),

@@ -125,6 +125,11 @@ const loaders = codes
   .map((c) => `  ${JSON.stringify(c)}: () => import("./locales/${c}.js"),`)
   .join("\n");
 const rtl = table.filter((l) => l.dir === "rtl").map((l) => l.code);
+// Locales no machine-translation provider covers, so their catalogs stay English
+// permanently (`_meta.status: "english-fallback — provider unsupported"`).
+// Derived from `deepl === null` because that IS the cause, so the day a provider
+// covers one, it drops out of this list without anyone maintaining a second one.
+const englishFallback = table.filter((l) => l.deepl === null).map((l) => l.code);
 const dict = (o) =>
   "{\n" +
   Object.entries(o)
@@ -147,6 +152,8 @@ writeFileSync(
     `${loaders}\n};\n\n` +
     "/** Codes whose script runs right-to-left (C34 `dir`). */\n" +
     `export const RTL: readonly string[] = ${JSON.stringify(rtl)};\n\n` +
+    "/** Codes with no MT provider, so their catalogs render English permanently (R-A11Y A-2). */\n" +
+    `export const ENGLISH_FALLBACK: readonly string[] = ${JSON.stringify(englishFallback)};\n\n` +
     "/** Tags whose correct bundle is not their base language; matched longest-prefix-first. */\n" +
     `export const TAG_OVERRIDES: Readonly<Record<string, string>> = ${dict(localeTable.overrides)};\n\n` +
     "/** Where a bare language code goes when the language ships only regional bundles. */\n" +

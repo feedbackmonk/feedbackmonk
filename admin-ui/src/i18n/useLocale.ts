@@ -93,15 +93,44 @@ export function dirOf(code: string): Dir {
 }
 
 /**
+ * The language the words on screen are actually WRITTEN IN, which is not always
+ * the locale the visitor selected (R-A11Y finding A-2).
+ *
+ * Five shipped locales — `ga, fa, ml, is, si` — have no machine-translation
+ * provider that covers them, so their catalogs carry
+ * `_meta.status: "english-fallback — provider unsupported"` and render English
+ * *permanently*: `/1-translate` fills the other 25 and will never fill these.
+ * Declaring `<html lang="fa">` over English words makes a screen reader switch
+ * to a Persian voice and read English with Persian phonology — WCAG 3.1.1 in
+ * substance, and `fa` is the only RTL locale we ship, so it is also the most
+ * visible case.
+ *
+ * Keyed on `deepl === null` deliberately, rather than on a new generated flag.
+ * That field is the CAUSE of the English fallback ("no provider covers this
+ * locale"), so the derivation is not a convenient proxy — it is the same fact,
+ * and it maintains itself: the day a provider covers Irish, `deepl` gains a
+ * target, this returns `ga`, and the locale stops being permanently English
+ * without anyone remembering to update a second list.
+ */
+export function contentLanguageOf(code: string): string {
+  const entry = localeByCode(code);
+  if (!entry) return DEFAULT_LOCALE;
+  return entry.deepl === null ? DEFAULT_LOCALE : entry.code;
+}
+
+/**
  * Reflect the active locale onto the document element.
  *
- * `lang` is what a screen reader switches voice on; `dir` is what makes an RTL
- * locale readable at all. Both are set from the SHIPPED table, never from a
- * raw input string.
+ * `lang` is what a screen reader switches voice on, so it states the language
+ * of the TEXT (`contentLanguageOf`); `dir` is what makes an RTL locale readable
+ * at all, so it stays the visitor's chosen locale's direction — a Persian
+ * visitor reading English chrome still gets the mirrored layout they chose, and
+ * gets it announced in a voice that can pronounce what is on screen. Both are
+ * set from the SHIPPED table, never from a raw input string.
  */
 export function applyDocumentLocale(code: string): void {
   if (typeof document === "undefined") return;
-  document.documentElement.lang = code;
+  document.documentElement.lang = contentLanguageOf(code);
   document.documentElement.dir = dirOf(code);
 }
 

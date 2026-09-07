@@ -117,7 +117,7 @@ Verification Oracles built so far + scheduled:
 |---|---|---|
 | `multi-tenant-isolation-check` | P0 Task Zero | ✅ LIVE (built P0 Stage 1) |
 | `pii-scrub-audit` | P1 | ✅ LIVE (built P1 Stage 1) |
-| `widget-bundle-size` | P2 (start) | ✅ LIVE (built P2 Task Zero) — **amended 1.1.0 (2026-09-07, UI-localization Stage 1)**: Probe A measures the English page-load set (top-level `dist/*`), new Probe C caps each lazy `dist/locales/<code>.js` at 4,096 B, Probe B (trackers) still scans recursively, `SIZE_CAP_BYTES` untouched; 30,010 B / 30,720 at Stage-2 converge (710 B headroom; was 29,836 B at Stage 1) — defends <30KB cap (FR-FBR-04) + DEC-FBR-02 no-trackers brand promise as code-level invariants; active-PASS. Probe C's falsifiability demonstrated 2026-09-07 (`docs/falsifiability/2026-09-07-widget-bundle-size-probe-c.md`); the oracle still declares no `--self-test` (observations-ledger 2026-09-07). |
+| `widget-bundle-size` | P2 (start) | ✅ LIVE (built P2 Task Zero) — **amended 1.1.0 (2026-09-07, UI-localization Stage 1)**: Probe A measures the English page-load set (top-level `dist/*`), new Probe C caps each lazy `dist/locales/<code>.js` at 4,096 B, Probe B (trackers) still scans recursively, `SIZE_CAP_BYTES` untouched; 30,031 B / 30,720 at Stage-2 close (689 B headroom; 29,836 B at Stage 1) — defends <30KB cap (FR-FBR-04) + DEC-FBR-02 no-trackers brand promise as code-level invariants; active-PASS. Probe C's falsifiability demonstrated 2026-09-07 (`docs/falsifiability/2026-09-07-widget-bundle-size-probe-c.md`); the oracle still declares no `--self-test` (observations-ledger 2026-09-07). |
 | `tier-enforcement-status` | P3 (start) | ✅ LIVE (built P3 Stage 1 Task Zero) — defends cap-firing + free-tier footer (FR-FBR-14) + Contract C19 `tier_quotas()` shape as code-level invariants; three-probe (AST handler coverage + config-shape + integration smoke gated behind `--full`); active-PASS with Probe C smoke trio (Free 2nd project → 409, Free 51st feedback → 402, widget-config footer flip Free/Pro) |
 | `selfhost-compose-smoke` | P4 (start) | ✅ LIVE (built P4 Stage 2 Task Zero) — defends FR-FBR-17 `docker compose up` distribution + Contract C21 env-catalog SSOT (`docs/operations/SELFHOST_ENV.md`) as code-level invariants; three-probe (yaml-lint + env-doc cross-reference against C21 + `--full` clean-state smoke against `/health/ready`); cold-start vacuous-PASS; active-PASS post-Phase-1 with compose env-refs ⊆ C21 catalog + Probe C `/health/ready` 200 in <90s |
 | `cors-allowlist-enforcement` | post-v1 (DEC-FBR-IMPL-09) | ✅ LIVE (built 2026-06-03) — defends the credentialed CORS posture on the public widget endpoints (DEC-FBR-IMPL-09 / DEC-FBR-04) as code-level invariants; closes the gap that `tests/cors_preflight.rs` tests the layer in isolation and can't catch `.layer(cors)` wiring removal from `build_app`; two static probes (A: `main.rs` wires the layer from `FEEDBACKMONK_CORS_ORIGINS` to submit + attachments; B: `cors.rs` keeps `allow_credentials` + `AllowOrigin::list`, never wildcard) + `--full` runs the `cors_preflight` integration test; active-PASS |
@@ -156,20 +156,17 @@ Verification Oracles built so far + scheduled:
   `translation-gap-status` now reads **30 locales · 16,500 missing · 0 drifted · ~471k chars · DUE** (up from
   3,525 — Stage 2 added the whole admin namespace). This is the release gate; nothing else waits on it.
 
-  **② OWNER DECISION — `lang` over permanently-English content (R-A11Y finding A-2, MEDIUM).** Five locales
-  — **`fa, ga, ml, is, si`** — carry `_meta.status: "english-fallback — provider unsupported"`, so English is
-  their *shipped steady state*, not an interim one, and `/1-translate` will never clear them. **`fa` is the
-  only RTL locale we ship**, so that surface is permanently English text, declared as Persian, presented
-  right-to-left — a screen reader switches to a Persian voice and reads English words with Persian phonology
-  (WCAG 3.1.1/3.1.2 in substance). Proposed fix: for a locale whose `_meta.status` starts `english-fallback`,
-  do not assert that code in `<html lang>`; keep `dir` from the shipped table and keep `Intl` formatting on
-  the user's locale. **The LD recommends adopting it** — the deciding metadata already exists and is
-  machine-readable, so the change is small and local — but it qualifies FR-FBR-34's ratified *"every surface
-  sets `lang` and `dir` from the active locale"*, which makes it a **spec amendment, not a bug fix**, hence
-  the owner's call. Full reasoning: plan § Convergence notes — Stage 2.
+  **② RESOLVED 2026-09-07 — `lang` now states the language the words are IN.** Five locales
+  (`fa, ga, ml, is, si`) have no MT provider, so their catalogs are English *permanently* and
+  `/1-translate` will never fill them; `fa` is also the only RTL locale shipped. Declaring
+  `<html lang="fa">` over English words made a screen reader read English with Persian phonology.
+  On the owner's word, every runtime now declares `lang="en"` for those five while keeping the
+  locale's `dir` — the visitor keeps the mirrored layout they chose. Keyed on the C34 table's
+  `deepl === null` (the *cause* of the fallback), so it self-corrects if a provider ever covers one.
+  FR-FBR-34 amended; `i18n/README.md` C35 rule 2 carries the runtime consequence.
 
-  **Widget headroom is now 710 B** of the 30,720 cap (was 884 B; Stage 2 spent 176 B on a locale-gate
-  prototype-chain fix and a restored 5xx error message). No further widget bytes without spending the
+  **Widget headroom is now 689 B** of the 30,720 cap (was 884 B; Stage 2 spent 197 B on a locale-gate
+  prototype-chain fix, a restored 5xx error message and the A-2 content-language fix). No further widget bytes without spending the
   documented `widget.`-prefix lever (~735 B, `widget/README.md`).
 
   **Dev DB**: resolved — `feedbackmonk_dev` was recreated on the owner's word 2026-09-07 and is back at

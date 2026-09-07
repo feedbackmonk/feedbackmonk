@@ -63,10 +63,13 @@ async function expectNoAxeViolations(page: Page, label: string, scope?: string) 
 // The matrix: browser language decides (fixture declares no lang, no attribute)
 // --------------------------------------------------------------------------
 
+// `lang` is the language of the WORDS, which is not always `code` (R-A11Y A-2):
+// `fa` has no MT provider, so its catalog is English permanently. `dir` and the
+// fetched chunk still follow the resolved locale.
 const MATRIX = [
-  { browser: "en-US", code: "en", dir: "ltr", chunk: null },
-  { browser: "de-DE", code: "de", dir: "ltr", chunk: "de" },
-  { browser: "fa-IR", code: "fa", dir: "rtl", chunk: "fa" },
+  { browser: "en-US", code: "en", lang: "en", dir: "ltr", chunk: null },
+  { browser: "de-DE", code: "de", lang: "de", dir: "ltr", chunk: "de" },
+  { browser: "fa-IR", code: "fa", lang: "en", dir: "rtl", chunk: "fa" },
 ] as const;
 
 for (const row of MATRIX) {
@@ -81,7 +84,7 @@ for (const row of MATRIX) {
       await page.goto("/e2e/fixture-locale.html");
 
       const root = page.locator(".fbm-root");
-      await expect(root).toHaveAttribute("lang", row.code);
+      await expect(root).toHaveAttribute("lang", row.lang);
       await expect(root).toHaveAttribute("dir", row.dir);
 
       // English is INLINED: an English page load must fetch no chunk at all.
@@ -117,7 +120,10 @@ test.describe("locale precedence", () => {
     await page.goto("/e2e/fixture-locale-attr.html");
 
     const root = page.locator(".fbm-root");
-    await expect(root).toHaveAttribute("lang", "fa");
+    // R-A11Y A-2: `fa` has no MT provider, so its catalog is English permanently.
+    // `lang` states the language of the WORDS (en); `dir` still follows the
+    // chosen locale, so the mirrored RTL layout survives.
+    await expect(root).toHaveAttribute("lang", "en");
     await expect(root).toHaveAttribute("dir", "rtl");
     expect(chunks).toContain("fa");
     expect(chunks, "the German chunk must not be fetched").not.toContain("de");
