@@ -2,7 +2,7 @@
 
 Project-specific context. The global ULDF framework guidance lives at `~/.claude/CLAUDE.md` and is the authoritative reference for framework commands, autonomy levels, propagation rules, and the agentic disciplines (Contexturgy, Oraculurgy, Probandurgy). This file ONLY documents what is specific to **feedbackmonk**.
 
-> **Working name changed mid-arc**: project was named "Feedbackr" through P0 and most of P1. The name was changed to **feedbackmonk** on 2026-05-14 per DEC-FBR-11, enacting DEC-FBR-09's squat-contingency clause after `github.com/Feedbackr` and `feedbackr.com` were found taken. Identifier prefixes `DEC-FBR-*` and `FR-FBR-*` are stable — they do NOT rename (see DEC-FBR-11 § Identifier-stability rule). Code-level rename of `feedbackr-*` → `feedbackmonk-*` was completed in PF-RENAME-01. Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk` completed in PF-RENAME-02 at the v1 arc-terminus (2026-05-14).
+> **Identifier stability**: the project was renamed Feedbackr → feedbackmonk on 2026-05-14 (DEC-FBR-11). Code, env vars (`FEEDBACKMONK_*`), crates, containers and paths are fully renamed; the identifier prefixes `DEC-FBR-*` and `FR-FBR-*` are **not**, and historical documents keep the old spelling deliberately — do not "fix" them. Full record: `docs/planning/20260907-claude-md-cut-archive.md`.
 
 ---
 
@@ -11,7 +11,7 @@ Project-specific context. The global ULDF framework guidance lives at `~/.claude
 Standalone open-source SaaS user-feedback platform: submission widget + status-workflow triage + public roadmap with voting + status emails. Multi-product per tenant.
 
 - **Elevator pitch**: *Plausible Analytics for product feedback.*
-- **License**: AGPL-3.0-or-later (see `LICENSE` — full canonical AGPL-3.0 text, replaced 2026-05-13).
+- **License**: AGPL-3.0-or-later (see `LICENSE` — full canonical AGPL-3.0 text).
 - **Stage**: v1 (P0–P4) shipped + deployed (self-host LIVE at `feedback.gitcellar.com`). P5a Stage 1 (Agentic Feedback Resolution Loop, recommend-only — FR-FBR-19/20/21/22 + FR-FBR-25 approval-gate leg) complete 2026-06-18; P5b (FR-FBR-23 implementer + FR-FBR-24 runner) upcoming.
 
 ## Read first (always, for any session in this repo)
@@ -41,7 +41,7 @@ The arc plan is the single most important downstream artifact — it pre-commits
 - **Backend API**: `14304` (`feedbackmonk-api` crate; default in `FEEDBACKMONK_PORT` env var)
 - **Local Postgres**: `5433` (deconflicted from gitcellar-cloud's `5432`, per DEC-FBR-IMPL-04)
 
-All registered in `~/.claude/MACHINE_CONFIG.md` Dev Port Registry.
+All registered in `~/.claude/MACHINE_CONFIG.md` Dev Port Registry. Local dev setup and the migration-ledger state: `docs/operations/LOCAL_DEV.md`.
 
 ## CI parity — run before every push (MANDATORY)
 
@@ -109,31 +109,32 @@ form pushed `4e69262..d41d33a` immediately.
 
 ## Oracles
 
-This project has `.claude/oracles/` with the universal starter pack + project-specific Verification Oracles. The session-start hook runs every-session fast oracles and emits an ORACLE BRIEFING (git state, LTADS state, project type, pending follow-ups, etc.) — read it before investigating manually. Audit via `/0-uldf-oracle`.
+`.claude/oracles/` holds the universal starter pack plus the project-specific Verification Oracles below. The session-start hook runs the every-session fast ones and emits an ORACLE BRIEFING — read it before investigating manually. Audit via `/0-uldf-oracle`.
 
-Verification Oracles built so far + scheduled:
+Each oracle's own `oracle.json` + `README.md` is the authoritative record of its probes, version history and self-test. The table says only **what it defends**, so you can tell which one your change is about to trip. Pre-cut descriptions: `docs/planning/20260907-claude-md-cut-archive.md`.
 
-| Oracle | Phase | Status |
-|---|---|---|
-| `multi-tenant-isolation-check` | P0 Task Zero | ✅ LIVE (built P0 Stage 1) |
-| `pii-scrub-audit` | P1 | ✅ LIVE (built P1 Stage 1) |
-| `widget-bundle-size` | P2 (start) | ✅ LIVE (built P2 Task Zero) — **amended 1.1.0 (2026-09-07, UI-localization Stage 1)**: Probe A measures the English page-load set (top-level `dist/*`), new Probe C caps each lazy `dist/locales/<code>.js` at 4,096 B, Probe B (trackers) still scans recursively, `SIZE_CAP_BYTES` untouched; 30,031 B / 30,720 at Stage-2 close (689 B headroom; 29,836 B at Stage 1) — defends <30KB cap (FR-FBR-04) + DEC-FBR-02 no-trackers brand promise as code-level invariants; active-PASS. Probe C's falsifiability demonstrated 2026-09-07 (`docs/falsifiability/2026-09-07-widget-bundle-size-probe-c.md`); the oracle still declares no `--self-test` (observations-ledger 2026-09-07). |
-| `tier-enforcement-status` | P3 (start) | ✅ LIVE (built P3 Stage 1 Task Zero) — defends cap-firing + free-tier footer (FR-FBR-14) + Contract C19 `tier_quotas()` shape as code-level invariants; three-probe (AST handler coverage + config-shape + integration smoke gated behind `--full`); active-PASS with Probe C smoke trio (Free 2nd project → 409, Free 51st feedback → 402, widget-config footer flip Free/Pro) |
-| `selfhost-compose-smoke` | P4 (start) | ✅ LIVE (built P4 Stage 2 Task Zero) — defends FR-FBR-17 `docker compose up` distribution + Contract C21 env-catalog SSOT (`docs/operations/SELFHOST_ENV.md`) as code-level invariants; three-probe (yaml-lint + env-doc cross-reference against C21 + `--full` clean-state smoke against `/health/ready`); cold-start vacuous-PASS; active-PASS post-Phase-1 with compose env-refs ⊆ C21 catalog + Probe C `/health/ready` 200 in <90s |
-| `cors-allowlist-enforcement` | post-v1 (DEC-FBR-IMPL-09) | ✅ LIVE (built 2026-06-03) — defends the credentialed CORS posture on the public widget endpoints (DEC-FBR-IMPL-09 / DEC-FBR-04) as code-level invariants; closes the gap that `tests/cors_preflight.rs` tests the layer in isolation and can't catch `.layer(cors)` wiring removal from `build_app`; two static probes (A: `main.rs` wires the layer from `FEEDBACKMONK_CORS_ORIGINS` to submit + attachments; B: `cors.rs` keeps `allow_credentials` + `AllowOrigin::list`, never wildcard) + `--full` runs the `cors_preflight` integration test; active-PASS |
-| `approval-gate-enforcement` | P5a Stage 1 | ✅ LIVE (built P5a Stage 1, 2026-06-18) — defends the work-order approval trust boundary (FR-FBR-25a / FR-FBR-22): no work order reaches a state ≥ `dispatched` without a prior owner-authored `approved` event. Detection-from-ledger (parses state-machine source + queries the append-only `work_order_events` table), NOT a self-reported flag — the anti-reward-hacking leg. Probe A (state-machine source) + B (handler authz) + C (`--full`: `tests/work_order_state_machine.rs`); active-PASS A/B/C at convergence |
-| `public-board-moderation-gate` | Public Board Stage 0 → **v1.1.0 (board voting)** | ✅ LIVE (built Stage 0; Probe B/C ACTIVATED Stage 1; **Probe B EXTENDED to the vote path at PF-BOARD-VOTING-01, 2026-06-19**) — defends the **moderation trust boundary** for the public feedback board (FR-FBR-25a sibling): no public-board endpoint (READ **or VOTE**) may return/act on a feedback row whose `moderation_status != approved`, and the board wire shape leaks no submitter PII (DEC-FBR-02 / Q24 class). Detection-from-code (parses `moderation.rs` `is_publicly_visible` + asserts each board read SQL hard-filters `approved` + scans the wire shape for PII + **asserts every `board.rs` handler writing through `state.board_votes` runs `ensure_board_enabled` + an approved-only resolution BEFORE the write**), NOT a self-reported flag — the anti-reward-hacking leg. Probe A (state-machine source) + B (board read + vote path approved-only + no-PII) + C (`--full`: `tests/board_moderation_gate.rs` + `board_privacy_isolation.rs`; vote-path behavioral leg `tests/board_vote_moderation_gate.rs`) all GREEN. The Stage 1 exit gate (GATE 1), now covering the full board surface incl. voting (Contract C30). |
-| `host-tenant-binding` | FR-FBR-32/33 (commercial hosting shape) | ✅ LIVE (authored 2026-08-30; **installed 2026-09-01** from an owner session via the staged `install.sh`, which also appended the two `multi-tenant-isolation-check` allow-list entries FR-FBR-32 needs; staging dir deleted, `scripts/ci-local.sh` 15/15 PASS). Defends the **host→tenant binding** trust boundary (DEC-FBR-13 / DEC-FBR-IMPL-28): on a host that resolves to tenant T, no public route may reach another tenant's resource, and admin is reachable on exactly one host. NOT covered by `multi-tenant-isolation-check`, which polices the *repository scope* axis — a router merged without the host guard passes that oracle unchanged, and the failure is invisible (a missing guard renders a correct-looking page of someone else's feedback on your origin). Probe A (guard coverage in `build_app`, the anti-treadmill leg modelled on `public-route-ceiling`) + B (admin exclusivity, 404-not-403, `X-Forwarded-Host` gated on the trusted proxy) + C (one resolution path, in the repository crate) + D (`--full`: `tests/host_tenant_binding.rs` + `domains_repo.rs`). Adversarially self-tested: dropping a guard and flipping 404→403 both go red. |
-| `translation-egress-q24-isolation` | FR-FBR-30 (multilingual translation) | ✅ LIVE (built FR-FBR-30 Stream E, 2026-06-21) — defends the **privacy posture** (DEC-FBR-IMPL-26) + **Q24 read-isolation** invariant (DEC-FBR-IMPL-25 / DEC-FBR-02) of the multilingual-translation pipeline. Detection-from-code, NOT a self-reported flag: Probe A (provider DEFAULTS `off` + no unconditional cloud provider in `main.rs::build_translation_provider`), Probe B (NO **public/end-user/board** read of `body_translated` — every referent must be in a tiny allowlist: the analyst consumer `list_member_bodies_for_cluster`, the worker writer `set_translation`, and the one scoped admin-controller reader `get_translation_for_admin` + its handler `get_admin_feedback`), Probe C (writer uniqueness — only `set_translation` writes the column, and ONLY `translation/worker.rs` calls it), Probe D (latest `body_tsv` migration sources from `coalesce(body_translated, body)`); `--full` runs `tests/translation_worker.rs`. A/B/C/D all GREEN. Providers: `off` (default) / `deepl` (cloud) / `libretranslate` (no-egress, self-hosted). |
-| `i18n-catalog-integrity` | FR-FBR-34/39 (UI localization) | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — defends **Contract C35** (catalog shape) + **C41** (generated locale tables): Probe A (`gen-locales.py --check` — the three `locales.gen.*` byte-equal `i18n/locales.json`), B (every `i18n/locales/<code>/<ns>.json` parses + `_meta`), C (keys ⊆ `en` + `{{placeholder}}` set equality per key), D (CLDR plural categories present), E (mojibake / leaked entities). C/D/E delegate to `scripts/i18n/validate.py` so the contract has one implementation. `--self-test` mechanised. Green is the exit gate of every localization stage. |
-| `i18n-literal-ratchet` | FR-FBR-35/36/38 (UI localization) | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — defends the **no-hard-coded-user-facing-literal** invariant: scans `widget/src` DOM-building calls and `admin-ui/src` JSX text / `aria-label` / `title` / `placeholder` / `notify(...)`; match set must be ⊆ `i18n/literal-baseline.json`; `--freeze` rewrites the baseline only when it shrank. **Baseline is now 0 literals / 0 files** — Stage 2 drove `admin-ui/src` from 191 across 30 files to zero; widget 0; public pages 0. Any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is now a hard failure with nothing to hide behind. |
-| `translation-gap-status` | FR-FBR-39 / DEC-FBR-17 | ✅ LIVE 1.0.0 (built Stage 1, 2026-09-07) — **project-state**, advisory: wraps `scripts/i18n/check-gaps.py --json` → `30 locales | N missing | D drifted | ~C chars | translation pass: DUE/NOT DUE`. The owner's release-gate question; finalize reports it, never blocks. Translation itself runs only via `/1-translate` on the owner's word. |
+| Oracle | What it defends |
+|---|---|
+| `multi-tenant-isolation-check` | the tenant-scoped repository layer is the sole query path (DEC-FBR-03) |
+| `pii-scrub-audit` | submitter PII does not escape into logs or public surfaces |
+| `widget-bundle-size` | widget page-load set ≤ 30,720 B, each lazy `dist/locales/<code>.js` ≤ 4,096 B, no third-party trackers (FR-FBR-04, DEC-FBR-02) |
+| `tier-enforcement-status` | plan caps fire, free-tier footer, `tier_quotas()` shape (FR-FBR-14, C19) |
+| `selfhost-compose-smoke` | `docker compose up` distribution + env-catalog SSOT `docs/operations/SELFHOST_ENV.md` (FR-FBR-17, C21) |
+| `cors-allowlist-enforcement` | credentialed CORS stays wired into `build_app`, never wildcard (DEC-FBR-IMPL-09) |
+| `approval-gate-enforcement` | no work order reaches ≥ `dispatched` without a prior owner-authored `approved` event (FR-FBR-25a/22) |
+| `public-board-moderation-gate` | no public board **read or vote** touches a non-`approved` row; board wire shape leaks no PII (C30) |
+| `host-tenant-binding` | on a host bound to tenant T, no public route reaches another tenant; admin on exactly one host (DEC-FBR-13) |
+| `translation-egress-q24-isolation` | translation provider defaults `off`; no public read of `body_translated` (DEC-FBR-IMPL-25/26) |
+| `i18n-catalog-integrity` | catalog shape + generated locale tables (C35, C41) — the exit gate of every localization stage |
+| `i18n-literal-ratchet` | **baseline 0** — any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is a hard failure |
+| `translation-gap-status` | advisory only: how much translation is outstanding; finalize reports it, never blocks |
+
+`ls .claude/oracles/` is authoritative — it also carries oracles not listed above (`feedback-erasure-completeness`, `public-route-ceiling`, `submission-idempotency`, …).
 
 ## Constraints not in spec artifacts
 
-- **LICENSE** is now the full canonical AGPL-3.0 text (replaced 2026-05-13). Repo can be pushed publicly.
-- **GitHub org + domain**: **DONE** (PF-REGISTER-01). The `github.com/feedbackmonk` org is registered (2026-05-16) and the public repo `github.com/feedbackmonk/feedbackmonk` is live with `main` pushed (last push 2026-05-17; local `main` in sync with `origin/main`). `feedbackmonk.com` is purchased. First public push is **no longer gated** — `/0-uldf-finalize` no longer requires `--skip-push`, and normal propagation consent rules apply. Remaining is operational, not registration: the domain is not yet pointed at a running deployment (see PF-DEPLOY-01 below).
-- **GitCellar peer repo** is in pre-launch hardening. feedbackmonk work neither blocks on nor modifies GitCellar; the only cross-repo touchpoint is late P2 / early P3 when GitCellar embeds feedbackmonk's widget as customer #1 (forward-looking integration, NOT extraction).
+- **The repo is public** at `github.com/feedbackmonk/feedbackmonk` (AGPL-3.0-or-later, full canonical text). `feedbackmonk.com` is purchased but not yet pointed at a running deployment. Nothing pushed here is private — scrub before you commit.
+- **GitCellar is customer #1, not a dependency.** Never modify GitCellar code from this working tree; the peer repo is a read-only reference (DEC-FBR-07). Cross-repo work is filed as a DEFER brief in that repo.
 
 ## Privacy invariants (load-bearing — never silently relax)
 
@@ -143,205 +144,17 @@ Verification Oracles built so far + scheduled:
 
 ## Pending Follow-Ups
 
-- **UI localization (FR-FBR-34..40) — SHIPPED 2026-09-07 (Stages 1 + 2). Two owner actions remain.**
-  Widget, public board/roadmap/tenant-host pages, all emails **and the full admin console** render in the
-  user's language (31 locales, DEC-FBR-15); outbound team-authored replies/status notes are machine-translated
-  into the submitter's language, opt-in per tenant and off by default at two independent levels (FR-FBR-40).
-  `feedback.submitter_locale` + `tenants.locale` + `tenants.translate_outbound` (migrations 00031/00032, no
-  new migration in Stage 2). Five oracles live; `i18n-literal-ratchet` baseline is **0** (was 191).
-  FR-FBR-41 (marketing site) stays DEFERRED until `feedbackmonk.com` is live.
+**A to-do list, not a changelog.** One line per entry, ≤400 bytes, trigger first: `- **Trigger: <when>** — <what to do>`. The action's completion IS the removal condition, and **you delete the line in the commit that discharges it** — never append a progress note, rewrite or remove. A body longer than a line goes in `docs/pending/<slug>.md` behind a `` Details: `…` `` pointer; anything bigger is a piece of work, so file it in `docs/planning/deferred/` as a DEFER brief and leave a pointer here. Finished-work narration belongs in git history and `docs/specs/DECISIONS.md`; every entry written before 2026-09-07 is archived verbatim in `docs/pending-followups.md`.
 
-  **① OWNER ACTION — run `/1-translate` before the next release.** No translation has ever run, by design
-  (DEC-FBR-17): every non-`en` catalog is a skeleton and every surface falls back to English per key.
-  `translation-gap-status` now reads **30 locales · 16,500 missing · 0 drifted · ~471k chars · DUE** (up from
-  3,525 — Stage 2 added the whole admin namespace). This is the release gate; nothing else waits on it.
-
-  **② RESOLVED 2026-09-07 — `lang` now states the language the words are IN.** Five locales
-  (`fa, ga, ml, is, si`) have no MT provider, so their catalogs are English *permanently* and
-  `/1-translate` will never fill them; `fa` is also the only RTL locale shipped. Declaring
-  `<html lang="fa">` over English words made a screen reader read English with Persian phonology.
-  On the owner's word, every runtime now declares `lang="en"` for those five while keeping the
-  locale's `dir` — the visitor keeps the mirrored layout they chose. Keyed on the C34 table's
-  `deepl === null` (the *cause* of the fallback), so it self-corrects if a provider ever covers one.
-  FR-FBR-34 amended; `i18n/README.md` C35 rule 2 carries the runtime consequence.
-
-  **Widget headroom is now 689 B** of the 30,720 cap (was 884 B; Stage 2 spent 197 B on a locale-gate
-  prototype-chain fix, a restored 5xx error message and the A-2 content-language fix). No further widget bytes without spending the
-  documented `widget.`-prefix lever (~735 B, `widget/README.md`).
-
-  **Dev DB**: resolved — `feedbackmonk_dev` was recreated on the owner's word 2026-09-07 and is back at
-  **32/32**, so it is the normal `DATABASE_URL` target again. `feedbackmonk_prepare` is also 32/32 and stays
-  a valid alternative for `cargo sqlx prepare`. `docs/operations/LOCAL_DEV.md` § Known state carries the
-  detail, including what to do if the migration ledger is ever found wiped again.
-
-  **GitCellar must re-vendor the whole `widget/dist/` tree** (`dist/locales/` is new, and `widget.js` moved
-  again in Stage 2) — filed to that repo.
+- **Trigger: 🚨 BLOCKED — resume here** — Railway cannot create containers for `feedbackmonk-api`, so the wontfix white-screen fix cannot ship and GitCellar's triage inbox is ~99% unusable. **Change no env var, setting or image pin on that service** — the one container serving `feedback.gitcellar.com` is irreplaceable. Details: `docs/planning/deferred/DEFER-009_*.md`
+- **Trigger: before the next release** — run `/1-translate`. No translation has ever run, by design (DEC-FBR-17): every non-`en` catalog is a skeleton and every surface falls back to English per key. `translation-gap-status` reads 30 locales · 16,500 missing · ~471k chars · **DUE**. This is the release gate; nothing else waits on it.
+- **Trigger: any `widget/src` change** — only 689 B of headroom under the 30,720 B cap. More bytes need the documented `widget.`-prefix lever (~735 B, `widget/README.md`), or `widget-bundle-size` goes red.
+- **Trigger: any `widget/dist/` change** — GitCellar must re-vendor the whole tree, not just `widget.js`; `dist/locales/` is new and the entry point has moved twice. Filed to that repo.
+- **Trigger: the one redeploy of `feedback.gitcellar.com`** — the live instance runs v0.2.0 / 5 capabilities; HEAD is v0.4.0 / 15. Four items stack on that single redeploy (Phase-A A6, DEFER-004, FR-FBR-32/33, the `wontfix` serde fix). Details: `docs/pending/gitcellar-instance-redeploy.md`
+- **Trigger: your word — ops, not code** — provision `feedbackmonk.com` and cut GitCellar onto it (DEC-FBR-14). FR-FBR-32/33 are built and tested; there is nowhere to run them, and this retires the redeploy stack above at once. Details: `docs/pending/saas-standup.md`
+- **Trigger: fired 2026-08-30 — just do it** — unpin the `stranded-dirty-files` oracle (delete `.claude/oracles/stranded-dirty-files/.local-customized`); the pin is now the only thing keeping upstream framework fixes off it. Details: `docs/pending/unpin-stranded-dirty-files.md`
+- **Trigger: `feedbackmonk.com` is live** — FR-FBR-41 (Astro marketing site) is DEFERRED until then.
 <!-- /0-uldf-schedule writes here -->
-
-- **🚨 BLOCKED / RESUME HERE — Railway cannot create containers for `feedbackmonk-api`**: the
-  won't-fix white-screen fix is built, merged, migrated and staged, but cannot ship. 78 of 79 prod
-  feedback rows are `wontfix`, so the GitCellar triage inbox is ~99% unusable right now. **Do NOT
-  change any env var / setting / image pin on that Railway service** — the only container serving
-  `feedback.gitcellar.com` is irreplaceable while this persists. Full resume record:
-  [`DEFER-009`](docs/planning/deferred/DEFER-009_railway-deploy-blocked-feedbackmonk-api.md) +
-  `docs/planning/feedbackmonk-deploy-state.md` § Stage E.
-- **Unpin stranded-dirty-files oracle — TRIGGER HAS FIRED (measured 2026-08-30)**: the synced baseline is clean, so the pin is now the only thing keeping this oracle off upstream fixes. Full detail in PF-UNPIN-01 below. Test (assembles the identifier at runtime — do NOT paste the literal back in, see DEFER-003): `U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> `0`.
-
-### PF-SAAS-STANDUP-01: provision `feedbackmonk.com` + migrate GitCellar onto it (DEC-FBR-14 ops half)
-
-**Status (2026-08-30): BLOCKED ON THE OWNER — ops, not code.** FR-FBR-32/33 are complete and tested;
-what is missing is somewhere to run them. Full runbook: `docs/operations/SAAS_HOSTING.md`.
-
-Two items:
-
-1. **Provision the deployment** — hosting account, `*.feedbackmonk.com` + `app.feedbackmonk.com` DNS,
-   wildcard TLS (DNS-01 needs a Caddy build with the provider module + an API token), and
-   `FEEDBACKMONK_ROOT_DOMAIN` / `FEEDBACKMONK_ADMIN_HOST` / `FEEDBACKMONK_TRUSTED_PROXY_HOPS=1`.
-   **Recommendation: run it separately from GitCellar's Railway.** The vendor's SaaS living inside
-   customer #1's infrastructure is precisely the arrangement DEC-FBR-14 exists to undo; reproducing it
-   would leave the dogfooding gap where it was.
-2. **Cut GitCellar over** — `SAAS_HOSTING.md` § 4, ordered and reversible. The GitCellar side of
-   this is filed in that repo as **DEFER-084** (`feedbackmonk-saas-tenant-cutover`), which carries
-   the DNS/data/decommission/doc work and the measured stacked-redeploy finding below. **Coordinate with the
-   GitCellar side before touching DNS**: live GitCellar sessions exist on this machine and may be
-   measuring against `feedback.gitcellar.com`. **No GitCellar source file is edited by any step** —
-   `triage.gitcellar.com` keeps working as an operator-registered admin alias that 301s to the
-   canonical admin host (DEC-FBR-IMPL-27), so `TRIAGE_URL` is never touched. A plan that requires
-   editing it has misread DEC-FBR-14.
-
-### PF-PHASEA-01: GitCellar feedback-consolidation contract build-out ("Phase A") — CODE DONE; DEPLOY (A6) is the remaining GATE
-
-**Status (2026-07-01): all five Phase-A contract surfaces BUILT + verified locally (CI-parity green); crate → v0.3.0. The only remaining item is the deploy+verify GATE (A6), which is GitCellar-Railway ops, not this repo.** Phase A adds the end-user capabilities GitCellar's feedback consolidation depends on (its Phases B/C — delete the internal Cloud-API feedback backend, unify the two feedback screens — do NOT start until these are live + capability-verified on `feedback.gitcellar.com`). Source program: `../GitCellar/docs/planning/plans/20260701-feedback-consolidation-onto-feedbackmonk.md`. This repo's intake+plan: `docs/planning/intakes/20260701T160735-*.md` + `docs/planning/plans/20260701T161200-*.md`.
-
-Delivered (all ADDITIVE to the frozen contract; each advertised via `GET /api/v1/capabilities`; contract doc `docs/integrations/gitcellar-adoption.md` updated §0/§5.5/§6.1/§6.2/§6.4/§6.5/§6.6/§8/§11 + change log):
-- **A1 (P0) `DELETE …/me/feedback/{id}`** — hard-delete + FK cascade + **object-store attachment-byte purge** (byte purge BEFORE row delete); sub-scoped (404 cross-user). Capability `feedback.delete`. New Verification Oracle `feedback-erasure-completeness` (A/B/C GREEN).
-- **A2 (P1) attachment list + tenant-scoped download** (upload pre-existed). `feedback.attachments`.
-- **A3 (P1) `updated_at` + `reply_count` (+ `?since=`)** on the me/feedback list (public replies only). `feedback.reply_state`.
-- **A4 first-class optional `severity`** (`low|medium|high|blocker`, migration `00020`) replacing the `external_metadata.severity` side-channel + **`Idempotency-Key`** submit dedupe (transactional exactly-once, migration `00021`). `feedback.severity` + `feedback.idempotency`.
-- **A5 `GET …/me/feedback/export`** GDPR portability. `feedback.export`.
-
-Decisions confirmed (were AFK-adopted, then user-confirmed): D-A1 hard-delete+byte-purge; D-A4 severity `low|medium|high|blocker` optional; D-A5 export included. Built at autopilot; implementation streams executed on the Fable model, coordinated/reviewed on Opus 4.8.
-
-> **2026-09-01 — a FOURTH item now stacks on this redeploy, and this one is a live production
-> defect.** `FeedbackStatus::WontFix` serialised as `wont-fix` (serde `rename_all = "kebab-case"`)
-> while the DB CHECK, Contract C6 and every client status union use `wontfix`. Effect on the live
-> admin at `triage.gitcellar.com`: any `wontfix` feedback rendered a blank status pill, and opening
-> it white-screened the page (`LEGAL_TRANSITIONS["wont-fix"]` is `undefined` →
-> `undefined.length` in `StatusControls`); `?status=wontfix` filtering and
-> `to_status: "wontfix"` transitions were also rejected as an unknown variant. Fixed at HEAD
-> (`#[serde(rename = "wontfix")]` + an all-six-variants JSON⇔DB round-trip test, mirroring
-> `RoadmapItemStatus`, which already carried the rename; plus `?? []` / label-fallback hardening in
-> `StatusControls` + `StatusBadge` so UI-vs-wire drift can never white-screen the admin again).
-> **Only a redeploy clears it for the operator.**
-
-> **Re-measured 2026-08-30 — still outstanding, and now THREE items stack on this one redeploy.**
-> `curl -sS https://feedback.gitcellar.com/api/v1/capabilities` returns `"version":"0.2.0"` with 5
-> capabilities (health/ready 200). Current code is **0.4.0 with 15**. Waiting on a redeploy of this
-> single service: **A6** (≥0.3.0 + migrations 00020/00021 → the six Phase-A capabilities),
-> **DEFER-004** (migration 00029 → `feedback.rating`), and **FR-FBR-32/33** (0.4.0 + migration 00030
-> → `hosting.*`). The **DEC-FBR-14 cutover retires all three at once** — a SaaS instance runs current
-> code with every migration applied — so weigh doing that instead of three separate Railway
-> redeploys. If the cutover is far off, A6 still stands on its own merits: it gates GitCellar's
-> Phases B/C. Filed to GitCellar as **DEFER-084**.
-
-**Remaining — A6 deploy GATE (NOT this repo's code; still OUTSTANDING as of scrutiny 2026-07-01):** the live instance runs **v0.2.0** with migrations `00020`+`00021` unapplied, so the six Phase-A capabilities are not yet live there. Redeploy `feedback.gitcellar.com` at ≥ v0.3.0 with migrations `00020`+`00021` applied (GitCellar Railway — ordered runbook in `docs/operations/RAILWAY_GITCELLAR.md` § 8), then verify `GET https://feedback.gitcellar.com/api/v1/capabilities` advertises `feedback.delete|reply_state|export|severity|idempotency|attachments` and smoke each new route. That verification unblocks GitCellar Phases B/C. Cannot be performed from this repo/session (needs Railway access).
-
-### ~~PF-BOARD-VOTING-01: Public-board voting (`feedback_board_votes`)~~ — DONE
-
-**Status: DONE (2026-06-19, Contract C30).** Public-board voting is now fully wired, replacing the Stage 1 `vote_count = 0` placeholder. Implemented exactly per the pre-decided design (DEC-FBR-IMPL-21):
-
-- **Migration** `00018_feedback_board_votes.sql` — NEW table keyed on `feedback_id` (mirrors `roadmap_votes`; `roadmap_votes` + `roadmap_voting_cache` left untouched).
-- **Repo** `feedbackmonk-repository/src/board_votes.rs` (`BoardVoteRepo`: cast/retract/count/has_voted, 409-on-dup + retraction-window) + `feedback.rs` LEFT-JOIN `vote_count` aggregate (D1 — direct SQL, no cache) + `resolve_approved_board_feedback_id` (the D2 moderation gate).
-- **API** `board.rs` `POST`/`DELETE /api/v1/projects/{id}/board/items/{short_code}/vote` (CORS-exposed). The anon/JWT voter chokepoint was extracted into the shared `handlers/voting_common.rs` (consumed by BOTH roadmap + board — migration 00007/00018 inv #2; roadmap behavior byte-identical, regression-tested). Moderation gate (D2): approved-only resolution before any write → vote/retract on pending/rejected/board-disabled returns 404 (no existence oracle).
-- **Frontend** `PublicBoard.tsx` vote button (mirrors `PublicRoadmap.tsx`) + `castBoardVote`/`retractBoardVote` + `BoardVoteResponse`/`BoardRetractResponse` types.
-- **Oracle** `public-board-moderation-gate` Probe B EXTENDED to the vote path (v1.1.0) — A/B/C GREEN.
-- **Tests**: `board_vote.rs` (anon/JWT cast, 409, retract, 429) + `board_vote_moderation_gate.rs` (404 on pending/rejected/board-disabled/unknown) + `board_votes.rs` repo tests; roadmap-vote regression green; admin-ui vitest + board a11y green.
-- **DEC-FBR-IMPL-22** (`projects.board_requires_moderation`) remains inert/out-of-scope — only meaningful if/when an auto-approve relaxation is built.
-
-### ~~PF-RENAME-01: Cargo / env-var / package-name rename `feedbackr-*` → `feedbackmonk-*`~~ — DONE
-
-Completed in a single atomic commit at the P1-finalize → P2-plan boundary. Scope delivered:
-- Cargo workspace + all 6 member crate `[package].name` + every `[dependencies]` path reference
-- Env var prefix `FEEDBACKR_` → `FEEDBACKMONK_` across code, scripts, docs, `.env.example`
-- HTTP header constant `X-Feedbackr-Anon-Cookie` → `X-Feedbackmonk-Anon-Cookie` (`feedbackmonk-anon::ANON_COOKIE_HEADER`)
-- Session cookie name `feedbackr_session` → `feedbackmonk_session`
-- `admin-ui/package.json` name + Vite/CI db name (`feedbackr_test` / `feedbackr_dev` → `feedbackmonk_*`)
-- `.sqlx/` offline cache regenerated and re-committed
-- Both Verification Oracles GREEN after path updates (`multi-tenant-isolation-check` + `pii-scrub-audit`)
-- Plan-file rename: `20260513T185711-feedbackr-v1-build-arc.md` → `…-feedbackmonk-v1-build-arc.md` (+ P0/P1 plan files)
-- ID stability preserved: `DEC-FBR-*` and `FR-FBR-*` left untouched per DEC-FBR-11.
-
-### ~~PF-RENAME-02: Working-directory rename `Apps\Feedbackr` → `Apps\feedbackmonk`~~ — DONE
-
-Executed at the v1 arc-terminus (2026-05-14). Scope delivered:
-- `Rename-Item "E:\Developer\SourceControlled\Apps\Feedbackr" "feedbackmonk"` (user-action; Windows blocks renaming a CWD, so executed after closing the last Claude session in the directory).
-- `~/.claude/MACHINE_CONFIG.md` Dev Port Registry row path updated `Apps\Feedbackr` → `Apps\feedbackmonk` (port numbers + project name unchanged).
-- Living docs path references updated in the same commit (CLAUDE.md banner, SPECIFICATION.md Repository home, ARCHITECTURE.md, PROJECT_TRAJECTORY.md Next-Best-Steps).
-- Historical records left intact per DEC-FBR-11 identifier-stability rule (planning/intakes, commit-log, decision-record narrative, OPEN_QUESTIONS resolution narrative).
-- No git remote existed at rename time (PF-REGISTER-01 still pending), so no remote-URL update required.
-
-### ~~PF-RENAME-03: Local dev container rename `feedbackr-*-dev` → `feedbackmonk-*-dev`~~ — DONE
-
-Executed 2026-05-15 post-arc-terminus. Scope delivered:
-- `docker rename feedbackr-pg-dev feedbackmonk-pg-dev` (Postgres dev container on port 5433; `DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev` unchanged).
-- `docker rename feedbackr-mailpit-dev feedbackmonk-mailpit-dev` (Mailpit SMTP-capture dev container on ports 1025/8025; ad-hoc dev container originally created during P1 status-emails work, not under `deploy/docker/docker-compose.yml` control).
-- `ltads/execution/development-brief.md` constraint row updated to reflect new container name (the row had explicitly flagged the rename as a future item).
-- `docs/operations/LOCAL_DEV.md` already prescribed `feedbackmonk-pg-dev` (updated in PF-RENAME-01); the rename brings live state into agreement with the doc.
-- Concluded LTADS session records (`current-session.md`, `commit-log.md`, etc.) left intact per append-only history rule — they correctly describe the container name as it was during the concluded session.
-- Stale gitignored routing artifacts cleaned up: `.claude/handoff/handoff-*.md` (14 unpinned files referencing dead `crates/feedbackr-*` paths) and `.claude/session-state/finalize-session-files-S001-*.json` / `-S002-*.json` / `-p4-stage1.json` (per-session caches referencing pre-rename paths). All gitignored — local hygiene only, no commit churn.
-
-### ~~Documentation rename fixup (PF-RENAME-FIXUP)~~ — DONE
-
-Executed 2026-05-15 in commit `b73a7b4`. Fixed two categories of issues introduced by PF-RENAME-02's path-rename sweep:
-- **Over-rename** (6 fixes): historical "Feedbackr"/`github.com/Feedbackr`/`FEEDBACKR_*` references in `README.md`, `DECISIONS.md` DEC-FBR-11, `OPEN_QUESTIONS.md` Q9 had been corrupted to `feedbackmonk`/`github.com/feedbackmonk`/`FEEDBACKMONK_*`, inverting the meaning of the squat-contingency narrative.
-- **Stale forward-references** (6 fixes): `feedbackr.com` → `feedbackmonk.com` (public roadmap URL in DECISIONS.md, Cloudflare deploy landing, scope-table row 16, P4 exit-gate line in arc plan); `feedbackr-tier-quotas` oracle name → `feedbackmonk-tier-quotas` (SPECIFICATION.md); planned P3 webhook signing headers `x-feedbackr-*` → `x-feedbackmonk-*` (DISCOVERIES.md D-FBR-07).
-
-### ~~PF-REGISTER-01: Register `github.com/feedbackmonk` org + buy `feedbackmonk.com`~~ — DONE
-
-Completed by user action (verified 2026-06-02 via `gh api`):
-- `github.com/feedbackmonk` org registered 2026-05-16.
-- Public repo `github.com/feedbackmonk/feedbackmonk` created (public, default branch `main`) and pushed — last push 2026-05-17; local `main` (`5bf9878`) in sync with `origin/main` (ahead 0 / behind 0). The `origin` remote is configured locally.
-- `feedbackmonk.com` purchased.
-- **Effect**: the first-public-push gate is cleared. `/0-uldf-finalize` no longer needs `--skip-push`; normal propagation-consent rules apply.
-
-### PF-DEPLOY-01: Stand up a reachable feedbackmonk instance for the GitCellar integration (decision + ops)
-
-**Status (2026-06-03): decision MADE (self-host) and feedbackmonk-api DEPLOYED + LIVE (at v0.2.0).** The instance runs on GitCellar's Railway at `https://feedback.gitcellar.com` (`/health/ready` 200, verified live 2026-06-03; project `a1350be8-…`, tenant `triage@gitcellar.com`, anon submit verified, `FEEDBACKMONK_CORS_ORIGINS` set). **No feedbackmonk _feature-code_ work remains for the original integration** — the admin-ui re-auth gap that was the last feedbackmonk dev item is closed (`POST /api/v1/login`, DEC-FBR-IMPL-10). **Correction (scrutiny 2026-07-01, finding P1-9):** a deploy item DOES remain — the **Phase-A A6 redeploy**. The live instance runs **v0.2.0**; the current code is **v0.3.0** with migrations `00020`+`00021` **unapplied** on the live instance, so the six Phase-A capabilities (`feedback.delete|reply_state|export|severity|idempotency|attachments`) are NOT yet live and `GET /api/v1/capabilities` does not yet advertise them. A6 = redeploy `feedback.gitcellar.com` at ≥ v0.3.0 with those migrations applied, then verify `/api/v1/capabilities` + smoke each new route (see PF-PHASEA-01 and the ordered runbook in `docs/operations/RAILWAY_GITCELLAR.md` § 8). This is **GitCellar-Railway ops, not this repo's code** — no feedbackmonk source change is outstanding — but it is real remaining work and it GATES GitCellar Phases B/C. What's also left is **GitCellar-side ops, not this repo**: re-publish the gitcellar.com landing at launch (currently reverted to placeholder per user direction) + Stage 3 Desktop JWT cutover. **Authoritative resume record**: `docs/planning/feedbackmonk-deploy-state.md` (this repo's pointer) → GitCellar repo's `docs/planning/feedbackmonk-deploy-state.md` (commit `82eaf2ebea`) for the full IDs, WCM credential names, and re-publish command.
-
-**Original trigger** (now fired): when wiring GitCellar (customer #1) to embed the feedbackmonk widget.
-
-The two hosting models that were on the table (self-host was chosen):
-
-- **Self-host (CHOSEN + EXECUTED)**: GitCellar runs the stack on its existing Railway (reusing its Postgres — `docs/operations/RAILWAY_GITCELLAR.md`), `docker compose up` for vanilla self-host (FR-FBR-17, smoke-tested to `/health/ready`). **Does NOT require `feedbackmonk.com` to be live.** Runbooks: `docs/operations/SELFHOST.md` + `SELFHOST_ENV.md`.
-- **SaaS (not pursued for GitCellar)**: deploy feedbackmonk behind `api.feedbackmonk.com` + `cdn.feedbackmonk.com`; point `feedbackmonk.com` DNS at it. Only needed if feedbackmonk is later offered as a hosted service rather than self-hosted by GitCellar.
-
-Integration handshake (all built + exercised): customer signs up → gets `project_id` → registers an Ed25519 **public** key (`POST /api/v1/projects/{id}/signing-keys`, Contract C4) → mints EdDSA JWTs (`sub`/`iat`/`exp`/`aud`=project_id; Contract C2) → embeds widget with `data-project-id` + `data-jwt`.
-
-The separate Astro **marketing site** (`feedbackmonk.com` landing page, FR-FBR-16) is product marketing — not required for GitCellar's functional integration.
-
-### ~~PF-A11Y-LOGIN-01: Fix pre-existing broken `admin-ui/e2e/a11y.spec.ts` login test~~ — DONE
-
-**Status (2026-06-19): FIXED.** Two latent bugs in the login a11y spec, both test-harness-only (no app/board/moderation code touched):
-- **Strict-mode locator collision** (the named bug): `getByLabel('Password')` matched **two** elements — the password input (`<label>Password</label>`) and the "Show password" toggle (`aria-label="Show password"`), since Playwright `getByLabel` is case-insensitive substring by default. Fix: `getByLabel('Password', { exact: true })`.
-- **Stale fake-API mock** (surfaced once the locator was fixed): the mock routed `/auth/login`, but the app moved to `POST /api/v1/login` (DEC-FBR-IMPL-10), so the login POST fell through to the absent backend and `waitForURL('**/feedback')` timed out. Fix: mock matcher → `/\/api\/v1\/login$/`.
-
-Full e2e a11y suite green: **13/13 passed**, including the previously-failing login spec and the two new board specs (`moderation-a11y.spec.ts`, `public-board-a11y.spec.ts`). No regressions.
-
-### PF-UNPIN-01: Unpin `stranded-dirty-files` once ULDF DEFER-221 lands
-
-**Trigger**: the framework baseline no longer ships the developer's Windows account name — i.e. ULDF DEFER-221 is fixed *and* synced to this machine. One-command test:
-`U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` → `0`.
-**Measured 2026-08-30: it returns `0` — the trigger has FIRED.** The upstream ULDF fix has been synced to `~/.claude/`, so the pin should now be removed (it is a `.claude/` write, hence DEC-84-gated for a worker session — see DEFER-003).
-
-> The command assembles both spellings from the live account rather than embedding either. DEFER-003 records that this repo's previous version of this very note re-published the identifier it was documenting the removal of — do not paste the literal back in.
-
-**Why the pin exists**: commit `5bf9878` (2026-05-17) scrubbed that account name to `someuser` in `validate.ps1` lines 38-39, ahead of this repo's first public push. The framework baseline still carries the unscrubbed form, so a blanket `/0-uldf-migrate-oracles` refresh reverts it — **observed twice**: `d71c35a` (2026-08-06) and again during the DEC-405 refresh (`de297c3`, 2026-08-21). The oracle was refreshed to current baseline *first*, the scrub re-applied, then pinned via `.claude/oracles/stranded-dirty-files/.local-customized` — so it carries the DEC-405 InvariantCulture date fix and diverges from baseline by 2 comment lines only.
-
-**Action when triggered**: delete `.claude/oracles/stranded-dirty-files/.local-customized`, then confirm a refresh no longer reverts the scrub. Leaving the pin after DEFER-221 lands is the real cost — it blocks every future framework fix to this oracle from reaching this project.
-
-**Upstream**: `DEFER-221` in the ULDF repo (`docs/planning/deferred/`).
-
-Remove this entry once the pin is removed.
 
 ---
 
