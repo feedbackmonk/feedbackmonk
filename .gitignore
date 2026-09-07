@@ -48,6 +48,7 @@ pnpm-debug.log*
 # Framework debris at the collaboration root (registration failures, and any
 # future underscore-prefixed CSI log) — machine-local, never project content.
 **/.claude/collaboration/_*.jsonl
+**/oracles/*/cache/
 
 # CSI registry (mutates every session-start)
 **/.claude/collaboration/active-sessions.json
