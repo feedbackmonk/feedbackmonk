@@ -346,7 +346,7 @@ Outcome: all four lanes COMPLETE; CI-parity + tests green; 17/17 oracles; admin 
 - **C36**: `data-locale` resolves through the lenient resolver (embedder-trusted attribute; resolver is table-bounded); `validateLocale` (exact-only) gates `?lang=`, `localStorage` and stored tenant values (MSG-006).
 - **`format.ts`** locale parameter shipped **optional** (ten unowned call sites); Stage 2 passes the active locale everywhere and flips it required.
 - **Pre-existing finding routed to Stage 2**: `error.rs` emits `{"error": msg}` while `widget/src/types.ts` expects `{code, message}`; the widget maps HTTP status classes instead. Stage 2 backend lane adds an additive `code` field (precedent: C38's 400 body).
-- **Dev DB**: `feedbackmonk_dev` unrepairable by migration; owner-gated recreate; `LOCAL_DEV.md` carries the note.
+- **Dev DB**: `feedbackmonk_dev` was unrepairable by migration during Stage 1; **recreated on the owner's word 2026-09-07 and back at 32/32** (`LOCAL_DEV.md` § Known state). Stage 2 ran its Rust lanes against `feedbackmonk_prepare`, which is also 32/32.
 
 **Stage 2 (W-D admin extraction, cheap) brief inputs** — from the lanes' `## Deltas for LEAD`:
 1. `format.ts`: pass the active locale at `FeedbackList`, `FeedbackDrawer`(4), `ModerationQueue`, `AutopilotDigest`, `BoardCard`, `ClusterDetail`(2), `WorkOrderList`, `WorkOrderDetail`(2), `RunnerTokenCard`(3), `SentimentTrendChart`(2 + 5 `toLocaleString`), `TierSettings`(1), `UsageMeter`(4); then make the parameter required.

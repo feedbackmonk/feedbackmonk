@@ -172,8 +172,10 @@ Verification Oracles built so far + scheduled:
   prototype-chain fix and a restored 5xx error message). No further widget bytes without spending the
   documented `widget.`-prefix lever (~735 B, `widget/README.md`).
 
-  **Dev DB**: `feedbackmonk_dev` is unrepairable by migration (`docs/operations/LOCAL_DEV.md` § Known state);
-  recreate is owner-gated (destructive). The Rust suite runs against `feedbackmonk_prepare`.
+  **Dev DB**: resolved — `feedbackmonk_dev` was recreated on the owner's word 2026-09-07 and is back at
+  **32/32**, so it is the normal `DATABASE_URL` target again. `feedbackmonk_prepare` is also 32/32 and stays
+  a valid alternative for `cargo sqlx prepare`. `docs/operations/LOCAL_DEV.md` § Known state carries the
+  detail, including what to do if the migration ledger is ever found wiped again.
 
   **GitCellar must re-vendor the whole `widget/dist/` tree** (`dist/locales/` is new, and `widget.js` moved
   again in Stage 2) — filed to that repo.
