@@ -1,0 +1,45 @@
+{
+  "name": "translation-egress-q24-isolation",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Does the multilingual-translation pipeline (FR-FBR-30) keep its privacy + Q24 invariants? Probe A proves from main.rs that the translation provider DEFAULTS to `off` (egress is opt-in; DEC-FBR-IMPL-26) and is never an unconditional cloud provider. Probe B proves NO human-facing surface reads `body_translated`: every fn referencing the column is in a tiny allowlist (the sole analyst consumer `list_member_bodies_for_cluster` + the worker writer `set_translation`) — a new public/end-user/board/admin-display read of the translation FAILS (Q24, DEC-FBR-IMPL-25; the verbatim original is what humans see). Probe C proves writer uniqueness: only `set_translation` writes (`SET body_translated`), no INSERT writes it, and it is CALLED only from the translate-after-accept worker (the async worker is the sole writer; never the request path). Probe D proves the latest `body_tsv` migration sources from `coalesce(body_translated, body)` (FTS indexes the translation with fallback). `--full` runs tests/translation_worker.rs (behavioral drift).",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/oracles/translation-egress-q24-isolation/oracle.sh",
+    "windows": ".claude/oracles/translation-egress-q24-isolation/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Probe --full reports PENDING (not failure) until tests/translation_worker.rs lands."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/main.rs",
+      "crates/feedbackmonk-api/src/translation/worker.rs",
+      "crates/feedbackmonk-api/src/translation/deepl.rs",
+      "crates/feedbackmonk-api/src/translation/mod.rs",
+      "crates/feedbackmonk-repository/src/feedback.rs",
+      "crates/feedbackmonk-api/tests/translation_worker.rs",
+      "migrations/00019_feedback_translation.sql",
+      ".claude/oracles/translation-egress-q24-isolation/oracle.py"
+    ],
+    "compute_cost_ms": 60
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the translation pipeline, the feedback read surface, the provider construction, or the FTS source column",
+    "estimated_token_savings_per_call": 950
+  },
+  "consumer_scope": "feedbackmonk: the FR-FBR-30 implementer + every reviewer touching the translation provider/worker, any feedback read SQL, or the body_tsv FTS definition. A green oracle (A+B+C+D clean, --full clean-or-pending) is the FR-FBR-30 privacy/Q24 gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-21T00:00:00Z"
+  },
+  "fallback": "Probe A: read crates/feedbackmonk-api/src/main.rs `build_translation_provider` and confirm FEEDBACKMONK_TRANSLATION_PROVIDER defaults to \"off\" and the \"off\" arm returns Ok(None). Probe B: grep crate src for `body_translated`; confirm only set_translation + list_member_bodies_for_cluster reference it. Probe C: confirm only set_translation has `SET body_translated`, and only translation/worker.rs calls `.set_translation(`. Probe D: confirm the highest-numbered migration defining body_tsv uses coalesce(body_translated, body). Probe --full: cargo test -p feedbackmonk-api --test translation_worker.",
+  "provenance": {
+    "authored_by": "FR-FBR-30 Stream E (the verifiability surface for DEC-FBR-IMPL-26's privacy posture + the Q24 read-isolation invariant).",
+    "created": "2026-06-21T00:00:00Z",
+    "rationale": "Testability Gate Flag 2 (Q2 privacy/Q24 read-isolation): a happy-path test confirms `translate -> consumer reads English`, but cannot prove the ABSENCE of a code path that routes body_translated to a public/end-user/board/admin-display surface, nor that a future edit can't flip the provider default to a cloud provider (silent egress) or revert the FTS source to the original (mis-stemming). Detection-from-code (provider construction + per-fn column referents + writer-call sites + migration FTS expr), the anti-reward-hacking leg — it cannot be satisfied by a self-reported is_private flag. Mirrors public-board-moderation-gate (board read isolation) and cors-allowlist-enforcement (provider/posture-from-code)."
+  }
+}

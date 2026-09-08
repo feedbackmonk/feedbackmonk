@@ -1,0 +1,38 @@
+# tier-enforcement-status -- TOML mirror of manifest.json.
+#
+# The feedbackmonk oracle harness reads manifest.json (matches the existing
+# multi-tenant-isolation-check + pii-scrub-audit + widget-bundle-size
+# oracles' convention). The brief specifies manifest.toml -- kept as a
+# TOML mirror so anyone consulting the file by brief-name lands on the
+# same authoritative metadata. Drift between the two files is a
+# documentation bug; manifest.json wins at runtime.
+
+name = "tier-enforcement-status"
+version = "1.0.0"
+kind = "verification"
+category = "tiers"
+question = "Does every domain-write handler under crates/feedbackmonk-api/src/handlers/ either consult check_tier_quota() before its first write OR appear in the allowlist? Does tier_quotas() return the Contract C19 canonical shape per Tier variant? (With --full: do the end-to-end cap-firing smoke tests pass?)"
+
+[invocation]
+unix = ".claude/oracles/tier-enforcement-status/oracle.sh"
+windows = ".claude/oracles/tier-enforcement-status/oracle.ps1"
+
+[output]
+format = "text"
+schema = "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure."
+
+[freshness]
+strategy = "trigger-invalidate"
+triggers = [
+  "crates/feedbackmonk-api/src/handlers/**",
+  "crates/feedbackmonk-core/src/tier.rs",
+  "crates/feedbackmonk-repository/src/tier_quota.rs",
+  ".claude/oracles/tier-enforcement-status/allowlist.toml",
+  ".claude/oracles/tier-enforcement-status/oracle.py",
+]
+compute_cost_ms = 250
+
+[provenance]
+authored_by = "feedbackmonk P3 Stage 1 (Task Zero, oracle pre-build)"
+created = "2026-05-14T14:30:00Z"
+rationale = "FR-FBR-14 (tier enforcement) + DEC-FBR-03 (pricing tier matrix). Three-leg defense: (1) Tier enum type-system; (2) THIS oracle (handler-coverage + config-shape + integration smoke); (3) sqlx::test fixtures driving HTTP cap-firing paths."

@@ -1,0 +1,39 @@
+# widget-bundle-size — TOML mirror of manifest.json.
+#
+# The feedbackmonk oracle harness reads manifest.json (matches the existing
+# multi-tenant-isolation-check + pii-scrub-audit oracles' convention). The
+# task brief specifies manifest.toml — kept as a TOML mirror so anyone
+# consulting the file by brief-name lands on the same authoritative metadata.
+# Drift between the two files is a documentation bug; manifest.json wins
+# at runtime.
+
+name = "widget-bundle-size"
+version = "1.0.0"
+kind = "verification"
+category = "privacy"
+question = "Is the built feedbackmonk widget bundle (widget/dist/*.{js,mjs,css}) at most 30720 bytes, and does it contain zero canonical third-party tracker hostnames? Has the canonical tracker-list drifted from its hashed baseline?"
+
+[invocation]
+unix = ".claude/oracles/widget-bundle-size/oracle.sh"
+windows = ".claude/oracles/widget-bundle-size/oracle.ps1"
+
+[output]
+format = "text"
+schema = "PASS or FAIL <n> with size detail + tracker-hit file:line offenders on FAIL; tracker-list SHA-256 always printed; exit code 0 on PASS, 1 on FAIL, 2 on environment failure"
+
+[freshness]
+strategy = "trigger-invalidate"
+triggers = [
+  "widget/dist/**",
+  "widget/src/**",
+  "widget/vite.config.ts",
+  "widget/package.json",
+  ".claude/oracles/widget-bundle-size/expected-trackers.txt",
+  ".claude/oracles/widget-bundle-size/oracle.py",
+]
+compute_cost_ms = 150
+
+[provenance]
+authored_by = "feedbackmonk P2 — Customer-Facing (Task Zero, oracle pre-build)"
+created = "2026-05-14T03:59:00Z"
+rationale = "FR-FBR-04 (<30KB bundle) + DEC-FBR-02 (no third-party trackers brand promise). Three-leg defense per D-FBR-02 pattern: (1) vite.config.ts terser+CSP-safe bundler config; (2) THIS oracle (size probe + tracker-hostname probe + list-hash drift detection); (3) Playwright + axe-core a11y harness for behavioural regressions."

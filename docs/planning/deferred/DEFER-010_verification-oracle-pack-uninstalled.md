@@ -72,6 +72,35 @@ reinstates 17 `unknown` rows in the briefing. The fork:
 Recommendation: (1), sequenced as (2) then the manifest pass, so `main` stops being red on the
 first commit rather than the last.
 
+## UPDATE 2026-09-08 — step (2) is done; the fork is now a different one
+
+The session that caused this restored all 17 directories from `5d858d2^` and verified them:
+`bash scripts/run-verification-oracles.sh` prints `verification-oracle suite: all 17 PASS` and
+exits 0, so **CI on `main` and `scripts/ci-local.sh` are green again**. The briefing cost this
+buys back is real and measured: `oracles: 27 pass=9 warn=0 fail=1 unknown=17`.
+
+**The fork above needs a fourth option, and it is probably the right one.** Options (1) and (3)
+both assume these belong to the framework's oracle contract. They do not. They carry
+`manifest.json` + `manifest.toml` + `oracle.py` + `oracle.sh`, they take a `--full` flag, they are
+invoked *directly* by `scripts/run-verification-oracles.sh`, and CI is their consumer. The
+framework's contract is `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py` exposing
+`run(ctx) -> verdict`. Adding a `schema` key (option 1) would make the v2 runner *try to load a
+`run.py` that is not there* and report `unknown` anyway — option (1) does not actually work.
+
+4. **Move them out of `.claude/oracles/`** — say `.claude/verification-oracles/` — so the two
+   contracts stop sharing one namespace. The framework runner then never sees them, the 17
+   `unknown` rows go away, CI is untouched in behaviour, and nothing has to be rewritten.
+
+Measured blast radius for (4): the 17 directories, one line in `scripts/run-verification-oracles.sh`
+(`script=".claude/oracles/$o/oracle.py"`, line 63), and four live references outside the
+directories themselves — `CLAUDE.md`, `.claude/skills/1-translate/SKILL.md`,
+`admin-ui/src/pages/settings/README.md`, and each oracle's own README. `.github/workflows/ci.yml`
+and `scripts/ci-local.sh` call the script and need no edit. Archived collaboration files reference
+the old path historically and should not be rewritten.
+
+I did not take (4) unattended: it changes this project's layout, and which home is right is your
+call, not the framework's. Everything needed to do it in twenty minutes is above.
+
 ## Scope note
 
 The deleted trees are all recoverable from `5d858d2~1`; nothing was lost, only uninstalled. The

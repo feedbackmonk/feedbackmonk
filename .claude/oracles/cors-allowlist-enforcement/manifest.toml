@@ -1,0 +1,36 @@
+# cors-allowlist-enforcement -- TOML mirror of manifest.json.
+#
+# The feedbackmonk oracle harness reads manifest.json (matches the existing
+# multi-tenant-isolation-check + pii-scrub-audit + widget-bundle-size +
+# tier-enforcement-status + selfhost-compose-smoke convention). manifest.toml
+# is kept as a mirror so anyone consulting by file-name lands on the same
+# metadata. Drift between the two is a documentation bug; manifest.json wins
+# at runtime.
+
+name = "cors-allowlist-enforcement"
+version = "1.0.0"
+kind = "verification"
+category = "security"
+question = "Does main.rs still build the CORS layer from FEEDBACKMONK_CORS_ORIGINS and apply it to BOTH the submission and attachments routers, and does public_cors_layer keep the credentialed echo-origin policy (allow_credentials + AllowOrigin::list, never a wildcard)? (With --full: does the cors_preflight integration test pass?)"
+
+[invocation]
+unix = ".claude/oracles/cors-allowlist-enforcement/oracle.sh"
+windows = ".claude/oracles/cors-allowlist-enforcement/oracle.ps1"
+
+[output]
+format = "text"
+schema = "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure."
+
+[freshness]
+strategy = "trigger-invalidate"
+triggers = [
+  "crates/feedbackmonk-api/src/main.rs",
+  "crates/feedbackmonk-api/src/cors.rs",
+  ".claude/oracles/cors-allowlist-enforcement/oracle.py",
+]
+compute_cost_ms = 60
+
+[provenance]
+authored_by = "post-DEC-FBR-IMPL-09 follow-up (CORS fix for GitCellar customer #1)"
+created = "2026-06-03T00:00:00Z"
+rationale = "DEC-FBR-IMPL-09 wired a credentialed CORS layer to the public widget endpoints. tests/cors_preflight.rs tests public_cors_layer in isolation and cannot catch wiring removal from build_app; this oracle reads wiring + policy from source to close that gap. Code-state guard half of DEC-FBR-04's domain allowlist for widget embed."

@@ -1,0 +1,42 @@
+{
+  "name": "tier-enforcement-status",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Does every domain-write handler under crates/feedbackmonk-api/src/handlers/ either consult check_tier_quota() before its first write OR appear in the allowlist? Does tier_quotas() return the Contract C19 canonical shape per Tier variant? (With --full: do the end-to-end cap-firing smoke tests pass?)",
+  "category": "tiers",
+  "invocation": {
+    "unix": ".claude/oracles/tier-enforcement-status/oracle.sh",
+    "windows": ".claude/oracles/tier-enforcement-status/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail. Exit 0 on PASS, 1 on FAIL, 2 on environment failure."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/handlers/**",
+      "crates/feedbackmonk-core/src/tier.rs",
+      "crates/feedbackmonk-repository/src/tier_quota.rs",
+      ".claude/oracles/tier-enforcement-status/allowlist.toml",
+      ".claude/oracles/tier-enforcement-status/oracle.py"
+    ],
+    "compute_cost_ms": 250
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P3+ (touching handlers/, tier model, or tier_quota repo)",
+    "estimated_token_savings_per_call": 1000
+  },
+  "consumer_scope": "P3+ all crates (every commit touching feedbackmonk-api/handlers/, feedbackmonk-core/src/tier.rs, or feedbackmonk-repository/src/tier_quota.rs; CI gate from P3 start)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-14T14:30:00Z"
+  },
+  "fallback": "Probe A: grep every pub async fn in crates/feedbackmonk-api/src/handlers/*.rs for a write-pattern (\\.create\\(, \\.submit_*, \\.update_*); confirm each either calls check_tier_quota before the write or is in allowlist.toml. Probe B: read crates/feedbackmonk-core/src/tier.rs and confirm tier_quotas() match arms for Free/Starter/Pro/SelfHost carry the Contract C19 token set. Probe C: cargo test --test tier_enforcement_smoke -p feedbackmonk-api with dev Postgres up.",
+  "provenance": {
+    "authored_by": "P3 Stage 1 worker (Task Zero — orchestrated session-20260514-102233-006)",
+    "created": "2026-05-14T14:30:00Z",
+    "rationale": "FR-FBR-14 (tier enforcement + caps + footer) + DEC-FBR-03 (pricing tier matrix). Three-leg defense per P3 plan § Testability Gate: (1) Tier enum + TierQuotas type-system; (2) THIS oracle (handler-coverage + config-shape + integration smoke); (3) sqlx::test fixtures driving HTTP cap-firing paths. Cold-start vacuous-PASS supports Task Zero order-of-operations — built BEFORE Phase 4 cap-wiring so every subsequent commit closes its develop/test/fix loop against the oracle."
+  }
+}

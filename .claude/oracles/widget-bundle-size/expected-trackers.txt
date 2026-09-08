@@ -1,0 +1,44 @@
+# Canonical third-party tracker hostnames forbidden in the feedbackmonk widget bundle.
+#
+# Defends DEC-FBR-02 brand promise: "no third-party trackers in the widget, ever."
+# The oracle's Probe B greps every file in `widget/dist/*.{js,mjs,css}` for these
+# hostnames. Any hit = FAIL.
+#
+# Rules for editing this file:
+# - Additions are pre-authorized per GUIDE.md §8 (CLAUDE-A may ADD; never remove).
+# - Each addition must be a canonical company hostname (the host the tracker's
+#   SDK loads from), not a wildcard.
+# - One hostname per line. Comments (`#`) and blank lines are ignored.
+# - The oracle hashes the canonical (sorted, lowercased, joined-with-\n) list
+#   and prints the hash in every report. Silent shrinkage is impossible.
+# - If a tracker's hostname legitimately changes (acquisition, rebrand), keep
+#   the old hostname AND add the new one — never replace. Old SDKs in
+#   customer-pinned bundles may still hit the old host.
+
+# Customer-data analytics SDKs
+segment.io
+mixpanel.com
+amplitude.com
+heap.io
+posthog.com
+
+# Google Analytics + Tag Manager family
+google-analytics.com
+googletagmanager.com
+analytics.google.com
+
+# Session-replay / behavioural analytics
+fullstory.com
+hotjar.com
+logrocket.com
+mouseflow.com
+
+# Support-chat widgets that also do tracking
+intercom.io
+intercom.com
+drift.com
+zendesk.com
+
+# Generic third-party fingerprinters
+fingerprint.com
+fpjs.io
