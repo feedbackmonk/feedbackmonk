@@ -74,16 +74,12 @@ All registered in `~/.claude/MACHINE_CONFIG.md` Dev Port Registry.
 
 ## Oracles
 
-`.claude/oracles/` holds the framework's starter pack. The session-start hook runs the every-session fast ones and emits an ORACLE BRIEFING — read it before investigating manually. Audit via `/0-uldf-oracle`.
+**Two directories, two contracts — do not put one in the other's home.**
 
-> **⚠️ The project-specific Verification Oracles below are NOT installed.** The 2026-09-07
-> starter-oracle migration removed all 17 of them from the tree, so `scripts/ci-local.sh` and CI
-> job `verification-oracles` both fail, and every invariant in this table is currently unguarded.
-> They are recoverable; the fork and the recommendation are in
-> `docs/planning/deferred/DEFER-010_verification-oracle-pack-uninstalled.md`. **Until that lands,
-> the table is an inventory of invariants to check by hand, not of guards that will catch you.**
+- `.claude/oracles/` is the ULDF framework's starter pack: `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py`. The session-start hook runs the every-session fast ones and emits an ORACLE BRIEFING — read it before investigating manually. Audit via `/0-uldf-oracle`.
+- `.claude/project-oracles/` is this project's **Verification Oracle** suite, on its own older contract: `manifest.json` (+ sometimes `manifest.toml`), an `oracle.py` canonical, `oracle.sh`/`oracle.ps1` shims and a `--full` flag. Its consumer is `scripts/run-verification-oracles.sh`, which CI job `verification-oracles` and `scripts/ci-local.sh` both call. The framework runner never sees these. (Moved out of `.claude/oracles/` on 2026-09-08 — sharing the namespace bought one `unknown` row per oracle at every session start, DEFER-010.)
 
-The table says only **what each oracle defends**, so you can tell which invariant your change is about to touch. Each oracle's own `oracle.json` + `README.md` is the authoritative record of its probes and self-test.
+The table says only **what each oracle defends**, so you can tell which invariant your change is about to touch. Each oracle's own `manifest.json` + `README.md` is the authoritative record of its probes and self-test.
 
 | Oracle | What it defends |
 |---|---|
@@ -95,13 +91,13 @@ The table says only **what each oracle defends**, so you can tell which invarian
 | `cors-allowlist-enforcement` | credentialed CORS stays wired into `build_app`, never wildcard (DEC-FBR-IMPL-09) |
 | `approval-gate-enforcement` | no work order reaches ≥ `dispatched` without a prior owner-authored `approved` event (FR-FBR-25a/22) |
 | `public-board-moderation-gate` | no public board **read or vote** touches a non-`approved` row; board wire shape leaks no PII (C30) |
-| `host-tenant-binding` | on a host bound to tenant T, no public route reaches another tenant; admin on exactly one host (DEC-FBR-13) |
 | `translation-egress-q24-isolation` | translation provider defaults `off`; no public read of `body_translated` (DEC-FBR-IMPL-25/26) |
 | `i18n-catalog-integrity` | catalog shape + generated locale tables (C35, C41) — the exit gate of every localization stage |
 | `i18n-literal-ratchet` | **baseline 0** — any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is a hard failure |
-| `translation-gap-status` | advisory only: how much translation is outstanding; finalize reports it, never blocks |
 
-Four more are in the same state and not listed above: `feedback-erasure-completeness`, `public-route-ceiling`, `public-id-as-capability`, `submission-idempotency`. `ls .claude/oracles/` tells you what is actually installed.
+Four more are installed and not listed above: `feedback-erasure-completeness`, `public-route-ceiling`, `public-id-as-capability`, `submission-idempotency`. `bash scripts/run-verification-oracles.sh` runs all seventeen; `ls .claude/project-oracles/` tells you what is actually there.
+
+> **Three oracles this project's prose still names do not exist in the tree**, and never came back with the pack: `host-tenant-binding` (DEC-FBR-13 — the install brief is DEFER-006), `translation-gap-status` (advisory translation-debt reporter, cited by `/1-translate` and `scripts/i18n/README.md`), and `feedback-parity-status` (cited by `docs/specs/SPECIFICATION.md` and `DECISIONS.md`). Treat every reference to them as an unbuilt intention, not a guard.
 
 ## Constraints not in spec artifacts
 
@@ -117,7 +113,6 @@ Four more are in the same state and not listed above: `feedback-erasure-complete
 ## Pending Follow-Ups
 
 - **Trigger: 🚨 BLOCKED — resume here** — Railway cannot create containers for `feedbackmonk-api`, so the wontfix fix cannot ship and GitCellar's triage inbox is ~99% unusable. **Change no env var, setting or image pin there** — the one container serving `feedback.gitcellar.com` is irreplaceable. Details: `docs/planning/deferred/DEFER-009_railway-deploy-blocked-feedbackmonk-api.md`
-- **Trigger: `main` is red — do this first** — the 2026-09-07 starter-oracle migration uninstalled all 17 project Verification Oracles, so CI job `verification-oracles` and `scripts/ci-local.sh` both fail and every code-level invariant is unguarded. Details: `docs/planning/deferred/DEFER-010_verification-oracle-pack-uninstalled.md`
 - **Trigger: before the next release** — run `/1-translate`. No translation has ever run, by design (DEC-FBR-17): every non-`en` catalog is a skeleton and every surface falls back to English per key. The gap is large and the `translation-gap-status` oracle reads DUE. This is the release gate; nothing else waits on it.
 - **Trigger: the one redeploy of `feedback.gitcellar.com`** — the live instance is far behind HEAD in version and capabilities. Four items stack on that single redeploy (Phase-A A6, DEFER-004, FR-FBR-32/33, the `wontfix` serde fix). Details: `docs/pending/gitcellar-instance-redeploy.md`
 - **Trigger: your word — ops, not code** — provision `feedbackmonk.com` and cut GitCellar onto it (DEC-FBR-14). FR-FBR-32/33 are built and tested; there is nowhere to run them, and this retires the redeploy stack above at once. Details: `docs/pending/saas-standup.md`

@@ -36,7 +36,7 @@ feedbackmonk-repository   feedbackmonk-api  ──► feedbackmonk-jwt, feedback
 
 ## Constraints
 
-- **Raw SQL is allowed ONLY in `feedbackmonk-repository`.** Enforced by `.claude/oracles/multi-tenant-isolation-check/`. Adding a `sqlx::query(...)` to any other crate is a security incident per DEC-FBR-03.
+- **Raw SQL is allowed ONLY in `feedbackmonk-repository`.** Enforced by `.claude/project-oracles/multi-tenant-isolation-check/`. Adding a `sqlx::query(...)` to any other crate is a security incident per DEC-FBR-03.
 - **`feedbackmonk-core` stays pure-data.** No async, no I/O, no DB crates. The layering enforcement at crate granularity is what makes the multi-tenant-isolation oracle's grep patterns simple and the layering provable.
 - **Workspace clippy baseline**: `clippy::all = deny`. `feedbackmonk-repository` additionally runs `clippy::pedantic`.
 

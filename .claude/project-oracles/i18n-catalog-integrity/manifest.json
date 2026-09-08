@@ -1,0 +1,56 @@
+{
+  "name": "i18n-catalog-integrity",
+  "version": "1.0.0",
+  "kind": "verification",
+  "question": "Is the i18n catalog tree structurally sound -- every i18n/locales/<code>/<ns>.json parses, starts with _meta, has keys that are a subset of en's, matches en's {{placeholders}} per key, carries the CLDR plural categories its locale needs, contains no mojibake or leaked HTML entities -- and do the three generated locale tables still equal i18n/locales.json? (FR-FBR-34/39, Contracts C34/C35/C41)",
+  "assertion": {
+    "asserts": "Every runtime (widget, SPA, Rust) will read a consistent catalog: no key can render as a raw key, a broken placeholder, or a wrong-locale string because of a malformed or drifted catalog file, and all three runtimes agree on which 31 locales exist.",
+    "measures": "Working-tree files only: (A) `scripts/i18n/gen-locales.py --check` exit code (the three locales.gen.* files byte-equal a fresh render of i18n/locales.json); (B) json.load succeeds on every i18n/locales/*/*.json and the first key is `_meta` with `language` + `status`; (C) for each non-en file, flattened dotted keys are a subset of the en file's, and the set of `{{name}}` tokens per key equals en's; (D) for locales with extra CLDR categories (ru, uk, pl, cs, sk: few/many; lv: zero), every key that has `_one` in en has those suffixes when the key is translated; (E) values contain no `Ã`/`â€` mojibake sequences and no `&amp;`/`&#` entities.",
+    "known_gaps": [
+      "Does not judge translation QUALITY or whether a value is still English (untranslated-authored) -- that is scripts/i18n/validate.py's soft class and translation-gap-status's MISSING count, deliberately advisory.",
+      "Checks the working tree, not HEAD: a catalog edited but not staged passes here and fails in CI only if committed -- accepted; the oracle runs at commit time via the finalize gate.",
+      "Placeholder equality is set-equality of {{name}} tokens; it cannot see a placeholder that was translated into prose (`{{count}}` -> `Anzahl`) if the translator ALSO dropped the braces -- caught only as a missing token, which it is.",
+      "Probe D checks presence of plural categories, not their grammatical correctness."
+    ]
+  },
+  "category": "correctness",
+  "invocation": {
+    "unix": ".claude/project-oracles/i18n-catalog-integrity/oracle.sh",
+    "windows": ".claude/project-oracles/i18n-catalog-integrity/oracle.ps1"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file + key). Exit 0 on PASS, 1 on FAIL, 2 on environment failure. Vacuous-PASS when i18n/locales/ is absent."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "i18n/**",
+      "admin-ui/src/i18n/locales.gen.ts",
+      "widget/src/locales.gen.ts",
+      "crates/feedbackmonk-i18n/src/locales.gen.rs",
+      "scripts/i18n/gen-locales.py",
+      "scripts/i18n/validate.py",
+      "scripts/i18n/_catalog.py",
+      ".claude/project-oracles/i18n-catalog-integrity/oracle.py"
+    ],
+    "compute_cost_ms": 200
+  },
+  "consultation": {
+    "typical_sessions_using": "every commit that touches a catalog, the locale table, or a generated locale file; every PODS converge of the localization arc",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "feedbackmonk: every worker on FR-FBR-34..40 and every later session adding a string. Green is the Stage-0/1/2 exit gate of the localization plan.",
+  "validation": {
+    "self_test_unix": ".claude/project-oracles/i18n-catalog-integrity/oracle.sh --self-test",
+    "self_test_windows": ".claude/project-oracles/i18n-catalog-integrity/oracle.ps1 --self-test",
+    "last_validated": "2026-09-07T02:18:00Z"
+  },
+  "fallback": "python scripts/i18n/gen-locales.py --check; then for f in i18n/locales/*/*.json: python -c 'import json,sys; json.load(open(sys.argv[1]))' f; then diff the flattened key sets against i18n/locales/en/<ns>.json by hand.",
+  "provenance": {
+    "authored_by": "UI-localization LD (Stage 0 Task Zero, 2026-09-06). Assertion block frozen BEFORE any probe existed; probes B-E implemented by worker W-T in Stage 1 against this block.",
+    "hardening_note": "Stage 0 ships Probe A + B only (generated-table drift + parse/_meta). W-T MUST adversarially self-test: a placeholder mismatch in de/widget.json and a hand edit to locales.gen.ts must both go red before the oracle's version is bumped to 1.0.0.",
+    "created": "2026-09-06T21:50:00Z",
+    "rationale": "Three runtimes read one catalog tree written by two different actors (developers in en/, a machine-translation script everywhere else). A malformed file or a drifted generated table is invisible at build time -- the SPA and widget fall back to English silently and Rust compiles the bytes in -- so the only moment to catch it is the commit. DEC-FBR-17's 'partial catalogs are always shippable' promise rests on this check."
+  }
+}

@@ -36,7 +36,12 @@ if [ -z "$PY" ]; then
 fi
 
 # The project verification-oracle suite. Adding an oracle here is a reviewable
-# surface — keep it in sync with .claude/oracles/INDEX.md § Verification Oracles.
+# surface — keep it in sync with the Oracles table in CLAUDE.md.
+#
+# These live under .claude/project-oracles/, NOT .claude/oracles/. The latter is
+# the ULDF framework's starter pack, whose runner answers `unknown` for anything
+# that is not a `"schema": "oracle/2"` manifest — so parking this suite there
+# bought one `unknown` line per oracle at every session start. Moved 2026-09-08.
 ORACLES=(
   multi-tenant-isolation-check
   pii-scrub-audit
@@ -60,7 +65,7 @@ ORACLES=(
 fail=0
 failed_list=()
 for o in "${ORACLES[@]}"; do
-  script=".claude/oracles/$o/oracle.py"
+  script=".claude/project-oracles/$o/oracle.py"
   if [ ! -f "$script" ]; then
     echo "::error::verification oracle missing: $script"; fail=1; failed_list+=("$o (missing)"); continue
   fi

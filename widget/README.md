@@ -283,7 +283,7 @@ scripts loaded at runtime.
   the existing P0 submission endpoint (`handlers/feedback.rs`).
 - **Repository surface**: `TenantRepo::get_widget_brand(&TenantScope)` —
   added to `crates/feedbackmonk-repository/src/tenants.rs` by Worker A.
-- **Verification Oracle**: `.claude/oracles/widget-bundle-size/` — built
+- **Verification Oracle**: `.claude/project-oracles/widget-bundle-size/` — built
   BEFORE any source file in this directory landed (Task Zero discipline).
 - **No npm workspace integration**. The widget has its own lockfile so
   admin-ui's React deps cannot accidentally leak into the embedder's

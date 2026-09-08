@@ -521,13 +521,13 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 
 **Resolved**: 2026-05-13 (P0 Stage 1).
 
-**Decision**: `TenantRepo::scope_for(uuid) -> Result<TenantScope>` is the third allow-listed pre-auth method (joining `create` and `find_by_email`). It bridges a verified session-cookie tenant_id to a fresh `TenantScope`. Recorded in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` with inline rationale.
+**Decision**: `TenantRepo::scope_for(uuid) -> Result<TenantScope>` is the third allow-listed pre-auth method (joining `create` and `find_by_email`). It bridges a verified session-cookie tenant_id to a fresh `TenantScope`. Recorded in `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` with inline rationale.
 
 **Rationale**: The pre-authentication boundary necessarily mints the **first** `TenantScope` from a verified caller. `TenantScope::new` is `pub(crate)`, so without `scope_for`, Stage 2 Worker A's login handler has no path from "I've validated this session cookie" to "...therefore here is a `TenantScope` for downstream calls." Making the boundary explicit — and gating it through a single named method with a documented rationale — is more honest than back-channels.
 
 **Trade-offs**: Adds a third entry to the pre-auth allowlist. Risk is gradual allowlist growth. Mitigated by required-rationale convention and oracle freshness trigger on allowlist edits.
 
-**Implementation**: `crates/feedbackmonk-repository/src/tenants.rs`. Allowlist entry: `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` lines 32-35.
+**Implementation**: `crates/feedbackmonk-repository/src/tenants.rs`. Allowlist entry: `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` lines 32-35.
 
 ---
 
@@ -541,7 +541,7 @@ Both additions are **EXTENSIONS** (additional info / additional method), not **W
 
 **Trade-offs**: Adds Python to the oracle dependency set. Documented in oracle file headers and `.github/workflows/ci.yml` (which installs Python if absent). Some oracles that need only simple grep stay in pure shell — the pattern is "Python when parsing crosses lines or needs context."
 
-**Implementation**: `.claude/oracles/multi-tenant-isolation-check/{oracle.py, oracle.ps1, oracle.sh}`. Shims verified to produce identical output on clean tree (PASS) and on a planted violation (FAIL with same offender line).
+**Implementation**: `.claude/project-oracles/multi-tenant-isolation-check/{oracle.py, oracle.ps1, oracle.sh}`. Shims verified to produce identical output on clean tree (PASS) and on a planted violation (FAIL with same offender line).
 
 ---
 
@@ -604,7 +604,7 @@ Option A's cost (one small Rust binary + one shim script + one `prebuild` npm-sc
 - **Probe B (fast, always-on)**: every `${FEEDBACKMONK_*}` and `${DATABASE_URL}` reference in `deploy/docker/docker-compose.yml`'s `environment:` blocks is present in `docs/operations/SELFHOST_ENV.md`'s canonical catalog table (parses the table, extracts var names, set-compares against compose-env references). Catches typos, undocumented additions, schema drift.
 - **Probe C (`--full`, opt-in)**: `docker compose down --volumes && docker compose up -d && wait-for-healthy && curl http://localhost:14304/health` returns 200 with the documented JSON body. Clean-state smoke — catches "works only because volume is stale" and "works only because image is cached" failure modes that ate two real cycles of GitCellar's own self-host bring-up.
 
-Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python canonical + bash/ps1 shims pattern (DEC-FBR-IMPL-03).
+Built as `.claude/project-oracles/selfhost-compose-smoke/` with the established Python canonical + bash/ps1 shims pattern (DEC-FBR-IMPL-03).
 
 **Rationale**: P4 Stage 1's Testability Gate scored FR-FBR-17 at composite ~14 (Q1=4 iteration cost, Q2=4 fidelity risk — clean-state-vs-stale-state is the canonical docker fidelity gap; Q3=4 critical path for the P4 exit gate). The composite-12+ threshold AND the Q3-Q4 combination both flag scaffolding-leverage; the `selfhost-compose-smoke` oracle is the scaffolding. Building it as Worker B's Task Zero locks the verification surface in before main implementation, mirroring the P3 Stage 1 Task Zero pattern for `tier-enforcement-status`.
 
@@ -711,7 +711,7 @@ Built as `.claude/oracles/selfhost-compose-smoke/` with the established Python c
 - *Header-carried anon token instead of a cookie* — larger change, not unambiguously more robust (see above); deferred as the documented long-term option.
 
 **Follow-up (2026-06-03)**: Built the `cors-allowlist-enforcement` Verification Oracle
-(`.claude/oracles/cors-allowlist-enforcement/`). `tests/cors_preflight.rs` exercises
+(`.claude/project-oracles/cors-allowlist-enforcement/`). `tests/cors_preflight.rs` exercises
 `public_cors_layer` in isolation and therefore cannot catch a *wiring-removal* regression
 (deleting `.layer(cors)` from `build_app`) — the exact way this `405` bug would silently
 return. The oracle reads the wiring (`main.rs`: layer built from `FEEDBACKMONK_CORS_ORIGINS`,

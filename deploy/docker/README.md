@@ -3,7 +3,7 @@
 > **Agent-context**: this directory ships the one-line `docker compose up`
 > self-host distribution for feedbackmonk (FR-FBR-17). The
 > `selfhost-compose-smoke` Verification Oracle
-> (`.claude/oracles/selfhost-compose-smoke/`) defends the env-var contract
+> (`.claude/project-oracles/selfhost-compose-smoke/`) defends the env-var contract
 > with C21 (`docs/operations/SELFHOST_ENV.md`) and the clean-state smoke
 > against `/health/ready`. Operator-facing runbook lives at
 > `docs/operations/SELFHOST.md`.
@@ -130,7 +130,7 @@ upgrade procedure, env-var reference), see
   bundles all 8 migrations (`migrations/00001..00008_*.sql`).
 - **admin-ui static**: `Dockerfile.admin-ui` builds `admin-ui/` with
   `npm run build` and serves the resulting `dist/` via nginx.
-- **Verification Oracle**: `.claude/oracles/selfhost-compose-smoke/`
+- **Verification Oracle**: `.claude/project-oracles/selfhost-compose-smoke/`
   defends this directory (yaml-lint + env-doc-xref + `--full`
   clean-state smoke against `/health/ready`).
 - **Operator runbook**: `docs/operations/SELFHOST.md` is the
@@ -230,7 +230,7 @@ upgrade procedure, env-var reference), see
 
 - `docs/operations/SELFHOST.md` — operator runbook (cold-readable)
 - `docs/operations/SELFHOST_ENV.md` — Contract C21 env-var catalog
-- `.claude/oracles/selfhost-compose-smoke/` — Verification Oracle
+- `.claude/project-oracles/selfhost-compose-smoke/` — Verification Oracle
 - `docs/planning/plans/20260514T163356-feedbackmonk-p4-go-public.md` — P4 plan §Stage 2 Worker B
 - `docs/specs/DECISIONS.md` — DEC-FBR-IMPL-06 (three-probe smoke oracle)
 - `migrations/README.md` — migration authoring conventions

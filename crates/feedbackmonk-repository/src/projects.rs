@@ -38,7 +38,7 @@ pub trait ProjectRepo: Send + Sync {
     /// land in the correct tenant row (the schema's `tenant_id NOT NULL`
     /// invariant is upheld via the scope, not via caller-supplied data).
     ///
-    /// **Allow-listed** in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+    /// **Allow-listed** in `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`
     /// under rationale "pre-authentication boundary". See DEC-PODS-001.
     async fn open_for_submission(&self, project_id: Uuid) -> Result<ProjectScope>;
 

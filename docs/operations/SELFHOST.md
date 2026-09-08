@@ -7,7 +7,7 @@
 > - **`docs/operations/SELFHOST_ENV.md`** — Contract C21, the canonical
 >   env-var catalog with code line refs.
 > - **`deploy/docker/`** — the compose stack itself + Dockerfiles + scripts.
-> - **`.claude/oracles/selfhost-compose-smoke/`** — Verification Oracle that
+> - **`.claude/project-oracles/selfhost-compose-smoke/`** — Verification Oracle that
 >   defends the contract between this runbook, the compose stack, and C21.
 
 ---
@@ -445,7 +445,7 @@ v1), follow these steps in order:
 - **Bug reports**: GitHub Issues at `https://github.com/feedbackmonk/feedbackmonk/issues` (repo is live and public).
 - **Security issues**: security@feedbackmonk.com (mailbox provisioning depends on domain mail setup; do not publicly disclose vulnerabilities — use a private GitHub security advisory if the mailbox is not yet live).
 - **License**: AGPL-3.0-or-later. Source code is in the same repo you cloned. Modifications must be made available under AGPL.
-- **Contracts**: this runbook is the cold-readable surface for FR-FBR-17. The Verification Oracle `selfhost-compose-smoke` (`.claude/oracles/selfhost-compose-smoke/`) defends the contract between this doc, `docs/operations/SELFHOST_ENV.md` (C21), and `deploy/docker/docker-compose.yml`.
+- **Contracts**: this runbook is the cold-readable surface for FR-FBR-17. The Verification Oracle `selfhost-compose-smoke` (`.claude/project-oracles/selfhost-compose-smoke/`) defends the contract between this doc, `docs/operations/SELFHOST_ENV.md` (C21), and `deploy/docker/docker-compose.yml`.
 
 ---
 

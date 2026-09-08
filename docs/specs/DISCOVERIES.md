@@ -81,7 +81,7 @@ The pattern: name those bridge methods explicitly, gate them through an allowlis
 
 **Surfaced by**: Stage 2 PODS convergence. Two independent workers (CLAUDE-A signup, CLAUDE-B submission) each hit the same pattern — needed a single pre-auth method on the repository surface to bridge an externally-verified credential into a first scope value. Both widenings (`ProjectRepo::open_for_submission(project_id)` for JWT-mode submission; `EmailVerificationRepo::redeem(token)` for verify-email) were pre-specified in the P0 plan task briefs, self-mediated by the workers under autopilot:continuous, then LD-ratified after review.
 
-**Generalizable insight**: The pre-auth allowlist (`.claude/oracles/multi-tenant-isolation-check/allowlist.toml`) is now a **proven repeatable mechanism** for legitimate Contract-C1 widening. The pattern:
+**Generalizable insight**: The pre-auth allowlist (`.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`) is now a **proven repeatable mechanism** for legitimate Contract-C1 widening. The pattern:
 
 1. **Plan-time** — the `/0-uldf-ldis-plan` round identifies the bridge method by exact signature in the task brief, citing which verified credential the method consumes.
 2. **Worker-time** — worker adds the entry to `allowlist.toml` with `rationale = "Pre-auth: ..."` explaining what is verified upstream.

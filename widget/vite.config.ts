@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 // feedbackmonk widget bundler config.
 //
-// Load-bearing constraints (enforced by .claude/oracles/widget-bundle-size/):
+// Load-bearing constraints (enforced by .claude/project-oracles/widget-bundle-size/):
 //   - English page-load set, TOP-LEVEL `widget/dist/*.{js,mjs,css}`
 //     <= 30720 bytes (FR-FBR-04)
 //   - Each per-locale chunk `widget/dist/locales/<code>.js` <= 4096 bytes (C42)

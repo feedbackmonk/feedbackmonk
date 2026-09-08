@@ -9,7 +9,7 @@
 //!   - `mark_used` -- post-redemption, scope-disciplined.
 //!
 //! Allowlist entry for `redeem`:
-//! `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+//! `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`
 //!   `[[methods]] trait = "EmailVerificationRepo" method = "redeem"`
 //!   `rationale = "Pre-auth boundary: opaque token IS the credential."`
 

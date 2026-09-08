@@ -98,7 +98,7 @@ extension manually when using `tower::ServiceExt::oneshot`.
    `feedback.rs::submit` uses `ProjectRepo::open_for_submission` (the
    allow-listed pre-auth boundary). Every other handler resolves scope
    via `AdminSession::scope`. New public endpoints MUST add an entry to
-   `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` with a
+   `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` with a
    rationale, or the oracle fails.
 2. **JWT errors return 401 with structured JSON.** The submission
    handler maps `JwtError::variant_name()` into the response body

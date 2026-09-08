@@ -102,7 +102,7 @@ pub trait DomainRepo: Send + Sync {
     /// Returns `Ok(None)` for an unknown host. That is not an error: the apex,
     /// the marketing site and a stray IP all land here legitimately.
     ///
-    /// **Allow-listed** in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+    /// **Allow-listed** in `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`
     /// under rationale "pre-authentication boundary".
     ///
     /// # Errors

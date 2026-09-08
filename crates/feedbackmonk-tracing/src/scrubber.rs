@@ -28,7 +28,7 @@
 //!
 //! `pii-scrub-audit` (Probandurgy oracle) computes SHA-256 of the
 //! line-serialised `(name, regex, replacement)` rows and compares to
-//! `.claude/oracles/pii-scrub-audit/expected_hash.txt`. The `canonical_hash`
+//! `.claude/project-oracles/pii-scrub-audit/expected_hash.txt`. The `canonical_hash`
 //! test in `tests/scrubber_patterns.rs` reproduces the same serialisation
 //! Rust-side and prints the digest, so authors can refresh
 //! `expected_hash.txt` after intentional pattern changes.
@@ -114,7 +114,7 @@ pub fn pattern_count() -> usize {
 
 /// Canonical SHA-256 input bytes — `name\tregex\treplacement\n` per row,
 /// UTF-8. Used by the `canonical_hash` test (Rust side) and by
-/// `.claude/oracles/pii-scrub-audit/oracle.py` (Python side). The two
+/// `.claude/project-oracles/pii-scrub-audit/oracle.py` (Python side). The two
 /// implementations MUST stay byte-identical.
 #[must_use]
 pub fn canonical_serialised() -> Vec<u8> {

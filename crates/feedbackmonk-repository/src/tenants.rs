@@ -3,7 +3,7 @@
 //! `create` and `find_by_email` are the documented pre-authentication exceptions
 //! to the `&TenantScope`-first-arg discipline (no scope can exist before a
 //! tenant is identified). Both are listed in
-//! `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` with rationale.
+//! `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` with rationale.
 
 use async_trait::async_trait;
 use sqlx::PgPool;
@@ -272,7 +272,7 @@ impl SqlxTenantRepo {
     /// `feedbackmonk-api/src/handlers/admin_tier.rs::tests` and
     /// elsewhere to seed tenants at specific tiers. Allowlisted as an
     /// inherent method in
-    /// `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+    /// `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`
     /// (no `&TenantScope` first arg — pre-test boundary, not pre-auth).
     ///
     /// **NOT** intended for production code. The production path for

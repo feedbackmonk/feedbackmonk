@@ -25,6 +25,7 @@ bash scripts/ci-local.sh --tests   # also the suite (needs DATABASE_URL + Postgr
 (PowerShell: `pwsh scripts/ci-local.ps1 [-Tests]`.) Green here ⇒ green CI, modulo
 runner-speed flakes; it is the gate `/0-uldf-finalize`'s push step depends on.
 
-**It cannot go green right now**: its first step is the verification-oracle suite,
-whose 17 oracles were uninstalled on 2026-09-07 (DEFER-010). Read the compile/lint
-step's own result until that is fixed; do not take the red as your change's fault.
+Its first step is the verification-oracle suite, which lives under
+`.claude/project-oracles/` — **not** `.claude/oracles/`, which is the ULDF starter
+pack on a different contract. `scripts/run-verification-oracles.sh` is the single
+source of truth for that suite; CI and `ci-local` both call it.

@@ -87,7 +87,7 @@ Per-namespace files exist so that no two workers ever write the same file.
 | `complete-plurals.py` | CLDR plural-category completion | 1 (done) |
 
 Oracles: `i18n-catalog-integrity` (verification), `translation-gap-status` (project-state),
-`i18n-literal-ratchet` (verification) — `.claude/oracles/`.
+`i18n-literal-ratchet` (verification) — `.claude/project-oracles/`.
 
 ## Adding a language
 

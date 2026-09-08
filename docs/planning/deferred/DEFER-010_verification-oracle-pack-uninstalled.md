@@ -1,7 +1,7 @@
 ---
 id: DEFER-010
 title: The 17 project Verification Oracles were removed from the tree by the starter-oracle migration — CI job 1 and scripts/ci-local.sh are red
-status: OPEN
+status: RESOLVED
 origin: defer-local
 source-project: feedbackmonk
 source-session-id: 25658496-44d6-4c58-85b9-81c18294aa02
@@ -100,6 +100,27 @@ the old path historically and should not be rewritten.
 
 I did not take (4) unattended: it changes this project's layout, and which home is right is your
 call, not the framework's. Everything needed to do it in twenty minutes is above.
+
+## RESOLVED 2026-09-08 — option (4) taken
+
+All 17 directories now live under `.claude/project-oracles/`. The two contracts no longer share a
+namespace: the framework runner reports **no `unknown`**, and `bash scripts/run-verification-oracles.sh`
+prints `verification-oracle suite: all 17 PASS`, exit 0.
+
+The consumer sweep ran wider than the blast radius estimated above — `git grep -lE
+"[.]claude[/\\]oracles[/\\]"` plus a bare-name `git grep -lw <dirname>` per directory — and found
+**57 files** carrying a path reference, not four: `scripts/run-verification-oracles.sh`, seven Rust
+source and test files (including `crates/feedbackmonk-tracing/tests/scrubber_patterns.rs`, which
+reads `expected_hash.txt` through a hard relative path and would have failed to compile-and-pass on
+a missed rewrite), eleven module READMEs, `widget/vite.config.ts`, `CLAUDE.md`, `docs/specs/*`,
+`docs/operations/{LOCAL_DEV,SELFHOST}.md`, `docs/brand/BRAND.md`, a GitHub tree link in
+`marketing/src/pages/blog/show-hn-draft.astro`, and each oracle's own manifests. Dated plans,
+handoffs, intakes, scrutiny sets, test-modification records, the observations ledger and `ltads/`
+were left alone — they are records of what was true then, not consumers.
+
+Nothing was deleted. One piece of litter went with the move: a tracked
+`widget-bundle-size/__pycache__/oracle.cpython-312.pyc`, already covered by `.gitignore` but
+committed before that rule existed.
 
 ## Scope note
 

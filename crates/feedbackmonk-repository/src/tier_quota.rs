@@ -95,7 +95,7 @@ pub trait TierQuotaRepo: Send + Sync {
 }
 
 /// `sqlx`-backed implementation. Constructor allowlisted in
-/// `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` as a
+/// `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` as a
 /// structural-mirror entry (no DB access; identical shape to
 /// `SqlxFeedbackRepo::new` and siblings).
 #[derive(Clone)]

@@ -66,13 +66,13 @@ Release-time sequencing of all four tools: `.claude/skills/1-translate/SKILL.md`
   `i18n/locales/<code>/<ns>.json` (the catalog tree).
   Produces/maintains `i18n/source-hashes.json` (drift baseline),
   `i18n/literal-baseline.json` (format defined by
-  `.claude/oracles/i18n-literal-ratchet/`), `i18n/validate-baseline.json`
+  `.claude/project-oracles/i18n-literal-ratchet/`), `i18n/validate-baseline.json`
   (stripped-diacritics ratchet, `validate.py`'s own).
-- Consumed by three oracles: `.claude/oracles/i18n-catalog-integrity/`
+- Consumed by three oracles: `.claude/project-oracles/i18n-catalog-integrity/`
   (delegates its Probes C/D/E to `validate.py`'s own defect classes — one
   implementation of "what is a well-formed catalog", not two),
   `.claude/oracles/translation-gap-status/` (wraps `check-gaps.py --json`),
-  `.claude/oracles/i18n-literal-ratchet/` (its own scanner, over
+  `.claude/project-oracles/i18n-literal-ratchet/` (its own scanner, over
   `widget/src`/`admin-ui/src`, not this directory's catalog tree).
 - Consumed by `.claude/skills/1-translate/SKILL.md`, the owner-invoked
   release sequencing of all four tools.

@@ -31,7 +31,7 @@ use feedbackmonk_api::storage::{LocalFsStorage, ObjectStore};
 use sha2::{Digest, Sha256};
 
 /// The pinned canonical-pattern hash. MUST equal
-/// `.claude/oracles/pii-scrub-audit/expected_hash.txt`. The two values are kept
+/// `.claude/project-oracles/pii-scrub-audit/expected_hash.txt`. The two values are kept
 /// byte-identical by construction (`canonical_serialised()` is the same input
 /// the oracle's Probe B hashes); if the pattern set changes intentionally, BOTH
 /// this constant and the oracle file are refreshed together.
@@ -99,7 +99,7 @@ fn corpus_does_not_drift_from_canonical_patterns() {
     assert_eq!(
         hash, EXPECTED_CANONICAL_HASH,
         "CANONICAL_PATTERNS drifted from the corpus's pinned hash; \
-         refresh both this fixture and .claude/oracles/pii-scrub-audit/expected_hash.txt"
+         refresh both this fixture and .claude/project-oracles/pii-scrub-audit/expected_hash.txt"
     );
 
     // 3) Corpus names line up with the canonical pattern names, in order.

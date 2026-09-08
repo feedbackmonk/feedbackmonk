@@ -121,12 +121,12 @@ cargo-deny is leg 3). Run it before every commit during P0+:
 
 ```powershell
 # Windows
-powershell -NoProfile -File .claude/oracles/multi-tenant-isolation-check/oracle.ps1
+powershell -NoProfile -File .claude/project-oracles/multi-tenant-isolation-check/oracle.ps1
 ```
 
 ```bash
 # Unix (CI uses this form)
-bash .claude/oracles/multi-tenant-isolation-check/oracle.sh
+bash .claude/project-oracles/multi-tenant-isolation-check/oracle.sh
 ```
 
 PASS exits 0; FAIL exits 1 with file:line offenders. CI gates the build

@@ -61,7 +61,7 @@ Data shape consumed verbatim from Contract C17 (`TierStatusResponse`) — see `s
 
 - **`shared/ApiClient.ts`** — `fetchTierStatus()` is the single read path. The 402/409 axios interceptor (`err.tierCapExceeded`) and `extractTierCapExceeded(err)` helper are NOT consumed in this module — they exist for future mutation `onError` callers.
 - **`shared/types.gen.ts`** — `TierStatus` / `TierQuotas` / `Tier` / `TierCapExceededBody` / `isTierCapExceeded` are all consumed. The tier label itself comes from `i18n/useAdminLabels.ts::tier()` (Stage 2 / W-D, R-1) — `TIER_LABELS` no longer exists on this file.
-- **Backend pair**: `crates/feedbackmonk-api/src/handlers/admin_tier.rs` is the server side of Contract C17. The `tier-enforcement-status` Verification Oracle (`.claude/oracles/tier-enforcement-status/`) Probe B asserts the canonical four-tier shape from the Rust side; **this module's `TierSettings.test.tsx` fixture asserts the same canonical shape from the React side**. Both must update together if Contract C19 rebases.
+- **Backend pair**: `crates/feedbackmonk-api/src/handlers/admin_tier.rs` is the server side of Contract C17. The `tier-enforcement-status` Verification Oracle (`.claude/project-oracles/tier-enforcement-status/`) Probe B asserts the canonical four-tier shape from the Rust side; **this module's `TierSettings.test.tsx` fixture asserts the same canonical shape from the React side**. Both must update together if Contract C19 rebases.
 
 ## Decision Log
 

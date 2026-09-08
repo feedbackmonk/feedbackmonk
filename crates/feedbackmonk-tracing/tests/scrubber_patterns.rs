@@ -110,7 +110,7 @@ fn canonical_hash_matches_expected_file() {
     let actual = format!("{:x}", hasher.finalize());
 
     let expected_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.claude/oracles/pii-scrub-audit/expected_hash.txt");
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.claude/project-oracles/pii-scrub-audit/expected_hash.txt");
     let expected = std::fs::read_to_string(&expected_path)
         .unwrap_or_else(|_| String::from("placeholder"))
         .trim()

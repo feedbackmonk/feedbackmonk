@@ -124,5 +124,5 @@ machine-translated), and commit.
   five-language English fallback, how to add a language
 - `.claude/oracles/translation-gap-status/` — the same MISSING/DRIFTED
   detection as a project-state oracle, for the session-start briefing
-- `.claude/oracles/i18n-catalog-integrity/` — the commit-time structural
+- `.claude/project-oracles/i18n-catalog-integrity/` — the commit-time structural
   gate this pass's output must pass

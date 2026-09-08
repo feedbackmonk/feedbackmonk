@@ -86,7 +86,7 @@ Tests substitute a `FakeTranslator` implementing `TranslationProvider` and drive
 - **Consumed by** `email::send::LettreEmailNotifier` (FR-FBR-40), which holds an `Option<Arc<dyn TranslationProvider>>` set via `with_translator` and reads `TenantRepo::get_translate_outbound` per send.
 - **Constructed by** `main.rs::build_translation_provider()` + spawned beside the voting-cache tick.
 - **Config** via `FEEDBACKMONK_TRANSLATION_*` env vars (`docs/operations/SELFHOST_ENV.md` Contract C21).
-- **Guarded by** the `translation-egress-q24-isolation` Verification Oracle (`.claude/oracles/`).
+- **Guarded by** the `translation-egress-q24-isolation` Verification Oracle (`.claude/project-oracles/`).
 - **FTS**: migration 00019 repoints `body_tsv` to `coalesce(body_translated, body)` — no code in this module touches FTS (the generated column does it).
 
 ## 6. Decision Log

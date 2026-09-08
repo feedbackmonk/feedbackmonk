@@ -9,7 +9,7 @@
 //! - **Probe A**: no `tracing_subscriber::fmt(`, `tracing_subscriber::registry(`,
 //!   or `impl Layer<...> for ...` outside this crate.
 //! - **Probe B**: SHA-256 of `CANONICAL_PATTERNS` matches
-//!   `.claude/oracles/pii-scrub-audit/expected_hash.txt`.
+//!   `.claude/project-oracles/pii-scrub-audit/expected_hash.txt`.
 //!
 //! Three-leg defense (D-FBR-02): (1) this chokepoint, (2) the oracle,
 //! (3) clippy + cargo-deny rules in the workspace.

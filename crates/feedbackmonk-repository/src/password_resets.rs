@@ -18,7 +18,7 @@
 //!   - `mark_used` -- post-confirm, scope-disciplined single-use marker.
 //!
 //! Allowlist entry for `redeem`:
-//! `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`
+//! `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`
 //!   `[[methods]] trait = "PasswordResetRepo" method = "redeem"`
 
 use async_trait::async_trait;

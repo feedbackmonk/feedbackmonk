@@ -101,7 +101,7 @@ Six bullets. These govern marketing-site copy, README intros, blog posts, the Sh
 
 1. **Direct, not breathless.** Active voice. Short sentences. Land the point in the first half of the paragraph. *"feedbackmonk runs in your tenant. Your users' feedback never touches our servers"* — not *"feedbackmonk has been designed from the ground up with privacy as a first-class concern."*
 
-2. **Privacy claims are evidenced, never aspirational.** Every privacy claim links to code, an oracle output, or the AGPL repo. *"Zero third-party trackers — verified in CI"* (link to `.claude/oracles/widget-bundle-size/`). *Not*: *"we deeply respect privacy" / "your data is safe with us."* If the claim cannot be linked to evidence, do not make it.
+2. **Privacy claims are evidenced, never aspirational.** Every privacy claim links to code, an oracle output, or the AGPL repo. *"Zero third-party trackers — verified in CI"* (link to `.claude/project-oracles/widget-bundle-size/`). *Not*: *"we deeply respect privacy" / "your data is safe with us."* If the claim cannot be linked to evidence, do not make it.
 
 3. **First-person plural for builder voice; second-person for reader.** *"We built this because…"* / *"You install the widget, you own your data."* No third-person corporate-speak (*"feedbackmonk has been designed to help organizations…"*).
 

@@ -13,7 +13,7 @@ The crate implements a three-leg defense against tenant-isolation drift:
 | Leg | Mechanism | Where |
 |---|---|---|
 | **Leg 1** — type system | `TenantScope` / `ProjectScope` newtypes with `pub(crate)` constructors | `src/scope.rs` |
-| **Leg 2** — AST oracle | `multi-tenant-isolation-check` greps for raw-SQL patterns + verifies first-arg discipline | `.claude/oracles/multi-tenant-isolation-check/` |
+| **Leg 2** — AST oracle | `multi-tenant-isolation-check` greps for raw-SQL patterns + verifies first-arg discipline | `.claude/project-oracles/multi-tenant-isolation-check/` |
 | **Leg 3** — lint baseline | `clippy::all = deny` workspace-wide; `clippy::pedantic` on this crate; `cargo-deny` on `deny.toml` | `Cargo.toml`, `deny.toml` |
 
 ## File Index
@@ -63,7 +63,7 @@ The contract is **frozen** for Stage 2 consumption — Workers A and B treat the
 ## Constraints & Business Rules
 
 - **Constructor discipline (leg 1)**: `TenantScope::new` and `ProjectScope::new` are `pub(crate)`. `ProjectRepo::open` is the **sole** `ProjectScope` constructor in the public API.
-- **Allowlist discipline (leg 2)**: The three pre-auth methods on `TenantRepo` (`create`, `find_by_email`, `scope_for`) are the **only** methods that may legitimately take a non-`&TenantScope` first argument. Adding a fourth requires updating `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` with a documented rationale.
+- **Allowlist discipline (leg 2)**: The three pre-auth methods on `TenantRepo` (`create`, `find_by_email`, `scope_for`) are the **only** methods that may legitimately take a non-`&TenantScope` first argument. Adding a fourth requires updating `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` with a documented rationale.
 - **Pedantic clippy (leg 3)**: this crate runs `clippy::pedantic` in addition to the workspace `clippy::all = deny`.
 - **`FeedbackRepo::submit_*` accept `kind: FeedbackKind`**: this is an EXTENSION of plan §C1 (additional info), not a WIDENING (both methods still take `&ProjectScope` first). The schema declares `kind` with CHECK constraint and FR-FBR-03 Contract C3 accepts optional `kind`.
 - **`FeedbackRepo::list_recent` exists beyond plan §C1 enumeration**: used by 3/4 feedback tests as round-trip read path and by Stage 2 Worker A's forward-looking admin-feedback-list endpoint. Same scope discipline.
@@ -73,7 +73,7 @@ The contract is **frozen** for Stage 2 consumption — Workers A and B treat the
 - **Consumes**: `feedbackmonk-core` (every query returns a `feedbackmonk_core::*` record).
 - **Consumed by**: `feedbackmonk-api` (Stage 2+ HTTP handlers — Workers A and B), `feedbackmonk-jwt` (Stage 2 — signing-key lookup), `feedbackmonk-anon` (Stage 2 — rate-limit counters), future health crate, future admin UI backend.
 - **Schema source of truth**: `migrations/00001_p0_schema.sql`. Every query in this crate hard-depends on those column names; schema column renames require a follow-up migration AND a coordinated change here.
-- **Oracle**: `.claude/oracles/multi-tenant-isolation-check/` polices the layer boundary on every commit; CI gates the build on its exit code.
+- **Oracle**: `.claude/project-oracles/multi-tenant-isolation-check/` polices the layer boundary on every commit; CI gates the build on its exit code.
 
 ## Decision Log
 
@@ -89,13 +89,13 @@ The contract is **frozen** for Stage 2 consumption — Workers A and B treat the
 
 ### `TenantRepo::scope_for(Uuid)` is allow-listed pre-auth
 
-**Decision**: `TenantRepo::scope_for(uuid) -> Result<TenantScope>` is the third allow-listed pre-auth method (alongside `create` and `find_by_email`). It bridges a verified session-cookie tenant_id to a fresh `TenantScope`. Documented in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`.
+**Decision**: `TenantRepo::scope_for(uuid) -> Result<TenantScope>` is the third allow-listed pre-auth method (alongside `create` and `find_by_email`). It bridges a verified session-cookie tenant_id to a fresh `TenantScope`. Documented in `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`.
 
 **Rationale**: The pre-authentication boundary necessarily mints the **first** `TenantScope` from a verified caller. The `TenantScope` constructor is `pub(crate)`, so without `scope_for` (or an equivalent), Stage 2 Worker A's login handler would have no path from "I've validated this session cookie" to "...therefore here is a `TenantScope` for downstream calls." Naming the boundary explicitly — and gating it through a single method documented in the allowlist — is more honest than back-channels.
 
 **Trade-offs**: Adds a third entry to the pre-auth allowlist. The risk is that the allowlist grows over time without corresponding tightening. Mitigated by requiring per-entry rationale in `allowlist.toml` and by the oracle freshness contract triggering on allowlist changes.
 
-**Implementation**: `src/tenants.rs` — `async fn scope_for(&self, tenant_id: Uuid) -> Result<TenantScope>`. Returns `RepoError::NotFound` for unknown tenant_id (covered by `scope_for_unknown_tenant_returns_not_found` test). Allowlist entry at `.claude/oracles/multi-tenant-isolation-check/allowlist.toml` lines 32-35 carries the rationale.
+**Implementation**: `src/tenants.rs` — `async fn scope_for(&self, tenant_id: Uuid) -> Result<TenantScope>`. Returns `RepoError::NotFound` for unknown tenant_id (covered by `scope_for_unknown_tenant_returns_not_found` test). Allowlist entry at `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml` lines 32-35 carries the rationale.
 
 ### `FeedbackRepo::submit_*` accept `kind`; `list_recent` exists
 
@@ -119,7 +119,7 @@ The contract is **frozen** for Stage 2 consumption — Workers A and B treat the
 
 ### `ProjectRepo::open_for_submission(project_id)` is allow-listed pre-auth (DEC-PODS-001)
 
-**Decision**: `ProjectRepo::open_for_submission(project_id) -> Result<ProjectScope>` is the fourth allow-listed pre-auth method. It mints a `ProjectScope` from a raw URL-path `project_id` WITHOUT a `TenantScope`. Used ONLY by the public submission endpoint (`POST /api/v1/projects/{project_id}/feedback`, FR-FBR-03). Documented in `.claude/oracles/multi-tenant-isolation-check/allowlist.toml`.
+**Decision**: `ProjectRepo::open_for_submission(project_id) -> Result<ProjectScope>` is the fourth allow-listed pre-auth method. It mints a `ProjectScope` from a raw URL-path `project_id` WITHOUT a `TenantScope`. Used ONLY by the public submission endpoint (`POST /api/v1/projects/{project_id}/feedback`, FR-FBR-03). Documented in `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`.
 
 **Rationale**: The submission endpoint is PUBLIC by design — the end-user JWT it carries identifies an end-user, not a tenant (DEC-FBR-04). There is no admin session, so there is no `TenantScope` flowing into the handler. After body validation + JWT-or-anon dispatch, the handler must call `FeedbackRepo::submit_authenticated` / `submit_anonymous`, both of which require a `ProjectScope`. Without this method, the handler would have no legitimate way to mint one.
 

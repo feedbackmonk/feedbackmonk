@@ -12,7 +12,7 @@
 | **CMP-FBR-REPO-01** | `feedbackmonk-repository` | `crates/feedbackmonk-repository/` | DB | The SOLE query path. Four repository traits (`TenantRepo`, `ProjectRepo`, `SigningKeyRepo`, `FeedbackRepo`) with sqlx-backed implementations. `TenantScope` / `ProjectScope` newtypes enforce tenant isolation at the type system. Contract C1 frozen for Stage 2 consumption. |
 | **CMP-FBR-API-01** | `feedbackmonk-api` | `crates/feedbackmonk-api/` | HTTP | Stage 1 ships a placeholder axum binary binding `FEEDBACKMONK_PORT` (default `14304`). Stage 2 Workers A + B add the real router tree. |
 | **CMP-FBR-SCHEMA-01** | P0 schema | `migrations/00001_p0_schema.sql` | persistence | Tables for `tenants`, `projects`, `signing_keys`, `feedback`, `anon_submissions`, `rate_limit_counters`. Authoritative source for column names. |
-| **CMP-FBR-ORACLE-01** | `multi-tenant-isolation-check` | `.claude/oracles/multi-tenant-isolation-check/` | verification | Verification Oracle (built as P0 Task Zero). AST-grade enforcement of DEC-FBR-03 "raw SQL outside repository = security incident." Three-leg defense: type system (CMP-FBR-REPO-01) + AST oracle (this) + clippy/cargo-deny (workspace baseline + pedantic on repo crate). |
+| **CMP-FBR-ORACLE-01** | `multi-tenant-isolation-check` | `.claude/project-oracles/multi-tenant-isolation-check/` | verification | Verification Oracle (built as P0 Task Zero). AST-grade enforcement of DEC-FBR-03 "raw SQL outside repository = security incident." Three-leg defense: type system (CMP-FBR-REPO-01) + AST oracle (this) + clippy/cargo-deny (workspace baseline + pedantic on repo crate). |
 
 ## Components (P0 Stage 2 — PLANNED)
 

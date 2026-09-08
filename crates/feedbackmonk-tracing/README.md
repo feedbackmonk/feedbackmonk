@@ -12,7 +12,7 @@ PII-scrubbing `tracing-subscriber` chokepoint (FR-FBR-10). All log emissions fro
 - Provide a test-only `SharedBufferScrubbing` writer so integration tests
   can prove PII was scrubbed without polluting the global subscriber.
 - Carry the canonical pattern set in a form the
-  `.claude/oracles/pii-scrub-audit/` oracle can hash for drift detection.
+  `.claude/project-oracles/pii-scrub-audit/` oracle can hash for drift detection.
 
 ## File Index
 
@@ -87,7 +87,7 @@ assert!(!bytes.windows(36).any(|w| w == b"550e8400-e29b-41d4-a716-446655440000")
   binary at startup; no in-crate tracing setup elsewhere.
 - **Workspace deps**: `regex`, `once_cell`, `thiserror`, `tracing`,
   `tracing-subscriber`. `sha2` dev-only for the bilateral hash test.
-- **External integration**: `.claude/oracles/pii-scrub-audit/` consumes
+- **External integration**: `.claude/project-oracles/pii-scrub-audit/` consumes
   `src/scrubber.rs` (Probe B parses `CANONICAL_PATTERNS`).
 
 ## Decision Log

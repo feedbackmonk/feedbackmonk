@@ -53,7 +53,7 @@ than working around it. Grant requests are recorded in `.claude/session-state/gr
 **Reproduced measurement:**
 
 ```
-$ bash .claude/oracles/multi-tenant-isolation-check/oracle.sh
+$ bash .claude/oracles/multi-tenant-isolation-check/oracle.sh   # path as of 2026-08; now .claude/project-oracles/
 FAIL multi-tenant-isolation-check (3 offender(s))
 
 Probe B offenders (public repository fn missing &TenantScope/&ProjectScope):
@@ -89,7 +89,7 @@ each turn a real invariant off to make a message go away.
 
 ## Success Criterion
 
-- `bash .claude/oracles/multi-tenant-isolation-check/oracle.sh` → **PASS**.
+- `bash .claude/project-oracles/multi-tenant-isolation-check/oracle.sh` → **PASS**.
 - `bash .claude/oracles/host-tenant-binding/oracle.sh --full` → **PASS** (Probes A/B/C/D). The `--full`
   leg needs `DATABASE_URL` + Postgres.
 - `bash scripts/ci-local.sh` → green, and commit `90ca288` pushes cleanly (`git -c
