@@ -1,7 +1,0 @@
-{
-  "schema": "oracle/2",
-  "name": "pending-followups",
-  "question": "What pending follow-ups are recorded in this project's CLAUDE.md?",
-  "kind": "project-state",
-  "expected_runtime_ms": 50
-}

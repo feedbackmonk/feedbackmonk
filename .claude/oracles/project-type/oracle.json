@@ -1,7 +1,0 @@
-{
-  "schema": "oracle/2",
-  "name": "project-type",
-  "question": "What languages and build systems does this project use, and how is it run and tested?",
-  "kind": "project-state",
-  "expected_runtime_ms": 50
-}

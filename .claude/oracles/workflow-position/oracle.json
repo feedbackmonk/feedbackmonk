@@ -1,7 +1,0 @@
-{
-  "schema": "oracle/2",
-  "name": "workflow-position",
-  "question": "Where is this project in the ideate to spec to plan to execute workflow?",
-  "kind": "project-state",
-  "expected_runtime_ms": 50
-}

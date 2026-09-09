@@ -1,7 +1,0 @@
-{
-  "schema": "oracle/2",
-  "name": "pending-ideas",
-  "question": "What open briefs are waiting in docs/planning/deferred/?",
-  "kind": "project-state",
-  "expected_runtime_ms": 100
-}

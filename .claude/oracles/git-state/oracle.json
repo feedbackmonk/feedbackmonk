@@ -1,7 +1,0 @@
-{
-  "schema": "oracle/2",
-  "name": "git-state",
-  "question": "What is the current git state: branch, dirty counts, head, and ahead/behind an upstream?",
-  "kind": "project-state",
-  "expected_runtime_ms": 800
-}

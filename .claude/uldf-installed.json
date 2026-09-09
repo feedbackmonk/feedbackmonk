@@ -1,16 +1,8 @@
 {
   "schema": "installed/1",
   "hooks": [],
-  "oracles": [
-    "arc-state",
-    "git-state",
-    "markdown-link-validity",
-    "module-readme-parity",
-    "peers",
-    "pending-followups",
-    "pending-ideas",
-    "project-index",
-    "project-type",
-    "workflow-position"
-  ]
+  "oracles": [],
+  "notes": {
+    "retiredStarters": "The ten oracle/2 starter copies this record listed were deleted 2026-09-09 (DEC-538): setup installs no starter, and the runner serves each name from ~/.claude/oracles/ in place, install_when honoured, each batch row reading source: \"home\". Every retired name is one the home pack ships, so no question disappeared. The seventeen Verification Oracles in .claude/project-oracles/ are this project's own, on their own older contract, and were never part of this record."
+  }
 }

@@ -7,9 +7,10 @@ anti-reward-hacking legs that catch what tests cannot: a dropped `.layer(cors)`,
 outside the repository crate, a board read that swaps its `approved` literal for a bound param, a
 handler that stops calling `check_tier_quota`.
 
-**These are not ULDF framework oracles and do not share their contract.** `.claude/oracles/` is the
-framework starter pack: `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py` exposing
-`run(ctx) -> verdict`, run by the session-start hook. These carry `manifest.json`, a canonical
+**These are not ULDF framework oracles and do not share their contract.** The framework starter pack
+is `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py` exposing `run(ctx) -> verdict`, run
+by the session-start hook; this project installs no copy of it, so those run from `~/.claude/oracles/`
+in place and `.claude/oracles/` holds only its `INDEX.md` (DEC-538). These carry `manifest.json`, a canonical
 `oracle.py`, `oracle.sh`/`oracle.ps1` shims and a `--full` flag, and are invoked directly. The
 framework runner can answer a directory of this shape only `unknown`, which is why they live here.
 
@@ -68,8 +69,8 @@ nightly/pre-release leg, not a per-commit one.
 - **Consumed by** `scripts/run-verification-oracles.sh` → `.github/workflows/ci.yml` job
   `verification-oracles`, and `scripts/ci-local.sh` / `ci-local.ps1` step 1.
 - **Reads** `crates/`, `migrations/`, `deploy/docker/`, `widget/dist/`, `i18n/`, `admin-ui/src/`.
-- **Sibling, not parent**: `.claude/oracles/` (ULDF starter pack, different contract, different
-  runner).
+- **Sibling, not parent**: `.claude/oracles/` (the framework starter pack's home — different
+  contract, different runner; no starter is installed there, see its `INDEX.md`).
 
 ## Decisions
 
