@@ -1,6 +1,6 @@
 ---
 id: DEFER-009
-title: Railway cannot create containers for feedbackmonk-api — the WontFix white-screen fix is built, migrated and staged but cannot ship
+title: "RESOLVED (root cause: a stale registry credential saved on the service, not a Railway fault) - Railway could not create containers for feedbackmonk-api" — the WontFix white-screen fix is built, migrated and staged but cannot ship
 status: RESOLVED
 origin: defer-local
 source-project: feedbackmonk
@@ -36,6 +36,72 @@ content-hash: fbm-railway-create-container-blocked-v1
 > listed in `CLAUDE.md` § Pending Follow-Ups as owner decisions.
 >
 > Everything below this line is the pre-resolution resume brief, unchanged.
+
+> ## ROOT CAUSE, established 2026-09-10 — **it was ours after all**
+>
+> Railway replied on 2026-09-02 (engineer `brody`); the reply was missed because the 2026-09-03
+> 02:15 UTC check saw zero replies and no session looked again for eight days. It says, and direct
+> measurement now confirms:
+>
+> - **Every deployment failed at the IMAGE PULL step, not at scheduling.** There was never any stuck
+>   orchestrator state to clear, which is what this brief spent its length arguing for.
+> - **The first attempt (`c9200c3e`, 03:21 UTC) got a clean 401 from our own registry.** The three
+>   later ones failed at the same step behind a less specific message.
+> - `gitcellar-cloud-api` pulled new tags from the same registry successfully during the same window,
+>   so the registry and the credential *path* were fine. The fault was **specific to the registry
+>   credential saved on the `feedbackmonk-api` service**.
+> - The bare `"Failed to create deployment."` with empty logs was **Railway's own error handling
+>   dropping the real reason** before it reached us. They called it a bug on their side and shipped a
+>   fix. That message is the single reason this looked platform-shaped for a week.
+>
+> **Measured here on 2026-09-10**, against the exact image the deploys could not pull
+> (`registry.gitcellar.com/v2/feedbackmonk-api/manifests/0.4.0`), reading each credential straight
+> out of Windows Credential Manager with no file round-trip:
+>
+> | Credential | Password length | Result |
+> |---|---|---|
+> | WCM target **`registry.gitcellar.com`**, user `gitcellar-push` | 22 | **HTTP 401** |
+> | WCM target `gitcellar-registry-push`, user `gitcellar-push` | 44 | HTTP 200 |
+> | WCM target `gitcellar-registry-pull`, user `gitcellar-pull` | 44 | HTTP 200 |
+> | anonymous | — | HTTP 401 |
+>
+> That first row is **Docker Desktop's own cached-login entry**, and GitCellar's
+> `docs/infrastructure/CREDENTIALS.md` § Verification traps already documents it by name: *"Reading
+> WCM target `registry.gitcellar.com` gets Docker Desktop's own cached-login entry — a stale 22-char
+> value that 401s. Read `gitcellar-registry-push` / `-pull`. The real secret is 44 characters."*
+> The trap was written down and the outage walked into it anyway.
+>
+> ### Why the original investigation concluded the opposite
+>
+> This brief's line *"Registry auth verified: manifests fetch 200 authenticated / 401 anonymous"* is
+> true and irrelevant: it verified **the credential the session was holding**, never the one **the
+> service was using**. Railway's API exposes no `registryCredentials` field on `ServiceInstance`, so
+> the two cannot be compared — which CREDENTIALS.md also states in terms: *"a 401 on image pull is
+> diagnosed by re-entering a known-good value, never by comparing."* Attempt 2 did pass credentials
+> explicitly and still failed, which points to the same stale 22-char value being passed. The
+> decisive-looking attempt 3 — redeploying the running `0.2.0` and failing identically — is fully
+> consistent with a bad credential too: a bad credential cannot pull *any* tag, including one already
+> running from a cached layer set.
+>
+> ### What actually fixed it
+>
+> The service now holds a working credential, proven three ways: this session's repoint explicitly
+> supplied the 44-character `gitcellar-registry-push` value, and the two later deployments
+> (`43936e52`/`42348781` for the secret rotation, `41d3bd42` the clean redeploy) supplied **no
+> credentials at all** and pulled successfully from what the service had stored. Something restored a
+> working credential between 2026-09-02 and the 2026-09-08 success (`e775c7b3`, creator `null`) —
+> plausibly an owner re-entering it in the dashboard after reading this same reply, but Railway
+> exposes no history for that field, so **who changed it is not knowable from here** and is not
+> claimed.
+>
+> ### The correction, plainly
+>
+> The headings below — "Evidence that this is NOT ours", "not our image, not our code, not the
+> migration", and the leading hypothesis of a workspace-level billing block or a region-scheduling
+> failure — are **wrong**. They are left standing as the record of how a well-evidenced investigation
+> reached a confidently wrong conclusion: every individual measurement was sound, and the one thing
+> that could not be measured was the one thing that was broken.
+
 
 
 > **RESUME POINT.** Everything below was measured, not assumed. Full evidence:

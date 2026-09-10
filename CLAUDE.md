@@ -65,6 +65,20 @@ All registered in `~/.claude/MACHINE_CONFIG.md` Dev Port Registry.
 - `origin` is the real public GitHub remote, not this machine's local Gitea, and **a plain `git push` from an automated shell fails** — twice over, on HTTP/2 and on the credential-helper order. Both workarounds are in `docs/dev-notes/git-push-github.md`, delivered at the push.
 - Local dev setup and the migration-ledger state: `docs/operations/LOCAL_DEV.md`.
 
+## Deploys and credentials — one hard-won rule
+
+**A deploy that fails with no logs is not evidence of a platform fault.** A week was lost in
+September 2026 to exactly that reading: the cause was a stale registry credential saved on the
+Railway service, failing at image pull, behind a Railway bug that hid the real error. The habit that
+would have caught it generalises — **verifying a credential you hold is not verifying the credential
+the service uses**, and they cannot be compared, so re-enter a known-good value. Read credentials by
+their documented name (`gitcellar-registry-push`), never by guessing the hostname: the entry named
+after the registry is Docker Desktop's cached decoy and returns 401.
+
+The full diagnosis checklist is `docs/dev-notes/railway-deploy-diagnosis.md`, delivered automatically
+when you run a deploy or registry command; the incident record is
+`docs/planning/deferred/DEFER-009_railway-deploy-blocked-feedbackmonk-api.md` § ROOT CAUSE.
+
 ## Workflow
 
 - Use `/0-uldf-ldis-plan "feedbackmonk P<N> — <Phase Name>"` at each phase boundary.
@@ -113,8 +127,8 @@ Four more are installed and not listed above: `feedback-erasure-completeness`, `
 ## Pending Follow-Ups
 
 - **Trigger: before the next release** — run `/1-translate`. No translation has ever run, by design (DEC-FBR-17): every non-`en` catalog is a skeleton and every surface falls back to English per key. The gap is large and the `translation-gap-status` oracle reads DUE. This is the release gate; nothing else waits on it.
-- **Trigger: your word — two env-var changes, now unblocked** — deploys to `feedback.gitcellar.com` work again and it runs `0.4.0` (`docs/planning/feedbackmonk-deploy-state.md` § Stage F/G), so these are decisions, not blockers: (1) `FEEDBACKMONK_TRANSLATION_PROVIDER` — which provider and whose key, then `POST /api/v1/ops/translation/backfill`; (2) `FEEDBACKMONK_STORAGE_BACKEND=s3` — needs a production bucket plus four variables, and the only object-storage credentials on the machine are a **test** R2 key (the `attachments` table is empty, so nothing is lost meanwhile). The third item that used to sit here, rotating the session secret and ops token, was **done on 2026-09-10** and verified live. Note for whoever does these: each `variableUpsert` triggers its own deploy, so set every variable first and deploy once.
-- **Trigger: a cross-product decision — the nightly feedbackmonk backup has no dead-man switch** — since 2026-09-10 the `feedbackmonk` database is dumped nightly at 04:30 UTC by its own Railway cron (`deploy/backup/` is the source of truth, `docs/planning/feedbackmonk-deploy-state.md` § Stage H), encrypted to the same key that restores GitCellar's dumps and read-back-verified on every run. **What is still missing is an alarm**: GitCellar's verify cron watches only its own prefix, so if this job silently stops firing, nothing says so. Closing it means extending that cron or giving this one a heartbeat — filed to GitCellar, and it is their call as much as ours. The job also reuses GitCellar's bucket credentials, so a rotation there breaks this backup.
+- **Trigger: your word** — two Railway env-var changes are unblocked and waiting on a decision: the translation provider, and S3 attachment storage. Details: `docs/pending/railway-env-decisions.md`
+- **Trigger: a cross-product decision** — the nightly feedbackmonk database backup runs, but nothing alerts if it silently stops. Details: `docs/pending/feedbackmonk-backup-alerting.md`
 - **Trigger: your word — ops, not code** — provision `feedbackmonk.com` and cut GitCellar onto it (DEC-FBR-14). FR-FBR-32/33 are built, tested and live on `feedback.gitcellar.com`, but nowhere runs them under the `feedbackmonk.com` root domain. Details: `docs/pending/saas-standup.md`
 - **Trigger: `feedbackmonk.com` is live** — FR-FBR-41 (Astro marketing site) is DEFERRED until then.
 <!-- /0-uldf-schedule writes here -->

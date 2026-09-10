@@ -175,6 +175,11 @@ Identical to the 2026-09-02 figures, so migration `00019`'s `body_tsv` rebuild i
 
 ## Stage F (2026-09-10) — **DEPLOYED**: `feedbackmonk-api:0.4.0` + `feedbackmonk-admin-ui:0.1.3` LIVE; DEFER-009 resolved
 
+> **Root cause, learned 2026-09-10 (after this stage was written):** a stale registry credential on
+> the service, not a Railway fault. See DEFER-009 § ROOT CAUSE. The paragraph below correctly records
+> that this machine did not cause the recovery; its implication that the cause was unknowable is
+> superseded.
+
 **What unblocked it**: nothing this machine did. Read-only inspection on 2026-09-10 found a
 `feedbackmonk-api` deployment `e775c7b3-8b9c-4871-ac9b-793497b74a30` at **2026-09-08 20:12 UTC**,
 status SUCCESS, `reason: deploy`, image `0.2.0` (the pinned tag), `creator: null`, and
@@ -233,7 +238,18 @@ Root cause was a feedbackmonk bug (`FeedbackStatus::WontFix` serialised `wont-fi
 | `feedbackmonk-api:0.4.0` | Built from a clean worktree at `c065b60`, pushed. Digest `sha256:e90569031aa623722ec12dfd78c18e6a91207f016004449ad12eff1e077351e2`. linux/amd64. Binary contains `wontfix`, the `wont-fix` input alias, `feedback.rating`, `hosting.subdomains`, `hosting.custom_domain`, `feedback.export`, `feedback.idempotency`. |
 | `feedbackmonk-admin-ui:0.1.3` | Built + pushed. Digest `sha256:f49add4ac38f05f87a2548507d9233584134e0e087edf3fd2e895173675c3d02`. Verified it baked the **Railway** nginx conf (`proxy_pass https://$fbm_api`), not the compose one (`api:14304`). |
 
-### BLOCKED — Railway will not deploy this service, for a reason unrelated to the image
+### BLOCKED — Railway will not deploy this service
+
+> **CORRECTED 2026-09-10 — the conclusion in this section is WRONG.** The cause was a **stale
+> registry credential saved on the `feedbackmonk-api` service**: every deployment failed at the
+> IMAGE PULL step with a 401 from our own registry, not at scheduling. What made it unreadable was a
+> Railway bug that dropped the real error before it reached us, leaving the bare "Failed to create
+> deployment." with empty logs. Full evidence and the measured credential table are in
+> `docs/planning/deferred/DEFER-009_railway-deploy-blocked-feedbackmonk-api.md` § ROOT CAUSE, and the
+> one-paragraph version is in `CLAUDE.md` § "The trap that cost a week". Everything in this section
+> is left as written, because how it went wrong is the useful part: every measurement below is
+> individually correct, and the single thing that could not be measured — what credential the service
+> itself was using — was the broken thing.
 
 Three `serviceInstanceDeployV2` attempts, all **FAILED in 2–4 seconds** with **empty `buildLogs` AND
 empty `deploymentLogs`** and `diagnosis: null`:
