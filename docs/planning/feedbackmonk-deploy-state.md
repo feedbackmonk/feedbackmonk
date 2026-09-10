@@ -33,14 +33,82 @@ for the feedbackmonk backend.
 >   beforehand (additive/all-NULL; the api image does not auto-migrate).
 > - **GitCellar tenant ops-flipped**: `tier=self_host`, `footer_text_override=""` (badge suppressed,
 >   restore at launch), `theme=dark`, `primary_color=#8b5cf6`. ⚠️ The ops path param is the
->   **tenant_id** (`020c637c-…`), not the project_id. Ops token in **WCM
->   `gitcellar-feedbackmonk-ops-token`**.
+>   **tenant_id** (`020c637c-…`), not the project_id. Ops token: **Railway only** — see Stage G; there is no `gitcellar-feedbackmonk-ops-token` entry in the credential store and there never was one on this machine.
 > - **GitCellar-side**: widget re-synced + Forge embed flipped to launcher-less + dark (GitCellar
 >   commit `bfa5562e23`); verified live on Cloud Forge :3222 — no launcher, navbar button opens dark modal.
 >
 > Authoritative operator log of this deploy: GitCellar repo
 > `docs/planning/feedbackmonk-deploy-state.md` § Stage C. Original checklist:
 > `docs/planning/followups/20260609-gitcellar-widget-theming-and-footer-decoupling-resync.md`.
+
+---
+
+## Stage G (2026-09-10) — secrets rotated; pre-migration backup pruned; one Railway gotcha learned
+
+Follows Stage F the same day, on the owner's word ("rotate the session secret and ops token").
+
+### Both secrets rotated and verified
+
+`FEEDBACKMONK_SESSION_SECRET` and `FEEDBACKMONK_OPS_TOKEN` were both exposed in a screenshot shared
+during the 2026-09-02 debugging. Both are now fresh 64-hex values generated with a CSPRNG, set via
+`variableUpsert` on the `feedbackmonk-api` service and confirmed by read-back. The live proof, taken
+against production after the container restarted:
+
+| Probe | Result |
+|---|---|
+| `PATCH /api/v1/ops/tenants/<tenant>` with the **old** ops token | **401** — old token is dead |
+| the same with the **new** ops token | **200** — new token authenticates |
+| the same with **no** token | 401 — the ops surface is enabled, not silently disabled |
+| fresh browser login at `triage.gitcellar.com`, then a reload | session survives — the new session secret signs and verifies cookies |
+
+The ops probe used an empty `{}` body deliberately: `patch_tenant` validates, resolves the scope,
+and only writes under `if let Some(...)` for tier and branding, so `{}` reads and writes nothing.
+The response confirmed the tenant is untouched — `tier: self_host`, `footer_text_override: ""`,
+`theme: dark`, `primary_color: #8b5cf6`, exactly as Stage C set it.
+
+**Correction to an earlier claim in this file and in `CLAUDE.md`: the ops token was NOT mirrored in
+the credential store.** Enumerating Windows Credential Manager shows only
+`gitcellar-feedbackmonk-jwt-private` (the Ed25519 signing key) and
+`gitcellar-feedbackmonk-ops-password` (the 35-character `triage@gitcellar.com` **login password**,
+which is a different secret and was not rotated). No entry holds either 64-hex value. So this was a
+one-place rotation with no GitCellar coordination, not the two-repo change previously recorded. Both
+values remain readable back from Railway's `variables` query, which is their only home.
+
+### The Railway gotcha this cost — `variableUpsert` auto-deploys
+
+**Each `variableUpsert` call triggers its own deployment.** Two upserts followed by an explicit
+`serviceInstanceDeployV2` produced **three** deployments within one second
+(`42348781-…` 18:18:03 SUCCESS, `6ce1e4cc-…` and `43936e52-…` 18:18:04 both FAILED). The two
+failures are Railway superseding overlapping deploys — **not** the Stage E create-container bug,
+which they superficially resemble because their build and deployment logs are also empty. The
+distinguishing evidence is that a sibling deployment created in the same second reached SUCCESS and
+its container served correctly.
+
+A follow-up `serviceInstanceDeployV2` with no variable change (`41d3bd42-…`, 18:20:24) returned the
+service instance's `latestDeployment` to SUCCESS, so the next reader does not meet a red status that
+means nothing. **When changing several variables, upsert them all and then deploy once — or expect
+this race.** `docs/operations/RAILWAY_GITCELLAR.md` § 8 carries the same warning.
+
+### Pre-migration backup pruned
+
+`S:\_fbm-deploy-backups\` is **deleted**. Its own `_WHY.txt` named two delete conditions and both
+were re-measured today rather than assumed: `0.4.0` is deployed and serving, and `_verify.sql` was
+re-run against the production database through the TCP proxy:
+
+| Check | Value |
+|---|---|
+| rows with body text | 44 |
+| rows empty or null body | 35 |
+| text-bearing rows with a NULL `body_tsv` | **0** |
+| `_sqlx_migrations` max / failed | 30 / 0 |
+| feedback rows | 79 |
+
+Identical to the 2026-09-02 figures, so migration `00019`'s `body_tsv` rebuild is still sound.
+
+> **Gap this exposes, unchanged by the deletion and worth an owner decision:** the `feedbackmonk`
+> database has **no logical backup of its own**. GitCellar's nightly `gitcellar-pg-backup` cron
+> dumps the `railway` database, not this one, so the only coverage is Railway's project-level
+> Postgres PITR. The deleted dump was a one-off pre-migration snapshot, never a backup regime.
 
 ---
 

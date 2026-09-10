@@ -193,6 +193,21 @@ export). This is the A6 GATE that unblocks GitCellar Phases B/C. Run in order:
    > `--build-arg ADMIN_UI_NGINX_CONF=deploy/docker/admin-ui-nginx.gitcellar-railway.conf`;
    > without it the image bakes the generic compose nginx config whose upstream
    > (`api:14304`) does not exist on Railway.
+4. **Changing environment variables — `variableUpsert` AUTO-DEPLOYS, one deploy per call.**
+
+   > ⚠️ **Measured 2026-09-10.** Two `variableUpsert` calls followed by an explicit
+   > `serviceInstanceDeployV2` produced **three** deployments inside one second; the
+   > first reached SUCCESS and Railway failed the two that overlapped it. The
+   > superseded ones carry **empty build and deployment logs**, which looks exactly
+   > like the Stage E create-container outage and is not it — the tell is that a
+   > sibling deployment from the same second succeeded and its container served.
+   >
+   > So: upsert **every** variable first, then deploy **once**. If you do race them,
+   > confirm what the running container actually loaded (probe the behaviour, do not
+   > infer from Railway's status), then run one no-change `serviceInstanceDeployV2`
+   > so `latestDeployment` reads SUCCESS instead of leaving a red herring for the
+   > next reader.
+
 5. **Verify the capability advertisement** — the API must advertise all six
    Phase-A capability strings:
    ```bash
