@@ -285,6 +285,22 @@ no volume — old container still serving"**. Status **Awaiting Railway Response
 2026-09-03 02:15 UTC (11 h)**. Carries all four deployment IDs incl. the 14:43 UTC retry, and asks
 explicitly that it not be converted to a community bounty.
 
+> **Where this thread actually lives** (established 2026-09-10, after two sessions called it "the
+> dashboard login" and got that wrong). Railway has **no in-dashboard ticket system**. Private
+> Technical Help threads are on **Central Station, `https://station.railway.com/`**, signed in as the
+> account that filed it (`admin@gitcellar.com`, password in the owner's password manager). The
+> project dashboard `https://railway.com/project/fab620f1-2392-4a3c-9eb6-5cc7a60bc06e` is a different
+> place and does not carry it. `railway.com/help` 301-redirects to Central Station's **public**
+> community area, which is explicitly *not* where a private thread appears.
+>
+> **The thread's own URL was never recorded**, so it can only be found by signing in and locating it
+> among your own threads; public threads are `station.railway.com/questions/<slug>-<hash>` but a
+> private slug cannot be derived. **Whoever files the next support thread: paste its URL here.**
+>
+> Also useful context for why it sat unanswered: Pro support targets ~72 hours within business hours
+> (Mon-Fri, 9am-9pm Pacific). It was filed Wednesday ~14:50 UTC and judged unanswered ~11 hours later.
+
+
 A fourth attempt (`e12b3923-951a-4397-98c1-07831681700d`) was made at 2026-09-02 14:43 UTC — 11.5 h
 after the first — and **failed identically in 4.4 s**, which rules out a transient condition that has
 since cleared. Pin was reverted to `0.2.0` afterwards.

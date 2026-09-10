@@ -113,6 +113,22 @@ Status **Awaiting Railway Response**, **0 replies as of 2026-09-03 02:15 UTC (11
 It carries all four deployment IDs and the retry evidence, and explicitly asks that it not be
 converted to a community bounty.
 
+> **Where this thread actually lives** (established 2026-09-10, after two sessions called it "the
+> dashboard login" and got that wrong). Railway has **no in-dashboard ticket system**. Private
+> Technical Help threads are on **Central Station, `https://station.railway.com/`**, signed in as the
+> account that filed it (`admin@gitcellar.com`, password in the owner's password manager). The
+> project dashboard `https://railway.com/project/fab620f1-2392-4a3c-9eb6-5cc7a60bc06e` is a different
+> place and does not carry it. `railway.com/help` 301-redirects to Central Station's **public**
+> community area, which is explicitly *not* where a private thread appears.
+>
+> **The thread's own URL was never recorded**, so it can only be found by signing in and locating it
+> among your own threads; public threads are `station.railway.com/questions/<slug>-<hash>` but a
+> private slug cannot be derived. **Whoever files the next support thread: paste its URL here.**
+>
+> Also useful context for why it sat unanswered: Pro support targets ~72 hours within business hours
+> (Mon-Fri, 9am-9pm Pacific). It was filed Wednesday ~14:50 UTC and judged unanswered ~11 hours later.
+
+
 ## On resume — do this
 
 **1. Check whether deploys work again.** Re-run one deploy. If it succeeds, finish immediately
