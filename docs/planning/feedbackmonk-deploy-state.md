@@ -43,6 +43,67 @@ for the feedbackmonk backend.
 
 ---
 
+## Stage H (2026-09-10) - the `feedbackmonk` database now has a nightly backup of its own
+
+Closes the gap Stage G surfaced. On the owner's word ("add feedbackmonk to the nightly backup").
+
+**New Railway cron service `feedbackmonk-pg-backup`** (`27880cb2-8bce-4aae-a28b-43442483c896`),
+image `postgres:16`, schedule **`30 4 * * *`** (UTC), restart policy NEVER. Its body is
+`deploy/backup/feedbackmonk-pg-backup.sh` in this repo, base64-wrapped into the service start
+command - the same deployment shape GitCellar uses for its own backup cron. **The repo copy is the
+source of truth; changing it does not change the deployment.** Re-deploy by setting
+`startCommand` to `bash -c "echo <base64 of the script> | base64 -d | bash"` via
+`serviceInstanceUpdate`, then `serviceInstanceDeployV2`. To prove a change before trusting the
+schedule, clear `cronSchedule` in that same update so the deploy runs immediately as a one-shot,
+read the logs, then set the cron back.
+
+### Why a separate service rather than a second dump in GitCellar's job
+
+`gitcellar-backup-verify` verifies **the newest object under the `pg/` prefix**. Adding feedbackmonk
+dumps to that prefix would have pointed GitCellar's verification at the wrong file on alternating
+days - quietly weakening a guarantee that already worked. This job writes under **`fbm/`** instead,
+so `pg/` and its verifier are untouched, and neither product's backup can break the other's. Both
+GitCellar services were re-checked afterwards and are unchanged (`gitcellar-pg-backup` cron
+`0 4 * * *`, `gitcellar-backup-verify` cron `0 6 * * *`, last deploys still from July).
+
+### Verified, not assumed
+
+| Evidence | Result |
+|---|---|
+| Job log | `FBM_BACKUP_COMPLETE fbm/feedbackmonk-20260910-184631.sql.gz.gpg (27659B, R2-EU, read-back verified)` |
+| Object listed in R2 from this machine | present, 27,657 B and 27,659 B for the two proving runs |
+| OpenPGP structure, checked locally | valid - `pubkey enc packet: version 3, algo 18` |
+| Recipient key vs. GitCellar's dump | **both `FF02A40CF17791EF`** - one private key restores both |
+| GitCellar's `pg/` prefix | untouched, daily cadence intact through 2026-09-10 |
+
+Railway reported the run SUCCESS **before the dump had even been written** - this service defines no
+`healthcheckPath` either - so every claim above is graded on logs and on the artifact, never on
+Railway's status.
+
+### A bug in the first version, worth keeping written down
+
+The first proving run uploaded correctly but printed no completion line. Cause: the script used
+`set -euo pipefail`, and `gpg --list-packets` **exits non-zero on a file you hold no secret key
+for** - which is every file this job writes. So the read-back check killed the script silently: the
+upload succeeded, nothing was verified, and a genuinely corrupt upload would have died just as
+quietly. GitCellar's `verify-cron-inline.sh` omits `-e` for exactly this reason. Fixed by checking
+every exit code explicitly and grading the gpg step on its packet listing rather than its status.
+**The missing log line was the only symptom** - the deployment still said SUCCESS.
+
+### Still open - no dead-man switch on the new prefix
+
+Nothing alerts if this cron silently stops: `gitcellar-backup-verify` reads `pg/` only, and a cron
+that never fires produces no logs to fail loudly in. That is the same failure class that sat
+undetected for two weeks on the GitCellar side in 2026. Filed to GitCellar as
+`docs/planning/deferred/feedbackmonk-backup-prefix-and-verification-20260910.md`; it needs either an
+extension of their verify cron or a heartbeat of this job's own, and both are cross-product calls.
+
+**Also inherited:** this job reuses GitCellar's `r2-backup-writer` credentials and bucket, so a
+rotation of that token breaks this backup too, visibly only in these logs. And no retention or
+lifecycle policy applies to `fbm/` - the objects accumulate until someone sets one.
+
+---
+
 ## Stage G (2026-09-10) — secrets rotated; pre-migration backup pruned; one Railway gotcha learned
 
 Follows Stage F the same day, on the owner's word ("rotate the session secret and ops token").
