@@ -380,7 +380,7 @@ Authorization: Bearer <jwt>
       {
         "feedback_id": "FB-XXXXXX",
         "kind": "bug" | "feature" | "question" | "other",
-        "status": "submitted" | "triaged" | "in-progress" | "shipped" | "wont-fix" | "duplicate",
+        "status": "submitted" | "triaged" | "in-progress" | "shipped" | "wontfix" | "duplicate",   // `wontfix`, no hyphen — see change log 2026-09-01
         "body": "...",                                  // "" for a sentiment-only submission
         "sentiment": "negative" | "neutral" | "positive" | null,   // FR-FBR-28
         "severity": "low" | "medium" | "high" | "blocker" | null,  // Phase A (feedback.severity)
@@ -823,6 +823,18 @@ rating is entirely unaffected; one that does can feature-detect before sending.
   sample was also brought up to date with the `feedback.erase_all` and `hosting.*` strings that had
   shipped earlier without being reflected here. **No change to any existing endpoint, error body or
   wire shape**; `submitter_locale` is admin-read-only and appears on no consumer-facing projection.
+- 2026-09-01 (`d7dca56` — `FeedbackStatus::WontFix` serialises as `wontfix`) — **WIRE-FORM CHANGE TO AN
+  EXISTING FIELD, not additive.** Every consumer-facing projection that carries `status` (§6.1 list,
+  §6.2 thread, the §Phase-A export) emitted `"wont-fix"` before this commit and emits `"wontfix"`
+  after it; the DB CHECK constraint (migration `00003`) and the admin UI's status union always used
+  `wontfix`, so the old wire form was the defect and the six-value union above is now byte-equal to
+  the DB form for every variant. **The asymmetry that makes this a trap:** the server keeps
+  `#[serde(alias = "wont-fix")]` on the variant, which protects callers who **send** the status
+  (`?status=`, `to_status`) and does nothing for callers who **read** it — a client that matches the
+  documented `"wont-fix"` on the way in silently falls through every fallback arm with no error.
+  Live on `feedback.gitcellar.com` since the 2026-09-10 redeploy to `0.4.0`; before that the live
+  `0.2.0` emitted and accepted **only** the hyphenated form. This entry was written on 2026-09-10,
+  nine days late, after GitCellar's client had already pinned the stale spelling from this document.
 - 2026-08-24 (GitCellar solicitation-card redesign) — Added §12: optional 1-5 `rating` on submit
   (capability `feedback.rating`, migration `00029`) with server-side derivation of the 3-point
   `sentiment`, chosen ADDITIVELY over widening the `sentiment` enum so no existing consumer, stored

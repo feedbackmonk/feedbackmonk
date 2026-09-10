@@ -50,8 +50,17 @@ pub enum FeedbackStatus {
     // accepted `wont-fix` and nothing else, so any caller that ever set a row
     // to won't-fix was necessarily sending the hyphenated form; dropping it
     // outright would 422 that caller the moment the fix deploys. Cheap
-    // insurance, and it costs nothing semantically. Safe to delete once no
-    // client is known to send `wont-fix`.
+    // insurance, and it costs nothing semantically.
+    //
+    // A client IS known to send `wont-fix`: GitCellar's
+    // `scripts/prod-smoke/prod-feedback-smoke.ps1` POSTs `to_status =
+    // 'wont-fix'` to the admin transition endpoint as its cleanup step. It
+    // could not switch to `wontfix` while the live instance ran 0.2.0 (which
+    // accepted only the hyphen); the 2026-09-10 redeploy to 0.4.0 removed that
+    // constraint. Delete this alias only after BOTH hold: (1) GitCellar's smoke
+    // script sends `wontfix` (a one-word change on its side, filed to its
+    // backlog on 2026-09-10), and (2) no other adopter is documented as
+    // sending the hyphen. Until then it is load-bearing for a live cleanup path.
     #[serde(rename = "wontfix", alias = "wont-fix")]
     WontFix,
     Duplicate,

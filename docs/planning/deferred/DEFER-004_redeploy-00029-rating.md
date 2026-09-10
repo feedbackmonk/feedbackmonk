@@ -1,7 +1,7 @@
 ---
 id: DEFER-004
 title: Redeploy feedback.gitcellar.com with migration 00029, then arm the GitCellar rating E2E
-status: PROPOSED
+status: RESOLVED
 origin: inject
 source-project: GitCellar
 source-session-id: 837dabb5-e4e3-4c51-8d6d-fff1dbeef245
@@ -11,6 +11,8 @@ suggested-entry-point: implement
 scope-estimate: single-session
 content-hash: fbm-redeploy-00029-20260824
 ---
+
+> **RESOLVED 2026-09-10** — `feedback.gitcellar.com` runs `0.4.0`; migration `00029` has been applied since 2026-09-02 and `/api/v1/capabilities` now advertises `feedback.rating`. The GitCellar-side half (arm the rating E2E) is GitCellar's to do; it is named in the brief filed to GitCellar on 2026-09-10 (`docs/planning/deferred/feedbackmonk-0.4.0-live-followups-20260910.md` there).
 
 # DEFER-004: Redeploy feedback.gitcellar.com with migration 00029, then arm the GitCellar rating E2E
 

@@ -28,5 +28,5 @@ is never touched. A plan that requires editing it has misread DEC-FBR-14.
 
 ## Why it matters beyond itself
 
-The cutover retires the whole `gitcellar-instance-redeploy.md` stack at once — a SaaS instance runs
+The cutover would have retired the whole redeploy stack at once (that stack landed on its own on 2026-09-10 — `docs/planning/feedbackmonk-deploy-state.md` § Stage F — so this is no longer a reason to hurry) — a SaaS instance runs
 current code with every migration applied. Weigh that against three or four separate Railway redeploys.

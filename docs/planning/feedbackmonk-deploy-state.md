@@ -44,6 +44,50 @@ for the feedbackmonk backend.
 
 ---
 
+## Stage F (2026-09-10) — **DEPLOYED**: `feedbackmonk-api:0.4.0` + `feedbackmonk-admin-ui:0.1.3` LIVE; DEFER-009 resolved
+
+**What unblocked it**: nothing this machine did. Read-only inspection on 2026-09-10 found a
+`feedbackmonk-api` deployment `e775c7b3-8b9c-4871-ac9b-793497b74a30` at **2026-09-08 20:12 UTC**,
+status SUCCESS, `reason: deploy`, image `0.2.0` (the pinned tag), `creator: null`, and
+`/health/ready` reported `started_at` 20:12:52 the same day — i.e. Railway had created a container
+for this service again, six days after the last failure, from a plain redeploy of the existing pin.
+`gitcellar-cloud-api` had also deployed successfully on 2026-09-03. The support thread could not be
+read from here (dashboard login). No service setting was changed between the last failure and that
+success; the successful manifest shows `multiRegionConfig: europe-west4-drams3a`, the project's region.
+
+**What was done** (GraphQL, header `Project-Access-Token`, env `15941208-…`, both
+`serviceInstanceUpdate` calls carrying `registryCredentials` `gitcellar-push` + WCM
+`gitcellar-registry-push`, then `serviceInstanceDeployV2`):
+
+| Step | UTC | Deployment | Railway | Graded on |
+|---|---|---|---|---|
+| `feedbackmonk-api` `50e4291d-…` → `registry.gitcellar.com/feedbackmonk-api:0.4.0` | 16:47:56 | `480ad320-5e67-4fb2-87f2-a72f1e836ba6` | SUCCESS in 12 s | `GET /api/v1/capabilities` → `"version":"0.4.0"`, **15** capabilities (`feedback.sentiment`, `body-optional`, `sentiment-trend`, `solicitation.v1`, `my-feedback`, `delete`, `reply_state`, `export`, `severity`, `rating`, `idempotency`, `attachments`, `erase_all`, `hosting.subdomains`, `hosting.custom_domain`). Note `0.4.0`'s `/health/ready` no longer carries `version` — read it from capabilities. |
+| `feedbackmonk-admin-ui` `48918bae-…` → `registry.gitcellar.com/feedbackmonk-admin-ui:0.1.3` | 16:49:57 | `4a6807f1-c8d6-4634-9d69-9b14054834e1` | SUCCESS in 12 s | `triage.gitcellar.com` 200; served bundle `assets/index-5s3eMduH.js` contains the `Won't Fix` label (12× `wontfix`, 0× `wont-fix`). |
+
+**Browser verification (Playwright, real Chromium)**: signed in as `triage@gitcellar.com`,
+hard-reloaded `/feedback`: 79 rows, every won't-fix row shows a "✕ Won't Fix" pill. Opened
+`FB-3S8XGA` → `/feedback/FB-3S8XGA` renders the drawer: status pill "Won't Fix", kind, sentiment,
+body, status history ("Submitted → Won't Fix by triage@gitcellar.com"), replies panel, and the
+transition table ("From Won't Fix to: Submitted"). Console: zero errors after sign-in (the only
+entries are pre-login: `favicon.ico` 404, the expected `/api/v1/public/site` 404 on a non-tenant-bound
+host, and the list's 401 before authentication).
+
+**What this closes at once**: Phase-A A6 (the six Phase-A capabilities are advertised — GitCellar
+Phases B/C are unblocked), DEFER-004 (`feedback.rating` live), FR-FBR-32/33 (`hosting.*` live), and
+the `wontfix` serde fix (the triage inbox is usable again). The DB was already at `00030`; migration
+`00031` (submitter `locale`, 2026-09-06) is **not** applied and `0.4.0` predates it, so nothing is
+pending against the running code. The pre-migration backup
+`S:\_fbm-deploy-backups\feedbackmonk-20260902T024909Z.sql.gz` has done its job and may be pruned
+on the owner's normal schedule.
+
+**Now unblocked, not done — each is an owner decision, listed in `CLAUDE.md` § Pending Follow-Ups**:
+`FEEDBACKMONK_TRANSLATION_PROVIDER` (which provider and key), `FEEDBACKMONK_STORAGE_BACKEND=s3`
+(needs a production bucket + four variables; the only credentials on the machine are a **test** R2
+key), and rotating `FEEDBACKMONK_SESSION_SECRET` / `FEEDBACKMONK_OPS_TOKEN` (the ops token is
+mirrored in GitCellar's credential store, so it is a two-repo change).
+
+---
+
 ## Stage E (2026-09-01/02) — DB MIGRATED to 00030; images built + pushed; **Railway deploys are BLOCKED**
 
 **Trigger**: the owner reported `triage.gitcellar.com` white-screening on any won't-fix feedback row.
@@ -55,7 +99,7 @@ Root cause was a feedbackmonk bug (`FeedbackStatus::WontFix` serialised `wont-fi
 
 | Item | State |
 |---|---|
-| Pre-migration backup | `S:\_fbm-deploy-backupseedbackmonk-20260902T024909Z.sql.gz` — gzip-verified, 23 tables. Taken **by hand**: `gitcellar-pg-backup` targets the `railway` DB, NOT `feedbackmonk`. |
+| Pre-migration backup | `S:\_fbm-deploy-backups\feedbackmonk-20260902T024909Z.sql.gz` — gzip-verified, 23 tables. Taken **by hand**: `gitcellar-pg-backup` targets the `railway` DB, NOT `feedbackmonk`. |
 | **Migrations 00019 → 00030** | **APPLIED** to the prod `feedbackmonk` DB. `_sqlx_migrations` max=30, 0 failures. Data intact: 79 feedback rows (78 wontfix / 1 submitted), 1 tenant. `00019`'s `body_tsv` rebuild verified correct — 44 rows have text, 35 are sentiment-only (body NULL/empty), and **0** text-bearing rows have a NULL `body_tsv`. |
 | `feedbackmonk-api:0.4.0` | Built from a clean worktree at `c065b60`, pushed. Digest `sha256:e90569031aa623722ec12dfd78c18e6a91207f016004449ad12eff1e077351e2`. linux/amd64. Binary contains `wontfix`, the `wont-fix` input alias, `feedback.rating`, `hosting.subdomains`, `hosting.custom_domain`, `feedback.export`, `feedback.idempotency`. |
 | `feedbackmonk-admin-ui:0.1.3` | Built + pushed. Digest `sha256:f49add4ac38f05f87a2548507d9233584134e0e087edf3fd2e895173675c3d02`. Verified it baked the **Railway** nginx conf (`proxy_pass https://$fbm_api`), not the compose one (`api:14304`). |

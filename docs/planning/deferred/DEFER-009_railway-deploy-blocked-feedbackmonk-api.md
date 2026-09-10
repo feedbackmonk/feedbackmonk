@@ -1,7 +1,7 @@
 ---
 id: DEFER-009
 title: Railway cannot create containers for feedbackmonk-api — the WontFix white-screen fix is built, migrated and staged but cannot ship
-status: BLOCKED
+status: RESOLVED
 origin: defer-local
 source-project: feedbackmonk
 source-session-id: interactive-20260902T010351Z-feedbackmonk-c1
@@ -13,6 +13,30 @@ content-hash: fbm-railway-create-container-blocked-v1
 ---
 
 # DEFER-009: Railway cannot create containers for `feedbackmonk-api`
+
+> **RESOLVED 2026-09-10.** Railway started creating containers for this service again on its own:
+> a plain `deploy` of the already-pinned `0.2.0` (deployment `e775c7b3-8b9c-4871-ac9b-793497b74a30`,
+> 2026-09-08 20:12 UTC, no creator recorded — the dashboard or Railway's side, not this machine)
+> reached SUCCESS and its container took over serving. On that evidence the finish below was run on
+> 2026-09-10 16:48–16:50 UTC: `feedbackmonk-api` → `0.4.0` (deployment
+> `480ad320-5e67-4fb2-87f2-a72f1e836ba6`, SUCCESS), then `feedbackmonk-admin-ui` → `0.1.3`
+> (deployment `4a6807f1-c8d6-4634-9d69-9b14054834e1`, SUCCESS). Graded on curl and a real browser,
+> not on Railway's status: `/api/v1/capabilities` reports `0.4.0` with 15 capabilities; the served
+> admin bundle carries the "Won't Fix" label; logged in at `triage.gitcellar.com`, hard-reloaded,
+> the list shows a "Won't Fix" pill on every won't-fix row, and opening `FB-3S8XGA` renders the
+> drawer (status pill, status history, transition table) instead of a blank page, with zero console
+> errors after sign-in. Full record: `docs/planning/feedbackmonk-deploy-state.md` § Stage F.
+>
+> The root cause on Railway's side was never learned: the support thread had no reply readable from
+> this machine (it needs the dashboard login), and no setting on the service was changed between the
+> last failure (2026-09-02 14:43 UTC) and the first success (2026-09-08). The one visible difference
+> in the successful deployment's manifest is `multiRegionConfig: europe-west4-drams3a`, the same
+> region as every other service in the project. The "DO NOT" block and the workaround below are kept
+> as history; neither applies any more. The three deferred sub-items are now unblocked and are
+> listed in `CLAUDE.md` § Pending Follow-Ups as owner decisions.
+>
+> Everything below this line is the pre-resolution resume brief, unchanged.
+
 
 > **RESUME POINT.** Everything below was measured, not assumed. Full evidence:
 > `docs/planning/feedbackmonk-deploy-state.md` § Stage E.

@@ -57,13 +57,12 @@
   again in Stage 2) — filed to that repo.
 <!-- /0-uldf-schedule writes here -->
 
-- **🚨 BLOCKED / RESUME HERE — Railway cannot create containers for `feedbackmonk-api`**: the
-  won't-fix white-screen fix is built, merged, migrated and staged, but cannot ship. 78 of 79 prod
-  feedback rows are `wontfix`, so the GitCellar triage inbox is ~99% unusable right now. **Do NOT
-  change any env var / setting / image pin on that Railway service** — the only container serving
-  `feedback.gitcellar.com` is irreplaceable while this persists. Full resume record:
-  [`DEFER-009`](planning/deferred/DEFER-009_railway-deploy-blocked-feedbackmonk-api.md) +
-  `docs/planning/feedbackmonk-deploy-state.md` § Stage E.
+- **Railway redeploy LANDED 2026-09-10** — `feedback.gitcellar.com` runs `feedbackmonk-api:0.4.0`
+  (15 capabilities) and `feedbackmonk-admin-ui:0.1.3`; the won't-fix white screen is gone and the
+  triage inbox is usable again. DEFER-009 is RESOLVED; record in
+  `docs/planning/feedbackmonk-deploy-state.md` § Stage F. **Three env-var changes it was holding back
+  are now owner decisions** (translation provider, S3 attachment storage, session-secret/ops-token
+  rotation) — see `CLAUDE.md` § Pending Follow-Ups.
 - **Unpin stranded-dirty-files oracle — TRIGGER HAS FIRED (measured 2026-08-30)**: the synced baseline is clean, so the pin is now the only thing keeping this oracle off upstream fixes. Full detail in PF-UNPIN-01 below. Test (assembles the identifier at runtime — do NOT paste the literal back in, see DEFER-003): `U=$(id -un); grep -ciE "$U|$(printf %s "$U" | tr a-z A-Z | cut -c1-6)~1" ~/.claude/oracles/stranded-dirty-files/validate.ps1` -> `0`.
 
 ### PF-SAAS-STANDUP-01: provision `feedbackmonk.com` + migrate GitCellar onto it (DEC-FBR-14 ops half)
@@ -123,7 +122,7 @@ Decisions confirmed (were AFK-adopted, then user-confirmed): D-A1 hard-delete+by
 > redeploys. If the cutover is far off, A6 still stands on its own merits: it gates GitCellar's
 > Phases B/C. Filed to GitCellar as **DEFER-084**.
 
-**Remaining — A6 deploy GATE (NOT this repo's code; still OUTSTANDING as of scrutiny 2026-07-01):** the live instance runs **v0.2.0** with migrations `00020`+`00021` unapplied, so the six Phase-A capabilities are not yet live there. Redeploy `feedback.gitcellar.com` at ≥ v0.3.0 with migrations `00020`+`00021` applied (GitCellar Railway — ordered runbook in `docs/operations/RAILWAY_GITCELLAR.md` § 8), then verify `GET https://feedback.gitcellar.com/api/v1/capabilities` advertises `feedback.delete|reply_state|export|severity|idempotency|attachments` and smoke each new route. That verification unblocks GitCellar Phases B/C. Cannot be performed from this repo/session (needs Railway access).
+**A6 deploy GATE — DONE 2026-09-10** (`feedback.gitcellar.com` at `0.4.0`, all six Phase-A capabilities advertised, verified by curl; GitCellar Phases B/C are unblocked — `docs/planning/feedbackmonk-deploy-state.md` § Stage F). The paragraph below is the pre-deploy text, kept for the runbook pointers:  the live instance runs **v0.2.0** with migrations `00020`+`00021` unapplied, so the six Phase-A capabilities are not yet live there. Redeploy `feedback.gitcellar.com` at ≥ v0.3.0 with migrations `00020`+`00021` applied (GitCellar Railway — ordered runbook in `docs/operations/RAILWAY_GITCELLAR.md` § 8), then verify `GET https://feedback.gitcellar.com/api/v1/capabilities` advertises `feedback.delete|reply_state|export|severity|idempotency|attachments` and smoke each new route. That verification unblocks GitCellar Phases B/C. Cannot be performed from this repo/session (needs Railway access).
 
 ### ~~PF-BOARD-VOTING-01: Public-board voting (`feedback_board_votes`)~~ — DONE
 
