@@ -54,6 +54,15 @@ endpoint, (3) re-sync the rebuilt widget into GitCellar and flip its embed. Step
    FEEDBACKMONK_OPS_TOKEN = $(openssl rand -hex 32)
    ```
    Store it in WCM (suggest `gitcellar-feedbackmonk-ops-token`).
+
+   > **This suggestion was never carried out, and reading it as fact caused a chain of wrong
+   > records** (noted 2026-09-10). No `gitcellar-feedbackmonk-ops-token` entry has ever existed on
+   > this machine; the credential store holds only `gitcellar-feedbackmonk-ops-password` (the admin
+   > **login password**) and `gitcellar-feedbackmonk-jwt-private`. Later documents copied the
+   > suggested name forward as though the entry existed, which made a one-place secret rotation look
+   > like a two-repo change. The ops token and session secret live in Railway alone and read back
+   > from its `variables` query. Both were rotated 2026-09-10 —
+   > `docs/planning/feedbackmonk-deploy-state.md` § Stage G.
 3. Redeploy: `serviceInstanceUpdate(source.image=<new tag>)` then `serviceInstanceDeployV2`
    (per deploy-state recipe). The migrate one-shot applies migration 00012.
 4. Verify: `GET https://feedback.gitcellar.com/health/ready` → 200; widget-config still returns
