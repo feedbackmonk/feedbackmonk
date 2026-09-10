@@ -15,7 +15,8 @@ The recipe is in `docs/planning/feedbackmonk-deploy-state.md` § Stage H.
 
 | File | What it is |
 |---|---|
-| `feedbackmonk-pg-backup.sh` | the deployed job: dump → gzip → GPG-encrypt → upload to R2, then read back and verify |
+| `feedbackmonk-pg-backup.sh` | the nightly job (04:30 UTC): dump → gzip → GPG-encrypt → upload to R2, then read back and verify |
+| `feedbackmonk-backup-verify.sh` | the daily Tier-1 verifier (06:30 UTC): freshness, size and OpenPGP structure of the newest `fbm/` object |
 
 ## What it does
 
@@ -53,14 +54,27 @@ any failure.
   `docs/operations/SIGNING_KEY_CUSTODY.md`.
 - GitCellar's equivalent job and its restore-verification tiers: `ci/pg-backup/` in that repo.
 
-## Known gap — no dead-man's switch on this prefix
+## Verification, and the one gap that is left
 
-`gitcellar-backup-verify` covers `pg/` only. **Nothing alerts if this job silently stops running.**
-The in-job read-back fails loudly in the logs, but a cron that never fires produces no logs at all,
-and that is precisely the failure class that sat undetected for two weeks on the GitCellar side.
-Closing it means either extending that verify cron to check `fbm/` too, or giving this job its own
-heartbeat ping — both need a decision that is not this repo's to make alone. Filed to GitCellar as
-`docs/planning/deferred/feedbackmonk-backup-prefix-and-verification-20260910.md`.
+`feedbackmonk-backup-verify.sh` runs at **06:30 UTC**, two hours after the backup, as its own Railway
+cron service (`717daf20-603a-48b5-8977-99b8fc44d5b1`). It lists `fbm/`, takes the newest object, and
+fails unless it is under 26 h old, at least 1 KiB, downloads to exactly its listed size, and parses
+as OpenPGP. Tier 1 only: it does **not** prove restorability, which needs a real decrypt-and-restore
+against a private key that is GitCellar's.
+
+Its failure messages distinguish the two diagnoses that matter, because they point at different
+services: an empty listing means **the backup job never uploaded** (go read that job's logs), while a
+listing *error* means **this verifier cannot see the bucket** (go check its credentials). All three
+paths were exercised before deployment — pass, empty prefix, unreachable bucket — and the two
+failures exit non-zero.
+
+**The gap that remains, and it needs one owner action.** `FBM_VERIFY_HEARTBEAT_URL` is unset, so the
+script prints a NOTE and pings nothing. Until a heartbeat exists, a cron that *stops firing
+altogether* is still silent: it produces no logs to fail in, and a failed verify and a verify that
+never ran are the same silence. Create a Better Stack heartbeat (daily period, generous grace) and
+set its URL as `FBM_VERIFY_HEARTBEAT_URL` on the verify service — the ping code is already written
+and gated on that variable, exactly as GitCellar's verifier does it. Body:
+`docs/pending/feedbackmonk-backup-alerting.md`.
 
 ## Decision log
 
@@ -69,6 +83,14 @@ heartbeat ping — both need a decision that is not this repo's to make alone. F
   service on another product's backup path, creates sync debt against that repo's committed
   `backup.sh`, and couples two failure domains. A separate cron costs a few seconds of compute a day
   and keeps both blast radii intact.
-- **2026-09-10 — read-back verification inside the job.** Because no external verifier watches this
-  prefix yet, the job proves its own artifact retrievable rather than only reporting that an upload
-  call returned zero. It is not a substitute for a dead-man's switch and does not claim to be.
+- **2026-09-10 — read-back verification inside the backup job**, kept even now that a separate
+  verifier exists: it fails at the moment of writing rather than up to 26 h later, and the two checks
+  are independent.
+- **2026-09-10 — a separate verifier rather than extending GitCellar's.** Extending theirs was the
+  obvious move and is wrong twice over. Their verifier pings a **single** Better Stack heartbeat, so
+  folding these checks in would let a feedbackmonk failure silence GitCellar's backup alarm and read
+  as *their* backup breaking — one product's noise degrading another's signal. And their script is
+  committed in the GitCellar repo under a "keep in sync" warning, so changing the live job means
+  either editing that tree, which DEC-FBR-07 forbids from here, or knowingly leaving drift in a
+  critical verifier. A second cron costs seconds of compute a day and keeps both blast radii and
+  both alarms intact.

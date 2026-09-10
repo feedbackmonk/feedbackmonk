@@ -43,6 +43,57 @@ for the feedbackmonk backend.
 
 ---
 
+## Stage I (2026-09-10) - the feedbackmonk backup is now verified daily by a verifier of our own
+
+On the owner's word, after they asked whether extending GitCellar's verifier was the right move.
+**It was not**, and the recommendation was reversed before building - see the decision below.
+
+**New Railway cron `feedbackmonk-backup-verify`** (`717daf20-603a-48b5-8977-99b8fc44d5b1`), image
+`postgres:16`, schedule **`30 6 * * *`** UTC, restart policy NEVER. Body:
+`deploy/backup/feedbackmonk-backup-verify.sh` in this repo, base64-wrapped into the start command.
+Two hours after our backup, thirty minutes after GitCellar's verifier. The four backup services now
+read: `gitcellar-pg-backup` 04:00, `feedbackmonk-pg-backup` 04:30, `gitcellar-backup-verify` 06:00,
+`feedbackmonk-backup-verify` 06:30.
+
+### Why NOT extend `gitcellar-backup-verify`, which is what was originally proposed
+
+1. **It pings a single Better Stack heartbeat.** Folding our checks in means a feedbackmonk failure
+   silences GitCellar's backup alarm and reads as *their* backup breaking - one product's noise
+   degrading another product's signal. Keeping our heartbeat separate keeps both alarms meaningful.
+2. **Its script is committed in the GitCellar repo** under an explicit "KEEP IN SYNC with the Railway
+   service start command" warning. Changing the live job means either editing that tree, which
+   DEC-FBR-07 forbids from here, or knowingly leaving drift in a critical backup verifier.
+
+Railway's `notificationRule*` mutations were checked as a third option and are **not reachable with a
+project-scoped token** (the input type introspects empty and the query 400s), so platform-native
+deploy-failure alerting is not available to us.
+
+### Exercised before deployment - all three paths, not just the happy one
+
+A verifier that has only ever passed is worth little, and this project already has history here:
+GitCellar's verifier was blind for two weeks in 2026 while reporting failures on healthy backups.
+
+| Scenario | Result |
+|---|---|
+| real prefix, real dump | `FBM_VERIFY_PASS`, `age=0h size=27659`, `openpgp OK (keyid FF02A40CF17791EF)`, exit 0 |
+| prefix with no dumps | `FAIL: no dumps at all ... check THAT service's logs, not this one's credentials`, exit 1 |
+| bucket it cannot read | `FAIL: listing ... errored -- this verifier cannot see the bucket`, exit 1 |
+
+The two failure messages were deliberately split, because an empty listing and a listing error point
+at **different services** - the backup job versus this verifier's own credentials. The first draft
+said "likely bad/stale R2 creds" for both, which is exactly the class of misleading error that cost
+this project a week in September 2026, so it was fixed before deployment.
+
+### The gap that is left, and the one action that closes it
+
+`FBM_VERIFY_HEARTBEAT_URL` is **unset**, so the verifier prints a NOTE and pings nothing. Artifact
+checking is covered; **absence is not**. A cron that stops firing produces no logs to fail in. The
+ping code is written and gated on that variable, so closing this is: create a Better Stack heartbeat,
+set the URL on the verify service, let its deploy stand. Body:
+`docs/pending/feedbackmonk-backup-alerting.md`.
+
+---
+
 ## Stage H (2026-09-10) - the `feedbackmonk` database now has a nightly backup of its own
 
 Closes the gap Stage G surfaced. On the owner's word ("add feedbackmonk to the nightly backup").
