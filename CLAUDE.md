@@ -128,7 +128,6 @@ Four more are installed and not listed above: `feedback-erasure-completeness`, `
 
 - **Trigger: before the next release** — run `/1-translate`. No translation has ever run, by design (DEC-FBR-17): every non-`en` catalog is a skeleton and every surface falls back to English per key. The gap is large and the `translation-gap-status` oracle reads DUE. This is the release gate; nothing else waits on it.
 - **Trigger: your word** — two Railway env-var changes are unblocked and waiting on a decision: the translation provider, and S3 attachment storage. Details: `docs/pending/railway-env-decisions.md`
-- **Trigger: a cross-product decision** — the nightly feedbackmonk database backup runs, but nothing alerts if it silently stops. Details: `docs/pending/feedbackmonk-backup-alerting.md`
 - **Trigger: your word — ops, not code** — provision `feedbackmonk.com` and cut GitCellar onto it (DEC-FBR-14). FR-FBR-32/33 are built, tested and live on `feedback.gitcellar.com`, but nowhere runs them under the `feedbackmonk.com` root domain. Details: `docs/pending/saas-standup.md`
 - **Trigger: `feedbackmonk.com` is live** — FR-FBR-41 (Astro marketing site) is DEFERRED until then.
 <!-- /0-uldf-schedule writes here -->

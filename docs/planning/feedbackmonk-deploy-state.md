@@ -43,6 +43,61 @@ for the feedbackmonk backend.
 
 ---
 
+## Stage J (2026-09-11) - backup alerting is CLOSED; absence is now detected
+
+The last gap from Stage I. The owner supplied a write-capable Better Stack token; everything below
+was done with it and verified, not assumed.
+
+**Heartbeat `feedbackmonk-backup-verify`, id `492293`** - period 86400 s (one ping a day), grace
+3600 s, so silence alerts about an hour after a missed run. Those numbers deliberately match the
+sibling `gitcellar-backup-verify` heartbeat (id `468794`), **measured from the API rather than taken
+from the inventory** - see the correction below.
+
+Its ping URL is set as `FBM_VERIFY_HEARTBEAT_URL` on the `feedbackmonk-backup-verify` service
+(`717daf20-...`). Railway is its only home, exactly as GitCellar's equivalent is stored; it is a
+secret-ish token and **must never enter this public tree**.
+
+### Proven end to end
+
+| Step | Evidence |
+|---|---|
+| before | heartbeat status `pending` - never pinged |
+| one-shot run of the verify job | `FBM_VERIFY_PASS` then `heartbeat pinged` |
+| after | heartbeat status **`up`** |
+| schedule restored | `cronSchedule` back to `30 6 * * *` |
+
+A `variableUpsert` alone did **not** run the job - with a cron set, the auto-triggered deploy only
+reschedules. Proving the ping therefore needed the clear-cron / deploy / restore-cron dance, which is
+the same recipe Stage H records for changing these jobs.
+
+### The API token is now stored, and that closes a documented gap
+
+`gitcellar-betterstack-uptime` (user `uptime-api`) now exists in Windows Credential Manager, read
+back through the estate's own helper and **exercised against the API**, not merely round-tripped.
+This was one of the nine entries the credential inventory claimed but did not have
+(`docs/planning/deferred/credential-inventory-claims-absent-entries-20260910.md` in the GitCellar
+tree). Its absence is precisely why this task stalled for a turn.
+
+### Correction to the inventory, measured
+
+The `backup-verify-heartbeat-url` row states GitCellar's heartbeat is "Period 86400s + grace 86400s,
+so silence alerts by email after ~48h". **The live values are period 86400, grace 3600** - so it
+alerts after roughly 25 hours, not 48. The real behaviour is better than documented, but the number
+in the record is wrong and someone sizing an incident response would be misled by it.
+
+### What is now covered, and what is not
+
+Covered: the dump runs nightly and read-back-verifies its own upload; the verifier independently
+re-checks the newest dump each morning and fails loudly naming the responsible service; **and if
+either stops firing at all, the heartbeat goes silent and Better Stack raises an alert.** That was
+the last hole.
+
+Not covered, and still true: Tier 1 proves a well-formed encrypted artifact, **not restorability**.
+Only a real decrypt-and-restore proves that, and the private key is GitCellar's. Their
+`ci/pg-backup/verify-restore.sh` Tier 2 is the shape that would do it.
+
+---
+
 ## Stage I (2026-09-10) - the feedbackmonk backup is now verified daily by a verifier of our own
 
 On the owner's word, after they asked whether extending GitCellar's verifier was the right move.

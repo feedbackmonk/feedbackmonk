@@ -1,47 +1,37 @@
-# The nightly feedbackmonk backup is verified daily, but nothing alerts if it stops
+# CLOSED 2026-09-11 - the feedbackmonk backup is now alerted on, not just verified
 
-Since 2026-09-10 the production `feedbackmonk` database is dumped nightly at 04:30 UTC and the newest
-dump is verified daily at 06:30 UTC by two Railway cron services of our own. Source of truth for both
-scripts: `deploy/backup/`. Full record: `docs/planning/feedbackmonk-deploy-state.md` § Stage H.
+Kept as the record of what was built and what remains true. **Nothing here is outstanding.**
 
-## What is already covered
+## What runs
 
-The backup job read-back-verifies every object it writes. The verifier independently re-checks the
-newest object's freshness (≤ 26 h), size, download integrity and OpenPGP structure, and fails
-non-zero with a message naming which service is at fault. All three paths were exercised before
-deployment.
+| Job | When (UTC) | What it proves |
+|---|---|---|
+| `feedbackmonk-pg-backup` | 04:30 daily | dumps, encrypts, uploads, then re-downloads its own object and checks size + OpenPGP |
+| `feedbackmonk-backup-verify` | 06:30 daily | independently re-checks the newest dump: < 26 h old, >= 1 KiB, downloads to its listed size, parses as OpenPGP |
 
-## The one thing still missing, and it is a five-minute owner action
+Both scripts are version-controlled in `deploy/backup/`; the Railway services inline them, so editing
+one does not change the other. Full record: `docs/planning/feedbackmonk-deploy-state.md` Stage H/I/J.
 
-**`FBM_VERIFY_HEARTBEAT_URL` is unset on the `feedbackmonk-backup-verify` service**, so nothing
-watches for absence. If the cron stops firing altogether it produces no logs to fail in — a failed
-verify and a verify that never ran are the same silence, and that exact failure class sat undetected
-for two weeks on the GitCellar side in 2026.
+## How absence is detected
 
-To close it:
+Better Stack heartbeat **`feedbackmonk-backup-verify`, id 492293** - period 86400 s, grace 3600 s.
+The verifier pings it **only on a real PASS**, so a failed verify and a verify that never ran are
+both silence, and silence alerts after about an hour past the expected time. Proven by watching the
+heartbeat go `pending` -> `up` on a one-shot run.
 
-1. Create a heartbeat in the owner's Better Stack account — daily period, generous grace (GitCellar's
-   equivalent uses 86400 s period + 86400 s grace, alerting after ~48 h of silence).
-2. Set its URL as `FBM_VERIFY_HEARTBEAT_URL` on the `feedbackmonk-backup-verify` Railway service
-   (`717daf20-603a-48b5-8977-99b8fc44d5b1`), then deploy that service once.
+The ping URL lives only in the service's `FBM_VERIFY_HEARTBEAT_URL` variable on Railway. **It is a
+secret and this repo is public - never paste it into the tree.**
 
-**The ping code is already written and gated on that variable** — the script pings only on a real
-PASS, and treats a failed ping as a warning rather than a verify failure. Nothing else changes.
+## What is still NOT proven, honestly
 
-> Note when setting it: each `variableUpsert` triggers its own deploy, so set the variable and let
-> that deploy stand rather than adding an explicit one. `docs/dev-notes/railway-deploy-diagnosis.md`.
+Tier 1 proves a well-formed encrypted artifact exists and is fresh. It does **not** prove the dump
+restores. Only a decrypt-and-restore does that, and the private key belongs to GitCellar
+(`security@gitcellar.com`, key `FF02A40CF17791EF`). Their `ci/pg-backup/verify-restore.sh` Tier 2 is
+the shape of that check if it is ever wanted for this database.
 
-## Why we did not just extend GitCellar's verifier
-
-It was the obvious move and it is wrong twice over. Their verifier pings a **single** heartbeat, so a
-feedbackmonk failure would silence GitCellar's backup alarm and read as *their* backup breaking. And
-their script is committed in their repo under a "keep in sync" warning, so changing the live job means
-either editing that tree, which DEC-FBR-07 forbids from here, or leaving drift in a critical verifier.
-Filed for their awareness as `docs/planning/deferred/feedbackmonk-backup-prefix-and-verification-20260910.md`.
-
-## Two couplings inherited
+## Couplings that remain
 
 - Both jobs reuse GitCellar's `r2-backup-writer` credentials and bucket. **A rotation there breaks
-  both**, and the verifier's error message says so explicitly when it cannot list the bucket.
-- No lifecycle or retention policy applies to the `fbm/` prefix; objects accumulate until someone sets
-  one. That is GitCellar's bucket.
+  both**, and the verifier's own error message says so when it cannot list the bucket.
+- No lifecycle or retention policy applies to the `fbm/` prefix; objects accumulate until someone
+  sets one. That is GitCellar's bucket.
