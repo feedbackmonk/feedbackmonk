@@ -74,4 +74,4 @@ picks up the new locale automatically from the table on its next run.
 |---|---|---|
 | `i18n-catalog-integrity` | verification | catalog structural soundness (parses, keys ⊆ en, placeholders match, CLDR plural categories present, no mojibake/leaked entities) — commit-time gate |
 | `i18n-literal-ratchet` | verification | no new hard-coded English literal in `widget/src`/`admin-ui/src` beyond the frozen baseline — commit-time gate |
-| `translation-gap-status` | project-state | MISSING/DRIFTED counts + character estimate — advisory, session-start/finalize briefing only |
+| `translation-gap-status` | project-state | MISSING/DRIFTED counts + character estimate — advisory, run by hand before a release (`python .claude/project-oracles/translation-gap-status/oracle.py`); never a gate |

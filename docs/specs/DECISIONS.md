@@ -666,7 +666,7 @@ Built as `.claude/project-oracles/selfhost-compose-smoke/` with the established 
 
 5. **Frozen migration numbering 00009/00010/00011 (LD-assigned).** To avoid collisions across four parallel workers, the LD pre-assigned migration numbers: 00009 attachments, 00010 crash_event, 00011 fts. Append-only migration rule (see `migrations/README.md`) holds.
 
-**New Verification Oracle**: `feedback-parity-status` (`.claude/oracles/feedback-parity-status/`) gates GitCellar's Path-C cutover. It detects each gap's closure **from code state** (migrations / handlers / routes / widget), never a self-reported flag — the anti-reward-hacking leg: a worker cannot mark a gap done without the artifact existing. Gate OPEN iff all four closed; GATE OPEN 4/4 at convergence. Registered in SPECIFICATION.md Oracles table.
+**New Verification Oracle**: `feedback-parity-status` (`.claude/project-oracles/feedback-parity-status/`) gates GitCellar's Path-C cutover. It detects each gap's closure **from code state** (migrations / handlers / routes / widget), never a self-reported flag — the anti-reward-hacking leg: a worker cannot mark a gap done without the artifact existing. Gate OPEN iff all four closed; GATE OPEN 4/4 at convergence. Registered in SPECIFICATION.md Oracles table.
 
 **Deploy-prep (PF-DEPLOY-01 enabling artifacts)**: `docs/integrations/gitcellar-adoption.md` (integration contract), `docs/operations/RAILWAY_GITCELLAR.md`, `scripts/provision-gitcellar.sh`, and de-deferred attachment-storage env vars in `docs/operations/SELFHOST_ENV.md` (C21 catalog). The v1 embed→auth→submit loop is content-complete; PF-DEPLOY-01 remains an ops/hosting decision, not feature work.
 

@@ -122,7 +122,9 @@ machine-translated), and commit.
 - `i18n/README.md` — Contract C35 (the full catalog rules)
 - `docs/operations/TRANSLATION.md` — the release step, provider account,
   five-language English fallback, how to add a language
-- `.claude/oracles/translation-gap-status/` — the same MISSING/DRIFTED
-  detection as a project-state oracle, for the session-start briefing
+- `.claude/project-oracles/translation-gap-status/` — the same MISSING/DRIFTED
+  detection as a project-state oracle, one line + per-locale table, run by hand
+  (`python .claude/project-oracles/translation-gap-status/oracle.py`); nothing
+  runs it automatically
 - `.claude/project-oracles/i18n-catalog-integrity/` — the commit-time structural
   gate this pass's output must pass

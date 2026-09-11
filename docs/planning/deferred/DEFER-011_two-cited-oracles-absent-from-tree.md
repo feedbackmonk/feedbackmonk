@@ -1,7 +1,7 @@
 ---
 id: DEFER-011
 title: Two oracles this project cites as live — translation-gap-status and feedback-parity-status — are not in the tree
-status: OPEN
+status: RESOLVED
 origin: defer-local
 source-project: feedbackmonk
 source-session-id: 2136918b-b63c-44a3-bdd5-4c19fd3c1f05
@@ -13,6 +13,14 @@ content-hash: fbm-cited-oracles-absent-v1
 ---
 
 # DEFER-011: two cited oracles do not exist
+
+> **RESOLVED 2026-09-11** — reading (1) was the true one. Both oracles, and `host-tenant-binding`
+> with them, were deleted by `5d858d2` (the 2026-09-07 retirement of everything without
+> `schema: oracle/2` and without a script consumer) and missed by the `1ac27a6` restore because
+> none of the three was on the runner script's list. All three were recovered from `5d858d2^` into
+> `.claude/project-oracles/` as `oracle.py` + `manifest.json` + `README.md`, run, and read
+> PASS / DUE / GATE OPEN respectively. `CLAUDE.md` § Oracles no longer calls them unbuilt.
+> The SPECIFICATION.md and DECISIONS.md entries for `feedback-parity-status` were right all along.
 
 > Surfaced by the `.claude/project-oracles/` migration (`1ac27a6`), which swept every tracked file
 > for oracle references on both path separators and by bare name. These two came back cited but

@@ -2,17 +2,19 @@
 
 ## Purpose
 
-The seventeen static probes that defend feedbackmonk's code-level invariants — the
+The twenty static probes that defend feedbackmonk's code-level invariants — the
 anti-reward-hacking legs that catch what tests cannot: a dropped `.layer(cors)`, a raw `sqlx::query`
 outside the repository crate, a board read that swaps its `approved` literal for a bound param, a
-handler that stops calling `check_tier_quota`.
+handler that stops calling `check_tier_quota`. Seventeen are the CI suite; three (marked below) are
+run by hand or by a skill and are not in `scripts/run-verification-oracles.sh`.
 
 **These are not ULDF framework oracles and do not share their contract.** The framework starter pack
 is `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py` exposing `run(ctx) -> verdict`, run
 by the session-start hook; this project installs no copy of it, so those run from `~/.claude/oracles/`
 in place and `.claude/oracles/` holds only its `INDEX.md` (DEC-538). These carry `manifest.json`, a canonical
-`oracle.py`, `oracle.sh`/`oracle.ps1` shims and a `--full` flag, and are invoked directly. The
-framework runner can answer a directory of this shape only `unknown`, which is why they live here.
+`oracle.py`, a `--full` flag, and — on the seventeen CI-suite members only — `oracle.sh`/`oracle.ps1`
+shims that delegate to the `.py`; all are invoked directly. The framework runner can answer a
+directory of this shape only `unknown`, which is why they live here.
 
 ## Index
 
@@ -24,6 +26,8 @@ One directory per oracle; `CLAUDE.md` § Oracles carries the one-line table of w
 | `cors-allowlist-enforcement/` | credentialed CORS stays wired into `build_app`, never wildcard |
 | `feedback-as-data-audit/` | runner treats feedback as data: one prompt chokepoint, one egress sanitizer |
 | `feedback-erasure-completeness/` | byte purge before row delete; every `REFERENCES feedback(id)` cascades |
+| `feedback-parity-status/` † | the four GitCellar customer-#1 parity gaps read CLOSED from code state; the cutover gate |
+| `host-tenant-binding/` † | every public router is wrapped in `bind_public_routes`, admin in `bind_admin_routes`; one host→tenant path (DEC-FBR-13) |
 | `i18n-catalog-integrity/` | catalog shape + generated locale tables (C35, C41) |
 | `i18n-literal-ratchet/` | baseline 0 hard-coded user-facing literals in `widget/src`, `admin-ui/src` |
 | `multi-tenant-isolation-check/` | the tenant-scoped repository layer is the sole query path (DEC-FBR-03) |
@@ -36,7 +40,13 @@ One directory per oracle; `CLAUDE.md` § Oracles carries the one-line table of w
 | `submission-idempotency/` | idempotency keys are identity-scoped and 409 on content mismatch |
 | `tier-enforcement-status/` | plan caps fire; `tier_quotas()` holds Contract C19's shape |
 | `translation-egress-q24-isolation/` | provider defaults `off`; no public read of `body_translated` |
+| `translation-gap-status/` † | advisory: MISSING/DRIFTED catalog keys per locale — is a `/1-translate` pass due (DEC-FBR-17) |
 | `widget-bundle-size/` | page-load set ≤ 30,720 B, each locale chunk ≤ 4,096 B, no third-party trackers |
+
+† not in the CI suite — `oracle.py` only, no shims. `host-tenant-binding` is a security guard that
+nothing invokes automatically today (see Decisions); `translation-gap-status` is read by
+`/1-translate` and the owner's release step; `feedback-parity-status` is GitCellar's cutover gate,
+run on demand from either repo.
 
 Each directory's own `manifest.json` + `README.md` is the authoritative record of its probes.
 
@@ -83,6 +93,16 @@ seventeen, turning CI red, because nothing told it `scripts/run-verification-ora
 reinstate the noise that caused the deletion; adding a `schema` key would make the runner look for a
 `run.py` that does not exist and answer `unknown` anyway. Separate homes end the collision without
 rewriting anything. See `docs/planning/deferred/DEFER-010_verification-oracle-pack-uninstalled.md`.
+
+**Three project-authored oracles were lost by the same retirement and restored separately.** The
+`1ac27a6` restore rebuilt from the runner script's list, so `host-tenant-binding`,
+`translation-gap-status` and `feedback-parity-status` — never on that list — stayed deleted, and
+`CLAUDE.md` then recorded them as never built. They were recovered from `5d858d2^` on 2026-09-11
+as `oracle.py` + `manifest.json` + `README.md` only (the owner's bound: the project's own
+function, not the shell twins). `host-tenant-binding` is a security guard with no automatic
+consumer: it was never on the runner's list, even when installed. Adding it to the runner script's
+`ORACLES` array is a reviewable widening of the CI suite and waits on the owner's word; once it is in, delete
+this sentence, drop its † in the index, and update the count in Purpose.
 
 **Five of the seventeen still ship without their own README** — `approval-gate-enforcement`,
 `feedback-as-data-audit`, `feedback-erasure-completeness`, `public-board-moderation-gate`,

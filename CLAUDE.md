@@ -111,7 +111,7 @@ The table says only **what each oracle defends**, so you can tell which invarian
 
 Four more are installed and not listed above: `feedback-erasure-completeness`, `public-route-ceiling`, `public-id-as-capability`, `submission-idempotency`. `bash scripts/run-verification-oracles.sh` runs all seventeen; `ls .claude/project-oracles/` tells you what is actually there.
 
-> **Three oracles this project's prose still names do not exist in the tree**, and never came back with the pack: `host-tenant-binding` (DEC-FBR-13 — the install brief is DEFER-006), `translation-gap-status` (advisory translation-debt reporter, cited by `/1-translate` and `scripts/i18n/README.md`), and `feedback-parity-status` (cited by `docs/specs/SPECIFICATION.md` and `DECISIONS.md`). Treat every reference to them as an unbuilt intention, not a guard.
+Three more are project-authored and **outside the CI suite**, invoked by hand or by a skill: `host-tenant-binding` (DEC-FBR-13 — every public router wrapped in `bind_public_routes`, admin in `bind_admin_routes`; a security guard nothing runs automatically yet), `translation-gap-status` (advisory translation-debt reporter behind `/1-translate`), and `feedback-parity-status` (GitCellar's cutover gate). They are real and in the tree — an older reading of this file called them "never built"; the retire pass `5d858d2` had deleted them and they were restored, see `.claude/project-oracles/README.md` § Decisions. Run one with `python .claude/project-oracles/<name>/oracle.py`.
 
 ## Constraints not in spec artifacts
 

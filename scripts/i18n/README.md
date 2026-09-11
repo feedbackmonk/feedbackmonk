@@ -18,13 +18,13 @@ directories — `en/` is authored by developers directly (Contract C35 rule 1).
 
 | File | Purpose |
 |---|---|
-| `gen-locales.py` (+ `.sh`/`.ps1`) | Regenerates the three runtime locale tables from `i18n/locales.json`. **LEAD-owned/frozen** — do not edit. |
+| `gen-locales.py`, `gen-locales.sh` | Regenerates the three runtime locale tables from `i18n/locales.json`. **LEAD-owned/frozen** — do not edit. |
 | `init-catalogs.py` | Creates missing skeleton catalog files for every locale × namespace. **LEAD-owned/frozen** — do not edit. |
 | `_catalog.py` | Shared library: locale table access, CLDR plural-category table, JSON flatten/unflatten, SHA-256 hashing, placeholder extraction, byte-round-trip-verified catalog I/O. Every other script here imports it. |
-| `check-gaps.py` (+ shims) | MISSING/DRIFTED report per locale × namespace; `--json`, `--strict`, `--update-baseline`. |
-| `translate.py` (+ shims) | DeepL machine-translation pass. Owner-only (DEC-FBR-17): refuses without an interactive TTY unless `--i-am-the-owner`; quota-preflights and refuses a run it cannot finish; round-trip-verifies every write. |
-| `validate.py` (+ shims) | Nine-class structural + quality validation (see its own docstring). Exit 1 on any error; warnings are advisory. |
-| `complete-plurals.py` (+ shims) | Fills CLDR plural categories (`_few`/`_many`/`_zero`) English never authors, by numeral-instantiating and re-translating `_other`. Shares `translate.py`'s owner-only/dry-run/quota rules. |
+| `check-gaps.py`, `check-gaps.sh`, `check-gaps.ps1` | MISSING/DRIFTED report per locale × namespace; `--json`, `--strict`, `--update-baseline`. |
+| `translate.py`, `translate.sh`, `translate.ps1` | DeepL machine-translation pass. Owner-only (DEC-FBR-17): refuses without an interactive TTY unless `--i-am-the-owner`; quota-preflights and refuses a run it cannot finish; round-trip-verifies every write. |
+| `validate.py`, `validate.sh`, `validate.ps1` | Nine-class structural + quality validation (see its own docstring). Exit 1 on any error; warnings are advisory. |
+| `complete-plurals.py`, `complete-plurals.sh`, `complete-plurals.ps1` | Fills CLDR plural categories (`_few`/`_many`/`_zero`) English never authors, by numeral-instantiating and re-translating `_other`. Shares `translate.py`'s owner-only/dry-run/quota rules. |
 | `tests/` | `python -m unittest discover scripts/i18n/tests` — fixture catalogs + a mocked in-process DeepL server (`tests/mock_deepl.py`); no live API key ever needed. |
 
 ## 3. Public API & Usage
@@ -71,7 +71,7 @@ Release-time sequencing of all four tools: `.claude/skills/1-translate/SKILL.md`
 - Consumed by three oracles: `.claude/project-oracles/i18n-catalog-integrity/`
   (delegates its Probes C/D/E to `validate.py`'s own defect classes — one
   implementation of "what is a well-formed catalog", not two),
-  `.claude/oracles/translation-gap-status/` (wraps `check-gaps.py --json`),
+  `.claude/project-oracles/translation-gap-status/` (wraps `check-gaps.py --json`),
   `.claude/project-oracles/i18n-literal-ratchet/` (its own scanner, over
   `widget/src`/`admin-ui/src`, not this directory's catalog tree).
 - Consumed by `.claude/skills/1-translate/SKILL.md`, the owner-invoked
