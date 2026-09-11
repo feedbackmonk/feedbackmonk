@@ -43,6 +43,57 @@ for the feedbackmonk backend.
 
 ---
 
+## Stage K (2026-09-11) - the alert path is PROVEN to reach a human, end to end
+
+Stage J wired the heartbeat and proved the *ping*. This proves the half that actually matters: that a
+missed backup check reaches an inbox. It was tested by deliberately breaking it, not by reasoning.
+
+The heartbeat's expected interval was briefly shortened so it registered a miss, then restored.
+
+| Event | UTC |
+|---|---|
+| heartbeat registered the miss (incident `1013735896`) | 01:05:49 |
+| **alert email delivered to `admin@gitcellar.com`** | **01:05:53** |
+| verifier ran, pinged, incident auto-resolved | 01:07:18 |
+| resolution email delivered | 01:07:22 |
+
+Four seconds from failure to mail, both from `alerts@alerts.betterstack.com`. Confirmed by the owner
+and **independently verified** by a read-only search of the `admin@gitcellar.com` mailbox. A
+resolution notice is sent too, so a self-clearing alert says so rather than leaving an open question.
+Afterwards: heartbeat `up`, incident Resolved, `cronSchedule` back to `30 6 * * *`, period/grace back
+to 86400/3600.
+
+**Historical corroboration:** the sibling heartbeat `gitcellar-backup-verify` has raised real
+incidents before (`992388841` on 2026-07-20, open two days; `985778580` on 2026-07-02, resolved in a
+minute), so this alerting path has production history and is not merely configured.
+
+### Text alerting now matches the sibling
+
+`feedbackmonk-backup-verify` was created with defaults, which gave email only, while
+`gitcellar-backup-verify` has `sms=true`. Both are now `email=true, sms=true, call=false, push=false`.
+**What that does today: nothing** - the Better Stack record states the free tier delivers email and
+Slack only, and phone/SMS paging is paid. It is set because the flag is free, and because leaving the
+two heartbeats divergent means that on any future plan upgrade GitCellar's backup would start paging
+and this one silently would not. Email is the channel that actually works now.
+
+### Two traps worth writing down
+
+- **The on-call schedule lists no users.** Neither heartbeat has an escalation policy, so both fall to
+  the default "Primary on-call schedule", whose `on_call_users` comes back empty from the API. It
+  clearly does not prevent delivery - the test email arrived in four seconds - but do not read that
+  empty list as "configured and healthy".
+- **Zoho's search API needs a field qualifier.** A bare keyword (`betterstack`) returns *no matches*
+  for mail that is definitely there; `entire:betterstack` finds it. An empty result from a bare
+  keyword reads exactly like "the mail never arrived" and briefly did here. Anyone verifying mail
+  delivery through `~/.claude/agent-tools/email-triage/lib/zoho.ps1` should qualify the search key.
+
+> The full `1-email-triage` skill was **not** used for this. It is a whole-inbox agent that stages
+> deletions and drafts replies; running it to confirm one message would be wildly disproportionate,
+> and it belongs to the GitCellar project so it is not loadable from here anyway. One read-only
+> `Search` call against its underlying library was the right-sized tool.
+
+---
+
 ## Stage J (2026-09-11) - backup alerting is CLOSED; absence is now detected
 
 The last gap from Stage I. The owner supplied a write-capable Better Stack token; everything below

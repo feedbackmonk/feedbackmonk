@@ -12,6 +12,18 @@ Kept as the record of what was built and what remains true. **Nothing here is ou
 Both scripts are version-controlled in `deploy/backup/`; the Railway services inline them, so editing
 one does not change the other. Full record: `docs/planning/feedbackmonk-deploy-state.md` Stage H/I/J.
 
+## Proven to reach a human, 2026-09-11
+
+Tested by deliberately making the heartbeat miss. Alert email landed at `admin@gitcellar.com` **four
+seconds** after the miss registered (01:05:49 -> 01:05:53 UTC), and a resolution email followed when
+the next run pinged (01:07:18 -> 01:07:22). Verified both by the owner and by a read-only mailbox
+search. Details and the two traps found while testing: `docs/planning/feedbackmonk-deploy-state.md`
+Stage K.
+
+Channels: `email=true, sms=true` on both this heartbeat and GitCellar's. The text flag does nothing on
+the current free plan (email/Slack only) and is set purely so the two do not diverge on a future
+upgrade.
+
 ## How absence is detected
 
 Better Stack heartbeat **`feedbackmonk-backup-verify`, id 492293** - period 86400 s, grace 3600 s.
