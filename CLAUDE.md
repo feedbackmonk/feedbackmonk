@@ -109,9 +109,9 @@ The table says only **what each oracle defends**, so you can tell which invarian
 | `i18n-catalog-integrity` | catalog shape + generated locale tables (C35, C41) — the exit gate of every localization stage |
 | `i18n-literal-ratchet` | **baseline 0** — any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is a hard failure |
 
-Four more are installed and not listed above: `feedback-erasure-completeness`, `public-route-ceiling`, `public-id-as-capability`, `submission-idempotency`. `bash scripts/run-verification-oracles.sh` runs all seventeen; `ls .claude/project-oracles/` tells you what is actually there.
+Four more are installed and not listed above: `feedback-erasure-completeness`, `public-route-ceiling`, `public-id-as-capability`, `submission-idempotency`. `bash scripts/run-verification-oracles.sh` runs all eighteen, `host-tenant-binding` included; `ls .claude/project-oracles/` tells you what is actually there.
 
-Three more are project-authored and **outside the CI suite**, invoked by hand or by a skill: `host-tenant-binding` (DEC-FBR-13 — every public router wrapped in `bind_public_routes`, admin in `bind_admin_routes`; a security guard nothing runs automatically yet), `translation-gap-status` (advisory translation-debt reporter behind `/1-translate`), and `feedback-parity-status` (GitCellar's cutover gate). They are real and in the tree — an older reading of this file called them "never built"; the retire pass `5d858d2` had deleted them and they were restored, see `.claude/project-oracles/README.md` § Decisions. Run one with `python .claude/project-oracles/<name>/oracle.py`.
+`host-tenant-binding` (DEC-FBR-13 — every public router wrapped in `bind_public_routes`, admin in `bind_admin_routes`) is in the suite too. Two more are project-authored and **outside the CI suite**, invoked by hand or by a skill: `translation-gap-status` (advisory translation-debt reporter behind `/1-translate`), and `feedback-parity-status` (GitCellar's cutover gate). All three are real and in the tree — an older reading of this file called them "never built"; the retire pass `5d858d2` had deleted them and they were restored, see `.claude/project-oracles/README.md` § Decisions. Run one with `python .claude/project-oracles/<name>/oracle.py`.
 
 ## Constraints not in spec artifacts
 

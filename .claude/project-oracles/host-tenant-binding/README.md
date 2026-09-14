@@ -94,7 +94,8 @@ framework's shape-based retirement of everything without `schema: oracle/2` and 
 script consumer); missed by the `1ac27a6` restore because it was never on
 `scripts/run-verification-oracles.sh`'s list, and then recorded in `CLAUDE.md` as never built.
 Restored here 2026-09-11 as `oracle.py` only — the `.sh`/`.ps1` shims were pure delegators and
-were not brought back.
+were not brought back. Added to `scripts/run-verification-oracles.sh` on the owner's word
+2026-09-14: Probes A–C now gate every push through CI and `ci-local`; Probe D stays `--full`.
 
 The allow-list additions were two entries — `DomainRepo::resolve_host` (a genuine
 pre-auth boundary, the same shape as `ProjectRepo::open_for_submission`) and

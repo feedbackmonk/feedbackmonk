@@ -5,14 +5,14 @@
 The twenty static probes that defend feedbackmonk's code-level invariants — the
 anti-reward-hacking legs that catch what tests cannot: a dropped `.layer(cors)`, a raw `sqlx::query`
 outside the repository crate, a board read that swaps its `approved` literal for a bound param, a
-handler that stops calling `check_tier_quota`. Seventeen are the CI suite; three (marked below) are
+handler that stops calling `check_tier_quota`. Eighteen are the CI suite; two (marked below) are
 run by hand or by a skill and are not in `scripts/run-verification-oracles.sh`.
 
 **These are not ULDF framework oracles and do not share their contract.** The framework starter pack
 is `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py` exposing `run(ctx) -> verdict`, run
 by the session-start hook; this project installs no copy of it, so those run from `~/.claude/oracles/`
 in place and `.claude/oracles/` holds only its `INDEX.md` (DEC-538). These carry `manifest.json`, a canonical
-`oracle.py`, a `--full` flag, and — on the seventeen CI-suite members only — `oracle.sh`/`oracle.ps1`
+`oracle.py`, a `--full` flag, and — on the original seventeen only — `oracle.sh`/`oracle.ps1`
 shims that delegate to the `.py`; all are invoked directly. The framework runner can answer a
 directory of this shape only `unknown`, which is why they live here.
 
@@ -27,7 +27,7 @@ One directory per oracle; `CLAUDE.md` § Oracles carries the one-line table of w
 | `feedback-as-data-audit/` | runner treats feedback as data: one prompt chokepoint, one egress sanitizer |
 | `feedback-erasure-completeness/` | byte purge before row delete; every `REFERENCES feedback(id)` cascades |
 | `feedback-parity-status/` † | the four GitCellar customer-#1 parity gaps read CLOSED from code state; the cutover gate |
-| `host-tenant-binding/` † | every public router is wrapped in `bind_public_routes`, admin in `bind_admin_routes`; one host→tenant path (DEC-FBR-13) |
+| `host-tenant-binding/` | every public router is wrapped in `bind_public_routes`, admin in `bind_admin_routes`; one host→tenant path (DEC-FBR-13) |
 | `i18n-catalog-integrity/` | catalog shape + generated locale tables (C35, C41) |
 | `i18n-literal-ratchet/` | baseline 0 hard-coded user-facing literals in `widget/src`, `admin-ui/src` |
 | `multi-tenant-isolation-check/` | the tenant-scoped repository layer is the sole query path (DEC-FBR-03) |
@@ -43,8 +43,7 @@ One directory per oracle; `CLAUDE.md` § Oracles carries the one-line table of w
 | `translation-gap-status/` † | advisory: MISSING/DRIFTED catalog keys per locale — is a `/1-translate` pass due (DEC-FBR-17) |
 | `widget-bundle-size/` | page-load set ≤ 30,720 B, each locale chunk ≤ 4,096 B, no third-party trackers |
 
-† not in the CI suite — `oracle.py` only, no shims. `host-tenant-binding` is a security guard that
-nothing invokes automatically today (see Decisions); `translation-gap-status` is read by
+† not in the CI suite — `oracle.py` only, no shims. `translation-gap-status` is read by
 `/1-translate` and the owner's release step; `feedback-parity-status` is GitCellar's cutover gate,
 run on demand from either repo.
 
@@ -53,7 +52,7 @@ Each directory's own `manifest.json` + `README.md` is the authoritative record o
 ## Public API
 
 `bash scripts/run-verification-oracles.sh` — the single source of truth for "the suite". It runs
-each `oracle.py` cheap-static, exits 0 iff all seventeen pass, and is what CI job
+each `oracle.py` cheap-static, exits 0 iff all eighteen pass, and is what CI job
 `verification-oracles` and `scripts/ci-local.sh` both call. Adding an oracle means adding it to that
 script's `ORACLES` array; nothing auto-discovers this directory.
 
@@ -99,10 +98,9 @@ rewriting anything. See `docs/planning/deferred/DEFER-010_verification-oracle-pa
 `translation-gap-status` and `feedback-parity-status` — never on that list — stayed deleted, and
 `CLAUDE.md` then recorded them as never built. They were recovered from `5d858d2^` on 2026-09-11
 as `oracle.py` + `manifest.json` + `README.md` only (the owner's bound: the project's own
-function, not the shell twins). `host-tenant-binding` is a security guard with no automatic
-consumer: it was never on the runner's list, even when installed. Adding it to the runner script's
-`ORACLES` array is a reviewable widening of the CI suite and waits on the owner's word; once it is in, delete
-this sentence, drop its † in the index, and update the count in Purpose.
+function, not the shell twins). `host-tenant-binding` had never been on the runner's list, even
+when first installed — a security guard nothing ran; it joined the CI suite on the owner's word the
+same week, which is why the suite is eighteen and the shim-less members are two.
 
 **Five of the seventeen still ship without their own README** — `approval-gate-enforcement`,
 `feedback-as-data-audit`, `feedback-erasure-completeness`, `public-board-moderation-gate`,

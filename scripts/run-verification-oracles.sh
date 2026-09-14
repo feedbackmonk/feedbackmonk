@@ -44,6 +44,7 @@ fi
 # bought one `unknown` line per oracle at every session start. Moved 2026-09-08.
 ORACLES=(
   multi-tenant-isolation-check
+  host-tenant-binding
   pii-scrub-audit
   cors-allowlist-enforcement
   approval-gate-enforcement
