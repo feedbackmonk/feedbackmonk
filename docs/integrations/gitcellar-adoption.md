@@ -806,6 +806,12 @@ rating is entirely unaffected; one that does can feature-detect before sending.
 ---
 
 ## Change log
+- 2026-09-30 (per-IP rate limit on four more public routes) — BEHAVIOUR CHANGE, no field changes.
+  `GET widget-config`, the `/me/feedback` read/export/erasure routes and `/me/solicitation` now sit
+  behind the same class-level per-IP ceiling as submit/attachments/board/roadmap
+  (`FEEDBACKMONK_PUBLIC_RATE_LIMIT_PER_MIN`, default 120/min, one budget shared across all public
+  routes). Past it they answer `429` with the existing rate-limit body. A Desktop client polling
+  within §6.1's guidance stays far below it; back off on `429` rather than retrying at once.
 - 2026-09-07 (FR-FBR-40 — outbound reply translation + machine-readable error codes) — ADDITIVE.
   Every error body produced by the API's shared error type gained **`code`** and **`message`**
   beside the unchanged `error` field (§6.3), advertised as capability **`errors.code`** (§11): branch

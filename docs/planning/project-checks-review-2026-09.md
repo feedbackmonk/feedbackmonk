@@ -107,3 +107,22 @@ lives in a test or in another oracle.
 **What would move this back to `report`:** an oracle that goes red for a reason unrelated
 to the change being verified, meaning flakiness. That would be a defect in the oracle, to
 fix rather than silence.
+
+## After the push
+
+An independent critic reviewed `e5d3514` (VER-13) and returned **CONCERN**. Nothing
+blocked, and it raised two low findings:
+
+- **C-002, fixed.** The rate-limit docs and GitCellar's adoption contract did not say
+  that widget-config, `/me/feedback` and `/me/solicitation` can now return `429`. The
+  contract's change log now records it.
+- **C-001, open.** `failure_reason_for_egress` withholds a failure reason longer than the
+  sanitizer's 2,048-character ceiling in full, so a long error chain loses its diagnostic.
+  - A fix that cut the reason to 1,024 characters *before* sanitizing was **FLAGged by
+    the test-change judge** and withdrawn. It weakened egress: a secret token
+    straddling the cut falls below the 40-character high-entropy threshold and would
+    leave unredacted, and a source dump's head could leave the runner (C27, "references,
+    never contents").
+  - The shipped behaviour errs safe. A fix must sanitize first and cut after, or cut at
+    a token boundary, and prove that a straddling token is never emitted.
+

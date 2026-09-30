@@ -1,5 +1,7 @@
 //! Class-level per-IP rate-limit middleware for the PUBLIC route surface
-//! (submission, attachments, board, roadmap).
+//! — every router `build_app` merges through `bind_public_routes`: submission,
+//! attachments, board, roadmap, widget-config, site, me_feedback (+ data) and
+//! solicitation, sharing one per-IP budget.
 //!
 //! ## Why this exists (scrutiny 2026-07-01, findings P0-2 / P1-2)
 //!
