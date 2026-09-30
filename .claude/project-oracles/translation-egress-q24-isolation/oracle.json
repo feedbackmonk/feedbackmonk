@@ -1,0 +1,48 @@
+{
+  "name": "translation-egress-q24-isolation",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1200,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Does translation stay off by default and out of public reads? The provider match maps \"off\" to Ok(None) and a catch-all to an error, and no provider is built elsewhere; body_translated is read only in the allowlisted admin functions and written only by the worker; no public router's file names body_translated or the admin translation types; body_tsv indexes coalesce(body_translated, body).",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/project-oracles/translation-egress-q24-isolation/oracle.py",
+    "windows": ".claude/project-oracles/translation-egress-q24-isolation/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/main.rs",
+      "crates/feedbackmonk-api/src/translation/worker.rs",
+      "crates/feedbackmonk-api/src/translation/deepl.rs",
+      "crates/feedbackmonk-api/src/translation/mod.rs",
+      "crates/feedbackmonk-repository/src/feedback.rs",
+      "crates/feedbackmonk-api/tests/translation_worker.rs",
+      "migrations/00019_feedback_translation.sql",
+      ".claude/project-oracles/translation-egress-q24-isolation/oracle.py"
+    ],
+    "compute_cost_ms": 60
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the translation pipeline, the feedback read surface, the provider construction, or the FTS source column",
+    "estimated_token_savings_per_call": 950
+  },
+  "consumer_scope": "feedbackmonk: the FR-FBR-30 implementer + every reviewer touching the translation provider/worker, any feedback read SQL, or the body_tsv FTS definition. A green oracle (A+B+C+D clean, --full clean-or-pending) is the FR-FBR-30 privacy/Q24 gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-21T00:00:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/translation-egress-q24-isolation/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "FR-FBR-30 Stream E (the verifiability surface for DEC-FBR-IMPL-26's privacy posture + the Q24 read-isolation invariant).",
+    "created": "2026-06-21T00:00:00Z",
+    "rationale": "Testability Gate Flag 2 (Q2 privacy/Q24 read-isolation): a happy-path test confirms `translate -> consumer reads English`, but cannot prove the ABSENCE of a code path that routes body_translated to a public/end-user/board/admin-display surface, nor that a future edit can't flip the provider default to a cloud provider (silent egress) or revert the FTS source to the original (mis-stemming). Detection-from-code (provider construction + per-fn column referents + writer-call sites + migration FTS expr), the anti-reward-hacking leg — it cannot be satisfied by a self-reported is_private flag. Mirrors public-board-moderation-gate (board read isolation) and cors-allowlist-enforcement (provider/posture-from-code)."
+  }
+}

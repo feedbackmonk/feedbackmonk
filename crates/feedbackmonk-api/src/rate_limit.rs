@@ -16,7 +16,7 @@
 //! ([`resolve_client_ip`](feedbackmonk_anon::resolve_client_ip)) so it is not
 //! the raw TCP peer that collapses to the load balancer behind Railway.
 //!
-//! The `public-route-ceiling` Verification Oracle asserts every public router in
+//! The `host-tenant-binding` Verification Oracle asserts every public router in
 //! `build_app` is wrapped by [`apply_public_rate_limit`] — so a future public
 //! route cannot silently re-open the gap.
 
@@ -48,7 +48,7 @@ impl PublicRateLimit {
 }
 
 /// Wrap a public router with the class-level per-IP ceiling. This is the single
-/// marker the `public-route-ceiling` oracle greps for; every public router in
+/// marker the `host-tenant-binding` oracle checks for; every public router in
 /// `build_app` must be passed through it.
 pub fn apply_public_rate_limit(router: Router, cfg: PublicRateLimit) -> Router {
     router.layer(from_fn_with_state(cfg, public_ip_rate_limit))

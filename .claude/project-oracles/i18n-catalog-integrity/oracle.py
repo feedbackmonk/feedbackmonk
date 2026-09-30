@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """i18n-catalog-integrity Verification Oracle -- v1.0.0.
 
-Assertion: see manifest.json `assertion` (frozen before any probe existed).
+Assertion: see oracle.json `assertion` (frozen before any probe existed).
 
 Five probes:
   A. generated locale tables equal i18n/locales.json (scripts/i18n/gen-locales.py --check)

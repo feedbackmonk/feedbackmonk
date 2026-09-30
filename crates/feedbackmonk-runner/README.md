@@ -1,6 +1,8 @@
 # feedbackmonk-runner
 
-> Agent-triage synopsis: the autonomous implementer + runner host (FR-FBR-23/24, P5b). Authenticates to the work-order API with a customer-minted runner write-token, polls dispatched orders, drives a swappable agent under the prompt-injection data-envelope discipline, and reports conclusions-only results. **The component that turns approved work orders into code, behind the owner-approval security boundary.**
+## Summary
+
+The autonomous implementer + runner host (FR-FBR-23/24, P5b). Authenticates to the work-order API with a customer-minted runner write-token, polls dispatched orders, drives a swappable agent under the prompt-injection data-envelope discipline, and reports conclusions-only results. **The component that turns approved work orders into code, behind the owner-approval security boundary.**
 
 ## 1. Purpose & Responsibilities
 
@@ -13,6 +15,8 @@ Wire the (proven, recommend-only) work-order seam to ACTUAL code execution in th
 
 ## 2. File Index
 
+- `Cargo.toml` — declares the `feedbackmonk-runner` binary (`src/main.rs`); depends on `tokio`, `reqwest` (rustls), `ed25519-dalek`, `feedbackmonk-core` and `feedbackmonk-tracing` (for the shared PII scrubber).
+- `src/` — the crate source; every file in it is listed below by its path relative to `src/`. `analyst/` has its own README.
 - `lib.rs` — crate root; declares modules + re-exports the frozen seams.
 - `types.rs` — frozen data seam: `ClaimedOrder` (trusted/untrusted split), `AssembledPrompt`, `ImplementResult`, `ResultRef` (conclusions-only egress), `RepoContext`.
 - `agent.rs` — `AgentCommand` trait (BYO + test-injection seam) + `StubAgent` fake.

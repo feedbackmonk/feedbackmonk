@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """i18n-literal-ratchet Verification Oracle -- v1.0.0.
 
-Assertion: see manifest.json `assertion` (frozen before this probe existed).
+Assertion: see oracle.json `assertion` (frozen before this probe existed).
 
 Static scan for hard-coded, user-facing English literals in the two localized
 surfaces:
@@ -173,6 +173,12 @@ def scan_tree() -> Dict[str, List[Tuple[int, str]]]:
             content = path.read_text(encoding="utf-8")
             hits = scan_admin_tsx(content)
             _accumulate(results, path, hits)
+        # Plain .ts modules (hooks, API helpers) set DOM text and raise
+        # notifications too; they were outside the scan until 2026-09-30.
+        for path in sorted(ADMIN_SRC.rglob("*.ts")):
+            if path.name.endswith((".test.ts", ".d.ts")) or path.name == "locales.gen.ts":
+                continue
+            _accumulate(results, path, scan_widget_ts(path.read_text(encoding="utf-8")))
     return results
 
 

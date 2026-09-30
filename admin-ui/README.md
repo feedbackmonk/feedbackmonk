@@ -46,6 +46,10 @@ FR-FBR-07. P1 Stage 2.
 | `src/test/testUtils.tsx` | `renderWithClient` helper. |
 | `src/**/*.test.tsx` | Vitest unit tests (StatusControls, ReplyComposer, FeedbackList). |
 | `e2e/a11y.spec.ts` | Playwright + `@axe-core/playwright` smoke (login → list → drawer → reply → transition). |
+| `e2e/` | Playwright + axe-core WCAG 2.1 AA smokes, one per surface, fake-API by default (`PLAYWRIGHT_FAKE_API=0` for a seeded server): `a11y.spec.ts` above, plus `autopilot-a11y`, `board-kanban-a11y`, `hosting-settings-a11y`, `language-settings-a11y`, `moderation-a11y`, `public-board-a11y`, `public-roadmap-a11y` and `tier-settings-a11y` (`.spec.ts`). |
+| `src/shared/` | API clients, the backend wire-type mirror and shared helpers — see `src/shared/README.md`. |
+| `package-lock.json` | npm lockfile; pins the exact dependency tree `npm ci` installs. |
+| `.gitignore` | `node_modules/`, `dist/`, Vite/Playwright/coverage output, and the `tsc -b` emit (`*.tsbuildinfo`, `*.config.js` / `.d.ts`). |
 
 ## Public API & Usage
 

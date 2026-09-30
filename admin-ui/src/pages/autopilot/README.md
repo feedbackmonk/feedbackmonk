@@ -1,9 +1,11 @@
 # `pages/autopilot/` — Review & approval surface (FR-FBR-21)
 
-> **Synopsis**: The owner's admin-UI for the agentic feedback-resolution loop —
-> digest of prioritized clusters, recommendation cards with approve/tweak/reject,
-> the autonomy-rung dial, and work-order detail with the event ledger. The
-> approval control **is** the security boundary (FR-FBR-25a). P5a, recommend-only.
+## Summary
+
+The owner's admin-UI for the agentic feedback-resolution loop —
+digest of prioritized clusters, recommendation cards with approve/tweak/reject,
+the autonomy-rung dial, and work-order detail with the event ledger. The
+approval control **is** the security boundary (FR-FBR-25a). P5a, recommend-only.
 
 ## 1. Purpose & Responsibilities
 

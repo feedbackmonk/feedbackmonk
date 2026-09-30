@@ -45,6 +45,11 @@ pub trait SolicitationRepo: Send + Sync {
     /// `feedbackmonk_core::apply_solicitation_event`) and computed the new
     /// `prompt_count` / `prompted_at`. `last_event_at` + `updated_at` are
     /// stamped `now()` server-side. Returns the stored record.
+    ///
+    /// Returns `None` when the stored row is `opted_out` and the new status is
+    /// not: opt-out is terminal (DEC-FBR-IMPL-24), and the caller validated
+    /// against a read that a concurrent opt-out may have overtaken, so the
+    /// write itself refuses rather than trusting that read.
     async fn upsert(
         &self,
         scope: &ProjectScope,
@@ -52,7 +57,7 @@ pub trait SolicitationRepo: Send + Sync {
         status: SolicitationStatus,
         prompt_count: i64,
         prompted_at: Option<DateTime<Utc>>,
-    ) -> Result<SolicitationRecord>;
+    ) -> Result<Option<SolicitationRecord>>;
 }
 
 #[derive(Clone)]
@@ -104,7 +109,7 @@ impl SolicitationRepo for SqlxSolicitationRepo {
         status: SolicitationStatus,
         prompt_count: i64,
         prompted_at: Option<DateTime<Utc>>,
-    ) -> Result<SolicitationRecord> {
+    ) -> Result<Option<SolicitationRecord>> {
         let status_str = status.as_db_str();
         let prompt_count_i32 = i32::try_from(prompt_count).unwrap_or(i32::MAX);
         let row = sqlx::query!(
@@ -120,6 +125,8 @@ impl SolicitationRepo for SqlxSolicitationRepo {
                 prompted_at   = EXCLUDED.prompted_at,
                 last_event_at = now(),
                 updated_at    = now()
+            WHERE feedback_solicitations.status <> 'opted_out'
+               OR EXCLUDED.status = 'opted_out'
             RETURNING status, prompt_count, prompted_at, last_event_at, created_at, updated_at
             "#,
             scope.tenant_id(),
@@ -129,17 +136,17 @@ impl SolicitationRepo for SqlxSolicitationRepo {
             prompt_count_i32,
             prompted_at,
         )
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
 
-        Ok(SolicitationRecord {
+        Ok(row.map(|row| SolicitationRecord {
             status: SolicitationStatus::from_db_str(&row.status),
             prompt_count: i64::from(row.prompt_count),
             prompted_at: row.prompted_at,
             last_event_at: row.last_event_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
-        })
+        }))
     }
 }
 
@@ -176,6 +183,7 @@ mod tests {
         let rec = repo
             .upsert(&scope, sub, SolicitationStatus::Prompted, 1, Some(prompted_at))
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(rec.status, SolicitationStatus::Prompted);
         assert_eq!(rec.prompt_count, 1);
@@ -185,6 +193,7 @@ mod tests {
         let rec2 = repo
             .upsert(&scope, sub, SolicitationStatus::Dismissed, 1, Some(prompted_at))
             .await
+            .unwrap()
             .unwrap();
         assert_eq!(rec2.status, SolicitationStatus::Dismissed);
         assert_eq!(rec2.prompt_count, 1);
@@ -202,6 +211,7 @@ mod tests {
 
         repo.upsert(&s1, sub, SolicitationStatus::OptedOut, 0, None)
             .await
+            .unwrap()
             .unwrap();
 
         // s2 must NOT see s1's record for the same sub string.
@@ -211,5 +221,42 @@ mod tests {
             repo.get(&s1, sub).await.unwrap().unwrap().status,
             SolicitationStatus::OptedOut
         );
+    }
+
+    /// The race DEC-FBR-IMPL-24 forbids: a `prompted` request read the row
+    /// before a concurrent opt-out landed, validated against that stale read,
+    /// and now writes. The write itself must refuse -- the handler's in-memory
+    /// check cannot see the opt-out that overtook it.
+    #[sqlx::test(migrations = "../../migrations")]
+    async fn stale_write_cannot_overwrite_opted_out(pool: PgPool) {
+        let repo = SqlxSolicitationRepo::new(pool.clone());
+        let scope = seed_project_scope(&pool, "solicit-race@example.com").await;
+        let sub = "auth0|race";
+
+        repo.upsert(&scope, sub, SolicitationStatus::Prompted, 1, Some(Utc::now()))
+            .await
+            .unwrap()
+            .unwrap();
+        repo.upsert(&scope, sub, SolicitationStatus::OptedOut, 1, None)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // The stale writer: validated `eligible -> prompted` before the opt-out.
+        let stale = repo
+            .upsert(&scope, sub, SolicitationStatus::Prompted, 2, Some(Utc::now()))
+            .await
+            .unwrap();
+        assert!(stale.is_none(), "a stale write must not overwrite opted_out");
+        let got = repo.get(&scope, sub).await.unwrap().unwrap();
+        assert_eq!(got.status, SolicitationStatus::OptedOut);
+        assert_eq!(got.prompt_count, 1);
+
+        // Opting out again stays idempotent.
+        let again = repo
+            .upsert(&scope, sub, SolicitationStatus::OptedOut, 1, None)
+            .await
+            .unwrap();
+        assert_eq!(again.map(|r| r.status), Some(SolicitationStatus::OptedOut));
     }
 }

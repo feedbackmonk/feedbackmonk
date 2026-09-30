@@ -98,10 +98,10 @@ fn integration_idempotent_through_subscriber() {
     assert!(!out.contains("550e8400-e29b-41d4-a716-446655440000"));
 }
 
-/// Bilateral hash check — proves the Rust side reproduces the same
-/// canonical serialisation the Python oracle hashes. The hash here is
-/// recomputed every run; comparison to the on-disk `expected_hash.txt`
-/// happens via the `pii-scrub-audit` oracle (Probe B).
+/// Pattern-set drift check: the SHA-256 of the canonical serialisation must
+/// equal the pinned `tests/canonical_pattern_hash.txt`. A new, missing,
+/// tweaked or re-ordered pattern fails here; refresh the file deliberately.
+/// A missing or empty file FAILS — it used to pass silently.
 #[test]
 fn canonical_hash_matches_expected_file() {
     let bytes = scrubber::canonical_serialised();
@@ -109,22 +109,15 @@ fn canonical_hash_matches_expected_file() {
     hasher.update(&bytes);
     let actual = format!("{:x}", hasher.finalize());
 
-    let expected_path =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.claude/project-oracles/pii-scrub-audit/expected_hash.txt");
+    let expected_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/canonical_pattern_hash.txt");
     let expected = std::fs::read_to_string(&expected_path)
-        .unwrap_or_else(|_| String::from("placeholder"))
+        .unwrap_or_else(|e| panic!("{}: {e}", expected_path.display()))
         .trim()
         .to_string();
-
-    if expected == "placeholder" || expected.is_empty() {
-        // First-time bootstrap: print the computed hash so the author can
-        // populate `expected_hash.txt`. Does NOT fail the test.
-        eprintln!("[canonical_hash] expected_hash.txt is unfilled; current SHA-256 = {actual}");
-        eprintln!("[canonical_hash] write this value to {}", expected_path.display());
-    } else {
-        assert_eq!(
-            actual, expected,
-            "CANONICAL_PATTERNS hash drift — refresh expected_hash.txt deliberately if the pattern set changed"
-        );
-    }
+    assert!(!expected.is_empty(), "{} is empty; current SHA-256 = {actual}", expected_path.display());
+    assert_eq!(
+        actual, expected,
+        "CANONICAL_PATTERNS hash drift — refresh tests/canonical_pattern_hash.txt deliberately if the pattern set changed"
+    );
 }

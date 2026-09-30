@@ -9,7 +9,7 @@ Answers the owner's release-gate question — *is a translation pass due?* — b
 > The owner can tell, before cutting a release, whether `/1-translate` needs
 > to run and roughly how much it will cost.
 
-Frozen in `manifest.json` at Task Zero (2026-09-06).
+Frozen in `oracle.json` at Task Zero (2026-09-06).
 
 ## What it does
 
@@ -57,7 +57,7 @@ Vacuous (0 locales, NOT DUE) when `i18n/locales/` does not exist yet.
 
 ## Known gaps
 
-See `manifest.json` `assertion.known_gaps`: counts keys, not translation
+See `oracle.json` `assertion.known_gaps`: counts keys, not translation
 quality; the character total is an upper bound (placeholders and
 do-not-translate spans are sent inside DeepL's `ignore_tags` and still
 count here); a key deleted from `en` but still present in a translated

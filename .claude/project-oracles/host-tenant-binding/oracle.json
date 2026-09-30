@@ -1,0 +1,50 @@
+{
+  "name": "host-tenant-binding",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1900,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Is every router merged in build_app classified and wired as its class requires? Public: bind_public_routes(apply_public_rate_limit(..)) with `.layer(cors` exactly where required (submission, attachments, board) and nowhere else; admin: bind_admin_routes; unbound: health + capabilities only. Unclassified or twice-merged routers fail. Probe B: admin_host_binding maps Tenant to 404, AdminAlias to a redirect, never 403, and gates X-Forwarded-Host. Probe C: one host->tenant resolution path. Absorbs public-route-ceiling and cors-allowlist-enforcement Probe A (2026-09-30).",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/project-oracles/host-tenant-binding/oracle.py",
+    "windows": ".claude/project-oracles/host-tenant-binding/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/main.rs",
+      "crates/feedbackmonk-api/src/hosting.rs",
+      "crates/feedbackmonk-api/src/handlers/public_site.rs",
+      "crates/feedbackmonk-api/src/handlers/domains.rs",
+      "crates/feedbackmonk-repository/src/domains.rs",
+      "crates/feedbackmonk-core/src/hosting.rs",
+      "crates/feedbackmonk-api/tests/host_tenant_binding.rs",
+      "crates/feedbackmonk-repository/tests/domains_repo.rs",
+      ".claude/project-oracles/host-tenant-binding/oracle.py"
+    ],
+    "compute_cost_ms": 60
+  },
+  "consultation": {
+    "typical_sessions_using": "every commit that adds or rewires a public route, touches build_app, or changes the host layer",
+    "estimated_token_savings_per_call": 1100
+  },
+  "consumer_scope": "feedbackmonk: anyone adding a public or admin route, and every reviewer of the hosting shape (FR-FBR-32/33). Green is the FR-FBR-32 exit gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-08-30T00:00:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/host-tenant-binding/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "DEFER-005 build lane (FR-FBR-32/33). Assertion block frozen at Task Zero, BEFORE any implementation existed, per the injecting brief's explicit instruction.",
+    "hardening_note": "Adversarially self-tested during authoring: (1) dropping bind_public_routes from widget_config_router and bind_admin_routes from moderation_router -> Probe A FAIL naming both, exit 1; (2) flipping the cross-tenant refusal from 404 to 403 -> Probe B FAIL. Both restored and re-verified PASS. Probe A is parenthesis-balanced over `.merge(` arguments rather than regex-split, because the real arguments nest (bind_public_routes(apply_public_rate_limit(board_router(state), prl), hs)) and a naive split truncates at the first `)` -- which would have produced a silent false PASS. INTENTIONALLY_UNBOUND records the two deliberate exemptions (health_router, capabilities_router) with reasons, so a reviewer sees the exemptions rather than inferring them from absence.",
+    "created": "2026-08-30T00:00:00Z",
+    "rationale": "DEC-FBR-13 chose tenant subdomains over path-based multi-tenancy for ONE decisive reason: origin isolation for the user-generated-content surface. That reason is bought only by BINDING -- resolution alone buys nothing, and its absence is invisible at runtime because a missing guard renders a perfectly correct-looking page of another tenant's feedback on your origin. No happy-path test can see it. multi-tenant-isolation-check does not cover it either: that oracle polices the REPOSITORY scope axis, and a router merged without the host guard passes it unchanged. This is detection-from-code over a second, orthogonal isolation axis introduced by FR-FBR-32."
+  }
+}

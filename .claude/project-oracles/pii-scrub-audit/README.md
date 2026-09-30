@@ -1,117 +1,56 @@
 # pii-scrub-audit
 
-**Kind**: Verification Oracle (Probandurgy — Task Zero leg 2 of three-leg defense).
-**Question**: Does every emitted log line pass through the canonical 20-pattern PII
-scrubber installed by `feedbackmonk_tracing::install_global_subscriber`? Has the
-pattern set drifted from the canonical source ported byte-for-byte from
-GitCellar's `gitcellar-service/src/feedback_logs/scrubber.rs`?
+## Summary
 
-## Synopsis
+Proves that every log line goes through the PII scrubber (FR-FBR-10). The scrubber is the
+only global subscriber, installed by `feedbackmonk_tracing::install_global_subscriber`, so
+this oracle fails when any crate other than `feedbackmonk-tracing` builds or installs a
+subscriber of its own. Come here after touching logging setup in any crate.
 
-Verification Oracle (P1 Task Zero) enforcing FR-FBR-10: every emitted log line must pass through the canonical 20-pattern PII scrubber installed by `feedbackmonk_tracing::install_global_subscriber`, and the pattern set must not drift from the source ported byte-for-byte from GitCellar's scrubber. AST-grade check; leg 2 of the three-leg PII-scrub defense. Re-run after touching `feedbackmonk-tracing` or any logging setup.
+## Probe
 
-## Probes
+It walks `crates/**/*.rs`, skipping `crates/feedbackmonk-tracing/` and `target/`, test
+code included. Comments are stripped first. It flags any of these:
 
-### Probe A — no tracing-subscriber setup outside the scrubber crate
+- `tracing_subscriber::fmt` (the builder, `fmt()`, `fmt::init`, `fmt::Subscriber`)
+- `tracing_subscriber::registry(`
+- `FmtSubscriber` and `SubscriberBuilder`
+- `set_global_default(`, `tracing::subscriber::set_default(` and `with_default(`
+- `.init()` or `.try_init()` in a file that uses `tracing_subscriber`
+- `impl ... Layer<...> for ...`, a hand-rolled layer that could skip scrubbing
 
-Walks `crates/**/*.rs` (excluding `crates/feedbackmonk-tracing/`) and flags any
-match for the following patterns:
+Test code counts too, because a test that installs its own subscriber is how an unscrubbed
+pattern gets copied into production.
 
-- `tracing_subscriber::fmt(` — the builder API that bypasses our scrubbing
-  writer chokepoint
-- `tracing_subscriber::registry(` — composing a registry outside the
-  chokepoint reopens the door to unscrubbed layers
-- `impl ... Layer<...> for ...` — a hand-rolled tracing-subscriber Layer
-  outside the scrubber crate could elide scrubbing
-
-Inline `//` comments are stripped before scanning so that doc-comments
-mentioning the patterns don't false-fire. Multi-line `/* ... */` comments
-are stripped too.
-
-### Probe B — canonical pattern-set hash
-
-Parses `CANONICAL_PATTERNS: &[(&str, &str, &str)]` from
-`crates/feedbackmonk-tracing/src/scrubber.rs`, extracts each
-`(name, regex, replacement)` tuple, serialises as `name\tregex\treplacement\n`
-per row, computes SHA-256 over the UTF-8 bytes, and compares to the digest in
-`expected_hash.txt`.
-
-Any of: a new pattern, a missing pattern, a regex tweak, a replacement
-tweak, or a slice re-ordering surfaces as a hash mismatch. Updating the
-pattern set requires an explicit `expected_hash.txt` update commit — drift
-becomes a reviewable change rather than a silent one.
-
-## Three-leg defense (per D-FBR-02)
-
-| Leg | Mechanism | File / location |
-|---|---|---|
-| 1. Type system chokepoint | `install_global_subscriber` is the sole public entry-point for tracing setup; all other items in `feedbackmonk-tracing` are `pub(crate)` or test-only. | `crates/feedbackmonk-tracing/src/lib.rs` |
-| 2. AST / hash oracle (this file) | Probes A + B (this file) | `.claude/project-oracles/pii-scrub-audit/` |
-| 3. Lint baseline | clippy `all = deny` workspace-wide; `cargo-deny` (post-P1) rejects direct `tracing_subscriber::fmt()` builder calls outside the binary entrypoint | `Cargo.toml` workspace lints |
+A second check, that the pattern set has not drifted, is a test and not a probe:
+`crates/feedbackmonk-tracing/tests/scrubber_patterns.rs` compares the SHA-256 of
+`canonical_serialised()` with `tests/canonical_pattern_hash.txt`. The test fails when that
+file is missing. `feedbackmonk-api/tests/attachment_pii_corpus.rs` pins the same digest.
 
 ## Invocation
 
 ```bash
-# Unix / Git Bash on Windows / WSL
-bash .claude/project-oracles/pii-scrub-audit/oracle.sh
-
-# or Python directly:
-python .claude/project-oracles/pii-scrub-audit/oracle.py
+python .claude/project-oracles/pii-scrub-audit/oracle.py [--root <repo>]
 ```
 
-Exit `0` on PASS, `1` on FAIL, `2` on environment failure (Python not found).
+It exits 0 on pass, 1 on fail (offenders listed as `file:line`), and 2 when the tracing
+crate is missing. `--root` points it at a copy of the tree, which the self-test uses.
 
-## Output schema
+## Adversarial self-test (2026-09-30)
 
-```
-PASS pii-scrub-audit
-  Probe A (no tracing setup outside crates/feedbackmonk-tracing/): clean
-  Probe B (CANONICAL_PATTERNS hash matches expected_hash.txt): clean
-```
+These ran against a scratch copy of `crates/`, each appended to `feedbackmonk-api/src/main.rs`:
 
-or
+- `tracing_subscriber::fmt::init();` fails (exit 1).
+- `FmtSubscriber::new()` plus `tracing::subscriber::set_global_default(..)` fails on both.
 
-```
-FAIL pii-scrub-audit (N offender(s))
+The previous probe passed both. The unchanged tree passes.
 
-Probe A offenders (...):
-  <file>:<line>  forbidden tracing-subscriber setup '<label>' outside crates/feedbackmonk-tracing/
+## Decisions
 
-Probe B failure (canonical pattern-set hash):
-  pattern-set hash drift: actual=<hex> expected=<hex> (parsed N patterns; review every tuple in <path>)
-```
-
-## Updating the pattern set
-
-1. Edit `crates/feedbackmonk-tracing/src/scrubber.rs`. Keep the existing 20
-   canonical patterns byte-for-byte unless the GitCellar source has changed.
-2. Run `cargo test -p feedbackmonk-tracing canonical_hash` — the test prints the
-   current SHA-256.
-3. Copy the printed hash into `expected_hash.txt`.
-4. Run `python .claude/project-oracles/pii-scrub-audit/oracle.py` — expect PASS.
-5. Commit the scrubber change, the hash file change, and any new pattern test
-   together — reviewers can audit the pattern delta in one diff.
-
-## Lineage
-
-- **FR-FBR-10** — PII scrubber with canonical 20-pattern regex set
-- **DEC-FBR-01** Persona D — privacy
-- **D-FBR-02** — three-leg defense pattern (type/oracle/lint)
-- **DEC-FBR-IMPL-03** — Python-canonical oracle implementations
-- **P1 plan §Oracle Pre-Build Plan**
-- **GitCellar reference**: `gitcellar-service/src/feedback_logs/scrubber.rs`
-
-## Decision log
-
-- **Pattern shape**: `(&str, &str, &str)` — `(name, regex, replacement)`.
-  GitCellar's source uses a `Rule { re, replacement }` struct with the name
-  only in comments. We promote name to first slot so the oracle parser can
-  extract diagnostics + the hash includes the human label (reordering rows
-  is also caught even if regex/replacement are identical).
-- **Hash serialisation**: tab-separated `name\tregex\treplacement\n` per row,
-  UTF-8. Trivial format so Rust-side tests can reproduce it byte-for-byte
-  without depending on the Python oracle's parser.
-- **Probe A regex specificity**: the brief's loose `impl.*Layer.*for` would
-  false-positive on `TraceLayer::new_for_http()` from tower-http. The
-  tightened regex `\bimpl\b[^;{]*\bLayer\s*<[^>]*>\s+for\b` requires an
-  actual `impl ... Layer<...> for ...` block opener.
+- **The hash leg moved to a test (2026-09-30).** Probe B hashed the pattern slice, which
+  two Rust tests already asserted, and one of them passed silently when the hash file was
+  missing. The file now lives beside the scrubber, and that silent pass is now a failure.
+- **Probe A was widened (2026-09-30).** It used to match only `fmt(`, `registry(` and
+  `impl Layer`, which missed `fmt::init()`, `FmtSubscriber` and `set_global_default`.
+- **The `impl Layer` regex stays specific.** A loose `impl.*Layer.*for` would
+  false-positive on tower-http's `TraceLayer::new_for_http()`.

@@ -5,16 +5,22 @@
 # the rationale (typically: pre-authentication boundary — runs BEFORE a
 # TenantScope can exist).
 #
-# Format:
+# Format (placeholder names; the oracle parses this file as TOML, so these
+# commented lines are never entries -- the old regex parser counted them, which
+# made TenantRepo::create and SqlxTenantRepo::new appear twice):
 #   [[methods]]                          # trait method
-#   trait = "TenantRepo"
-#   method = "create"
-#   rationale = "Pre-auth: signup creates the tenant; no TenantScope exists yet."
+#   trait = "<TraitName>"
+#   method = "<method>"
+#   rationale = "<why no scope can exist here>"
 #
 #   [[inherent_methods]]                 # method on an inherent impl (e.g. constructor)
-#   type_name = "SqlxTenantRepo"
-#   method = "new"
-#   rationale = "Repo constructor; no DB access."
+#   type_name = "<TypeName>"
+#   method = "<method>"
+#   rationale = "<why>"
+#
+# The oracle FAILS on: an entry with no rationale, a key listed twice, and a
+# stale key naming no method in the repository crate (a stale exemption would
+# silently pre-approve any future method that reuses the name).
 #
 # Probe A (raw-SQL outside repository) has NO allowlist by design - DEC-FBR-03
 # declares any raw SQL outside crates/feedbackmonk-repository/ a security incident.

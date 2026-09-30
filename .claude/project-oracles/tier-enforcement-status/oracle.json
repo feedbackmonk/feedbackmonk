@@ -1,0 +1,45 @@
+{
+  "name": "tier-enforcement-status",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1600,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Does every path that creates a chargeable row (INSERT INTO projects / feedback in the repository) run check_tier_quota for the matching resource kind, and test .allowed, earlier in the same calling function (helper chains followed)? C19's tier_quotas() shape is the core unit tests' job.",
+  "category": "tiers",
+  "invocation": {
+    "unix": ".claude/project-oracles/tier-enforcement-status/oracle.py",
+    "windows": ".claude/project-oracles/tier-enforcement-status/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/handlers/**",
+      "crates/feedbackmonk-core/src/tier.rs",
+      "crates/feedbackmonk-repository/src/tier_quota.rs",
+      ".claude/project-oracles/tier-enforcement-status/allowlist.toml",
+      ".claude/project-oracles/tier-enforcement-status/oracle.py"
+    ],
+    "compute_cost_ms": 250
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P3+ (touching handlers/, tier model, or tier_quota repo)",
+    "estimated_token_savings_per_call": 1000
+  },
+  "consumer_scope": "P3+ all crates (every commit touching feedbackmonk-api/handlers/, feedbackmonk-core/src/tier.rs, or feedbackmonk-repository/src/tier_quota.rs; CI gate from P3 start)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-14T14:30:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/tier-enforcement-status/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "P3 Stage 1 worker (Task Zero — orchestrated session-20260514-102233-006)",
+    "created": "2026-05-14T14:30:00Z",
+    "rationale": "FR-FBR-14 (tier enforcement + caps + footer) + DEC-FBR-03 (pricing tier matrix). Three-leg defense per P3 plan § Testability Gate: (1) Tier enum + TierQuotas type-system; (2) THIS oracle (handler-coverage + config-shape + integration smoke); (3) sqlx::test fixtures driving HTTP cap-firing paths. Cold-start vacuous-PASS supports Task Zero order-of-operations — built BEFORE Phase 4 cap-wiring so every subsequent commit closes its develop/test/fix loop against the oracle."
+  }
+}

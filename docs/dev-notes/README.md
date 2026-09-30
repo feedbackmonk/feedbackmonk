@@ -1,5 +1,7 @@
 # `docs/dev-notes/` — notes that are true for one area
 
+## Summary
+
 A dev note is content that is first-hour-critical for **one part** of this project rather than for
 every session, so it lives here instead of in the project index.
 

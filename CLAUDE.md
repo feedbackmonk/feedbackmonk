@@ -91,27 +91,27 @@ when you run a deploy or registry command; the incident record is
 **Two directories, two contracts — do not put one in the other's home.**
 
 - `.claude/oracles/` is the ULDF framework's starter pack: `oracle.json` carrying `"schema": "oracle/2"` plus a `run.py`. The session-start hook runs the every-session fast ones and emits an ORACLE BRIEFING — read it before investigating manually. Audit via `/0-uldf-oracle`.
-- `.claude/project-oracles/` is this project's **Verification Oracle** suite, on its own older contract: `manifest.json` (+ sometimes `manifest.toml`), an `oracle.py` canonical, `oracle.sh`/`oracle.ps1` shims and a `--full` flag. Its consumer is `scripts/run-verification-oracles.sh`, which CI job `verification-oracles` and `scripts/ci-local.sh` both call. The framework runner never sees these. (Moved out of `.claude/oracles/` on 2026-09-08 — sharing the namespace bought one `unknown` row per oracle at every session start, DEFER-010.)
+- `.claude/project-oracles/` is this project's **Verification Oracle** suite, on the retired pre-rebuild contract: an `oracle.json` with `kind`, `lane` and `invocation`, one `oracle.py`, and a `--full` flag. **The finalize proof gates on them** (`verification.projectOracles: gate` in `.claude/config.json`, ULDF VER-15): the twelve `fast` run at every check, the `slow` one only when the suite is whole, and a red one fails the proof. CI runs the same thirteen through `scripts/run-verification-oracles.sh` (job `verification-oracles`, and `scripts/ci-local.sh`). The session-start runner never sees them.
 
-The table says only **what each oracle defends**, so you can tell which invariant your change is about to touch. Each oracle's own `manifest.json` + `README.md` is the authoritative record of its probes and self-test.
+The table says only **what each oracle defends**, so you can tell which invariant your change is about to touch. Each oracle's own `oracle.json` + `README.md` is the authoritative record of its probes and the mutations it was proven against; `.claude/project-oracles/README.md` has the lanes.
 
 | Oracle | What it defends |
 |---|---|
 | `multi-tenant-isolation-check` | the tenant-scoped repository layer is the sole query path (DEC-FBR-03) |
-| `pii-scrub-audit` | submitter PII does not escape into logs or public surfaces |
-| `widget-bundle-size` | widget page-load set ≤ 30,720 B, each lazy `dist/locales/<code>.js` ≤ 4,096 B, no third-party trackers (FR-FBR-04, DEC-FBR-02) |
-| `tier-enforcement-status` | plan caps fire, free-tier footer, `tier_quotas()` shape (FR-FBR-14, C19) |
-| `selfhost-compose-smoke` | `docker compose up` distribution + env-catalog SSOT `docs/operations/SELFHOST_ENV.md` (FR-FBR-17, C21) |
-| `cors-allowlist-enforcement` | credentialed CORS stays wired into `build_app`, never wildcard (DEC-FBR-IMPL-09) |
+| `host-tenant-binding` | every router in `build_app` is classified: public = host-bound + per-IP rate-limited + CORS exactly where required; admin = admin-bound (DEC-FBR-13, P0-2, DEC-FBR-IMPL-09) |
+| `pii-scrub-audit` | no log subscriber is built or installed outside `feedbackmonk-tracing` (FR-FBR-10) |
+| `feedback-erasure-completeness` | erasure purges bytes before rows and reaches every end-user-keyed table |
 | `approval-gate-enforcement` | no work order reaches ≥ `dispatched` without a prior owner-authored `approved` event (FR-FBR-25a/22) |
+| `feedback-as-data-audit` | runner: feedback text only inside the untrusted envelope; every outbound payload through the egress sanitizer (FR-FBR-25b/c) |
 | `public-board-moderation-gate` | no public board **read or vote** touches a non-`approved` row; board wire shape leaks no PII (C30) |
 | `translation-egress-q24-isolation` | translation provider defaults `off`; no public read of `body_translated` (DEC-FBR-IMPL-25/26) |
+| `tier-enforcement-status` | every path that inserts a chargeable row checks the tier quota first (FR-FBR-14) |
+| `widget-bundle-size` | committed widget build present, page-load set ≤ 30,720 B, each `dist/locales/<code>.js` ≤ 4,096 B, no trackers (FR-FBR-04, DEC-FBR-02) |
 | `i18n-catalog-integrity` | catalog shape + generated locale tables (C35, C41) — the exit gate of every localization stage |
 | `i18n-literal-ratchet` | **baseline 0** — any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is a hard failure |
+| `selfhost-compose-smoke` (slow) | compose validates; every setting compose or the api reads is in `docs/operations/SELFHOST_ENV.md` (FR-FBR-17, C21) |
 
-Four more are installed and not listed above: `feedback-erasure-completeness`, `public-route-ceiling`, `public-id-as-capability`, `submission-idempotency`. `bash scripts/run-verification-oracles.sh` runs all eighteen, `host-tenant-binding` included; `ls .claude/project-oracles/` tells you what is actually there.
-
-`host-tenant-binding` (DEC-FBR-13 — every public router wrapped in `bind_public_routes`, admin in `bind_admin_routes`) is in the suite too. Two more are project-authored and **outside the CI suite**, invoked by hand or by a skill: `translation-gap-status` (advisory translation-debt reporter behind `/1-translate`), and `feedback-parity-status` (GitCellar's cutover gate). All three are real and in the tree — an older reading of this file called them "never built"; the retire pass `5d858d2` had deleted them and they were restored, see `.claude/project-oracles/README.md` § Decisions. Run one with `python .claude/project-oracles/<name>/oracle.py`.
+Two more are `operator`-lane reports, never run automatically: `translation-gap-status` (advisory translation debt behind `/1-translate`) and `feedback-parity-status` (GitCellar's cutover gate). Five were retired on 2026-09-30 into tests or into `host-tenant-binding` — `docs/planning/project-checks-review-2026-09.md` says which and why. Run one with `python .claude/project-oracles/<name>/oracle.py`.
 
 ## Constraints not in spec artifacts
 

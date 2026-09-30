@@ -28,6 +28,12 @@ It deliberately holds **no** DB access, **no** async code, and **no** network I/
 | `src/sentiment.rs` | **P5a**: `Sentiment` enum re-export from `models.rs` + sentiment analysis helpers. Used by feedback-submission handlers to capture submitter sentiment. |
 | `src/rating.rs` | Optional **1-5 `Rating`** (migration `00029`) — the additive sibling of `Sentiment`, NOT a widening of it. `to_sentiment()` collapses 1-2/3/4-5 to negative/neutral/positive, which is what lets a rating-only submission populate the published 3-point column and keeps every existing consumer and the sentiment-trend aggregation working without a backfill. |
 | `src/solicitation.rs` | **P5a**: `Solicitation` domain type (question prompt for feedback submission context enrichment). Defines the shape + validation bounds. Consumed by the capabilities + solicitation handlers to drive feedback-request personalization (FR-FBR-26). |
+| `src/action_type.rs` | `ActionType` (Contract C23): what a recommendation / work order asks for, distinct from `FeedbackKind`; `from_feedback_kind` is the deterministic default mapping. Snake-case form matches the CHECK constraints in migrations `00013` / `00014`. |
+| `src/work_order.rs` | `WorkOrderState` approval state machine (Contract C22, FR-FBR-25a) — the security boundary between public input and code execution: `legal_transitions_from`, `is_legal_transition`, `is_terminal`, `is_execution_state`, `WorkOrderTransitionError`. |
+| `src/severity.rs` | Optional 4-point `Severity` (`low`/`medium`/`high`/`blocker`, migration `00020`), orthogonal to both triage status and moderation. |
+| `src/hosting.rs` | Pure hostname rules for FR-FBR-32/33: `normalize_host`, `validate_subdomain_label` + `RESERVED_LABELS`, `subdomain_label_of`, `DomainKind`, `DomainStatus`. No DB, no network. |
+| `examples/export_tier_quotas.rs` | Prints `tier_quotas()` for all four tiers as JSON — the pricing SSOT the marketing site's build step consumes (DEC-FBR-IMPL-05). |
+| `src/` | The crate source — its files are the `src/…` rows above. |
 | `Cargo.toml` | Depends on `uuid`, `chrono`, `serde`, `serde_json`. No DB / HTTP crates. |
 
 ## Public API & Usage

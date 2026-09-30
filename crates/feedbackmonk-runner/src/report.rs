@@ -65,13 +65,22 @@ pub async fn report_failed(
     work_order_id: Uuid,
     reason: &str,
 ) -> anyhow::Result<()> {
-    // The failure reason is runner-authored status text (not feedback-derived),
-    // but route it through the PII scrubber leg defensively so a path/email that
-    // leaked into an error string is scrubbed before storage.
-    let scrubbed = crate::sanitizer::scrub_pii(reason);
+    let reason = failure_reason_for_egress(reason);
     client
-        .runner_transition(work_order_id, "failed", None, Some(&scrubbed))
+        .runner_transition(work_order_id, "failed", None, Some(&reason))
         .await
+}
+
+/// The failure reason as it may leave the runner. It is NOT purely
+/// runner-authored: an agent's malformed `RESULT_REF` line reaches it through
+/// serde's error text, which quotes the offending value -- so it takes the same
+/// egress chokepoint as every other outbound payload (DEC-84), and a reason the
+/// chokepoint rejects is replaced by a fixed message rather than sent.
+fn failure_reason_for_egress(reason: &str) -> String {
+    match sanitize_outbound(&serde_json::Value::String(reason.to_owned())) {
+        Ok(serde_json::Value::String(clean)) => clean,
+        Ok(_) | Err(_) => "failure reason withheld: rejected by the egress sanitizer".to_owned(),
+    }
 }
 
 /// Route a `ResultRef` through the egress chokepoint and round-trip it back to
@@ -86,6 +95,21 @@ fn sanitize_clean(result_ref: &ResultRef) -> anyhow::Result<ResultRef> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn failure_reason_takes_the_egress_chokepoint() {
+        let leaked = "invalid type: string \"AWS_SECRET_ACCESS_KEY=abc123def456\"";
+        assert_eq!(
+            super::failure_reason_for_egress(leaked),
+            "failure reason withheld: rejected by the egress sanitizer"
+        );
+        let dump = "x".repeat(10_000);
+        assert_eq!(
+            super::failure_reason_for_egress(&dump),
+            "failure reason withheld: rejected by the egress sanitizer"
+        );
+        assert_eq!(super::failure_reason_for_egress("agent exited 1"), "agent exited 1");
+    }
+
     use super::*;
     use crate::types::{DiffStat, Verification};
 

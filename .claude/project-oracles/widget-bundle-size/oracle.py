@@ -196,6 +196,20 @@ def main() -> int:
         )
         return 1
 
+    # The widget exists, so its built entry point must too: a missing dist is
+    # a broken commit (dist is committed and deployed from the repo), not a
+    # cold start. This used to print a vacuous PASS.
+    if not (WIDGET_DIST / "widget.js").is_file():
+        print(f"FAIL widget-bundle-size ({rel(WIDGET_DIST)}/widget.js is missing)")
+        print("  Run `npm run build` in widget/ and commit dist/.")
+        return 1
+    catalogs = REPO_ROOT / "i18n" / "locales"
+    non_en = [d.name for d in catalogs.iterdir() if d.is_dir() and d.name != "en"] if catalogs.is_dir() else []
+    if non_en and not list(WIDGET_LOCALE_DIR.glob("*.js")):
+        print(f"FAIL widget-bundle-size (no {rel(WIDGET_LOCALE_DIR)}/*.js chunks, but i18n/locales has {len(non_en)} non-en locale(s))")
+        print("  Run `npm run build` in widget/ and commit dist/.")
+        return 1
+
     total, per_file, over_cap = probe_a_size()
     tracker_hits = probe_b_trackers(hosts)
     locale_chunks, chunk_offenders = probe_c_locale_chunks()
@@ -214,43 +228,24 @@ def main() -> int:
         print("PASS widget-bundle-size")
         for ln in header_lines:
             print(ln)
-        if not WIDGET_DIST.exists():
+        print(
+            f"  Probe A (English page-load set, top-level {rel(WIDGET_DIST)}/*.{{js,mjs,css}} "
+            f"<= {SIZE_CAP_BYTES}B): clean "
+            f"({total}B used, {SIZE_CAP_BYTES - total}B headroom across "
+            f"{len(per_file)} file(s))"
+        )
+        for f, sz in per_file:
+            print(f"    {f}  {sz}B")
+        print(
+            f"  Probe B (no canonical tracker hostnames in {rel(WIDGET_DIST)}, recursive): clean"
+        )
+        if locale_chunks:
+            largest = max(locale_chunks, key=lambda c: c[1])
             print(
-                f"  Probe A (English page-load set <= {SIZE_CAP_BYTES}B): vacuous PASS — "
-                f"{rel(WIDGET_DIST)} does not exist yet (pre-build / cold-start)"
+                f"  Probe C (each locale chunk <= {LOCALE_CHUNK_CAP_BYTES}B): clean "
+                f"({len(locale_chunks)} chunk(s), largest {largest[0]} at {largest[1]}B, "
+                f"{LOCALE_CHUNK_CAP_BYTES - largest[1]}B headroom)"
             )
-            print(
-                "  Probe B (no tracker hostnames): vacuous PASS — "
-                "no built files to scan"
-            )
-            print(
-                f"  Probe C (each locale chunk <= {LOCALE_CHUNK_CAP_BYTES}B): vacuous PASS — "
-                "no built files to scan"
-            )
-        else:
-            print(
-                f"  Probe A (English page-load set, top-level {rel(WIDGET_DIST)}/*.{{js,mjs,css}} "
-                f"<= {SIZE_CAP_BYTES}B): clean "
-                f"({total}B used, {SIZE_CAP_BYTES - total}B headroom across "
-                f"{len(per_file)} file(s))"
-            )
-            for f, sz in per_file:
-                print(f"    {f}  {sz}B")
-            print(
-                f"  Probe B (no canonical tracker hostnames in {rel(WIDGET_DIST)}, recursive): clean"
-            )
-            if not locale_chunks:
-                print(
-                    f"  Probe C (each locale chunk <= {LOCALE_CHUNK_CAP_BYTES}B): vacuous PASS — "
-                    f"no {rel(WIDGET_LOCALE_DIR)}/*.js chunks built"
-                )
-            else:
-                largest = max(locale_chunks, key=lambda c: c[1])
-                print(
-                    f"  Probe C (each locale chunk <= {LOCALE_CHUNK_CAP_BYTES}B): clean "
-                    f"({len(locale_chunks)} chunk(s), largest {largest[0]} at {largest[1]}B, "
-                    f"{LOCALE_CHUNK_CAP_BYTES - largest[1]}B headroom)"
-                )
         return 0
 
     print(f"FAIL widget-bundle-size ({fails} probe(s) failed)")

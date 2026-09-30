@@ -1,5 +1,7 @@
 # BYO Runner — reference agent adapter
 
+## Summary
+
 A minimal reference for **bring-your-own-agent** integration with the
 `feedbackmonk-runner` (FR-FBR-24, Q20). The full protocol is documented in
 [`docs/operations/RUNNER_PROTOCOL.md`](../../docs/operations/RUNNER_PROTOCOL.md);

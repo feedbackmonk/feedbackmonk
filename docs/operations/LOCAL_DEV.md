@@ -119,14 +119,8 @@ The `multi-tenant-isolation-check` oracle is the AST-grade leg of the
 three-leg defense for FR-FBR-01 (the type system is leg 1, clippy +
 cargo-deny is leg 3). Run it before every commit during P0+:
 
-```powershell
-# Windows
-powershell -NoProfile -File .claude/project-oracles/multi-tenant-isolation-check/oracle.ps1
-```
-
 ```bash
-# Unix (CI uses this form)
-bash .claude/project-oracles/multi-tenant-isolation-check/oracle.sh
+python .claude/project-oracles/multi-tenant-isolation-check/oracle.py
 ```
 
 PASS exits 0; FAIL exits 1 with file:line offenders. CI gates the build

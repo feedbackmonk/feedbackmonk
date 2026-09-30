@@ -31,6 +31,7 @@ EdDSA-only JWT verifier for the public submission endpoint (Contract C2, FR-FBR-
 
 | File | What it does |
 |---|---|
+| `Cargo.toml` | Depends on `ed25519-dalek`, `serde`/`serde_json`, `base64`, `uuid`, `thiserror` and `feedbackmonk-core`. |
 | `src/lib.rs` | The entire crate surface — `verify`, `verify_with_leeway`, `VerifiedClaims`, `JwtError`, `MAX_EXTERNAL_METADATA_BYTES`, `DEFAULT_IAT_LEEWAY_SECONDS`, `ACCEPTED_ALG`, plus structural unit tests. |
 | `tests/verify.rs` | Hard-invariant tests (Contract C2 §Hard invariants 1–6): `alg=none` rejection, HMAC-confusion rejection, wrong-audience precedence over signature, missing-claim handling, strict `exp`, metadata-size cap, key-rotation order. |
 

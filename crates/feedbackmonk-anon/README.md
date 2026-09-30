@@ -32,6 +32,7 @@ Anonymous-mode rate-limit gate for the public submission endpoint (FR-FBR-06). I
 
 | File | What it does |
 |---|---|
+| `Cargo.toml` | Depends on `blake3`, `governor`, `rand`, `base64`, `uuid`, `thiserror` only — no DB, no async runtime. |
 | `src/lib.rs` | The entire crate surface — `AnonGate`, `RateLimitError`, `AnonAccepted`, `HASH_DOMAIN_PREFIX`, `DEFAULT_RATE_LIMIT_PER_HOUR`, `ANON_COOKIE_BYTES`, `ANON_COOKIE_HEADER`, plus deterministic-token-hash unit tests. |
 
 ## 3. Public API & Usage

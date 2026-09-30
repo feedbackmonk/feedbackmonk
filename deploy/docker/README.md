@@ -31,6 +31,7 @@ instance at the configured port returning HTTP 200 at `/health/ready`.
 | `Dockerfile.api` | Multi-stage Rust build (cargo-chef → release → slim-debian runtime). Image carries the `feedbackmonk-api` binary, `sqlx` CLI, migrations dir, curl, tini. |
 | `Dockerfile.admin-ui` | Multi-stage node→nginx build. Stage 1 builds `admin-ui/dist/`; stage 2 serves it via nginx with reverse-proxy to api. |
 | `admin-ui-nginx.conf` | nginx site config: SPA fallback for `/`, reverse-proxy for `/api/*` + `/health` + `/health/ready` → `api:14304`. |
+| `admin-ui-nginx.gitcellar-railway.conf` | Variant for GitCellar's Railway self-host, selected with `--build-arg ADMIN_UI_NGINX_CONF=…`: serves the SPA and proxies `/api/*` + `/health*` to the **public** API edge over TLS instead of `api:14304`, because Railway's private network is IPv6-only and the live API binds `0.0.0.0` (see `docs/operations/RAILWAY_GITCELLAR.md`). |
 | `migrate.sh` | Init-container entrypoint. Runs `sqlx migrate run --source /app/migrations`. Idempotent (sqlx tracks applied migrations). |
 | `backup.sh` | Operator-side script — `docker compose --profile backup run --rm backup` piping gzipped pg_dump to stdout. |
 | `restore.sh` | Operator-side script — reads gzipped sql from stdin, pipes into `docker compose exec db psql`. Requires `--force` for non-TTY invocation (destructive). |

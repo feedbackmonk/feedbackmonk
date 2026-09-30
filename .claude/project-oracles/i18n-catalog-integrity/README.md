@@ -11,8 +11,8 @@ Verifies the shared catalog tree is structurally sound and the three generated l
 > of a malformed or drifted catalog file, and all three runtimes agree on
 > which 31 locales exist.
 
-Frozen in `manifest.json` at Task Zero (2026-09-06), before any probe beyond
-A/B existed. See `manifest.json` for the full `measures` / `known_gaps` text.
+Frozen in `oracle.json` at Task Zero (2026-09-06), before any probe beyond
+A/B existed. See `oracle.json` for the full `measures` / `known_gaps` text.
 
 ## Probes
 
@@ -41,7 +41,7 @@ string in front of an end user traces back to.
 
 ## Adversarial self-test (performed 2026-09-06, before bumping to 1.0.0)
 
-`oracle.py --self-test` (either shim, same flag) mechanizes exactly this
+`oracle.py --self-test` mechanizes exactly this
 demonstration, so it re-runs on demand rather than being a one-time manual
 record: it builds a throwaway scratch mirror of `i18n/` + `scripts/i18n/`
 (Probe C leg) and a second scratch mirror of the three generated-table
@@ -67,7 +67,7 @@ actual coverage, not three redundant reproductions of one mechanism.
 
 ## Known gaps
 
-See `manifest.json` `assertion.known_gaps` — translation *quality* is
+See `oracle.json` `assertion.known_gaps` — translation *quality* is
 out of scope (that is `scripts/i18n/validate.py`'s advisory classes and
 `translation-gap-status`'s MISSING count); the oracle checks the working
 tree, not HEAD; placeholder equality is set-equality of `{{name}}` tokens

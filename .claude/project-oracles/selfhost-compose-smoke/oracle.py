@@ -90,12 +90,12 @@ def _find_docker_cli() -> Optional[str]:
 def probe_a() -> Tuple[Optional[bool], str, List[str]]:
     """Return (passed, message, offenders).
 
-    passed = None  → SKIP (compose file absent — cold-start)
+    passed = None  → UNVERIFIED (no validator on this host: exit 3, not a pass)
     passed = True  → PASS
     passed = False → FAIL (with offender detail)
     """
     if not COMPOSE_FILE.exists():
-        return None, f"compose file absent at {rel(COMPOSE_FILE)} — cold-start state, run after Phase 1 authors it", []
+        return False, f"compose file absent at {rel(COMPOSE_FILE)}", ["the self-host distribution (FR-FBR-17) ships this file"]
 
     docker = _find_docker_cli()
     if docker is not None:
@@ -116,14 +116,15 @@ def probe_a() -> Tuple[Optional[bool], str, List[str]]:
                 [docker, "compose", "-f", str(COMPOSE_FILE), "config", "--quiet"],
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=120,
                 cwd=str(REPO_ROOT),
                 env=env,
             )
         except subprocess.TimeoutExpired:
-            return False, "`docker compose config` exceeded 30s timeout", [
-                "remediation: check for circular service references or massive env interpolation lists"
-            ]
+            # A slow Docker CLI on a loaded host says nothing about the file:
+            # unverified (exit 3), not a failure. (30 s tripped under a
+            # concurrent cargo build on 2026-09-30.)
+            return None, "`docker compose config` did not answer within 120s — the compose file was NOT validated", []
         if proc.returncode == 0:
             return True, f"`docker compose config --quiet` on {rel(COMPOSE_FILE)}: clean", []
         err = (proc.stderr or "").strip() or (proc.stdout or "").strip() or "(no stderr)"
@@ -138,9 +139,9 @@ def probe_a() -> Tuple[Optional[bool], str, List[str]]:
     try:
         import yaml  # type: ignore  # pyyaml; optional dependency
     except ImportError:
-        return True, (
-            f"docker CLI not on PATH and pyyaml unavailable — Probe A SKIP with WARN "
-            f"(install Docker Desktop or `pip install pyyaml` to enforce yaml-lint locally)"
+        return None, (
+            "docker CLI not on PATH and pyyaml unavailable — the compose file was NOT validated "
+            "(install Docker Desktop or `pip install pyyaml`)"
         ), []
     try:
         data = yaml.safe_load(COMPOSE_FILE.read_text(encoding="utf-8"))
@@ -257,10 +258,7 @@ def parse_c21_catalog(selfhost_env_text: str) -> Set[str]:
 def probe_b() -> Tuple[Optional[bool], str, List[str], List[str]]:
     """Return (passed, message, fail_offenders, warn_offenders)."""
     if not COMPOSE_FILE.exists():
-        return None, (
-            f"compose file absent at {rel(COMPOSE_FILE)} — cold-start state, "
-            "Probe B vacuous (no compose to scan)"
-        ), [], []
+        return False, f"compose file absent at {rel(COMPOSE_FILE)}", ["see Probe A"], []
     if not SELFHOST_ENV_DOC.exists():
         return False, (
             f"C21 catalog absent at {rel(SELFHOST_ENV_DOC)} — cannot cross-reference"
@@ -305,6 +303,39 @@ def probe_b() -> Tuple[Optional[bool], str, List[str], List[str]]:
         f"compose env-refs ({len(compose_refs)}) ⊆ C21 catalog ({len(catalog)}); "
         f"{len(unreferenced)} catalog entries unreferenced (acceptable)"
     ), [], warn_offenders
+
+
+# ---------------------------------------------------------------------------
+# Probe D — every setting the api binary reads is in the C21 catalog
+# ---------------------------------------------------------------------------
+
+# Probe B compares the catalog with the compose file only, so a setting the
+# code reads but compose never names went undocumented unseen (five did,
+# found 2026-09-30). The api binary links every crate but the runner, which is
+# a separate binary with its own settings (docs/operations/RUNNER_PROTOCOL.md).
+CODE_ENV_LITERAL = re.compile(r'"(FEEDBACKMONK_[A-Z0-9_]+|DATABASE_URL|RUST_LOG)"')
+NOT_THE_API_BINARY = {"feedbackmonk-runner"}
+
+
+def probe_d() -> Tuple[bool, str, List[str]]:
+    if not SELFHOST_ENV_DOC.exists():
+        return False, f"C21 catalog absent at {rel(SELFHOST_ENV_DOC)}", []
+    catalog = parse_c21_catalog(SELFHOST_ENV_DOC.read_text(encoding="utf-8"))
+    read: dict = {}
+    for crate in sorted((REPO_ROOT / "crates").iterdir()):
+        if crate.name in NOT_THE_API_BINARY or not (crate / "src").is_dir():
+            continue
+        for path in sorted((crate / "src").rglob("*.rs")):
+            for m in CODE_ENV_LITERAL.finditer(path.read_text(encoding="utf-8", errors="replace")):
+                read.setdefault(m.group(1), rel(path))
+    if not read:
+        return False, "no env-var literals found under crates/*/src — the scan is broken", []
+    missing = sorted(set(read) - catalog)
+    if missing:
+        return False, f"{len(missing)} setting(s) the api reads are missing from {rel(SELFHOST_ENV_DOC)}", [
+            f"{name}  read in {read[name]} — add a catalog row" for name in missing
+        ]
+    return True, f"all {len(read)} settings the api reads are in the C21 catalog", []
 
 
 # ---------------------------------------------------------------------------
@@ -458,25 +489,30 @@ def main() -> int:
     a_passed, a_message, a_offenders = probe_a()
     b_passed, b_message, b_fail_offenders, b_warn_offenders = probe_b()
     c_passed, c_message, c_offenders = probe_c(args.full)
+    d_passed, d_message, d_offenders = probe_d()
 
     fails = (
         (1 if a_passed is False else 0)
         + (1 if b_passed is False else 0)
         + (1 if c_passed is False else 0)
+        + (0 if d_passed else 1)
     )
+
+    if fails == 0 and a_passed is None:
+        print(f"UNKNOWN selfhost-compose-smoke: {a_message}")
+        return 3
 
     if fails == 0:
         print("PASS selfhost-compose-smoke")
-        prefix_a = "vacuous PASS — " if a_passed is None else ""
-        print(f"  Probe A (yaml-lint): {prefix_a}{a_message}")
-        prefix_b = "vacuous PASS — " if b_passed is None else ""
-        print(f"  Probe B (env-doc-xref): {prefix_b}{b_message}")
+        print(f"  Probe A (yaml-lint): {a_message}")
+        print(f"  Probe B (env-doc-xref): {b_message}")
+        print(f"  Probe D (code-env-xref): {d_message}")
         if c_passed is True:
             print(f"  Probe C (full-smoke): {c_message}")
         elif c_passed is None:
             print(f"  Probe C (full-smoke): {c_message}")
-        for w in b_warn_offenders:
-            print(f"    WARN: {w}")
+        if b_warn_offenders:
+            print(f"  note: {len(b_warn_offenders)} catalog setting(s) are optional and not set in compose")
         return 0
 
     print(f"FAIL selfhost-compose-smoke ({fails} probe(s) failed)")
@@ -498,6 +534,11 @@ def main() -> int:
             print("  WARN entries (not failing the probe):")
             for w in b_warn_offenders:
                 print(f"    {w}")
+    if not d_passed:
+        print()
+        print(f"Probe D failure (code-env-xref): {d_message}")
+        for o in d_offenders:
+            print(f"  {o}")
     if c_passed is False:
         print()
         print(f"Probe C failure (full-smoke): {c_message}")

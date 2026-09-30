@@ -15,7 +15,7 @@
 //! new route family: it cannot be forgotten per-handler, and the
 //! `host-tenant-binding` Verification Oracle asserts from `build_app` that each
 //! public router still carries it — the same anti-treadmill shape
-//! `public-route-ceiling` uses for the rate-limit floor.
+//! it also enforces for the rate-limit floor and the CORS layer.
 //!
 //! ## Inert when unconfigured
 //!

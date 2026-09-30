@@ -47,6 +47,40 @@ jobs:
         run: bash scripts/run-verification-oracles.sh
 
   # -------------------------------------------------------------------------
+  # Front ends: the widget and the admin console. Until 2026-09-30 nothing in
+  # CI built or tested either, so their suites and the committed widget/dist
+  # were guarded only by static oracles.
+  # -------------------------------------------------------------------------
+  frontends:
+    name: Widget + admin-ui (test, build, committed dist is fresh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: widget -- test and rebuild
+        working-directory: widget
+        run: |
+          npm ci
+          npm test
+          npm run build
+      - name: widget -- committed dist matches the source
+        # dist/ is committed and deployed from the repo (and measured by the
+        # widget-bundle-size oracle); the build is deterministic, so a rebuild
+        # that changes it means a src change was committed without its build.
+        run: |
+          git status --porcelain -- widget/dist
+          test -z "$(git status --porcelain -- widget/dist)" || {
+            echo "::error::widget/dist is stale -- run 'npm run build' in widget/ and commit dist/"; exit 1; }
+      - name: admin-ui -- test and build
+        working-directory: admin-ui
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+  # -------------------------------------------------------------------------
   # Build / test / lint matrix.
   # -------------------------------------------------------------------------
   build:

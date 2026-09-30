@@ -604,8 +604,11 @@ fn build_app(
     let cors = public_cors_layer(cors_origins);
 
     // Class-level per-IP DoS ceiling (P0-2). EVERY public router below is
-    // wrapped by `apply_public_rate_limit` — the `public-route-ceiling` oracle
-    // enforces this so a future public route cannot silently skip the floor.
+    // wrapped by `apply_public_rate_limit`, sharing one per-IP budget — the
+    // `host-tenant-binding` oracle classifies every merged router and fails a
+    // public one without the floor. (Until 2026-09-30 widget-config, me_feedback,
+    // me_feedback_data and solicitation were bound but unlimited — an omission
+    // the claim above hid; the old per-router oracle checked a hand-kept list.)
     let prl = PublicRateLimit::new(state.ip_gate.clone(), state.trusted_proxy_hops);
 
     // FR-FBR-32 (DEC-FBR-IMPL-28): two binding layers over the SAME routers we
@@ -624,8 +627,9 @@ fn build_app(
     // The `host-tenant-binding` Verification Oracle asserts from this function
     // that every public router still carries the public guard and every admin
     // router the admin guard — the same anti-treadmill shape
-    // `public-route-ceiling` uses for the rate-limit floor. A new public route
-    // added without a wrapper is the regression it exists to catch.
+    // it applies to the rate-limit floor above: every merged router must be
+    // classified public, admin or intentionally unbound, and a new route added
+    // without its wrappers is the regression it exists to catch.
     //
     // With no root domain / admin host configured, BOTH layers are
     // pass-throughs and behaviour is byte-identical to pre-FR-FBR-32.
@@ -654,7 +658,10 @@ fn build_app(
             hs.clone(),
         ))
         .merge(bind_admin_routes(admin_feedback_routes(state.clone()), hs.clone()))
-        .merge(bind_public_routes(widget_config_router(state.clone()), hs.clone()))
+        .merge(bind_public_routes(
+            apply_public_rate_limit(widget_config_router(state.clone()), prl.clone()),
+            hs.clone(),
+        ))
         .merge(bind_public_routes(
             apply_public_rate_limit(roadmap_router(state.clone()), prl.clone()),
             hs.clone(),
@@ -665,19 +672,25 @@ fn build_app(
         // CORS layer (called server-side / via curl, never a browser embed);
         // guarded by the OpsAuth bearer token (404 when token unset).
         .merge(bind_admin_routes(ops_router(state.clone()), hs.clone()))
-        .merge(bind_public_routes(me_feedback_router(state.clone()), hs.clone()))
+        .merge(bind_public_routes(
+            apply_public_rate_limit(me_feedback_router(state.clone()), prl.clone()),
+            hs.clone(),
+        ))
         // Phase A A1/A5: erasure + export on the me_feedback path — merged
         // WITHOUT CORS, same posture as the read subtree above (JWT end-user
         // surface driven by the consumer's own client, not a browser embed).
         .merge(bind_public_routes(
-            me_feedback_data_router(me_feedback_data_state),
+            apply_public_rate_limit(me_feedback_data_router(me_feedback_data_state), prl.clone()),
             hs.clone(),
         ))
         // GitCellar in-app solicitation (FR-FBR-28/27): durable per-user
         // solicitation state (JWT end-user surface; merged WITHOUT CORS, like
         // me_feedback — driven by the consumer's own client) + public
         // capability discovery (`GET /api/v1/capabilities`, metadata-only).
-        .merge(bind_public_routes(solicitation_router(state.clone()), hs.clone()))
+        .merge(bind_public_routes(
+            apply_public_rate_limit(solicitation_router(state.clone()), prl.clone()),
+            hs.clone(),
+        ))
         // Capability discovery carries no tenant data and no project id — it is
         // deployment metadata, answerable on any host, so it is left unbound.
         .merge(capabilities_router(state.clone()))
@@ -729,7 +742,7 @@ fn build_app(
         // Public Feedback Board + Moderation Gate (Contracts C28/C29):
         //   board_router is the PUBLIC approved-only board read — merged WITH
         //   `.layer(cors)`, matching the submit/attachments public surface
-        //   (`cors-allowlist-enforcement`). moderation_router is the admin
+        //   (`host-tenant-binding`). moderation_router is the admin
         //   moderate + queue + board-settings surface — merged WITHOUT CORS
         //   (AdminSession, never a browser embed; Ripple Analysis flags
         //   accidental CORS-exposure of admin endpoints).

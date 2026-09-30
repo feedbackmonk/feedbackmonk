@@ -1,0 +1,47 @@
+{
+  "name": "multi-tenant-isolation-check",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1400,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Is the tenant-scoped repository layer still the sole query path (DEC-FBR-03)? Probe A: no raw SQL outside the repository crate -- sqlx query!/query()/raw_sql/string-SQL execute/fetch, pool fetches, sqlx re-exports; a handler transaction may only be handed to repository *_in_executor methods, committed or rolled back. Probe B: every public repository fn (generics included) takes &TenantScope/&ProjectScope first, or is in allowlist.toml with a rationale that still names a real fn.",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/project-oracles/multi-tenant-isolation-check/oracle.py",
+    "windows": ".claude/project-oracles/multi-tenant-isolation-check/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "migrations/**",
+      "crates/feedbackmonk-repository/**",
+      "crates/feedbackmonk-core/**",
+      "crates/feedbackmonk-api/**",
+      "crates/feedbackmonk-jwt/**",
+      "crates/feedbackmonk-anon/**",
+      ".claude/project-oracles/multi-tenant-isolation-check/allowlist.toml"
+    ],
+    "compute_cost_ms": 250
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P0+",
+    "estimated_token_savings_per_call": 1200
+  },
+  "consumer_scope": "P0+ all crates (every Stage 1+ worker; CI gate)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-02T17:30:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/multi-tenant-isolation-check/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "stage1-worker (P0 Foundation, Task Zero)",
+    "created": "2026-05-13T00:00:00Z",
+    "rationale": "DEC-FBR-03 declares raw SQL outside repository layer a security incident. Type system (TenantScope/ProjectScope newtypes) is leg 1; this oracle is leg 2 (runtime/AST); clippy + cargo-deny is leg 3."
+  }
+}

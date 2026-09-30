@@ -2,68 +2,45 @@
 """public-board-moderation-gate Verification Oracle (canonical implementation).
 
 THE trust boundary between public submission and public EXPOSURE (FR-FBR-25a
-sibling, applied to the public feedback board). It proves — FROM CODE, not from
-a self-reported `is_public` flag — that no public-board endpoint can return a
-feedback row whose `moderation_status != approved`, and that the board wire
-shape leaks no submitter PII.
+sibling, applied to the public feedback board). It proves FROM CODE that no
+public-board endpoint can return or act on a feedback row whose
+`moderation_status != approved`, and that the board wire shape leaks no
+submitter PII.
 
-This is the anti-reward-hacking leg of the Public Feedback Board plan
-(Testability Gate Flag 1, the highest plan-wide fidelity risk, Q2=5). A standard
-"approve -> row appears on board" test confirms the happy path; it does NOT
-prove the ABSENCE of a code path that returns an unapproved row, nor that the
-board response withholds submitter identity. An unapproved row on the public
-board is the exact spam/abuse/off-brand exposure this feature exists to prevent;
-a PII leak is a privacy regression (DEC-FBR-02 / Q24 class).
+Probes:
 
-THREE probes (detection-from-code, co-evolving with Worker A):
+  B) BOARD READ PATH (static, default run). BOARD READ SCOPE = the board.rs
+     handler + every repository fn named `*board*` that queries `FROM feedback`.
+       (0)  board.rs and at least one board read fn must exist — a missing target
+            is a FAIL (the code exists; there is no PENDING state any more).
+       (0b) board.rs may reach the feedback repository ONLY through the explicit
+            BOARD_SAFE_READS allowlist below, and every allowlisted method must
+            itself be a discovered board read fn (so check (1) pins its SQL).
+            Any other `.feedback.<method>` call, a bare `.feedback` handle, or
+            raw pool/sqlx access in board.rs FAILS.
+       (1)  EVERY SQL string literal in EACH board read fn must hard-filter
+            `moderation_status = 'approved'` (a literal, not a bound param), once
+            per `FROM/JOIN feedback` it contains. Rust comments and SQL `--`
+            comments are stripped first, so a filter present only in a comment
+            does not count.
+       (1b) no non-approved moderation literal (`'pending'`/`'rejected'`) in scope.
+       (2)  no submitter-PII field in scope (handler wire shape OR repo SELECT).
+       (3)  no `feedback_replies` in scope.
+       (4)  vote path: every board.rs handler writing through `.board_votes` runs
+            `ensure_board_enabled` AND `resolve_approved_board_*` BEFORE the write.
 
-  A) STATE MACHINE (static, source parse, LIVE in Stage 0):
-     `feedbackmonk-core/src/moderation.rs` must prove the structural gate —
-     `is_publicly_visible` classifies EXACTLY `Approved` as visible and EXCLUDES
-     `Pending` and `Rejected`. If any non-approved state were visible, the
-     moderation gate is bypassable by construction.
+  C) BEHAVIOR (--full): cargo-tests board_moderation_gate, board_privacy_isolation
+     and board_vote_moderation_gate against a real DB (drift detection).
 
-  B) BOARD READ PATH (static, ACTIVE — engaged when Worker A landed board.rs):
-     the BOARD READ SCOPE = the `board.rs` handler + every repository fn named
-     `*board*` that queries `FROM feedback` (so an unrelated query cannot
-     false-satisfy the marker, a PII column in the repo query is caught, and
-     board-SETTINGS fns querying `projects` are excluded). Within it:
-       - the handler MUST invoke the approved-only board reads (not an unfiltered
-         feedback read) — mirrors approval-gate-enforcement's handler binding;
-       - EACH board read fn MUST hard-filter `moderation_status = 'approved'` as a
-         SQL literal (per-fn, so a regression on one read isn't masked by another;
-         a bound param is rejected — it can't be statically proven always-approved);
-       - the scope MUST NOT name any submitter-PII field, MUST NOT reference a
-         non-approved moderation literal (`pending`/`rejected`), and MUST NOT
-         surface `feedback_replies` (internal reply content);
-       - VOTE PATH (D3, PF-BOARD-VOTING-01): every board.rs handler that writes
-         through `state.board_votes` (cast/retract) MUST run `ensure_board_enabled`
-         AND an approved-only resolution (`resolve_approved_board_*`) BEFORE the
-         write — so a vote/retract on a pending/rejected/board-disabled item 404s
-         like the read path (plan D2). Gracefully skipped before voting is wired.
-     Before board.rs exists this probe reports PENDING (does not fail).
-     NOTE — C29 inv. 2 (board-disabled→404) is a distinct leak vector (approved
-     rows from a non-opted-in project), OUTSIDE this oracle's framed question
-     (non-approved OR PII); it is covered by the behavioral Probe C.
+The former Probe A (moderation.rs `is_publicly_visible` classifies only Approved)
+was retired: it duplicated the core unit test
+`feedbackmonk-core/src/moderation.rs::only_approved_is_publicly_visible`, which
+`cargo test` already runs on every push.
 
-  C) BEHAVIOR (gated behind --full, ACTIVATES when the tests land):
-     runs `tests/board_moderation_gate.rs` + `tests/board_privacy_isolation.rs`
-     against the real DB — the drift-detection leg so the static probes and live
-     behavior cannot silently diverge. PENDING until Worker A writes them.
+Exit 0 PASS, 1 FAIL, 2 environment failure.
 
-A green oracle (Probe A clean + B/C clean-or-pending) is the SCAFFOLD state now;
-a green oracle with B+C ACTIVE is GATE 1.
-
-Output: machine-parseable PASS / FAIL. Exit 0 on PASS, 1 on FAIL, 2 on
-environment failure.
-
-Lineage:
-- FR-FBR-25a (approval-as-security-boundary) sibling — applied to board visibility
-- DEC-FBR-02 (no-trackers brand promise) / Q24 (public-surface privacy) — no PII
-- Contract C28 invariant 1 + C29 invariants 1 & 3
-- Plan: docs/planning/plans/20260619T001105-public-feedback-board-moderation-gate.md
-- Probandurgy Verification Oracle pattern (DEC-FBR-IMPL-03 canonical-Python + shims)
-- Mirrors approval-gate-enforcement (the work-order trust-boundary oracle)
+Lineage: FR-FBR-25a sibling; DEC-FBR-02 / Q24; Contract C28 inv. 1 + C29 inv. 1 & 3;
+plan docs/planning/plans/20260619T001105-public-feedback-board-moderation-gate.md.
 """
 from __future__ import annotations
 
@@ -75,41 +52,46 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parents[2]
-MODERATION_RS = REPO_ROOT / "crates" / "feedbackmonk-core" / "src" / "moderation.rs"
-# Worker A's board read path. board.rs landing activates Probe B (per the C29
-# announcement protocol). The approved-only SQL filter + the board wire shape
-# are verified within the BOARD READ SCOPE (see _board_scope_texts): the board
-# handler plus any *repository* fn whose name mentions the board — so detection
-# works whether `list_public_board`/`get_public_board_item` live in `feedback.rs`
-# or in a dedicated `feedbackmonk-repository/src/board.rs`. DEC-FBR-03 forbids
-# raw SQL outside the repository layer, so the query lives in a repo fn.
-BOARD_HANDLER_RS = REPO_ROOT / "crates" / "feedbackmonk-api" / "src" / "handlers" / "board.rs"
-REPOSITORY_SRC = REPO_ROOT / "crates" / "feedbackmonk-repository" / "src"
-GATE_TEST_RS = REPO_ROOT / "crates" / "feedbackmonk-api" / "tests" / "board_moderation_gate.rs"
-PRIVACY_TEST_RS = REPO_ROOT / "crates" / "feedbackmonk-api" / "tests" / "board_privacy_isolation.rs"
+DEFAULT_ROOT = SCRIPT_DIR.parents[2]
 
-VISIBLE_VARIANTS = {"Approved"}
-NON_VISIBLE_VARIANTS = {"Pending", "Rejected"}
-VISIBILITY_PREDICATE = "is_publicly_visible"
-# The board read query MUST hard-filter on the literal `'approved'` (C29 inv. 1).
-# Tolerant of: table-alias/qualifier prefix (substring match), whitespace around
-# `=`, single/double quotes, an optional `::text`/`::cast`, and `IN ('approved')`
-# as an equivalent. A BOUND PARAM (`moderation_status = $N`) deliberately does
-# NOT match — a bound value cannot be statically proven to always be 'approved',
-# and the anti-reward-hacking invariant wants the hard literal in the query.
+# Set in main() from --root.
+REPO_ROOT = DEFAULT_ROOT
+BOARD_HANDLER_RS = Path()
+REPOSITORY_SRC = Path()
+BOARD_TESTS: List[Path] = []
+
+
+def _set_root(root: Path) -> None:
+    global REPO_ROOT, BOARD_HANDLER_RS, REPOSITORY_SRC, BOARD_TESTS
+    REPO_ROOT = root
+    BOARD_HANDLER_RS = root / "crates" / "feedbackmonk-api" / "src" / "handlers" / "board.rs"
+    REPOSITORY_SRC = root / "crates" / "feedbackmonk-repository" / "src"
+    tests = root / "crates" / "feedbackmonk-api" / "tests"
+    BOARD_TESTS = [
+        tests / "board_moderation_gate.rs",
+        tests / "board_privacy_isolation.rs",
+        tests / "board_vote_moderation_gate.rs",
+    ]
+
+
+# The ONLY feedback-repository methods board.rs may call. Each is a board read fn
+# whose every SQL literal check (1) pins to `moderation_status = 'approved'`; the
+# oracle additionally FAILS if an entry here is not a discovered board read fn, so
+# this list cannot launder an unfiltered read. Adding a method here requires it to
+# be (a) named *board*, (b) in the repository layer, (c) approved-filtered in SQL.
+BOARD_SAFE_READS = {
+    "list_public_board": "board list (C29 inv. 1)",
+    "get_public_board_item": "board single item (C29 inv. 1)",
+    "resolve_approved_board_feedback_id": "vote-path gate resolution (plan D2)",
+}
+
+# A board read MUST hard-filter the literal 'approved'. Tolerant of alias prefix,
+# whitespace, quotes, ::cast, and IN ('approved'). A bound param does NOT match.
 APPROVED_SQL_RE = re.compile(
     r"moderation_status\s*(?:::\s*\w+)?\s*(?:=|\bIN\b\s*\()\s*['\"]approved['\"]",
     re.IGNORECASE,
 )
-# A board read must NEVER reference a non-approved moderation-status literal —
-# catches `!= 'rejected'` / `IN ('approved','pending')`-style mistakes that would
-# leak pending/rejected rows. These are moderation values (not triage statuses,
-# which are submitted/triaged/in-progress/shipped/wontfix/duplicate), so their
-# appearance in board scope is a filter bug.
 NON_APPROVED_LITERAL_RE = re.compile(r"['\"](?:pending|rejected)['\"]", re.IGNORECASE)
-# Submitter-PII columns that must NEVER appear anywhere in the board read scope
-# (handler wire shape OR the repo query SELECT list). DEC-FBR-02 / Q24 class.
 PII_FIELDS = [
     "end_user_email",
     "end_user_name",
@@ -117,35 +99,20 @@ PII_FIELDS = [
     "anon_token_hash",
     "external_metadata",
     "crash_event_id",
-    # FR-FBR-37 (migration 00031): the UI language the submitter was reading.
-    # PII-ADJACENT rather than PII — it names no person, but a locale narrows a
-    # population, and on a small board it can be the field that distinguishes
-    # one submitter from the rest. Admin-read only, by the same rule as the
-    # columns above (Contract C37: `FeedbackDetailResponse` and nowhere else).
+    # FR-FBR-37: PII-adjacent (narrows a population); admin-read only (C37).
     "submitter_locale",
 ]
-# The board must not surface internal/admin reply content (C29: "internal/admin
-# reply content"). `feedback_replies` carries `visibility IN ('public','internal')`
-# rows; the board wire shape (C29) has no reply field, so any reference to the
-# replies table inside the board read scope is a leak vector.
 REPLY_TABLE_TOKEN = "feedback_replies"
-
-# --- Vote-path gate (D3, PF-BOARD-VOTING-01) --------------------------------
-# The board VOTE write surface: a board.rs handler that votes/retracts goes
-# through `state.board_votes.{cast,retract}`. Such a handler MUST first run the
-# board-enabled check AND resolve the target through an approved-only path before
-# the write — otherwise the vote endpoint confirms the existence of hidden
-# (pending/rejected/board-disabled) feedback (plan D2; sibling to C29/FR-FBR-27).
-# Match the actual repo WRITE call `state.board_votes.{cast,retract}` (the `.`
-# prefix), NOT the bare substring — so a comment or the table name
-# `feedback_board_votes` (e.g. in item_response's D1 doc, where the substring
-# `board_votes` appears) is not mistaken for a vote handler.
 BOARD_VOTE_REPO_TOKEN = ".board_votes"
 BOARD_ENABLED_FN = "ensure_board_enabled"
-# The approved-only resolution fn the vote handlers must call before any write.
-# It is itself a board-read fn (named *board*, queries `FROM feedback`), so its
-# approved-only SQL literal is already enforced by the per-read-fn check (1).
 APPROVED_RESOLVE_RE = re.compile(r"resolve_approved_board\w*")
+BOARD_READS_FEEDBACK_RE = re.compile(r"FROM\s+feedback\b", re.IGNORECASE)
+FEEDBACK_TABLE_REF_RE = re.compile(r"\b(?:FROM|JOIN)\s+feedback\b(?!_)", re.IGNORECASE)
+SQL_LITERAL_RE = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|WITH)\b", re.IGNORECASE)
+# Member access to the feedback repository handle in board.rs (not `.feedback_x`).
+FEEDBACK_HANDLE_RE = re.compile(r"\.\s*feedback\b(?!_)")
+FEEDBACK_CALL_RE = re.compile(r"\.\s*feedback\s*\.\s*(\w+)\s*\(")
+RAW_DB_IN_HANDLER_RE = re.compile(r"\bsqlx\b|\.\s*pool\b|\bPgPool\b|\bquery(?:_as|_scalar)?!?\s*\(")
 
 
 def rel(p: Path) -> str:
@@ -155,357 +122,277 @@ def rel(p: Path) -> str:
         return str(p)
 
 
-def _extract_fn_body(text: str, fn_sig: str) -> Optional[str]:
-    """Return the brace-balanced body of the fn whose signature substring is
-    `fn_sig`, or None if not found."""
-    idx = text.find(fn_sig)
-    if idx == -1:
-        return None
-    brace = text.find("{", idx)
-    if brace == -1:
-        return None
-    depth = 0
-    for i in range(brace, len(text)):
-        c = text[i]
-        if c == "{":
-            depth += 1
-        elif c == "}":
-            depth -= 1
-            if depth == 0:
-                return text[brace : i + 1]
-    return None
+_LEX_TOKEN_RE = re.compile(
+    r"//|/\*|(?<![\w])b?r(#*)\"|(?<![\w])b?\"|'(?:\\.[^'\n]{0,8}|[^\\'\n])'"
+)
 
 
-def probe_a() -> List[str]:
-    """State-machine source proves only `Approved` is publicly visible."""
-    offenders: List[str] = []
-    if not MODERATION_RS.exists():
-        return [f"{rel(MODERATION_RS)} does not exist — the moderation state machine is missing"]
-    text = MODERATION_RS.read_text(encoding="utf-8")
+def lex_rust(text: str) -> Tuple[str, List[str]]:
+    """Return (code_without_comments, string_literals).
 
-    body = _extract_fn_body(text, f"fn {VISIBILITY_PREDICATE}")
-    if body is None:
-        offenders.append(
-            f"{rel(MODERATION_RS)}: `fn {VISIBILITY_PREDICATE}` missing — the in-code "
-            "visibility gate (C28/C29) is gone"
-        )
-        return offenders
+    Comments (line, nested block) are replaced by spaces of equal length (so
+    offsets into the result are offsets into `text`); string literals stay in the
+    code AND are returned separately (their contents). Handles raw strings
+    r#"..."#, byte strings, escapes, and char literals vs lifetimes."""
+    out: List[str] = []
+    lits: List[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        m = _LEX_TOKEN_RE.search(text, i)
+        if not m:
+            out.append(text[i:])
+            break
+        out.append(text[i:m.start()])
+        tok = m.group(0)
+        if tok == "//":
+            j = text.find("\n", m.start())
+            j = n if j == -1 else j
+            out.append(" " * (j - m.start()))
+            i = j
+        elif tok == "/*":
+            depth, j = 1, m.end()
+            while j < n and depth:
+                if text.startswith("/*", j):
+                    depth, j = depth + 1, j + 2
+                elif text.startswith("*/", j):
+                    depth, j = depth - 1, j + 2
+                else:
+                    j += 1
+            out.append("".join(ch if ch == "\n" else " " for ch in text[m.start():j]))
+            i = j
+        elif tok.endswith('"') and m.group(1) is not None:  # raw string
+            close = '"' + m.group(1)
+            j = text.find(close, m.end())
+            j = n if j == -1 else j
+            lits.append(text[m.end():j])
+            end = min(n, j + len(close))
+            out.append(text[m.start():end])
+            i = end
+        elif tok.endswith('"'):  # ordinary / byte string with escapes
+            j = m.end()
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            lits.append(text[m.end():j])
+            out.append(text[m.start():j + 1])
+            i = j + 1
+        else:  # char literal
+            out.append(tok)
+            i = m.end()
+    return "".join(out), lits
 
-    # Strip the doc-comment lines so prose mentioning Pending/Rejected does not
-    # trip the variant scan; keep only code lines.
-    code = "\n".join(
-        ln for ln in body.splitlines() if not ln.lstrip().startswith("//")
-    )
 
-    for v in VISIBLE_VARIANTS:
-        if not re.search(rf"\b{v}\b", code):
-            offenders.append(
-                f"{rel(MODERATION_RS)}: {VISIBILITY_PREDICATE} no longer classifies `{v}` as "
-                "visible — the board would show nothing or rely on an unguarded path"
-            )
-    for v in NON_VISIBLE_VARIANTS:
-        if re.search(rf"\b{v}\b", code):
-            offenders.append(
-                f"{rel(MODERATION_RS)}: {VISIBILITY_PREDICATE} references `{v}` — a "
-                "non-approved state must NEVER be classified publicly visible "
-                "(pending/rejected on the public board is the exposure this gate prevents)"
-            )
-    return offenders
+def strip_sql_comments(sql: str) -> str:
+    sql = re.sub(r"--[^\n]*", " ", sql)
+    return re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
 
 
 def _iter_fn_bodies(text: str, name_re: str):
-    """Yield (fn_name, body) for every fn whose name matches `name_re` AND has a
-    body. Skips signature-only trait declarations (`fn foo(...) -> T;`) — the
-    `;` terminator appears before any `{`. Handles a name appearing BOTH as a
-    trait decl and an impl (the real `feedback.rs` shape): the decl is skipped,
-    the impl body is returned. Handles multiple impls of the same name."""
-    for m in re.finditer(rf"fn\s+({name_re})\s*[(<]", text, re.IGNORECASE):
+    """Yield (fn_name, body, body_offset) for every fn whose name matches `name_re` and has a
+    body; skips signature-only trait declarations. Call on comment-stripped text."""
+    for m in re.finditer(rf"\bfn\s+({name_re})\s*[(<]", text, re.IGNORECASE):
         brace = text.find("{", m.end())
         semi = text.find(";", m.end())
-        if brace == -1:
+        if brace == -1 or (semi != -1 and semi < brace):
             continue
-        if semi != -1 and semi < brace:
-            continue  # signature-only declaration — no body to inspect
-        # brace-balanced body extraction from the opening brace.
         depth = 0
-        body = None
         for i in range(brace, len(text)):
-            c = text[i]
-            if c == "{":
+            ch = text[i]
+            if ch == "{":
                 depth += 1
-            elif c == "}":
+            elif ch == "}":
                 depth -= 1
                 if depth == 0:
-                    body = text[brace : i + 1]
+                    yield m.group(1), text[brace:i + 1], brace
                     break
-        if body:
-            yield m.group(1), body
 
 
-# A board READ fn touches the `feedback` table (the rows the board exposes).
-# `\b` after `feedback` excludes `feedback_moderation_events` / `feedback_replies`.
-BOARD_READS_FEEDBACK_RE = re.compile(r"FROM\s+feedback\b", re.IGNORECASE)
-
-
-def _board_read_fns() -> List[Tuple[str, str, str]]:
-    """Repository fns that are the public-board READ: name mentions `board` AND
-    the body queries the `feedback` table. Returns (relpath, fn_name, body).
-
-    Name-keying on `board` excludes the admin moderation queue
-    (`list_pending_for_admin`, PII-allowed behind `AdminSession`); the
-    `FROM feedback` requirement further excludes board-SETTINGS fns
-    (`get_board_settings`/`update_board_settings`, which query `projects`, not
-    `feedback`) so the read invariants are checked only against actual reads."""
-    out: List[Tuple[str, str, str]] = []
-    if not REPOSITORY_SRC.is_dir():
-        return out
-    for src in sorted(REPOSITORY_SRC.glob("*.rs")):
-        text = src.read_text(encoding="utf-8")
-        for name, body in _iter_fn_bodies(text, r"\w*board\w*"):
+def _board_read_fns() -> List[Tuple[str, str, str, str]]:
+    """(relpath, fn_name, raw_body, code_body) for every repository fn named
+    *board* whose (comment-stripped) body queries `FROM feedback`."""
+    out = []
+    for src in sorted(REPOSITORY_SRC.rglob("*.rs")):
+        raw = src.read_text(encoding="utf-8")
+        if not re.search(r"\bfn\s+\w*board", raw, re.IGNORECASE):
+            continue  # no *board* fn can be discovered here; skip the lexer
+        code, _ = lex_rust(raw)
+        # lex_rust preserves offsets (comments -> spaces), so the same slice of
+        # the raw text is the raw body.
+        for name, body, start in _iter_fn_bodies(code, r"\w*board\w*"):
             if BOARD_READS_FEEDBACK_RE.search(body):
-                out.append((rel(src), name, body))
+                out.append((rel(src), name, raw[start:start + len(body)], body))
     return out
 
 
-def probe_b() -> Tuple[List[str], bool]:
-    """Board read hard-filters approved-only in SQL (PER read fn) + leaks no PII
-    / reply content.
-
-    Detection is BOARD-READ-SCOPED — the `board.rs` handler plus every repository
-    fn that is named `*board*` AND queries `FROM feedback` — so (a) an unrelated
-    query elsewhere in `feedback.rs` cannot false-satisfy the approved marker,
-    (b) a PII column SELECTed in the repo query (not just the handler wire shape)
-    is caught, and (c) the approved-only literal is required in EACH read fn (a
-    regression that drops the filter from just one of the two reads is caught,
-    not masked by the other).
-
-    PENDING until Worker A lands `board.rs`. Returns (offenders, pending)."""
-    # Probe B engages once the board handler exists (the C29 announcement
-    # trigger). The board read fns only exist post-A.
+def probe_b() -> List[str]:
     if not BOARD_HANDLER_RS.exists():
-        return [], True  # PENDING — Worker A has not implemented the board path yet.
+        return [f"{rel(BOARD_HANDLER_RS)} does not exist — the public board handler is gone "
+                "or moved; the moderation gate cannot be verified (FAIL, not PENDING)"]
+    if not REPOSITORY_SRC.is_dir():
+        return [f"{rel(REPOSITORY_SRC)} does not exist — repository layer missing"]
 
     offenders: List[str] = []
-    handler_text = BOARD_HANDLER_RS.read_text(encoding="utf-8")
+    handler_raw = BOARD_HANDLER_RS.read_text(encoding="utf-8")
+    handler_code, _ = lex_rust(handler_raw)
     read_fns = _board_read_fns()
+    read_names = {name for _, name, _, _ in read_fns}
+    hrel = rel(BOARD_HANDLER_RS)
 
-    # Scope units for the leak scans: the handler (wire shape) + each read fn.
-    scope: List[Tuple[str, str]] = [(rel(BOARD_HANDLER_RS), handler_text)]
-    scope += [(f"{relpath}::{name}", body) for relpath, name, body in read_fns]
+    scope: List[Tuple[str, str]] = [(hrel, handler_raw)]
+    scope += [(f"{p}::{name}", raw) for p, name, raw, _ in read_fns]
 
-    # (0) sanity — at least one board read fn must be discoverable, else the
-    # approved-only invariant cannot be scope-verified at all.
+    # (0) board read fns must be discoverable.
     if not read_fns:
         offenders.append(
-            f"{rel(BOARD_HANDLER_RS)} exists but no board READ fn was found (a repository fn "
-            "named `*board*` that queries `FROM feedback`) — the approved-only filter (C29 inv. 1) "
-            "cannot be scope-verified. Name the board reads `list_public_board`/"
-            "`get_public_board_item` per C29 and keep the SQL in the repository layer (DEC-FBR-03)."
+            f"no board READ fn found under {rel(REPOSITORY_SRC)} (a fn named *board* that "
+            "queries `FROM feedback`) — the approved-only filter (C29 inv. 1) cannot be verified"
         )
 
-    # (0b) the handler must READ feedback only through the approved-only board
-    # reads — a handler rewired to call an unfiltered feedback read (e.g.
-    # `list_for_end_user`) would bypass the SQL gate while every read fn above
-    # still filters correctly. Mirrors approval-gate-enforcement's handler-binding
-    # check (handler must consult has_approved_event). Defense-in-depth behind the
-    # behavioral Probe C, but catchable WITHOUT --full.
-    if read_fns and not any(name in handler_text for _, name, _ in read_fns):
-        offenders.append(
-            f"{rel(BOARD_HANDLER_RS)}: the board handler does not invoke any approved-only "
-            f"board read fn ({', '.join(sorted({n for _, n, _ in read_fns}))}) — it may read "
-            "feedback through an unfiltered path that bypasses the SQL moderation gate (C29 inv. 1)."
-        )
-
-    # (1) approved-only SQL literal required in EACH board read fn.
-    for relpath, name, body in read_fns:
-        if not APPROVED_SQL_RE.search(body):
+    # (0b) board.rs reaches feedback ONLY through BOARD_SAFE_READS.
+    calls = [(m.group(1), m.start()) for m in FEEDBACK_CALL_RE.finditer(handler_code)]
+    call_spans = {m.start() for m in FEEDBACK_CALL_RE.finditer(handler_code)}
+    for method, pos in calls:
+        line = handler_code.count("\n", 0, pos) + 1
+        if method not in BOARD_SAFE_READS:
             offenders.append(
-                f"{relpath}::{name}: board read fn does not hard-filter "
-                "`moderation_status = 'approved'` as a SQL literal. The approved-only invariant "
-                "(C29 inv. 1) MUST live in this query as a literal — not a bound param a code "
-                "path could vary, not a handler-side filter. A non-approved row would be reachable "
-                "through this read."
+                f"{hrel}:{line}: calls `.feedback.{method}(..)` — not in the board-safe read "
+                f"allowlist ({', '.join(sorted(BOARD_SAFE_READS))}). An unlisted feedback read "
+                "can return pending/rejected rows or PII to the public board (C29 inv. 1/3)."
             )
+    for m in FEEDBACK_HANDLE_RE.finditer(handler_code):
+        if m.start() not in call_spans:
+            line = handler_code.count("\n", 0, m.start()) + 1
+            offenders.append(
+                f"{hrel}:{line}: takes the feedback repository handle without an immediate "
+                "allowlisted method call — an aliased handle hides which read runs (C29 inv. 1)."
+            )
+    for m in RAW_DB_IN_HANDLER_RE.finditer(handler_code):
+        line = handler_code.count("\n", 0, m.start()) + 1
+        offenders.append(
+            f"{hrel}:{line}: raw database access `{m.group(0).strip()}` in the board handler — "
+            "board reads must go through the approved-only repository fns (DEC-FBR-03, C29)."
+        )
+    for method in sorted(BOARD_SAFE_READS):
+        if method not in read_names:
+            offenders.append(
+                f"allowlisted board read `{method}` is not a discovered board read fn in "
+                f"{rel(REPOSITORY_SRC)} (named *board*, queries `FROM feedback`) — its "
+                "approved-only SQL cannot be verified, so the allowlist entry is unproven."
+            )
+    if not calls:
+        offenders.append(f"{hrel}: invokes no board-safe feedback read — the board is wired "
+                         "to some other read path (C29 inv. 1).")
 
-    # (1b) no non-approved moderation literal anywhere in board scope.
+    # (1) EVERY SQL literal in EACH board read fn carries the approved filter,
+    #     once per `FROM/JOIN feedback` reference; comments do not count.
+    for relpath, name, _raw, code_body in read_fns:
+        _, lits = lex_rust(code_body)
+        sql_lits = [strip_sql_comments(s) for s in lits if SQL_LITERAL_RE.search(s)]
+        if not sql_lits:
+            offenders.append(f"{relpath}::{name}: board read fn has no SQL string literal "
+                             "to verify (SQL built elsewhere cannot be proven approved-only)")
+        for k, sql in enumerate(sql_lits, 1):
+            refs = len(FEEDBACK_TABLE_REF_RE.findall(sql))
+            filters = len(APPROVED_SQL_RE.findall(sql))
+            if filters == 0 or filters < refs:
+                offenders.append(
+                    f"{relpath}::{name}: SQL literal #{k} of {len(sql_lits)} reads `feedback` "
+                    f"{refs}x but hard-filters `moderation_status = 'approved'` {filters}x "
+                    "(comments excluded). EVERY board query must carry the literal filter "
+                    "(C29 inv. 1) — not a bound param, not a comment, not a sibling query."
+                )
+
+    # (1b) no non-approved moderation literal in scope.
     for label, body in scope:
         mm = NON_APPROVED_LITERAL_RE.search(body)
         if mm:
-            offenders.append(
-                f"{label}: references non-approved moderation literal `{mm.group(0)}` — a board "
-                "read must filter EXACTLY `= 'approved'`; `!= 'rejected'` / "
-                "`IN ('approved','pending')`-style filters leak pending rows (C29 inv. 1)."
-            )
+            offenders.append(f"{label}: references non-approved moderation literal "
+                             f"`{mm.group(0)}` — board reads filter EXACTLY = 'approved'.")
 
-    # (2) no submitter PII anywhere in board scope (handler wire shape OR repo
-    # query SELECT list).
+    # (2) no submitter PII in scope.
     for label, body in scope:
         for field in PII_FIELDS:
             if re.search(rf"\b{re.escape(field)}\b", body):
-                offenders.append(
-                    f"{label}: references submitter-PII field `{field}` — the board read scope "
-                    "(wire shape AND query) MUST NOT carry submitter identity (C29 inv. 3, Q24 "
-                    "class). Model on feedback.rs::list_for_end_user (selects exactly "
-                    "short_code, kind, status, body, accepted_at)."
-                )
+                offenders.append(f"{label}: references submitter-PII field `{field}` "
+                                 "(C29 inv. 3, Q24 class).")
 
-    # (3) no internal/admin reply content surfaced by the board.
+    # (3) no internal reply content.
     for label, body in scope:
         if REPLY_TABLE_TOKEN in body:
-            offenders.append(
-                f"{label}: references `{REPLY_TABLE_TOKEN}` — the board MUST NOT surface "
-                "internal/admin reply content (C29 wire shape has no reply field; "
-                "`feedback_replies` carries internal-visibility rows)."
-            )
+            offenders.append(f"{label}: references `{REPLY_TABLE_TOKEN}` — the board must not "
+                             "surface internal/admin reply content.")
 
-    # (4) VOTE-PATH gate (D3, PF-BOARD-VOTING-01): every board.rs handler that
-    #     writes through `state.board_votes` (cast/retract) MUST route through
-    #     ensure_board_enabled AND an approved-only resolution (resolve_approved_
-    #     board_*) BEFORE the vote write — so a vote/retract on a pending/rejected/
-    #     board-disabled item 404s identically to the read path (plan D2). Without
-    #     this the vote endpoint is an existence oracle for hidden feedback
-    #     (privacy leak, sibling to C29/FR-FBR-27). The resolution fn is itself a
-    #     board-read fn, so check (1) already pins its approved-only SQL literal.
-    #     Gracefully skipped before voting is wired (no board_votes reference yet).
-    if BOARD_VOTE_REPO_TOKEN in handler_text:
-        vote_handlers = [
-            (name, body)
-            for name, body in _iter_fn_bodies(handler_text, r"\w+")
-            if BOARD_VOTE_REPO_TOKEN in body
-        ]
-        if not vote_handlers:
-            offenders.append(
-                f"{rel(BOARD_HANDLER_RS)}: `{BOARD_VOTE_REPO_TOKEN}` is referenced but no enclosing "
-                "vote handler fn body was found — the vote-path moderation gate (D2) cannot be "
-                "scope-verified."
-            )
-        for name, body in vote_handlers:
-            if BOARD_ENABLED_FN not in body:
-                offenders.append(
-                    f"{rel(BOARD_HANDLER_RS)}::{name}: board vote handler does not call "
-                    f"`{BOARD_ENABLED_FN}` — a vote/retract on a board-DISABLED project must 404 "
-                    "(C29 inv. 2 extended to the vote path, plan D2)."
-                )
-            rm = APPROVED_RESOLVE_RE.search(body)
-            if not rm:
-                offenders.append(
-                    f"{rel(BOARD_HANDLER_RS)}::{name}: board vote handler does not resolve the "
-                    "target through an approved-only path (`resolve_approved_board_*`) before the "
-                    f"`{BOARD_VOTE_REPO_TOKEN}` write — a vote on a pending/rejected item would be "
-                    "an existence oracle for hidden feedback (plan D2; sibling to C29/FR-FBR-27)."
-                )
-            else:
-                write_idx = body.find(BOARD_VOTE_REPO_TOKEN)
-                if write_idx != -1 and rm.start() > write_idx:
-                    offenders.append(
-                        f"{rel(BOARD_HANDLER_RS)}::{name}: the approved-only resolution must run "
-                        f"BEFORE the `{BOARD_VOTE_REPO_TOKEN}` write (the moderation gate is a "
-                        "pre-write check, not a post-hoc one) — plan D2."
-                    )
-    return offenders, False
+    # (4) vote path: gate before write.
+    for name, body, _ in _iter_fn_bodies(handler_code, r"\w+"):
+        write_idx = body.find(BOARD_VOTE_REPO_TOKEN)
+        if write_idx == -1:
+            continue
+        en = body.find(BOARD_ENABLED_FN)
+        if en == -1 or en > write_idx:
+            offenders.append(f"{hrel}::{name}: vote handler does not call `{BOARD_ENABLED_FN}` "
+                             "before the `.board_votes` write (C29 inv. 2, plan D2).")
+        rm = APPROVED_RESOLVE_RE.search(body)
+        if not rm or rm.start() > write_idx:
+            offenders.append(f"{hrel}::{name}: vote handler does not resolve the target through "
+                             "`resolve_approved_board_*` before the `.board_votes` write — an "
+                             "existence oracle for hidden feedback (plan D2).")
+    return offenders
 
 
 def probe_c(full: bool) -> Tuple[Optional[bool], str]:
-    """Behavioral drift-detection (--full). PENDING until the tests land.
-
-    Returns (passed, message). passed=None => skipped/pending/inconclusive."""
     if not full:
-        return None, (
-            "skipped (pass --full to run tests/board_moderation_gate.rs + "
-            "board_privacy_isolation.rs)"
-        )
-    present = [t for t in (GATE_TEST_RS, PRIVACY_TEST_RS) if t.exists()]
-    if not present:
-        return None, (
-            f"PENDING — neither {rel(GATE_TEST_RS)} nor {rel(PRIVACY_TEST_RS)} written yet "
-            "(Workers A/B finalize the drift-detection leg)"
-        )
+        return None, "skipped (pass --full to run the three board_* integration tests)"
+    missing = [rel(t) for t in BOARD_TESTS if not t.exists()]
+    if missing:
+        return False, "behavioral test file(s) missing: " + ", ".join(missing)
     cmd = ["cargo", "test", "-p", "feedbackmonk-api"]
-    if GATE_TEST_RS.exists():
-        cmd += ["--test", "board_moderation_gate"]
-    if PRIVACY_TEST_RS.exists():
-        cmd += ["--test", "board_privacy_isolation"]
+    for t in BOARD_TESTS:
+        cmd += ["--test", t.stem]
     try:
-        proc = subprocess.run(
-            cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=600
-        )
+        proc = subprocess.run(cmd, cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=900)
     except FileNotFoundError:
         return None, "cargo not found — Probe C inconclusive"
     except subprocess.TimeoutExpired:
-        return False, "board gate/privacy tests timed out"
+        return False, "board tests timed out"
     if proc.returncode == 0:
-        return True, "board_moderation_gate + board_privacy_isolation: all passed"
+        return True, " + ".join(t.stem for t in BOARD_TESTS) + ": all passed"
     tail = (proc.stdout + proc.stderr).strip().splitlines()[-8:]
-    return False, "board gate/privacy tests failed:\n      " + "\n      ".join(tail)
+    return False, "board tests failed:\n      " + "\n      ".join(tail)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="public-board-moderation-gate oracle")
-    parser.add_argument(
-        "--full",
-        action="store_true",
-        help="also run the board gate + privacy integration tests (Probe C)",
-    )
+    parser.add_argument("--full", action="store_true",
+                        help="also run the board gate/privacy/vote integration tests (Probe C)")
+    parser.add_argument("--root", type=Path, default=DEFAULT_ROOT,
+                        help="repository root to scan (default: this repo; used by the self-test)")
     args = parser.parse_args()
+    if not args.root.is_dir():
+        print(f"ERROR public-board-moderation-gate: --root {args.root} is not a directory")
+        return 2
+    _set_root(args.root.resolve())
 
-    a_offenders = probe_a()
-    b_offenders, b_pending = probe_b()
+    b = probe_b()
     c_passed, c_message = probe_c(args.full)
+    if c_passed is None and args.full and "inconclusive" in c_message:
+        print(f"ERROR public-board-moderation-gate: {c_message}")
+        return 2
 
-    fails = (
-        (1 if a_offenders else 0)
-        + (1 if b_offenders else 0)
-        + (1 if c_passed is False else 0)
-    )
-
+    fails = (1 if b else 0) + (1 if c_passed is False else 0)
     if fails == 0:
         print("PASS public-board-moderation-gate")
-        print(
-            f"  Probe A (state machine: only Approved is publicly visible): "
-            f"clean ({rel(MODERATION_RS)})"
-        )
-        if b_pending:
-            print(
-                "  Probe B (board read approved-only + no PII): PENDING — "
-                f"{rel(BOARD_HANDLER_RS)} not yet implemented (Worker A; activates on landing)"
-            )
-        else:
-            print(
-                "  Probe B (board read + vote path approved-only + no PII): clean "
-                f"({rel(BOARD_HANDLER_RS)})"
-            )
+        print(f"  Probe B (board read + vote path approved-only, board-safe reads only, no PII): "
+              f"clean ({rel(BOARD_HANDLER_RS)})")
         print(f"  Probe C (behavioral drift-detection): {c_message}")
         return 0
 
     print(f"FAIL public-board-moderation-gate ({fails} probe(s) failed)")
-    if a_offenders:
-        print()
-        print("Probe A failures (visibility state machine):")
-        for o in a_offenders:
+    if b:
+        print("\nProbe B failures (board read path):")
+        for o in b:
             print(f"  {o}")
-        print(
-            "  Remediation: in feedbackmonk-core/src/moderation.rs keep "
-            "`is_publicly_visible` returning true for EXACTLY {Approved}. Any change here "
-            "needs a plan revision (C28/C29 are FROZEN)."
-        )
-    if b_offenders:
-        print()
-        print("Probe B failures (board read path):")
-        for o in b_offenders:
-            print(f"  {o}")
-        print(
-            "  Remediation: the board read query must hard-filter "
-            "`moderation_status = 'approved'` in SQL, and the board response shape must omit "
-            "every submitter-PII field (model on tests/me_feedback_isolation.rs)."
-        )
     if c_passed is False:
-        print()
-        print("Probe C failure (behavioral drift):")
+        print("\nProbe C failure (behavioral drift):")
         print(f"  {c_message}")
-        print(
-            "  Remediation: cargo test -p feedbackmonk-api --test board_moderation_gate "
-            "--test board_privacy_isolation"
-        )
     return 1
 
 

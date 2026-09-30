@@ -1,193 +1,101 @@
 # tier-enforcement-status
 
-**Kind**: Verification Oracle (Probandurgy — P3 Task Zero leg 2 of three-leg defense).
+## Summary
 
-**Question**: Does every domain-write handler under
-`crates/feedbackmonk-api/src/handlers/` either consult `check_tier_quota()`
-before its first write OR appear in the allowlist? Does `tier_quotas()` in
-`crates/feedbackmonk-core/src/tier.rs` return the Contract C19 canonical
-shape per `Tier` variant? With `--full`: do the end-to-end cap-firing
-smoke tests pass?
-
-## Synopsis
-
-Verification Oracle (P3 Task Zero) defending FR-FBR-14 tier enforcement: every domain-write handler under `crates/feedbackmonk-api/src/handlers/` either consults `check_tier_quota()` before its first write or is allowlisted, and `tier_quotas()` in `feedbackmonk-core::tier` returns the Contract C19 canonical shape per `Tier`. `--full` runs the end-to-end cap-firing smoke trio. Re-run after touching tier logic or adding a write handler.
+Verification Oracle defending FR-FBR-14 revenue enforcement: no code path may create a
+chargeable row — a project, or a feedback submission — without first consulting
+`check_tier_quota` with the matching `ResourceKind` and acting on its verdict. Come here
+when it is red, or after adding any path that creates a project or submits feedback.
 
 ## Probes
 
-### Probe A — Handler tier-cap coverage (AST scan)
+### Probe A — every chargeable-row creation is tier-guarded (static, default)
 
-Walks every `pub async fn` in `crates/feedbackmonk-api/src/handlers/*.rs`
-(skipping `mod.rs`). For each function whose body contains a domain-write
-pattern (`.create(`, `.update*(`, `.submit_authenticated(`,
-`.submit_anonymous(`, `.append_in_executor(`, `.cast(`, `.retract(`,
-`.register(`, `.deactivate(`, `.set_status(`, `.redeem(`, `.mark_verified(`,
-`.promote(`), the probe requires EITHER:
+1. **Discover** the chargeable repository functions: every non-test fn in
+   `crates/feedbackmonk-repository/src/` whose body runs `INSERT INTO projects (` or
+   `INSERT INTO feedback (`, closed over same-trait methods calling them via `self.`.
+   Today: `ProjectRepo::create`, `FeedbackRepo::submit_{authenticated,anonymous}[_full]`.
+   An INSERT outside a trait impl, or no writer found for either table, is a FAIL —
+   the probe refuses to go blind.
+2. **Find** every call site in every other crate's `src/` (`#[cfg(test)]` items
+   excluded, comments stripped, string contents blanked). A method name no other
+   repository file defines matches by name (`.m(` / `::m(`); a shared name (`create`)
+   matches only through a receiver bound to the owning trait — a `ProjectRepo`- or
+   `SqlxProjectRepo`-typed field/param (`state.projects`, `project_repo`), a
+   `Sqlx*Repo::new` local, a `let x = &state.projects;` alias, or UFCS
+   `ProjectRepo::create(`. Zero call sites for either table is a FAIL.
+3. **Guard**: earlier in the enclosing fn there must be
+   `let v = … check_tier_quota(…, ResourceKind::<K>) …;` with `K` matching the table
+   (`projects` → `Project`, `feedback` → `FeedbackInRollingMonth`), **and** `v.allowed`
+   must be tested between that statement and the call. A fn that calls without the
+   guard becomes chargeable itself and its callers must carry the guard — this is how
+   `handlers/feedback.rs::submit` guards the private `submit_*_path` helpers. An
+   unguarded fn with no caller (a route handler referenced only as `post(create)`) is a
+   FAIL, reported with the whole chain.
+4. No `INSERT INTO projects|feedback (` outside the repository crate.
 
-- A `check_tier_quota(` call that **precedes** the first write call, OR
-- An entry in `allowlist.toml` with a documented rationale.
+`allowlist.toml` can exempt a `file::function` only with a written rationale; it is
+empty, and an entry without a rationale is itself a FAIL.
 
-Same defensive pattern as `multi-tenant-isolation-check` Probe A. The
-allowlist is the drift surface — every new exemption requires a rationale
-comment that survives code review.
+### Probe C — integration smoke (`--full`)
 
-### Probe B — `tier_quotas()` config shape (static)
+`cargo test -p feedbackmonk-api --test tier_enforcement_smoke -- --include-ignored`
+(dev Postgres on 5433) drives the cap-firing HTTP paths end-to-end. The test target
+exists, so a missing target now FAILs instead of passing vacuously.
 
-Reads `crates/feedbackmonk-core/src/tier.rs`. For each
-`Tier::<Variant> => TierQuotas { ... }` arm, asserts the canonical token
-set per **Contract C19** is present:
+### Dropped (2026-09-30)
 
-| Variant   | projects_per_org | monthly_feedback_volume | custom_branding | custom_domain | eu_residency | footer_text                          |
-| --------- | ---------------- | ----------------------- | --------------- | ------------- | ------------ | ------------------------------------ |
-| Free      | Some(1)          | Some(50)                | false           | false         | false        | Some("powered by feedbackmonk")      |
-| Starter   | Some(3)          | Some(500)               | true            | false         | false        | None                                 |
-| Pro       | None             | Some(10000)             | true            | true          | true         | None                                 |
-| SelfHost  | None             | None                    | true            | true          | true         | None                                 |
-
-Defends against accidental edits like setting Free to unlimited or
-flipping the free-tier footer off. Token check is whitespace-insensitive
-so rustfmt cosmetic changes don't churn.
-
-> **`tier_quotas().footer_text` is the tier DEFAULT, not the final value**
-> (DEC-FBR-IMPL-11). The per-tenant `footer_text_override` column (migration
-> 00012) is resolved as a layer ABOVE this default in
-> `SqlxTenantRepo::get_widget_brand` — `tier_quotas()` itself is deliberately
-> unchanged, so this Probe B assertion (and the FR-FBR-14 default it pins) holds
-> exactly as before. The override is admin-ops-only (it cannot be set by a
-> tenant's own session), so external Free tenants still cannot strip the badge.
-> The override behavior is verified by Probe C scenario 4 (below), not here.
-
-### Probe C — Integration smoke (gated behind `--full`)
-
-Invokes `cargo test --test tier_enforcement_smoke -p feedbackmonk-api`.
-The smoke crate (Phase 4 deliverable) drives the actual HTTP path:
-
-1. Free-tier tenant creates 2nd project → 409 + structured
-   `tier_cap_exceeded` body.
-2. Free-tier tenant submits 51st feedback in 30-day window → 402 + same
-   body shape.
-3. `GET /api/v1/projects/{id}/widget-config` for Free tenant returns
-   `footer_text: Some("powered by feedbackmonk")`; for Pro/SelfHost
-   returns `None`.
-4. **(DEC-FBR-IMPL-11)** Footer/tier decoupling: a Free tenant with NO
-   override still returns the badge (FR-FBR-14 default), and a Free tenant
-   whose `footer_text_override = ""` returns `footer_text: null` (suppressed)
-   while its tier — and therefore quotas — stay Free. Proves badge visibility
-   is decoupled from tier and that the override supersedes the default.
-
-Probe C is **off by default** so the inner-loop cost stays under 250ms.
-CI (and `/0-uldf-finalize` Phase 11) re-run with `--full`.
-
-**Cold-start vacuous-PASS plan**: if the smoke test crate doesn't exist
-yet (Phase 4 not landed), Probe C reports vacuous PASS by detecting the
-cargo "no test target named" error. This lets the oracle ship in Task
-Zero before the wiring lands.
-
-## Three-leg defense (per P3 plan § Testability Gate)
-
-| Leg | Mechanism | File / location |
-|---|---|---|
-| 1. Type-system chokepoint | `Tier` enum + `TierQuotas` struct in `feedbackmonk-core/src/tier.rs`; `check_tier_quota(scope, ResourceKind) -> Result<QuotaStatus>` predicate in `feedbackmonk-repository/src/tier_quota.rs`. Exhaustive match in `ApiError::TierCapExceeded` mapping. | `crates/feedbackmonk-core/src/tier.rs`, `crates/feedbackmonk-repository/src/tier_quota.rs` |
-| 2. AST / artifact oracle (this file) | Probe A (handler coverage) + Probe B (config shape) + Probe C (integration smoke, `--full`) | `.claude/project-oracles/tier-enforcement-status/` |
-| 3. Integration tests | `sqlx::test` fixtures in `tier_enforcement_smoke.rs` exercise the cap-firing HTTP path end-to-end | `crates/feedbackmonk-api/tests/tier_enforcement_smoke.rs` |
+- **Old Probe A** (write-pattern scan over `pub async fn` handlers) was vacuous: its
+  body finder started paren-counting *after* the fn's opening `(`, so depth went to −1
+  at the closing `)` and the "body" became whatever brace next balanced — e.g. the
+  `TierCapExceeded { … }` literal inside `projects::create`. It never saw a real
+  handler body.
+- **Old Probe B** (`tier_quotas()` C19 token check) duplicated the core unit tests
+  `c19_{free,starter,pro,self_host}_tier_shape` and `only_free_tier_carries_footer` in
+  `crates/feedbackmonk-core/src/tier.rs`, which assert every value, the free-tier
+  footer included.
 
 ## Invocation
 
 ```bash
-# Unix / Git Bash / WSL — inner-loop fast path (A + B only):
-bash .claude/project-oracles/tier-enforcement-status/oracle.sh
-
-# Full loop (adds Probe C integration smoke):
-bash .claude/project-oracles/tier-enforcement-status/oracle.sh --full
-
-# Windows (PowerShell):
-pwsh .claude/project-oracles/tier-enforcement-status/oracle.ps1
-pwsh .claude/project-oracles/tier-enforcement-status/oracle.ps1 --full
-
-# Direct Python (cross-platform):
-python .claude/project-oracles/tier-enforcement-status/oracle.py
-python .claude/project-oracles/tier-enforcement-status/oracle.py --full
+python .claude/project-oracles/tier-enforcement-status/oracle.py            # Probe A
+python .claude/project-oracles/tier-enforcement-status/oracle.py --full     # + Probe C
+python .claude/project-oracles/tier-enforcement-status/oracle.py --root <tree>  # scan another tree
+python .claude/project-oracles/tier-enforcement-status/oracle.py -v         # discovery detail on FAIL
 ```
 
-Exit `0` on PASS, `1` on FAIL, `2` on environment failure (Python not found).
+Exit `0` PASS, `1` FAIL, `2` environment error (e.g. `--root` without the crates).
 
-## Output schema
+## Adversarial self-test
 
-```
-PASS tier-enforcement-status
-  Probe A (handler tier-cap coverage): clean (crates/feedbackmonk-api/src/handlers)
-  Probe B (tier_quotas() shape): clean (Contract C19 invariants hold)
-  Probe C (integration smoke): cargo test --test tier_enforcement_smoke: GREEN
-```
+Harness: `scratchpad/mut2/tier-enforcement-status/run_mutations.py` (session scratch,
+not tracked) copies `crates/*/src` into a scratch tree, applies one mutation, runs
+`oracle.py --root <tree>`, then rebuilds. Run 2026-09-30: baseline exit 0; every
+mutation exit 1, naming the right fn; restored tree exit 0.
 
-or
+| # | Mutation | Result |
+|---|---|---|
+| M1 | remove the guard from `projects::create` | exit 1 — `projects.rs create … nothing calls it` |
+| M2 | move the check after `state.projects.create(…)` | exit 1 |
+| M3 | check only in a `//` comment | exit 1 |
+| M4 | new handler calling `state.feedback.submit_anonymous(…)` unguarded | exit 1 — `me_feedback.rs sneaky_submit` |
+| M5 | check kept, `if !status.allowed` replaced by `if false` (verdict ignored) | exit 1 |
+| M6 | project path checks `ResourceKind::FeedbackInRollingMonth` | exit 1 |
+| M7 | `submit`'s check removed (guard must flow through `submit_*_path`) | exit 1 — chain `submit_*_full <- submit_*_path <- submit` |
+| M8 | UFCS `ProjectRepo::create(&*state.projects, …)` in a new fn | exit 1 |
+| M9 | `let repo = &state.projects; repo.create(…)` in a new fn | exit 1 |
+| M10 | `"INSERT INTO feedback (…)"` in the api crate | exit 1 |
+| M11 | `check_tier_quota(` only inside a string literal | exit 1 |
+| M12 | repository `INSERT INTO feedback` in a free fn outside any trait | exit 1 |
+| M13 | allowlist entry for `projects.rs::create` without a rationale | exit 1 |
 
-```
-FAIL tier-enforcement-status (<N> probe(s) failed)
-
-Probe A failures (handler missing tier-cap check):
-  crates/feedbackmonk-api/src/handlers/projects.rs:42  projects::create  performs a domain write without check_tier_quota (add the check or allowlist with rationale)
-  Remediation: add `state.tier_quotas.check_tier_quota(&scope, ResourceKind::*).await?` at the top of the handler BEFORE any data write, OR allowlist it in .claude/project-oracles/tier-enforcement-status/allowlist.toml with a documented rationale.
-
-Probe B failures (tier_quotas() shape drift from Contract C19):
-  tier.rs  Tier::Free arm missing canonical token `monthly_feedback_volume: Some(50)` (Contract C19 drift)
-  Remediation: restore the canonical TierQuotas literal per docs/planning/plans/20260514T134816-feedbackmonk-p3-commercial-gate.md § Contract C19. Changing tier-cap defaults requires a spec-level decision (DEC-FBR-* entry).
-```
-
-Cold-start (Task Zero, before Phase 4 wiring lands):
-
-```
-PASS tier-enforcement-status
-  Probe A (handler tier-cap coverage): clean (every handler with writes either consults check_tier_quota OR is allowlisted with rationale)
-  Probe B (tier_quotas() shape): vacuous PASS — crates/feedbackmonk-core/src/tier.rs does not exist yet (pre-build)
-  Probe C (integration smoke): skipped (pass --full to run integration smoke)
-```
-
-## Editing the allowlist
-
-The `allowlist.toml` file gates Probe A. **Adding a handler is a
-reviewable surface** — every entry requires a `rationale` line that a
-reviewer can audit. Entries are tightly scoped to:
-
-1. Pre-tier boundary handlers (signup, verify-email) — no tier exists yet.
-2. Operational writes that don't produce a NEW chargeable resource (admin
-   transitions, replies, signing-key registration, roadmap mutations).
-
-Adding `tier_quotas()` flag changes (e.g. raising the Free monthly cap)
-requires a `DEC-FBR-*` entry; the oracle's Probe B blocks silent drift.
-
-## Why integration smoke is gated behind `--full`
-
-Per P3 plan § Strategy Rationale: keeping the inner-loop fast (Probe A + B
-only, <250ms) means agents can re-run after each edit without paying
-fixture cost. The `--full` gate is the CI/finalize bound where the cost
-is amortized.
+Known limits (static, name-based): a receiver bound in a way none of the forms in
+step 2 cover (e.g. passed through a generic `R: ProjectRepo` param named in a
+`where` clause) would be missed for the shared name `create`; the unique-name
+feedback methods have no such gap. Probe C is the backstop.
 
 ## Lineage
 
-- **FR-FBR-14** — Tier enforcement (caps + footer)
-- **DEC-FBR-03** — Pricing tier matrix (Free / Starter / Pro / SelfHost)
-- **P3 plan §Oracle Pre-Build Plan** — Probe A + Probe B + Probe C-gated
-- **P3 plan §Testability Gate** — composite 16/25 → scaffolding pairing
-- **Three-leg defense pattern** — type-system + oracle + integration
-
-## Decision log
-
-- **File-naming**: `oracle.{py,sh,ps1}` matches the existing oracle
-  conventions in `widget-bundle-size`, `multi-tenant-isolation-check`,
-  `pii-scrub-audit`. The brief said `manifest.toml` — kept as a TOML
-  mirror; `manifest.json` is authoritative at runtime.
-- **Write-pattern set**: conservative — `.create(`, `.submit_*`,
-  `.update_*`, etc. Over-flagging is safe (covered by allowlist with
-  rationale); under-flagging silently misses a write path.
-- **Probe B token check is whitespace-insensitive**: rustfmt rewrites
-  whitespace inside struct literals; the canonical-token comparison
-  should not churn on cosmetic edits.
-- **Probe C gated behind `--full`**: keeps cold-start vacuous-PASS and
-  inner-loop fast (<250ms). `/0-uldf-finalize` Phase 11 + CI gate run
-  with `--full`.
-- **Cold-start vacuous-PASS for Probe C** when the test crate doesn't
-  exist (matched on `no test target named tier_enforcement_smoke`):
-  load-bearing for Task Zero — oracle lands BEFORE the smoke test
-  crate, then re-evaluates as Phase 4 wiring + Phase 7 smoke crate
-  land in subsequent commits.
+FR-FBR-14 (caps + footer), Contract C17/C18/C19, DEC-FBR-03 (tier matrix). Three-leg
+defense: type system (`Tier`, `TierQuotas`, `check_tier_quota`) → this oracle →
+`tier_enforcement_smoke.rs`.

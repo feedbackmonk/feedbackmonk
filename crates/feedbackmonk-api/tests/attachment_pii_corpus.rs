@@ -14,8 +14,8 @@
 //!    read-back, exactly the bytes a self-host operator's disk would hold.
 //!
 //!  - **Drift probe** — SHA-256 of `feedbackmonk_tracing::scrubber::
-//!    canonical_serialised()` must equal the value the `pii-scrub-audit` oracle
-//!    pins in `expected_hash.txt`, and the pattern count must be 20, and the
+//!    canonical_serialised()` must equal the value pinned in
+//!    `crates/feedbackmonk-tracing/tests/canonical_pattern_hash.txt`, and the pattern count must be 20, and the
 //!    corpus must cover 20 entries. If anyone edits the canonical pattern set
 //!    without refreshing this fixture, the hash assertion fails — the corpus
 //!    cannot silently drift away from the patterns it claims to cover.
@@ -31,10 +31,10 @@ use feedbackmonk_api::storage::{LocalFsStorage, ObjectStore};
 use sha2::{Digest, Sha256};
 
 /// The pinned canonical-pattern hash. MUST equal
-/// `.claude/project-oracles/pii-scrub-audit/expected_hash.txt`. The two values are kept
+/// `crates/feedbackmonk-tracing/tests/canonical_pattern_hash.txt`. The two values are kept
 /// byte-identical by construction (`canonical_serialised()` is the same input
-/// the oracle's Probe B hashes); if the pattern set changes intentionally, BOTH
-/// this constant and the oracle file are refreshed together.
+/// the tracing crate's drift test hashes); if the pattern set changes intentionally, BOTH
+/// this constant and that file are refreshed together.
 const EXPECTED_CANONICAL_HASH: &str =
     "bf1355b982a56848789412e4f273f4f8f77ce83c47fccf8de22c5111ccd430e3";
 
@@ -91,15 +91,15 @@ fn corpus_does_not_drift_from_canonical_patterns() {
         "corpus must carry one sample per canonical pattern"
     );
 
-    // 2) The canonical-serialised bytes hash to the oracle-pinned value. If a
+    // 2) The canonical-serialised bytes hash to the pinned value. If a
     // pattern's regex/name/replacement changed, this fails — forcing a corpus
-    // review in lockstep with the pattern set (same discipline as the
-    // pii-scrub-audit oracle Probe B).
+    // review in lockstep with the pattern set (same discipline as the tracing
+    // crate's `canonical_hash_matches_expected_file`).
     let hash = sha256_hex(&feedbackmonk_tracing::scrubber::canonical_serialised());
     assert_eq!(
         hash, EXPECTED_CANONICAL_HASH,
         "CANONICAL_PATTERNS drifted from the corpus's pinned hash; \
-         refresh both this fixture and .claude/project-oracles/pii-scrub-audit/expected_hash.txt"
+         refresh both this fixture and crates/feedbackmonk-tracing/tests/canonical_pattern_hash.txt"
     );
 
     // 3) Corpus names line up with the canonical pattern names, in order.

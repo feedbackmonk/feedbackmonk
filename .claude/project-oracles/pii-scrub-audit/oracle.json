@@ -1,0 +1,48 @@
+{
+  "name": "pii-scrub-audit",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1400,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Is every log line emitted through the PII scrubber (FR-FBR-10)? No crate but feedbackmonk-tracing builds or installs a subscriber: tracing_subscriber::fmt/registry, FmtSubscriber, SubscriberBuilder, set_global_default/set_default/with_default, .init() beside tracing_subscriber, impl Layer<..> for. Pattern-set drift is the tracing crate's canonical_hash test.",
+  "category": "privacy",
+  "invocation": {
+    "unix": ".claude/project-oracles/pii-scrub-audit/oracle.py",
+    "windows": ".claude/project-oracles/pii-scrub-audit/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-tracing/**",
+      "crates/feedbackmonk-api/src/main.rs",
+      "crates/feedbackmonk-anon/**",
+      "crates/feedbackmonk-jwt/**",
+      "crates/feedbackmonk-core/**",
+      "crates/feedbackmonk-repository/**",
+      "crates/feedbackmonk-api/**",
+      "migrations/**"
+    ],
+    "compute_cost_ms": 250
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P1+",
+    "estimated_token_savings_per_call": 1200
+  },
+  "consumer_scope": "P1+ all backend crates (every Stage 1+ worker emitting logs; CI gate)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-02T17:30:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/pii-scrub-audit/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "stage1-worker (P1 Foundation, Task Zero)",
+    "created": "2026-05-13T23:30:00Z",
+    "rationale": "FR-FBR-10 + DEC-FBR-01 Persona D (privacy). Three-leg defense per D-FBR-02: (1) type-system chokepoint in feedbackmonk_tracing::install_global_subscriber; (2) this oracle (AST probe + hash probe); (3) clippy + cargo-deny rejecting direct tracing_subscriber::fmt() builder calls outside the binary's main entrypoint."
+  }
+}

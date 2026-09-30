@@ -3,13 +3,13 @@
 //! `install_global_subscriber` is the SOLE public tracing-subscriber entry
 //! point. Every log line emitted by the binary passes through the canonical
 //! 20-pattern scrubber (`scrubber.rs`) at the WRITE boundary via a custom
-//! `MakeWriter` (`layer.rs`). The `pii-scrub-audit` Verification Oracle
-//! enforces this discipline at AST-grade:
+//! `MakeWriter` (`layer.rs`). Two checks hold the discipline:
 //!
-//! - **Probe A**: no `tracing_subscriber::fmt(`, `tracing_subscriber::registry(`,
-//!   or `impl Layer<...> for ...` outside this crate.
-//! - **Probe B**: SHA-256 of `CANONICAL_PATTERNS` matches
-//!   `.claude/project-oracles/pii-scrub-audit/expected_hash.txt`.
+//! - the `pii-scrub-audit` Verification Oracle: no subscriber is built or
+//!   installed outside this crate (`tracing_subscriber::fmt`/`registry`,
+//!   `FmtSubscriber`, `set_global_default`, `.init()`, `impl Layer<...> for`);
+//! - `tests/scrubber_patterns.rs`: SHA-256 of `CANONICAL_PATTERNS` matches
+//!   `tests/canonical_pattern_hash.txt`.
 //!
 //! Three-leg defense (D-FBR-02): (1) this chokepoint, (2) the oracle,
 //! (3) clippy + cargo-deny rules in the workspace.

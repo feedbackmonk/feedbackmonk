@@ -36,7 +36,11 @@ if [ -z "$PY" ]; then
 fi
 
 # The project verification-oracle suite. Adding an oracle here is a reviewable
-# surface — keep it in sync with the Oracles table in CLAUDE.md.
+# surface — keep it in sync with the Oracles table in CLAUDE.md. The finalize
+# proof also runs these, by the `lane` in each oracle.json (ULDF VER-15);
+# `feedback-parity-status` and `translation-gap-status` are operator-lane
+# reports and are deliberately absent. Five were retired on 2026-09-30 --
+# see docs/planning/project-checks-review-2026-09.md.
 #
 # These live under .claude/project-oracles/, NOT .claude/oracles/. The latter is
 # the ULDF framework's starter pack, whose runner answers `unknown` for anything
@@ -46,19 +50,14 @@ ORACLES=(
   multi-tenant-isolation-check
   host-tenant-binding
   pii-scrub-audit
-  cors-allowlist-enforcement
   approval-gate-enforcement
   public-board-moderation-gate
-  solicitation-invariant-check
   translation-egress-q24-isolation
   feedback-erasure-completeness
   tier-enforcement-status
   widget-bundle-size
   selfhost-compose-smoke
   feedback-as-data-audit
-  public-route-ceiling
-  public-id-as-capability
-  submission-idempotency
   i18n-catalog-integrity
   i18n-literal-ratchet
 )

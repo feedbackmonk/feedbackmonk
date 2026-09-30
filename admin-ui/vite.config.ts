@@ -31,6 +31,11 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // The userEvent-driven form tests (e.g. NewStory) take 1-3 s each on an
+    // idle machine and exceed vitest's 5 s default when the host is loaded,
+    // failing on time rather than on an assertion. A wider ceiling changes no
+    // assertion; a genuinely hung test still fails.
+    testTimeout: 20_000,
     // Vitest picks up *.test.* and *.spec.* by default; e2e/ is Playwright's
     // turf and uses a different `test` runtime that conflicts at import.
     include: ["src/**/*.{test,spec}.{ts,tsx}"],

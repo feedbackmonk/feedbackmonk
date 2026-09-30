@@ -23,6 +23,7 @@ One i18next instance, the C34 locale resolver, the locale state machine (`?lang=
 | `useLocale.ts` | Precedence, persistence (`fbm_lang`), `setLocale`, `bootstrapLocale`, `applyDocumentLocale`, `browserLocale`, `dirOf` |
 | `useLocale.test.ts` | Precedence, invalid-input rejection, `lang`/`dir` application, storage-throws survival |
 | `useAdminLocaleDefault.ts` | Admin-only C38 read applied as a default (never an override) |
+| `useAdminLocaleDefault.test.ts` | `isAdminPath`: every `/admin` route and `/feedback` get the tenant default; `/login` and the public surfaces never do |
 | `useLabels.ts` | Localized wire-enum labels with per-key English fallback (the four `status.json` SHARED families) |
 | `useLabels.test.tsx` | Catalog value, per-key fallback, unknown-value fallback |
 | `useAdminLabels.ts` | Localized wire-enum labels for the ADMIN-ONLY families (`admin.enum.*` — Stage 2 / W-D, LD ruling R-1); mirrors `useLabels.ts` exactly |

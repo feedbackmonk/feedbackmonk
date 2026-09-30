@@ -95,18 +95,10 @@ is SKIPPED (treated as vacuous PASS).
 ## Invocation
 
 ```bash
-# Unix / Git Bash / WSL — inner-loop fast path (A + B only):
-bash .claude/project-oracles/selfhost-compose-smoke/oracle.sh
+# Inner loop (A + B + D):
+python .claude/project-oracles/selfhost-compose-smoke/oracle.py
 
 # Full loop (adds Probe C clean-state smoke; ~60-180s with cold pull/build):
-bash .claude/project-oracles/selfhost-compose-smoke/oracle.sh --full
-
-# Windows (PowerShell):
-pwsh .claude/project-oracles/selfhost-compose-smoke/oracle.ps1
-pwsh .claude/project-oracles/selfhost-compose-smoke/oracle.ps1 --full
-
-# Direct Python (cross-platform):
-python .claude/project-oracles/selfhost-compose-smoke/oracle.py
 python .claude/project-oracles/selfhost-compose-smoke/oracle.py --full
 ```
 
@@ -207,10 +199,16 @@ point Probes A + B execute against the real artifact.
 
 ## Decision log
 
-- **File-naming**: `oracle.{py,sh,ps1}` matches the existing oracle
-  conventions in `widget-bundle-size`, `multi-tenant-isolation-check`,
-  `pii-scrub-audit`, `tier-enforcement-status`. `manifest.toml` is a
-  brief-named TOML mirror; `manifest.json` is authoritative at runtime.
+- **One file each (2026-09-30)**: `oracle.py` and `oracle.json`. The
+  `.sh`/`.ps1` shims only delegated to the `.py`, and `manifest.toml` was a
+  self-declared mirror of the JSON manifest; both were removed.
+- **Probe D (2026-09-30)**: every `FEEDBACKMONK_*`/`DATABASE_URL`/`RUST_LOG`
+  literal in the crates the api binary links (all but `feedbackmonk-runner`)
+  must have a catalog row. Probe B only compared the catalog with compose, so
+  five settings the api reads went undocumented; adding them was the fix.
+- **No validator is `unknown`, not a pass (2026-09-30)**: with neither the
+  docker CLI nor pyyaml the oracle exits 3. A missing compose file is a FAIL
+  (the old cold-start vacuous pass is gone).
 - **Probe A fallback to pyyaml**: docker CLI may not be installed in
   every agent's environment (CI runners, fresh dev VMs). The pyyaml
   fallback gives a partial-but-useful structural check; full validation

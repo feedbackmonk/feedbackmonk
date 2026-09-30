@@ -35,11 +35,11 @@ deliberately; a directory carrying `"schema": "oracle/2"` shadows the pack, whoe
 
 ## This project's own oracles are NOT here
 
-The seventeen **Verification Oracles** that defend feedbackmonk's code-level invariants live in
-**`.claude/project-oracles/`**. They are on an older, different contract — `manifest.json`, a
-canonical `oracle.py`, `oracle.sh`/`oracle.ps1` shims, a `--full` flag — and are invoked directly by
-`scripts/run-verification-oracles.sh` (CI job `verification-oracles`, and `scripts/ci-local.sh`
-step 1), never by the session-start runner. See `.claude/project-oracles/README.md`, and
+This project's own **Verification Oracles** live in **`.claude/project-oracles/`**, on the
+retired pre-rebuild contract: an `oracle.json` naming `kind`, `lane` and `invocation`, one
+`oracle.py`, and a `--full` flag. `scripts/run-verification-oracles.sh` runs them (CI job
+`verification-oracles`, and `scripts/ci-local.sh` step 1), and so does the finalize proof by
+lane (ULDF VER-15); the session-start runner never does. See `.claude/project-oracles/README.md`, and
 `CLAUDE.md` § Oracles for the one-line table of what each defends.
 
 Do not put one contract's directory in the other's home: the framework runner can answer a

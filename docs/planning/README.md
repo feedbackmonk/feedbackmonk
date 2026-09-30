@@ -1,5 +1,7 @@
 # Planning Context
 
+## Summary
+
 This directory contains **pre-implementation planning artifacts** produced by ULDF commands. These files are the product of Contexturgy — the deliberate crystallization of ephemeral cognitive state into durable, recoverable artifacts. They enable Soveredelity by ensuring no planning context is lost across sessions, compactions, or temporal boundaries.
 
 ## Lifecycle
@@ -88,6 +90,7 @@ A command that invokes a write (e.g., `/0-uldf-ldis-intake`) generates its path 
 | `20260907-claude-md-cut-archive.md` | hand-written | The prose the 2026-09-07 project-index cut removed, verbatim. History; see also `docs/pending-followups.md` |
 | `feedbackmonk-deploy-state.md` | hand-written | Pointer to the authoritative deploy record in the GitCellar repo |
 | `observations-ledger.md` | `/0-uldf-oracle` | Standing observations about this project's oracles |
+| `project-checks-review-2026-09.md` | hand-written (ULDF DEC-710) | The 2026-09-30 review of every project oracle: decision per oracle, defects found, and why `verification.projectOracles` is `gate` |
 | `proceed-trail.md` | `/0-uldf-proceed` | The topology each phase boundary chose, and why |
 
 **Note**: Specification artifacts live in `docs/specs/` (managed by `/0-uldf-ldis-spec`), not here. That directory holds the project's canonical living spec (state), not per-invocation snapshots (events).

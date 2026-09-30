@@ -1,49 +1,48 @@
 # multi-tenant-isolation-check
 
-## Synopsis
+## Summary
 
-Verification Oracle (P0 Task Zero) policing DEC-FBR-03's "raw SQL outside the repository layer is a security incident" rule at AST grade on every commit. Leg 2 of the three-leg tenant-isolation defense. Triggers include the api crate and `migrations/**`; re-run after any change touching query code or schema.
+Defends DEC-FBR-03: the tenant-scoped repository crate is the **only** path to the database, and every public repository method is scope-bound. Raw SQL anywhere else is a cross-tenant leak waiting to happen, so this runs in the CI suite on every push. Come here when a change touches query code, a handler that opens a transaction, a repository signature, or `allowlist.toml`.
 
-## Purpose
+## Probes
 
-Answers the question: *Does every domain-touching code path go through tenant-scoped repository methods?*
+**Probe A — nothing outside `crates/feedbackmonk-repository/` reaches the database** (every `.rs` under `crates/`, tests included; comments and string-literal contents are lexed out first, so `"http://x"; sqlx::query(..)` on one line cannot hide the call):
 
-Two probes:
+| Check | Fails on |
+|---|---|
+| A1 sqlx whitelist | any `sqlx::` path or `use sqlx::…` leaf other than `PgPool`, `postgres::PgPoolOptions`, `Error`, `test` — so `raw_sql`, `query*`, `QueryBuilder`, `Executor`, `Acquire`, `Transaction`, `PgConnection`, glob imports and `use sqlx as x` all fail |
+| A2 bare builders | `query(` / `query_as(` / `query_scalar(` / `*_with(` / `raw_sql(` (turbofish included) in a file that mentions sqlx; `query!`-family macros and `raw_sql(` anywhere |
+| A3 string SQL | `.execute/.fetch*/.prepare/.describe(` whose first argument is a string literal, `format!`/`concat!`, or an executor (`pool`, `tx`, `conn`, `&mut *x`) |
+| A4 pool executor | `pool.execute*/fetch*/prepare*/describe(`, plus the legacy tokens `pool.acquire(`, `&mut (Pg)Connection`, `&mut Transaction`, `Pool<Postgres>`, `extern crate sqlx` |
+| A5 transaction discipline | a `.begin()` not bound as `let [mut] tx = <pool>.begin().await?;`; or any later use of that `tx` other than `&mut tx` / `tx` passed **directly** to a repository method whose signature takes a `PgConnection` / `Transaction` / `Executor` / `Acquire` (discovered from the repository crate on every run), `tx.commit()` or `tx.rollback()`. So `&mut *tx`, `tx.execute(..)`, or handing the tx to a local helper fails. The api's handler transactions (`admin_feedback.rs:175`, `clusters.rs:197/374/448`, `moderation.rs:126`, `promote.rs:267`, `work_orders.rs:467`) all have the allowed shape: `&mut tx` into `*_in_executor` repository methods, then commit/rollback. |
+| A6 no re-export | the repository crate `pub use`-ing anything from sqlx (would launder the query API past A1) |
 
-- **Probe A** — raw SQL outside the repository crate: greps every `.rs` file under `crates/` (except `crates/feedbackmonk-repository/`) for forbidden patterns: `sqlx::query`, `&mut Connection`, `&mut PgConnection`, `&mut Transaction`, `Pool<Postgres>`, `pool.acquire(`.
-- **Probe B** — repository-method scope discipline: parses every `pub fn` / `pub async fn` signature in `crates/feedbackmonk-repository/src/**.rs` and verifies the first non-`&self` argument is `&TenantScope` or `&ProjectScope` (or appears in `allowlist.toml`).
+**Probe B — repository scope discipline.** Every public fn in `crates/feedbackmonk-repository/src/**` (pub-trait methods, `impl Trait for` methods, inherent/free `pub [const|async|unsafe] fn`) must take `&TenantScope` / `&ProjectScope` as its first non-self argument, or be listed in `allowlist.toml`. Generic fns such as `claim_idempotency_key<'t>(` (`feedback.rs:1021`) are parsed — the old `fn\s+(\w+)\s*\(` skipped every fn with a generic list. The allowlist is parsed as TOML and must be clean: every entry has a rationale, no key repeats, and no key is stale (names a method that no longer exists).
 
-Output: `PASS` (exit 0) when both probes are clean; `FAIL <count>` with `file:line` offenders and exit 1 otherwise.
+A missing `crates/` or repository crate, or an unreadable source file, is a **FAIL** — never a vacuous PASS. Probe A has no allowlist by design.
+
+## Usage
+
+```bash
+python .claude/project-oracles/multi-tenant-isolation-check/oracle.py            # this checkout
+python .claude/project-oracles/multi-tenant-isolation-check/oracle.py --root DIR # a tree with the same layout (self-test)
+```
+
+Exit 0 PASS, 1 FAIL (offenders with `file:line`), 2 environment error (bad `--root`). `--full` is accepted for suite uniformity; the oracle is static-only. About 0.5 s CPU on the current tree (~2.2 MB of Rust); wall time adds interpreter start-up.
 
 ## File Index
 
 | File | Purpose |
 |---|---|
-| `manifest.json` | Oracle metadata: name, kind (`verification`), triggers, freshness strategy, consumer scope. |
-| `allowlist.toml` | Methods that legitimately deviate from the first-arg-scope rule. Each entry carries an inline rationale. Currently 3 pre-auth trait methods + 4 inherent constructors. |
-| `oracle.py` | **Canonical implementation.** Python 3.8+ — performs balanced-paren parsing of multi-line Rust signatures with context tracking the shells cannot do reliably. |
-| `oracle.ps1` | Thin shim that invokes `oracle.py`. Windows entry point. |
-| `oracle.sh` | Thin shim that invokes `oracle.py`. Unix entry point. |
-
-## Public API & Usage
-
-```bash
-# From repo root, any of:
-python .claude/project-oracles/multi-tenant-isolation-check/oracle.py
-bash   .claude/project-oracles/multi-tenant-isolation-check/oracle.sh
-pwsh   .claude/project-oracles/multi-tenant-isolation-check/oracle.ps1
-
-# Exit 0 + "PASS" on success; exit 1 + "FAIL <count>" with offender lines on failure.
-```
-
-Triggered by changes to: `migrations/**`, `crates/feedbackmonk-repository/**`, `crates/feedbackmonk-core/**`, `crates/feedbackmonk-api/**`, `crates/feedbackmonk-jwt/**` (Stage 2), `crates/feedbackmonk-anon/**` (Stage 2), `.claude/project-oracles/multi-tenant-isolation-check/allowlist.toml`.
+| `oracle.json` | Oracle metadata: triggers, freshness, consumer scope. |
+| `allowlist.toml` | Probe B exemptions (12 trait methods, 27 inherent methods), each with a rationale. |
+| `oracle.py` | Canonical implementation. |
 
 ## Constraints & Business Rules
 
-- **Probe A has NO allowlist.** DEC-FBR-03 declares any raw SQL outside `crates/feedbackmonk-repository/` a security incident — there is no legitimate use case. Don't add one without a written DEC-FBR-* amendment.
-- **Probe B allowlist requires inline rationale.** Adding an entry to `allowlist.toml` without a rationale comment is forbidden; the oracle's value comes from making each exception explicit.
-- **CI gate from commit 1.** The build fails on oracle red. This is by design — a passing CI with a red isolation oracle is worse than no oracle at all.
-- **Speed contract**: <2s end-to-end on a clean tree. Currently ~250ms.
+- **Probe A has NO allowlist.** DEC-FBR-03 declares any raw SQL outside `crates/feedbackmonk-repository/` a security incident. Widening the A1 whitelist needs a written DEC-FBR-* amendment; every item on it today is inert (a pool handle, its builder, the error type, the test attribute).
+- **Probe B allowlist entries need a rationale**, enforced by the oracle.
+- **CI gate.** Run by `scripts/run-verification-oracles.sh` (CI job `verification-oracles`, and `scripts/ci-local.sh`).
 
 ## Relationships & Dependencies
 
@@ -65,13 +64,7 @@ Triggered by changes to: `migrations/**`, `crates/feedbackmonk-repository/**`, `
 
 ### Canonical implementation in Python, not pure shell
 
-**Decision**: `oracle.py` is the canonical implementation; `oracle.ps1` and `oracle.sh` are thin shims that delegate to it.
-
-**Rationale**: Probe B requires balanced-paren multi-line Rust signature parsing with context tracking. The initial bash port produced 25 false positives on a clean tree due to POSIX shell's context-tracking limitations (`grep` cannot follow signatures across lines without significant gymnastics). Python 3.8+ is ubiquitous on CI Ubuntu and developer machines; the dependency cost is real but small. The trade-off favors correctness — a false-positive oracle is not just annoying, it's *trained-to-ignore*, which silently degrades to no oracle at all over a few weeks.
-
-**Trade-offs**: Adds Python to the oracle dependency set. Documented in file headers. CI workflow explicitly installs Python 3.8+ if absent.
-
-**Implementation**: `oracle.py` is the implementation; shims forward `python3 oracle.py "$@"` to it. Both shims verified PASS on clean tree and FAIL on a planted `sqlx::query` violation.
+**Decision**: `oracle.py` is the only implementation. It once had `oracle.ps1`/`oracle.sh` shims that only delegated to it; they were removed on 2026-09-30, and every consumer invokes `python .../oracle.py`.
 
 ### Allowlist entries require inline rationale
 
@@ -81,14 +74,40 @@ Triggered by changes to: `migrations/**`, `crates/feedbackmonk-repository/**`, `
 
 **Trade-offs**: Adding an allowlist entry is slightly more work. By design — the friction is the feature.
 
-**Implementation**: `allowlist.toml` schema: `[[methods]]` or `[[inherent_methods]]` blocks, each with `trait`/`type_name`, `method`, and `rationale` fields. Oracle code does not check the rationale string content (that's a human review job), only its presence.
+**Implementation**: `allowlist.toml` schema: `[[methods]]` or `[[inherent_methods]]` blocks, each with `trait`/`type_name`, `method`, and `rationale` fields. Oracle code does not judge the rationale's content (that's a human review job); it FAILS an entry whose rationale is missing or empty, a repeated key, and a stale key.
 
 ### Freshness contract triggers on allowlist changes
 
-**Decision**: `allowlist.toml` is listed in `manifest.json` `freshness.triggers` — editing it invalidates the oracle and forces re-run.
+**Decision**: `allowlist.toml` is listed in `oracle.json` `freshness.triggers` — editing it invalidates the oracle and forces re-run.
 
 **Rationale**: An allowlist edit is precisely the kind of action that should re-trigger the oracle, because it changes the rules. If allowlist edits did NOT invalidate, a developer could add an over-broad entry and commit while the oracle's cached result still showed green from before the edit — defeating the audit trail.
 
-**Trade-offs**: Slightly more frequent oracle invocations. Cost is ~250ms per run; negligible.
+**Trade-offs**: Slightly more frequent oracle invocations. Cost is ~0.5 s CPU per run; negligible.
 
-**Implementation**: `manifest.json` `freshness.triggers` line 24 includes the allowlist path.
+**Implementation**: `oracle.json` `freshness.triggers` line 24 includes the allowlist path.
+
+## Adversarial self-test
+
+Run 2026-09-30 against a copy of `crates/` (no `target/`) under the session scratchpad, via `--root`. Each mutation was applied alone, the oracle run, the file restored. "old" is the pre-hardening oracle (HEAD `4f1b88d`) on the same mutated tree. After every restore the new oracle returned exit 0.
+
+| # | Mutation (file) | new | old | Caught by |
+|---|---|---|---|---|
+| M1 | `let _q = sqlx::raw_sql("DELETE FROM feedback");` after the `begin()` in `handlers/admin_feedback.rs` | 1 | 0 | A1 |
+| M2 | `use sqlx::{query, Executor};` + `query("DELETE FROM feedback")` (admin_feedback.rs) | 1 | 0 | A1 (both leaves) + A2 |
+| M3 | `ex.execute("DELETE FROM feedback")` on a fn parameter (admin_feedback.rs) | 1 | 0 | A3 |
+| M4 | `(&mut *tx).execute(q).await?;` on the handler transaction | 1 | 0 | A5 |
+| M5 | `&mut tx` → `&mut *tx` in the `append_in_executor` call (admin_feedback.rs:200) | 1 | 0 | A5 |
+| M6 | `local_helper(&mut tx).await?;` | 1 | 0 | A5 (not a repository executor method) |
+| M7 | `state.pool.begin().await?.commit().await?;` (unbound) | 1 | 0 | A5 |
+| M8 | `state.pool.fetch_all(q).await?` | 1 | 0 | A4 |
+| M9 | `let _u = "http://x"; let _q = sqlx::query("…");` on one line | 1 | 0 | A1 (old per-line `//` strip ate the call) |
+| M10 | `async fn leak_all<'t>(&self, tenant_id: uuid::Uuid)` added to `pub trait FeedbackRepo` | 1 | 0 | Probe B (generic fn) |
+| M11 | `pub use sqlx::query as raw;` in repository `lib.rs` | 1 | 0 | A6 |
+| M12 | `use sqlx::Executor as _;` alone | 1 | 0 | A1 |
+| M13 | `query_as::<_, (i64,)>("SELECT 1")` in a file already importing `sqlx::PgPool` | 1 | 0 | A2 (turbofish) — first cut of A2 missed this; regex fixed |
+| M14 | `query!("DELETE FROM feedback")` in `feedbackmonk-core/src/lib.rs` (no sqlx mention) | 1 | 0 | A2 (macro anywhere) |
+| M15 | `repo_like.fetch_one(&*format!("SELECT {}", 1))` | 1 | 0 | A3 |
+| M16 | rename allowlisted `TrendBucket::parse` → `parse_v2` (repository `feedback.rs`) | 1 | 1 | Probe B + stale-allowlist check (`TrendBucket::parse` names no fn) |
+| — | `--root` at an empty directory | 1 | n/a | missing crates/ and repository crate are FAILs |
+
+The harness is not kept in the tree; re-create it by copying `crates/` elsewhere, applying one row, and running `oracle.py --root <copy>`.

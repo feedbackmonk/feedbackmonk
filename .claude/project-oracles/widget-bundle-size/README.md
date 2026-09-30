@@ -26,9 +26,9 @@ Over → FAIL with per-file size breakdown + overage.
 **Subdirectories are excluded deliberately** (`glob`, not `rglob`) — see
 *Why the measured set was redefined* below.
 
-Cold-start (no `widget/dist/` yet) emits **vacuous PASS**: 0 files = 0 bytes
-≤ cap. This is the load-bearing property that lets the oracle ship BEFORE
-the widget source, then re-evaluate on every subsequent build.
+A missing `widget/dist/widget.js` is a FAIL: the widget exists, so a
+commit without its build is broken (until 2026-09-30 this was a cold-start
+vacuous PASS).
 
 ### Probe B — No canonical third-party tracker hostnames
 
@@ -67,8 +67,8 @@ that is not strings — leaked code, a non-`widget` namespace, duplicated keys �
 and the fix is upstream in `widget/scripts/slice-locales.mjs`. Never silently
 raise the constant.
 
-No `dist/locales/` directory (or no chunks in it) → **vacuous PASS**, same
-cold-start reasoning as Probe A.
+No chunks in `dist/locales/` while `i18n/locales/` holds non-English
+locales → FAIL (formerly a vacuous PASS).
 
 ## Why the measured set was redefined (FR-FBR-35, 2026-09-06)
 
@@ -104,17 +104,15 @@ same reason: a cap that moves when it is inconvenient is not an invariant.
 ## Invocation
 
 ```bash
-# Unix / Git Bash on Windows / WSL
-bash .claude/project-oracles/widget-bundle-size/oracle.sh
-
-# Windows (PowerShell)
-pwsh .claude/project-oracles/widget-bundle-size/oracle.ps1
-
-# Or Python directly (cross-platform)
 python .claude/project-oracles/widget-bundle-size/oracle.py
 ```
 
 Exit `0` on PASS, `1` on FAIL, `2` on environment failure (Python not found).
+
+A missing `widget/dist/widget.js`, or no `dist/locales/*.js` chunks while `i18n/locales/` has
+non-English locales, is a FAIL (2026-09-30; it used to print a vacuous PASS). This oracle measures
+the committed build and never builds: CI job `frontends` rebuilds the widget and fails when the
+committed `dist/` differs from the rebuild, which is what proves `dist/` matches `src/`.
 
 ## Output schema
 
@@ -151,14 +149,11 @@ Probe C failure (per-locale catalog chunk exceeds 4096B cap per Contract C42):
   Remediation: a locale chunk is a flat map of ~40 short strings and nothing else. Check widget/scripts/slice-locales.mjs for leaked code, a non-widget namespace or duplicated keys. Never silently raise LOCALE_CHUNK_CAP_BYTES.
 ```
 
-Cold-start (no `widget/dist/`):
+Missing build:
 
 ```
-PASS widget-bundle-size
-  tracker-list hash: <sha256-hex> (<N> hostnames)
-  Probe A (English page-load set <= 30720B): vacuous PASS — widget/dist does not exist yet (pre-build / cold-start)
-  Probe B (no tracker hostnames): vacuous PASS — no built files to scan
-  Probe C (each locale chunk <= 4096B): vacuous PASS — no built files to scan
+FAIL widget-bundle-size (widget/dist/widget.js is missing)
+  Run `npm run build` in widget/ and commit dist/.
 ```
 
 ## Adversarial self-test (v1.1.0, recorded 2026-09-06)
@@ -234,9 +229,10 @@ inner-loop closer. CI is the outer-loop redundancy.
   positives are theoretically possible (a customer slug literally named
   `segment.io`) but acceptable — the file `widget/dist/*` is bundled
   output, not customer data.
-- **Cold-start vacuous PASS**: load-bearing. Lets the oracle land
-  BEFORE `widget/dist/` exists, satisfying Task Zero's order-of-operations
-  invariant.
+- **Cold-start vacuous PASS — retired 2026-09-30.** It let the oracle land
+  before `widget/dist/` existed (Task Zero ordering). The widget has shipped
+  since, so a missing build now fails; freshness against `src/` is CI job
+  `frontends` (rebuild + `git status --porcelain -- widget/dist`).
 - **Probe A measures the ENGLISH PAGE-LOAD SET, not everything under `dist/`**
   (FR-FBR-35 amendment, v1.1.0). Rationale in full above. The short version:
   once `dist/` contains 31 mutually-exclusive locale chunks, a recursive sum

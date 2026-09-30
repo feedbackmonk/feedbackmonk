@@ -355,6 +355,10 @@ except `crash_event_id`/`title` as optional.
 > unit-tested against a mock Glitchtip; pointing it at GitCellar's live Glitchtip needs the four
 > `FEEDBACKMONK_GLITCHTIP_{URL,ORG,PROJECT,TOKEN}` env vars set at deploy. Until then, `crash_event_id`
 > is still captured + stored; only the resolved banner detail is "unavailable".
+>
+> **Correction (2026-09-30):** setting the four vars is not enough — nothing in the api binary
+> constructs the correlator yet, so no response carries resolved crash detail. Wiring it is an open
+> decision: `docs/planning/deferred/crash-correlation-not-wired-20260930.md`.
 
 ---
 

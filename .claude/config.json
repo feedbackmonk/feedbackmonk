@@ -1,0 +1,12 @@
+{
+  "verification": {
+    "projectOracles": "gate",
+    "retired_oracles": {
+      "public-route-ceiling": "2026-09-30: consolidated into host-tenant-binding, which classifies every router in build_app; this one checked a hand-kept list of four and missed four unlimited public routers.",
+      "cors-allowlist-enforcement": "2026-09-30: Probe A (CORS wiring) consolidated into host-tenant-binding; Probe B (credentialed echo-origin policy) is crates/feedbackmonk-api/tests/cors_preflight.rs.",
+      "public-id-as-capability": "2026-09-30: covered by crates/feedbackmonk-api/tests/attachment_list_download.rs (read_without_submitter_credential_404, cross_scope_attachment_ids_404), which catches an ignored authorization result this static probe passed.",
+      "submission-idempotency": "2026-09-30: covered by crates/feedbackmonk-api/tests/submit_idempotency.rs (identity-scoped keys, 409 on content mismatch); the probe only checked that words were present.",
+      "solicitation-invariant-check": "2026-09-30: moved into the database -- the solicitation upsert refuses to overwrite opted_out (test stale_write_cannot_overwrite_opted_out); the static probe could not see the read-then-write race it now closes."
+    }
+  }
+}

@@ -10,7 +10,7 @@ Fails when a new hard-coded user-facing English literal appears in a localized s
 > without passing through the catalog — so a new feature cannot quietly ship
 > English-only in a product that promises 31 locales.
 
-Frozen in `manifest.json` at Task Zero (2026-09-06).
+Frozen in `oracle.json` at Task Zero (2026-09-06).
 
 ## What it scans
 
@@ -50,7 +50,7 @@ fallback that never goes through `t()`. Flagged to the file's owner
 
 ## Self-test
 
-`oracle.py --self-test` (or either shim with the same flag) exercises the
+`oracle.py --self-test` exercises the
 scanner directly against small in-memory fixtures — no filesystem, no
 `i18n/literal-baseline.json` — proving all three fixes above in one
 invertible pass: a real literal is still caught, and each false-positive
@@ -63,7 +63,7 @@ establishes it with `--freeze` at Stage-1 converge.
 
 ## Known gaps
 
-See `manifest.json` `assertion.known_gaps`: a literal assembled at runtime
+See `oracle.json` `assertion.known_gaps`: a literal assembled at runtime
 or held in a `const` before being passed to a DOM call is not matched
 (the a11y locale-matrix specs are the second, behavioral leg); non-user-facing
 literals occasionally match the JSX-text pattern and are absorbed into the

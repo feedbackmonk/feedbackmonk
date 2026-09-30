@@ -1,0 +1,47 @@
+{
+  "name": "feedback-erasure-completeness",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1200,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Does erasure leave anything behind? Single delete purges bytes before rows and scopes the DELETE's own WHERE by end_user_sub + tenant + project; bulk erase purges bytes before rows after the ownership check; every reference to feedback(id) cascades or nulls and every feedback-id column has a foreign key; every table carrying an end-user key is deleted by erase_all_for_end_user; derived text is scrubbed.",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/project-oracles/feedback-erasure-completeness/oracle.py",
+    "windows": ".claude/project-oracles/feedback-erasure-completeness/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-api/src/handlers/me_feedback.rs",
+      "crates/feedbackmonk-repository/src/feedback.rs",
+      "crates/feedbackmonk-repository/src/attachments.rs",
+      "crates/feedbackmonk-api/src/storage.rs",
+      "crates/feedbackmonk-api/tests/me_feedback_delete.rs",
+      "migrations",
+      ".claude/project-oracles/feedback-erasure-completeness/oracle.py"
+    ],
+    "compute_cost_ms": 45
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the me_feedback delete path, the attachment/erasure repo methods, the ObjectStore trait, or any migration adding a feedback-child table",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "feedbackmonk: the Phase A A1 implementer + every reviewer touching the erasure handler, the delete_for_end_user query, the attachment storage-key purge, or any new table referencing feedback(id). A green oracle (A+B+C clean, --full clean-or-pending) is the A1 privacy gate.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-07-01T00:00:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/feedback-erasure-completeness/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "Phase A A1 (the verifiability surface for the P0 right-to-erasure invariant; plan S0.2, deferred from Stream 1 to Wave 2 so it asserts against the shipped handler).",
+    "created": "2026-07-01T00:00:00Z",
+    "rationale": "Testability Gate Flag (A1, composite 16/25, Q2 fidelity risk 4): a happy-path test confirms 'the row is gone from the list', but cannot prove the ABSENCE of surviving attachment OBJECT BYTES (cascade removes only metadata rows), nor that a future feedback-child migration can't add a NO-ACTION FK that orphans data, nor that a refactor can't drop end_user_sub from the erasure WHERE (cross-user erasure hole). Detection-from-code (handler byte-purge ordering + per-FK cascade mode + DELETE scope columns), the anti-reward-hacking leg — it cannot be satisfied by a self-reported flag. Mirrors translation-egress-q24-isolation / public-board-moderation-gate."
+  }
+}

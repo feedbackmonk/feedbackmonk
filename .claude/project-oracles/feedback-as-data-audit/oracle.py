@@ -25,34 +25,25 @@ it does NOT prove the ABSENCE of a bypass path (feedback text reaching the
 instruction layer) or an outbound path that skips the sanitizer. This oracle is
 the anti-reward-hacking leg — a worker cannot satisfy it with a flag.
 
-THREE probes (detection-from-code; ALL ACTIVE as of Worker A's Stage-1 landing):
+THREE probes (detection-from-code; comments and #[cfg(test)] modules stripped):
 
-  A) ENVELOPE CHOKEPOINT (static, ACTIVE):
-     `feedbackmonk-runner/src/prompt.rs` defines `wrap_untrusted` + the envelope
-     delimiters + the DEC-84 preamble, and the `<untrusted-feedback-data>`
-     envelope literal appears in EXACTLY ONE place (the chokepoint). Now that
-     `assemble` is finalized (no longer `unimplemented!`), the probe additionally
-     asserts it routes feedback-derived fields through `wrap_untrusted` rather
-     than concatenating them raw. (Auto-degrades to PENDING if assemble's body is
-     ever removed.)
+  A) ENVELOPE: prompt.rs defines `wrap_untrusted`; no other runner file names the
+     envelope delimiters; `assemble` reads nothing of the recommendation before it
+     builds `untrusted_envelope`, and routes it through
+     wrap_untrusted(render_untrusted_block(..)); nothing else calls
+     render_untrusted_block.
 
-  B) EGRESS CHOKEPOINT (static, ACTIVE):
-     `feedbackmonk-runner/src/sanitizer.rs` defines `sanitize_outbound`. The
-     outbound modules have landed (Worker B `report`, Worker C `analyst`); the
-     probe asserts each routes its POST payload through `sanitize_outbound`.
-     (Auto-degrades to PENDING if every outbound module is removed.)
+  B) EGRESS, per function: every `.runner_transition(..)` result_ref /
+     failure_reason and every `.post_recommendation(..)` payload is `None` or a
+     variable bound in the same function from sanitize_outbound / sanitize_clean /
+     failure_reason_for_egress (the latter two must call sanitize_outbound); no
+     file but client.rs names an HTTP client.
 
-  C) CORPUS / BEHAVIOR (gated behind --full, ACTIVE):
-     runs the C24 adversarial corpus (`tests/feedback_injection_corpus.rs`). The
-     P5b cases `case_g_destructive_steering_p5b` + `case_f_runner_side_exfil_
-     defense_p5b` are un-ignored and backed by the real runner prompt-assembly /
-     egress sanitizer; the probe reports them ACTIVE once they are no longer
-     `#[ignore]` and the corpus is green. (Full corpus green needs the dev DB for
-     the `sqlx::test` behavioural cases.)
+  C) CORPUS (--full): cargo test -p feedbackmonk-api --test feedback_injection_corpus.
 
-A green oracle with A+B+C ACTIVE is Worker A's Stage-1 exit gate — MET. The probe
-states are computed dynamically from the code, so the language self-degrades to
-PENDING if a future change removes a chokepoint body or an outbound module.
+What it does not see: text that enters the ClaimedOrder's trusted fields
+(title, instructions) upstream in the API -- see
+docs/planning/deferred/runner-recommendation-text-in-trusted-layer-20260930.md.
 
 Output: machine-parseable PASS / FAIL. Exit 0 PASS, 1 FAIL, 2 environment.
 
@@ -60,7 +51,7 @@ Lineage:
 - FR-FBR-25b (prompt data-envelope) / FR-FBR-25c (source-never-leaves)
 - Contract C27 (P5b plan, FROZEN) + Testability Gate Flags 1 & 2
 - C24 corpus (feedback_injection_corpus.rs) cases (g)/(f)
-- Probandurgy Verification Oracle pattern (canonical-Python + shims)
+- Probandurgy Verification Oracle pattern (canonical Python)
 """
 from __future__ import annotations
 
@@ -83,9 +74,6 @@ CORPUS_RS = (
 ENVELOPE_LITERAL = "<untrusted-feedback-data>"
 CHOKEPOINT_FN = "fn wrap_untrusted"
 EGRESS_FN = "fn sanitize_outbound"
-# Untrusted feedback-derived fields that must only reach the prompt via the
-# chokepoint (used by the tightened Probe A once `assemble` is implemented).
-UNTRUSTED_FIELDS = ["member_bodies", "cluster_summary", "rationale"]
 # The P5b corpus cases that activate the behavioral leg.
 P5B_CASES = ["case_g_destructive_steering_p5b", "case_f_runner_side_exfil_defense_p5b"]
 
@@ -123,93 +111,138 @@ def _strip_comments(text: str) -> str:
     return text
 
 
-def probe_a() -> Tuple[List[str], bool]:
-    """Single envelope chokepoint. Returns (offenders, assemble_pending)."""
+def _fn_bodies(text: str) -> List[Tuple[str, str]]:
+    """Every `fn name ... { body }` in `text`, in order."""
+    out: List[Tuple[str, str]] = []
+    for m in re.finditer(r"\bfn\s+(\w+)", text):
+        body = _extract_fn_body(text[m.start():], "fn " + m.group(1))
+        if body is not None:
+            out.append((m.group(1), body))
+    return out
+
+
+def _call_args(body: str, callee: str) -> List[List[str]]:
+    """The top-level argument list of every `.callee(` call in `body`."""
+    calls: List[List[str]] = []
+    for m in re.finditer(r"\.\s*" + re.escape(callee) + r"\s*\(", body):
+        depth, args, cur = 1, [], ""
+        for c in body[m.end():]:
+            if c in "([{":
+                depth += 1
+            elif c in ")]}":
+                depth -= 1
+                if depth == 0:
+                    break
+            if c == "," and depth == 1:
+                args.append(cur.strip())
+                cur = ""
+            else:
+                cur += c
+        if cur.strip():
+            args.append(cur.strip())
+        calls.append(args)
+    return calls
+
+
+def _without_test_modules(text: str) -> str:
+    """Drop `#[cfg(test)] mod ... { }` blocks: tests call the sinks with fixtures."""
+    out, i = "", 0
+    for m in re.finditer(r"#\[cfg\(test\)\]\s*mod\s+\w+\s*\{", text):
+        if m.start() < i:
+            continue
+        out += text[i:m.start()]
+        depth, j = 1, m.end()
+        while j < len(text) and depth:
+            depth += {"{": 1, "}": -1}.get(text[j], 0)
+            j += 1
+        i = j
+    return out + text[i:]
+
+
+def _runner_sources() -> List[Tuple[Path, str]]:
+    return [(p, _without_test_modules(_strip_comments(p.read_text(encoding="utf-8"))))
+            for p in sorted(RUNNER_SRC.rglob("*.rs"))]
+
+
+def probe_a() -> List[str]:
+    """Feedback-derived text enters the prompt only inside the envelope."""
     offenders: List[str] = []
     if not PROMPT_RS.exists():
-        return [f"{rel(PROMPT_RS)} does not exist — the prompt data-envelope (25b) is missing"], False
-    text = PROMPT_RS.read_text(encoding="utf-8")
-
-    if CHOKEPOINT_FN not in text:
-        offenders.append(
-            f"{rel(PROMPT_RS)}: `{CHOKEPOINT_FN}` missing — the single untrusted-data "
-            "chokepoint (C27 25b) is gone. ALL feedback-derived text must enter the prompt "
-            "through this one function."
-        )
-    if "DEC84_PREAMBLE" not in text and "DEC-84" not in text:
-        offenders.append(
-            f"{rel(PROMPT_RS)}: the DEC-84 critical-action preamble is missing — the "
-            "assembled prompt must carry the deferral preamble (C27 25b)."
-        )
-
-    # Single-chokepoint: the envelope literal must appear ONLY inside prompt.rs
-    # (and, within it, be produced only by wrap_untrusted). Any OTHER runner
-    # source file building the envelope is a second writer (a bypass path).
-    for other in sorted(RUNNER_SRC.rglob("*.rs")):
-        if other == PROMPT_RS:
+        return [f"{rel(PROMPT_RS)} missing"]
+    prompt = _strip_comments(PROMPT_RS.read_text(encoding="utf-8"))
+    if CHOKEPOINT_FN not in prompt:
+        offenders.append(f"{rel(PROMPT_RS)}: `{CHOKEPOINT_FN}` (the envelope chokepoint) is gone")
+    # The envelope delimiters exist in prompt.rs alone: another file building an
+    # envelope is a second, unaudited path into the prompt.
+    for path, code in _runner_sources():
+        if path == PROMPT_RS:
             continue
-        body = _strip_comments(other.read_text(encoding="utf-8"))
-        if ENVELOPE_LITERAL in body:
-            offenders.append(
-                f"{rel(other)}: builds the `{ENVELOPE_LITERAL}` envelope outside the single "
-                f"chokepoint `{CHOKEPOINT_FN}` in {rel(PROMPT_RS)} — feedback text must enter "
-                "the prompt through exactly one place."
-            )
+        for token in ("untrusted-feedback-data", "ENVELOPE_OPEN", "ENVELOPE_CLOSE"):
+            if token in code:
+                offenders.append(f"{rel(path)}: names `{token}` -- only prompt.rs may build the envelope")
+    assemble = _extract_fn_body(prompt, "pub fn assemble")
+    if assemble is None:
+        return offenders + [f"{rel(PROMPT_RS)}: `pub fn assemble` not found"]
+    # The trusted layer is everything `assemble` builds before the envelope; it
+    # must not read the recommendation (feedback-derived, model-summarised).
+    split = assemble.find("untrusted_envelope")
+    trusted = assemble[:split] if split >= 0 else assemble
+    if split < 0:
+        offenders.append(f"{rel(PROMPT_RS)}: `assemble` builds no `untrusted_envelope`")
+    if re.search(r"\brecommendation\b|\brec\.", trusted):
+        offenders.append(f"{rel(PROMPT_RS)}: `assemble` reads the recommendation in the trusted instruction layer")
+    if not re.search(r"wrap_untrusted\s*\(\s*&?\s*render_untrusted_block\s*\(", assemble):
+        offenders.append(f"{rel(PROMPT_RS)}: `assemble` does not route the recommendation through "
+                         "wrap_untrusted(render_untrusted_block(..))")
+    for name, body in _fn_bodies(prompt):
+        if name not in ("assemble", "render_untrusted_block") and re.search(r"\brender_untrusted_block\s*\(", body):
+            offenders.append(f"{rel(PROMPT_RS)}: `{name}` calls render_untrusted_block outside the envelope")
+    return offenders
 
-    # Tightened leg: once `assemble` is real (not unimplemented!), assert it does
-    # not concatenate untrusted fields outside wrap_untrusted.
-    assemble_body = _extract_fn_body(text, "fn assemble")
-    assemble_pending = assemble_body is None or "unimplemented!" in assemble_body
-    if not assemble_pending and assemble_body is not None:
-        # Every untrusted field referenced in assemble must be routed via
-        # wrap_untrusted (i.e. wrap_untrusted must be called in assemble).
-        if "wrap_untrusted" not in assemble_body:
-            offenders.append(
-                f"{rel(PROMPT_RS)}: `assemble` does not call `wrap_untrusted` — feedback-derived "
-                "fields must be wrapped by the single chokepoint, never concatenated raw."
-            )
-    return offenders, assemble_pending
+
+# The runner's only ways out, and which arguments of each carry content:
+# runner_transition(work_order_id, event_type, result_ref, failure_reason).
+OUTBOUND = {"runner_transition": (2, 3), "post_recommendation": (0,)}
+# Functions whose result has passed the egress chokepoint.
+CLEANERS = ("sanitize_outbound", "sanitize_clean", "failure_reason_for_egress")
 
 
-def probe_b() -> Tuple[List[str], bool]:
-    """Egress sanitizer chokepoint. Returns (offenders, outbound_pending)."""
+def probe_b() -> List[str]:
+    """Every outbound payload is None or was produced by the egress chokepoint in
+    the same function, and nothing but client.rs opens an HTTP path."""
+    if not SANITIZER_RS.exists() or EGRESS_FN not in _strip_comments(SANITIZER_RS.read_text(encoding="utf-8")):
+        return [f"{rel(SANITIZER_RS)}: `{EGRESS_FN}` (the egress chokepoint) is gone"]
     offenders: List[str] = []
-    if not SANITIZER_RS.exists():
-        return [f"{rel(SANITIZER_RS)} does not exist — the egress sanitizer (25c) is missing"], False
-    text = SANITIZER_RS.read_text(encoding="utf-8")
-    if EGRESS_FN not in text:
-        offenders.append(
-            f"{rel(SANITIZER_RS)}: `{EGRESS_FN}` missing — the single source-never-leaves egress "
-            "chokepoint (C27 25c) is gone."
-        )
-    # The sanitizer must reuse the canonical PII scrubber (FR-FBR-10), not a
-    # bespoke re-implementation.
-    if "feedbackmonk_tracing::scrub" not in text and "scrub" not in text:
-        offenders.append(
-            f"{rel(SANITIZER_RS)}: the egress sanitizer does not reuse the canonical "
-            "`feedbackmonk_tracing::scrub` PII chokepoint (FR-FBR-10)."
-        )
-
-    # Outbound-routing assertion activates when the outbound modules land.
-    report_rs = RUNNER_SRC / "report.rs"
-    analyst_dir = RUNNER_SRC / "analyst"
-    outbound_present = report_rs.exists() or analyst_dir.exists()
-    if not outbound_present:
-        return offenders, True  # PENDING — Worker B/C have not landed outbound paths yet.
-
-    for mod in [report_rs, *(analyst_dir.rglob("*.rs") if analyst_dir.exists() else [])]:
-        if not mod.exists():
+    sites = 0
+    cleaners_seen = {}
+    for path, code in _runner_sources():
+        for name, body in _fn_bodies(code):
+            if name in CLEANERS[1:]:
+                cleaners_seen[name] = "sanitize_outbound(" in body
+        if path.name == "client.rs":
             continue
-        body = _strip_comments(mod.read_text(encoding="utf-8"))
-        # A module that POSTs (runner_transition with a result_ref / post_recommendation)
-        # MUST reference sanitize_outbound.
-        posts = "runner_transition" in body or "post_recommendation" in body
-        if posts and "sanitize_outbound" not in body:
-            offenders.append(
-                f"{rel(mod)}: an outbound POST path does not route through `sanitize_outbound` "
-                "— every payload that crosses the wire must pass the egress chokepoint (C27 25c)."
-            )
-    return offenders, False
+        if re.search(r"\breqwest\b|\bhyper\b|\bureq\b", code):
+            offenders.append(f"{rel(path)}: opens its own HTTP path -- only client.rs may, behind the chokepoint")
+        for name, body in _fn_bodies(code):
+            for callee, positions in OUTBOUND.items():
+                for args in _call_args(body, callee):
+                    sites += 1
+                    for pos in positions:
+                        arg = args[pos] if pos < len(args) else ""
+                        if arg == "None":
+                            continue
+                        var = re.sub(r"^Some\(\s*&?\s*|\)$|^&\s*", "", arg).strip()
+                        bound = re.search(r"\blet\s+(?:mut\s+)?" + re.escape(var) + r"\s*(?::[^=]+)?=\s*([^;]*)", body)
+                        if not (re.fullmatch(r"\w+", var) and bound and any(c + "(" in bound.group(1) for c in CLEANERS)):
+                            offenders.append(f"{rel(path)}::{name}: `.{callee}(..)` sends `{arg}` without the egress chokepoint")
+    for name in CLEANERS[1:]:
+        if name not in cleaners_seen:
+            offenders.append(f"{rel(RUNNER_SRC)}: `{name}` not found")
+        elif not cleaners_seen[name]:
+            offenders.append(f"{rel(RUNNER_SRC)}: `{name}` no longer calls sanitize_outbound")
+    if sites == 0:
+        offenders.append(f"no outbound call sites found under {rel(RUNNER_SRC)} -- the scan is broken")
+    return offenders
 
 
 def probe_c(full: bool) -> Tuple[Optional[bool], str]:
@@ -255,8 +288,8 @@ def main() -> int:
     parser.add_argument("--full", action="store_true", help="also run the C24 corpus (Probe C)")
     args = parser.parse_args()
 
-    a_offenders, a_pending = probe_a()
-    b_offenders, b_pending = probe_b()
+    a_offenders = probe_a()
+    b_offenders = probe_b()
     c_passed, c_message = probe_c(args.full)
 
     fails = (
@@ -267,10 +300,8 @@ def main() -> int:
 
     if fails == 0:
         print("PASS feedback-as-data-audit")
-        a_state = "chokepoint present; full-assembly PENDING (Worker A)" if a_pending else "clean (single chokepoint enforced)"
-        print(f"  Probe A (prompt data-envelope, single chokepoint): {a_state} ({rel(PROMPT_RS)})")
-        b_state = "chokepoint present; outbound-routing PENDING (Worker B/C)" if b_pending else "clean (every outbound routes through sanitize_outbound)"
-        print(f"  Probe B (egress sanitizer chokepoint): {b_state} ({rel(SANITIZER_RS)})")
+        print(f"  Probe A (prompt data-envelope): clean -- recommendation text only inside wrap_untrusted ({rel(PROMPT_RS)})")
+        print("  Probe B (egress): clean -- every outbound payload is None or chokepoint-produced in its function")
         print(f"  Probe C (C24 corpus behavior): {c_message}")
         return 0
 

@@ -33,7 +33,11 @@ page-level wrappers.
 | `SearchBox.tsx` | **GitCellar parity gap #3.** Debounced full-text search box for the admin feedback list. Exports `SEARCH_DEBOUNCE_MS` (250ms) and `SEARCH_FOCUS_KEY` (`/`). Commits the trimmed query after the debounce settles; the page mirrors it to the URL `q` param and calls `GET /api/v1/admin/feedback/search`. Layout is reflow-free: label + inline "Clear search" link share one fixed-height row, an always-rendered syntax hint (`aria-describedby`) sits under the field. `Esc` clears; `/` anywhere on the page (outside another editable control) focuses the field (`focusKey` prop; `null` disables). Match highlighting for the result excerpts lives in `shared/highlight.tsx`. `label`/`placeholder` default to the localized catalog value, resolved inside the component body (not a JS default-param literal) once no caller overrides them. |
 | `SentimentBadge.tsx` | **P5a**: Renders a `Sentiment` value (`Positive | Neutral | Negative`) as an icon + label + accessible color cue, label from `useLabels().sentiment()`. Mirrors `StatusBadge` pattern — color + icon + label, never color alone (WCAG 1.4.1). |
 | `SentimentTrendChart.tsx` | **P5a**: Line chart visualizing sentiment distribution over a rolling time window (7/30/90 days). Consumes `GET /api/v1/admin/feedback/sentiment-trend` timeseries data. WCAG-compliant chart (data table alternative available, color-blind palette). |
-| `*.test.tsx` | Vitest unit tests colocated per component. |
+| `ReplyComposer.test.tsx` | Vitest: empty and over-`REPLY_MAX` bodies disable submit, the Public/Internal visibility toggle, and one `postReply` call per valid submit. |
+| `SearchBox.test.tsx` | Vitest (fake timers): debounce + trimmed commit, Clear and `Esc`, the `/` focus shortcut and `focusKey={null}`, the syntax-hint description, external value sync. |
+| `SentimentBadge.test.tsx` | Vitest: every sentiment renders icon + catalog label, and the color class is paired, never sole (WCAG 1.4.1). |
+| `SentimentTrendChart.test.tsx` | Vitest: one bar group per bucket, the % positive headline, the data-table fallback, zero-count segments omitted, the empty state. |
+| `StatusControls.test.tsx` | Vitest: only `LEGAL_TRANSITIONS` buttons render per status (none from terminal), the `duplicate` target-FB-id requirement, and `postTransition` on confirm. |
 | `README.md` | This file. |
 
 ## 3. Public API & Usage

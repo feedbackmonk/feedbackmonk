@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """translation-gap-status Oracle -- v1.0.0 (kind: project-state, advisory).
 
-Assertion: see manifest.json `assertion` (frozen before this probe existed).
+Assertion: see oracle.json `assertion` (frozen before this probe existed).
 
 Wraps `scripts/i18n/check-gaps.py --json` over the working tree and prints
 the manifest's one-line schema. Advisory only -- exit 0 always (never a

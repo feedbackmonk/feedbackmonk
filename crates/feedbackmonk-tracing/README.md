@@ -11,17 +11,20 @@ PII-scrubbing `tracing-subscriber` chokepoint (FR-FBR-10). All log emissions fro
 - Apply the canonical 20-pattern PII scrubber to every emitted log byte.
 - Provide a test-only `SharedBufferScrubbing` writer so integration tests
   can prove PII was scrubbed without polluting the global subscriber.
-- Carry the canonical pattern set in a form the
-  `.claude/project-oracles/pii-scrub-audit/` oracle can hash for drift detection.
+- Carry the canonical pattern set in a form a test can hash for drift detection
+  (`tests/canonical_pattern_hash.txt`).
 
 ## File Index
 
 | File | What it does |
 |---|---|
+| `Cargo.toml` | Depends on `tracing`, `tracing-subscriber`, `regex`, `once_cell`, `thiserror`. |
+| `src/` | The crate source — its files are the `src/…` rows below. |
 | `src/lib.rs` | Public surface: `install_global_subscriber`, `LogLevel`, `LogFormat`, `TracingError`, re-export `scrub`. |
 | `src/scrubber.rs` | `CANONICAL_PATTERNS: &[(&str, &str, &str)]` (the 20-pattern set), the `scrub` function, `canonical_serialised` (bytes the oracle hashes), and pattern-by-pattern unit tests. |
 | `src/layer.rs` | `StdoutScrubbing` (production `MakeWriter`) + `SharedBufferScrubbing` (test fixture). Buffers each event's bytes, scrubs on flush/drop. |
-| `tests/scrubber_patterns.rs` | End-to-end integration tests through real `tracing::info!`/`warn!` emission + a bilateral SHA-256 check that the Rust-side hash matches `expected_hash.txt`. |
+| `tests/scrubber_patterns.rs` | End-to-end integration tests through real `tracing::info!`/`warn!` emission + the drift check: SHA-256 of `canonical_serialised()` must equal `tests/canonical_pattern_hash.txt` (a missing file fails). |
+| `tests/canonical_pattern_hash.txt` | The pinned SHA-256 of the canonical pattern set. Refresh deliberately, with the pattern change. |
 
 ## Public API & Usage
 
@@ -61,7 +64,7 @@ assert!(!bytes.windows(36).any(|w| w == b"550e8400-e29b-41d4-a716-446655440000")
 
 1. **Byte-for-byte pattern parity with GitCellar.** Patterns are a port of
    `gitcellar-service/src/feedback_logs/scrubber.rs`. Drift surfaces as a
-   `pii-scrub-audit` Probe B failure (SHA-256 mismatch).
+   `canonical_hash_matches_expected_file` failure (SHA-256 mismatch).
 2. **No `tracing_subscriber::fmt()`, `tracing_subscriber::registry()`, or
    `impl Layer<...> for ...` outside this crate.** `pii-scrub-audit` Probe A
    enforces.
@@ -87,8 +90,8 @@ assert!(!bytes.windows(36).any(|w| w == b"550e8400-e29b-41d4-a716-446655440000")
   binary at startup; no in-crate tracing setup elsewhere.
 - **Workspace deps**: `regex`, `once_cell`, `thiserror`, `tracing`,
   `tracing-subscriber`. `sha2` dev-only for the bilateral hash test.
-- **External integration**: `.claude/project-oracles/pii-scrub-audit/` consumes
-  `src/scrubber.rs` (Probe B parses `CANONICAL_PATTERNS`).
+- **External integration**: `.claude/project-oracles/pii-scrub-audit/` scans every
+  other crate for a subscriber built or installed outside this one.
 
 ## Decision Log
 

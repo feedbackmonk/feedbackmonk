@@ -27,6 +27,7 @@ just like the rest of the product — no separate proprietary marketing repo.
 |---|---|
 | `README.md` | This file (ULADP module README). |
 | `package.json` | Astro + Playwright + axe-core devDeps; `prebuild`/`predev` hook the Rust→JSON pricing export; `test:a11y` script for the smoke spec. Pins `@rollup/rollup-win32-x64-msvc` to work around the npm optional-platform-dep bug (same workaround as `admin-ui/`). |
+| `package-lock.json` | npm lockfile; pins the exact dependency tree `npm ci` installs. |
 | `astro.config.mjs` | Astro config; `site = https://feedbackmonk.com`; `trailingSlash: 'ignore'`; preview/dev on port 14210 with `strictPort: true` (per DEC-FBR-IMPL-04). |
 | `tsconfig.json` | Extends `astro/tsconfigs/strict`. |
 | `playwright.config.ts` | A11y smoke harness; webServer spawns `astro preview` on 14210; Windows-aware bin path (mirrors `admin-ui/playwright.config.ts`). |

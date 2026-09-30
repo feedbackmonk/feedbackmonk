@@ -1,0 +1,45 @@
+{
+  "name": "selfhost-compose-smoke",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "slow",
+  "expected_runtime_ms": 30000,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation: 2.7-20 s typical, up to 90 s when the Docker CLI itself was slow (`docker compose version` alone took 14-31 s). The cost is Docker start-up, not the file. Finalize budget = 5x = 150 s; the oracle's own docker timeout is 120 s and answers `unknown` (exit 3) past it.",
+  "question": "Does the self-host compose file validate, and is every setting it or the api reads documented in SELFHOST_ENV.md (C21)? A: docker compose config (pyyaml fallback; neither available = unknown). B: compose env refs are in the catalog. D: every FEEDBACKMONK_*/DATABASE_URL/RUST_LOG literal in the crates the api links is in the catalog. C (--full): clean-state up + /health/ready.",
+  "category": "deployment",
+  "invocation": {
+    "unix": ".claude/project-oracles/selfhost-compose-smoke/oracle.py",
+    "windows": ".claude/project-oracles/selfhost-compose-smoke/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error, 3 unknown (no validator / Docker timeout). A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "deploy/docker/docker-compose.yml",
+      "deploy/docker/Dockerfile.api",
+      "deploy/docker/.env.example",
+      "docs/operations/SELFHOST_ENV.md",
+      ".claude/project-oracles/selfhost-compose-smoke/oracle.py"
+    ],
+    "compute_cost_ms": 400
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit-during-P4+ (touching deploy/docker or SELFHOST_ENV.md); /0-uldf-finalize Phase 11 with --full",
+    "estimated_token_savings_per_call": 900
+  },
+  "consumer_scope": "P4+ deploy/docker/** + docs/operations/SELFHOST_ENV.md (every commit touching either; CI gate post-launch with --full)",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-05-14T17:30:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/selfhost-compose-smoke/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "P4 Stage 2 Worker B — CLAUDE-B (Task Zero — collab-20260514-170323)",
+    "created": "2026-05-14T17:30:00Z",
+    "rationale": "FR-FBR-17 self-host distribution + DEC-FBR-IMPL-06 three-probe oracle decision + Contracts C21 (env catalog SSOT) and C24 (three-probe schema). Three-leg defense per P4 plan § Testability Gate: (1) env-reader chokepoints in crates/feedbackmonk-api/src/main.rs (Tier-1 fail-fast); (2) THIS oracle (yaml-lint + env-doc-xref + clean-state smoke — Tier-2 mechanical); (3) operator runbook docs/operations/SELFHOST.md (Tier-3 cold-readability). Cold-start vacuous-PASS supports Task Zero order-of-operations — oracle authored BEFORE the compose stack, then re-evaluated as Phase 1 lands."
+  }
+}

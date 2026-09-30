@@ -1,0 +1,47 @@
+{
+  "name": "feedback-as-data-audit",
+  "version": "1.0.0",
+  "kind": "verification",
+  "lane": "fast",
+  "expected_runtime_ms": 1600,
+  "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
+  "question": "Does feedback-derived text reach the runner's agent only inside the untrusted envelope, and does every outbound payload pass the egress sanitizer? A: assemble reads nothing of the recommendation before the envelope and routes it through wrap_untrusted(render_untrusted_block(..)); only prompt.rs names the delimiters. B, per function: each runner_transition/post_recommendation payload is None or bound from sanitize_outbound/sanitize_clean/failure_reason_for_egress; only client.rs names an HTTP client.",
+  "category": "security",
+  "invocation": {
+    "unix": ".claude/project-oracles/feedback-as-data-audit/oracle.py",
+    "windows": ".claude/project-oracles/feedback-as-data-audit/oracle.py"
+  },
+  "output": {
+    "format": "text",
+    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+  },
+  "freshness": {
+    "strategy": "trigger-invalidate",
+    "triggers": [
+      "crates/feedbackmonk-runner/src/prompt.rs",
+      "crates/feedbackmonk-runner/src/sanitizer.rs",
+      "crates/feedbackmonk-runner/src/implementer.rs",
+      "crates/feedbackmonk-runner/src/report.rs",
+      "crates/feedbackmonk-runner/src/analyst",
+      "crates/feedbackmonk-api/tests/feedback_injection_corpus.rs",
+      ".claude/project-oracles/feedback-as-data-audit/oracle.py"
+    ],
+    "compute_cost_ms": 50
+  },
+  "consultation": {
+    "typical_sessions_using": "every-commit touching the runner prompt assembly, the egress sanitizer, or the C24 corpus",
+    "estimated_token_savings_per_call": 1100
+  },
+  "consumer_scope": "feedbackmonk: every change that touches the paths in freshness.triggers; gated at finalize (verification.projectOracles: gate) and in CI.",
+  "validation": {
+    "self_test_unix": null,
+    "self_test_windows": null,
+    "last_validated": "2026-06-18T21:00:00Z"
+  },
+  "fallback": "Read .claude/project-oracles/feedback-as-data-audit/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
+  "provenance": {
+    "authored_by": "P5b Stage 0 (Task Zero scaffold) — finalized by Worker A as prompt.rs / sanitizer.rs land",
+    "created": "2026-06-18T00:00:00Z",
+    "rationale": "Testability Gate Flags 1 & 2 (the highest plan-wide fidelity risk, Q2=5 on both the implementer/prompt-envelope and the outbound sanitizer): P5b is where public-internet feedback first reaches a code-writing agent. A happy-path 'the prompt looks right' unit test confirms ONE assembly; it cannot prove the ABSENCE of a prompt-injection bypass (feedback text reaching the instruction layer) nor an outbound path that skips the sanitizer (a source/secret leak). This oracle is detection-from-CODE (single-chokepoint static assertions + the C24 corpus), the anti-reward-hacking leg per Contract C27 — it cannot be satisfied by a self-reported flag. Scaffolded in Stage 0 (Probe A live; B/C co-evolve with Worker A); a green oracle is Worker A's exit gate. The exact analogue of approval-gate-enforcement for P5a, on the surface now live with code execution."
+  }
+}

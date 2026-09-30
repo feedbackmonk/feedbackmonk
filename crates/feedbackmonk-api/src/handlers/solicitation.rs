@@ -208,9 +208,14 @@ pub async fn post_solicitation_event(
         (current_prompt_count, current_prompted_at)
     };
 
-    let record = repo
+    // `None`: an opt-out overtook the read above. The write refused it in SQL,
+    // so answer exactly as if the read had seen it (opt-out is terminal).
+    let Some(record) = repo
         .upsert(&scope, &claims.sub, new_status, prompt_count, prompted_at)
-        .await?;
+        .await?
+    else {
+        return Ok(solicitation_error_response(&SolicitationError::OptedOut));
+    };
 
     Ok((StatusCode::OK, Json(build_response(Some(&record)))).into_response())
 }

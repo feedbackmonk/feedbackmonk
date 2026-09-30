@@ -26,12 +26,12 @@
 //!
 //! ## Drift detection
 //!
-//! `pii-scrub-audit` (Probandurgy oracle) computes SHA-256 of the
-//! line-serialised `(name, regex, replacement)` rows and compares to
-//! `.claude/project-oracles/pii-scrub-audit/expected_hash.txt`. The `canonical_hash`
-//! test in `tests/scrubber_patterns.rs` reproduces the same serialisation
-//! Rust-side and prints the digest, so authors can refresh
-//! `expected_hash.txt` after intentional pattern changes.
+//! The `canonical_hash_matches_expected_file` test in `tests/scrubber_patterns.rs`
+//! computes SHA-256 of the line-serialised `(name, regex, replacement)` rows
+//! and compares it to `tests/canonical_pattern_hash.txt`; its failure message
+//! prints the new digest, so authors refresh the file after an intentional
+//! pattern change. `feedbackmonk-api`'s `attachment_pii_corpus` test pins the
+//! same digest for its corpus.
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -39,12 +39,8 @@ use regex::Regex;
 /// Canonical 20-pattern set — `(name, regex, replacement)`. ORDER MATTERS;
 /// see module docs.
 ///
-/// The `pii-scrub-audit` oracle parses this slice via a regex over its
-/// source-text form, so every tuple MUST stay on a single line and use the
-/// `("name", r"regex", "replacement")` shape exactly (raw string for the
-/// regex; cooked string for name + replacement). The oracle hash also
-/// includes the order, so re-sorting this slice without bumping
-/// `expected_hash.txt` produces an oracle FAIL.
+/// The drift hash includes the order, so re-sorting this slice without
+/// refreshing `tests/canonical_pattern_hash.txt` fails the hash test.
 pub(crate) static CANONICAL_PATTERNS: &[(&str, &str, &str)] = &[
     ("dsn", r"https?://[a-f0-9]{32,}@[a-zA-Z0-9.\-]+/\d+", "[dsn]"),
     ("bearer_token", r"(?i)bearer\s+[A-Za-z0-9_\-\.=:+/]{20,}", "Bearer [token]"),
@@ -113,9 +109,8 @@ pub fn pattern_count() -> usize {
 }
 
 /// Canonical SHA-256 input bytes — `name\tregex\treplacement\n` per row,
-/// UTF-8. Used by the `canonical_hash` test (Rust side) and by
-/// `.claude/project-oracles/pii-scrub-audit/oracle.py` (Python side). The two
-/// implementations MUST stay byte-identical.
+/// UTF-8. Hashed by the drift tests in `tests/scrubber_patterns.rs` and
+/// `feedbackmonk-api/tests/attachment_pii_corpus.rs`.
 #[must_use]
 pub fn canonical_serialised() -> Vec<u8> {
     let mut out = Vec::with_capacity(CANONICAL_PATTERNS.len() * 96);

@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-Ordered, append-only SQL migrations (`00001`–`00019`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
+Ordered, append-only SQL migrations (`00001`–`00032`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
 
 ## Purpose & Responsibilities
 
@@ -26,8 +26,26 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 | `00010_feedback_crash_event.sql` | Adds nullable first-class `crash_event_id` column to `feedback`. GitCellar parity gap #2. NOT stored via `external_metadata` — a real column so the pull-mode correlation worker can index/join on it. |
 | `00011_feedback_fts.sql` | Full-text search: `tsvector` generated column + GIN index on `feedback`. GitCellar parity gap #3. Backs `GET /api/v1/admin/feedback/search` via `websearch_to_tsquery`. |
 | `00012_tenant_widget_brand_overrides.sql` | Post-v1 (DEC-FBR-IMPL-11/12). Five nullable per-tenant widget brand-override columns on `tenants` (`footer_text_override`, `footer_url`, `widget_theme` (CHECK auto\|light\|dark), `widget_primary_color`, `widget_logo_url`); all NULL = fall through to tier/CSS default. Decouples badge visibility from tier and adds widget theming/branding. Written only via the ops endpoint. |
-| `00013`–`00018` | P5a/P5b + capability extensions: feedback clusters (`00013`), work orders (`00014`), runner tokens (`00015`), feedback moderation (`00016`), sentiment + solicitation (`00017`), public-board votes (`00018`). |
+| `00013_feedback_clusters.sql` | P5a, Contract C23 — the analyst data model: `feedback_clusters`, `analysis_sweeps` (sweep provenance, FR-FBR-20), `recommendations`, and the nullable `feedback.cluster_id` pointer. |
+| `00014_work_orders.sql` | P5a, Contracts C22/C23: `work_orders` (approved decision → dispatched job, FR-FBR-22; `owner_overrides` for tweak-before-approve) and the **append-only** `work_order_events` ledger the `approval-gate-enforcement` oracle reads. |
+| `00015_runner_tokens.sql` | P5b, Contract C25: `signing_keys.key_class` (`identity` vs `runner`, existing rows default `identity`), the optional `runner_tokens` registry and the append-only `runner_token_revocations` denylist. feedbackmonk still holds only public keys (DEC-FBR-04). |
+| `00016_feedback_moderation.sql` | Public board + moderation gate (Contracts C28/C29): `feedback.moderation_status` (`pending`/`approved`/`rejected`, orthogonal to triage status), the append-only `feedback_moderation_events` ledger, and `projects.public_board_enabled` / `board_requires_moderation`. |
+| `00017_feedback_sentiment_and_solicitation.sql` | FR-FBR-28/29: nullable `feedback.sentiment` with body-or-sentiment CHECK (body becomes optional), and `feedback_solicitations` — per-user solicitation/suppression state keyed by JWT `sub` per project. |
+| `00018_feedback_board_votes.sql` | Public board voting (PF-BOARD-VOTING-01, Contract C30): `feedback_board_votes`, the board sibling of `roadmap_votes` keyed on `feedback_id` — a separate table, not a generalization (DEC-FBR-IMPL-21). |
 | `00019_feedback_translation.sql` | FR-FBR-30 (multilingual translation, DEC-FBR-IMPL-25/26). Nullable `feedback.body_translated` + `source_lang` + `translation_status` (CHECK pending\|translated\|skipped\|failed) + `translation_attempts`; **repoints** the `body_tsv` generated column to `to_tsvector('english', coalesce(body_translated, body))` so FTS indexes the translation with fallback to the original; partial worklist index. Store-both — the verbatim `body` is never overwritten (Q24). |
+| `00020_feedback_severity.sql` | Optional first-class `feedback.severity` (`low`/`medium`/`high`/`blocker`), replacing the `external_metadata.severity` side-channel; matches `feedbackmonk-core::severity`. |
+| `00021_submit_idempotency.sql` | `submit_idempotency`: dedupes a retried `POST …/feedback` on `(project_id, idempotency_key)`, recording the created `feedback_id` (cascade-deleted with it). |
+| `00022_idempotency_identity_scope.sql` | Security fix P1-3: adds `submitter_id` to the idempotency primary key (plus `content_hash` and a key-length CHECK) so two users choosing the same key no longer collide. |
+| `00023_tenant_session_epoch.sql` | Security fix P1-1: `tenants.session_epoch`, folded into the signed admin cookie; bumping it (logout, password reset) revokes every outstanding session. |
+| `00024_password_resets.sql` | Security fix P1-1: `password_resets` for the email-token reset flow — `token_hash` (sha256 of the wire token) is the primary key, with a short TTL. |
+| `00025_feedback_short_code_per_project.sql` | Security fix P1-5: `feedback.short_code` uniqueness narrows from global to `(project_id, short_code)`, shrinking the collision space. |
+| `00026_feedback_end_user_sub_index.sql` | Scrutiny P2-14: partial index on `(project_id, end_user_sub)` for the JWT-`sub`-scoped read and erasure hot path. |
+| `00027_ops_audit_log.sql` | Scrutiny P1-12: append-only `ops_audit_log` recording every successful ops-token mutation (tier flips, brand overrides) against its target tenant. |
+| `00028_work_orders_p6.sql` | P6 Autopilot (Contract C31): nullable provenance FKs for owner-authored work orders (with a both-or-neither CHECK) and `routing_label` for named-runner routing. |
+| `00029_feedback_rating.sql` | Optional 1-5 `feedback.rating`, an additive sibling of `sentiment` rather than a widening of that published enum. |
+| `00030_tenant_hosting.sql` | FR-FBR-32/33: globally unique nullable `tenants.subdomain` (with a shape CHECK) and the `tenant_domains` custom-domain registry — the host → tenant substrate DEC-FBR-13 assumes. |
+| `00031_submitter_locale.sql` | FR-FBR-37, Contract C37: `feedback.submitter_locale`, the submitter's UI language at submit — deliberately distinct from `source_lang` (what the translator detected). |
+| `00032_tenant_locale.sql` | FR-FBR-38, Contract C38: nullable `tenants.locale` (admin console language + email fallback) and `translate_outbound` (default false), reserved for FR-FBR-40 outbound translation. |
 
 ## Constraints & Business Rules
 

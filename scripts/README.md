@@ -1,6 +1,6 @@
 # `scripts/` — repo-level gates and witnesses
 
-## Purpose
+## Summary
 
 The shell and PowerShell entry points a session runs against the whole repo: the CI-parity gate,
 the verification-oracle suite it calls first, the end-to-end curl witnesses for the P0/P1 exit

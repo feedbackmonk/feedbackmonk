@@ -15,6 +15,8 @@ status words in the recipient's language (Contract C40). Depends on `http` (for 
 
 | File | Purpose |
 |---|---|
+| `Cargo.toml` | Deliberately small: `http` (for `Accept-Language`) and `serde_json` only. |
+| `src/` | The crate source — its files are the `src/…` rows below. |
 | `src/lib.rs` | `Dir`, `LocaleEntry`, `locale_by_code`; re-exports the table and the three modules |
 | `src/locales.gen.rs` | **GENERATED** from `i18n/locales.json` by `scripts/i18n/gen-locales.py` — never edit |
 | `src/locale.rs` | `Locale` newtype + the C34 resolution algorithm (`resolve` / `resolve_opt`) |

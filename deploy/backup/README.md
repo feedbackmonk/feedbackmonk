@@ -1,6 +1,6 @@
 # `deploy/backup/` — nightly off-provider backup of the production feedbackmonk database
 
-## Purpose
+## Summary
 
 Version-controlled source of truth for the nightly `feedbackmonk` Postgres backup that runs on
 GitCellar's Railway as the cron service **`feedbackmonk-pg-backup`**. The live deployment runs this
