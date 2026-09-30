@@ -11,6 +11,9 @@
 //!   4. `row_without_a_crash_id_answers_none` — and never calls the tracker.
 //!   5. `requires_an_admin_session_and_the_owning_tenant` — 401 without a
 //!      session; another tenant's admin gets 404, and the tracker is not asked.
+//!   6. `the_tracker_serves_only_the_tenant_that_owns_it` — its token is one
+//!      tenant's credential: another tenant's own crash-linked row answers
+//!      `unavailable` and the tracker is never asked.
 
 use std::collections::HashMap;
 use std::num::NonZeroU32;
@@ -121,9 +124,14 @@ fn build_test_state(pool: &PgPool) -> AppState {
     }
 }
 
-fn app(state: &AppState, correlator: Option<Arc<dyn CrashCorrelator>>) -> axum::Router {
+fn app(
+    state: &AppState,
+    correlator: Option<Arc<dyn CrashCorrelator>>,
+    tenant: &TenantScope,
+) -> axum::Router {
+    let tenant_id = Some(tenant.tenant_id());
     admin_feedback_routes(state.clone())
-        .merge(crash_admin_router(CrashState { app: state.clone(), correlator }))
+        .merge(crash_admin_router(CrashState { app: state.clone(), correlator, tenant_id }))
 }
 
 async fn seed_admin(state: &AppState, email: &str) -> (TenantScope, String) {
@@ -196,7 +204,7 @@ async fn linked_event_resolves_to_the_banner_shape(pool: PgPool) {
     let fb = seed_feedback(&state, &pscope, Some("evt-abc")).await;
     let mut tracker = FakeTracker::default();
     tracker.events.insert("evt-abc".into(), event("evt-abc"));
-    let app = app(&state, Some(Arc::new(tracker)));
+    let app = app(&state, Some(Arc::new(tracker)), &tscope);
 
     let (s, body) = get(&app, &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
     assert_eq!(s, StatusCode::OK);
@@ -217,7 +225,7 @@ async fn unconfigured_tracker_answers_unavailable_with_the_id(pool: PgPool) {
     let (tscope, cookie) = seed_admin(&state, "crash-unconf@example.com").await;
     let pscope = seed_project(&state, &tscope).await;
     let fb = seed_feedback(&state, &pscope, Some("evt-1")).await;
-    let app = app(&state, None);
+    let app = app(&state, None, &tscope);
 
     let (s, body) = get(&app, &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
     assert_eq!(s, StatusCode::OK);
@@ -234,10 +242,10 @@ async fn tracker_down_or_unknown_id_degrades(pool: PgPool) {
     let fb = seed_feedback(&state, &pscope, Some("evt-gone")).await;
 
     let down = FakeTracker { down: true, ..FakeTracker::default() };
-    let (_, body) = get(&app(&state, Some(Arc::new(down))), &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
+    let (_, body) = get(&app(&state, Some(Arc::new(down)), &tscope), &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
     assert_eq!(body["status"], "unavailable");
 
-    let (s, body) = get(&app(&state, Some(Arc::new(FakeTracker::default()))), &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
+    let (s, body) = get(&app(&state, Some(Arc::new(FakeTracker::default())), &tscope), &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
     assert_eq!(s, StatusCode::OK);
     assert_eq!(body["status"], "not_found");
 }
@@ -249,7 +257,7 @@ async fn row_without_a_crash_id_answers_none(pool: PgPool) {
     let pscope = seed_project(&state, &tscope).await;
     let fb = seed_feedback(&state, &pscope, None).await;
     let tracker = Arc::new(FakeTracker::default());
-    let app = app(&state, Some(tracker.clone()));
+    let app = app(&state, Some(tracker.clone()), &tscope);
 
     let (s, body) = get(&app, &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
     assert_eq!(s, StatusCode::OK);
@@ -269,11 +277,32 @@ async fn requires_an_admin_session_and_the_owning_tenant(pool: PgPool) {
     let mut tracker = FakeTracker::default();
     tracker.events.insert("evt-private".into(), event("evt-private"));
     let tracker = Arc::new(tracker);
-    let app = app(&state, Some(tracker.clone()));
+    let app = app(&state, Some(tracker.clone()), &tscope);
 
     let (s, _) = get(&app, &format!("/api/v1/admin/feedback/{fb}/crash"), None).await;
     assert_eq!(s, StatusCode::UNAUTHORIZED);
     let (s, _) = get(&app, &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&other_cookie)).await;
     assert_eq!(s, StatusCode::NOT_FOUND, "another tenant's admin cannot resolve this row");
     assert_eq!(tracker.calls.load(Ordering::SeqCst), 0, "the tracker is never asked on a refused read");
+}
+
+#[sqlx::test(migrations = "../../migrations")]
+async fn the_tracker_serves_only_the_tenant_that_owns_it(pool: PgPool) {
+    let state = build_test_state(&pool);
+    let (owner_scope, _owner_cookie) = seed_admin(&state, "crash-tracker-owner@example.com").await;
+    seed_project(&state, &owner_scope).await;
+    let (tscope, cookie) = seed_admin(&state, "crash-other-tenant@example.com").await;
+    let pscope = seed_project(&state, &tscope).await;
+    let fb = seed_feedback(&state, &pscope, Some("evt-owned")).await;
+    let mut tracker = FakeTracker::default();
+    tracker.events.insert("evt-owned".into(), event("evt-owned"));
+    let tracker = Arc::new(tracker);
+    // The tracker is bound to owner_scope's tenant; tscope's admin reads its own row.
+    let app = app(&state, Some(tracker.clone()), &owner_scope);
+
+    let (s, body) = get(&app, &format!("/api/v1/admin/feedback/{fb}/crash"), Some(&cookie)).await;
+    assert_eq!(s, StatusCode::OK);
+    assert_eq!(body["status"], "unavailable");
+    assert_eq!(body["crash_event_id"], "evt-owned");
+    assert_eq!(tracker.calls.load(Ordering::SeqCst), 0, "another tenant never reaches the tracker");
 }

@@ -126,3 +126,25 @@ blocked, and it raised two low findings:
   - The owner kept the safe behaviour: a rejected reason is withheld whole. A later fix
     would have to sanitize first and cut after, and prove a straddling token is never emitted.
 
+
+## The owner's decisions, and a second review
+
+On the owner's word the three open items were done the same day:
+- DEC-FBR-IMPL-32 wires crash correlation.
+- DEC-FBR-IMPL-33 moves a recommendation-grounded order's text into the envelope.
+- DEC-FBR-IMPL-34 keeps withholding long failure reasons.
+
+The critic's review of that commit (`5a7046b`) returned **VETO**, on three findings, all fixed
+in the next commit:
+- **High: path injection in the crash id.** The client-asserted `crash_event_id` went into the
+  tracker URL unescaped. Only plain event ids are sent now, the URL is built from encoded path
+  segments, and a fifth setting binds the tracker to its one tenant.
+- **Medium: Tweak and request-changes.** These dialogs pre-filled owner overrides with the
+  model's text. They now start empty for recommendation-grounded orders.
+- **Medium: the oracle's Probe A could be bypassed** with a renamed binding or an `if let`. It is
+  now tightened, and both bypasses fail.
+
+That same pass turned CI green. Main had been red since 2026-09-11, for three reasons:
+- **Two security advisories**, fixed by bumping `h2` and `rustls`.
+- **Clippy 1.98's new `result_large_err` lint**, allowed with a reason on four helpers.
+- **admin-ui's Windows-only Rollup binary**, now an optional dependency.

@@ -361,7 +361,9 @@ except `crash_event_id`/`title` as optional.
 > shape, admin-only, at `GET /api/v1/admin/feedback/:id/crash` →
 > `{"status": "none"|"linked"|"not_found"|"unavailable", "crash_event_id", "crash"?}`; the admin
 > detail read carries `crash_event_id`. No end-user read changed: Desktop's own crash-link banner
-> (on its submit form) is unaffected.
+> (on its submit form) is unaffected. **Five** settings, not four: `FEEDBACKMONK_GLITCHTIP_TENANT_ID`
+> names the one tenant (GitCellar) whose feedback may be resolved against this tracker, and only a
+> plain event id (letters, digits, dashes, ≤128) is ever sent to it — Glitchtip's own 32-hex ids are.
 
 ---
 

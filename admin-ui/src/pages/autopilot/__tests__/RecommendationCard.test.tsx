@@ -144,6 +144,38 @@ describe("RecommendationCard — approval is the security boundary", () => {
     expect(callArgs.owner_overrides?.title).toBe("Fix Safari login");
   });
 
+  it("starts the tweak fields empty, so overrides hold only what the owner typed (DEC-FBR-IMPL-33)", async () => {
+    const user = userEvent.setup();
+    renderWithClient(<RecommendationCard rec={rec()} projectId={PROJECT} />);
+
+    await user.click(screen.getByRole("button", { name: /^Tweak…$/ }));
+    // The model-written recommendation is shown read-only, never pre-filled.
+    expect(screen.getByLabelText(/Title \(authoritative\)/i)).toHaveValue("");
+    expect(screen.getByLabelText(/Instructions \(authoritative\)/i)).toHaveValue("");
+    const preview = screen.getByRole("region", { name: "Recommendation" });
+    expect(preview).toHaveTextContent("Several users report the login button does nothing on Safari.");
+
+    // Typing one instruction sends exactly that text, and nothing of the model's.
+    await user.type(screen.getByLabelText(/Instructions \(authoritative\)/i), "Only touch the Safari path.");
+    await user.click(screen.getByRole("button", { name: /Approve tweaked order/i }));
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    const callArgs = mockedCreate.mock
+      .calls[0][1] as import("../../../shared/types.gen").CreateDerivedWorkOrderRequest;
+    expect(callArgs.owner_overrides).toEqual({ instructions: "Only touch the Safari path." });
+  });
+
+  it("sends no overrides when the owner tweaks nothing", async () => {
+    const user = userEvent.setup();
+    renderWithClient(<RecommendationCard rec={rec()} projectId={PROJECT} />);
+
+    await user.click(screen.getByRole("button", { name: /^Tweak…$/ }));
+    await user.click(screen.getByRole("button", { name: /Approve tweaked order/i }));
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    const callArgs = mockedCreate.mock
+      .calls[0][1] as import("../../../shared/types.gen").CreateDerivedWorkOrderRequest;
+    expect(callArgs.owner_overrides).toBeUndefined();
+  });
+
   it("passes an optional routing_label through on approve (C31 §4)", async () => {
     const user = userEvent.setup();
     renderWithClient(<RecommendationCard rec={rec()} projectId={PROJECT} />);

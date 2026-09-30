@@ -164,6 +164,14 @@ def _runner_sources() -> List[Tuple[Path, str]]:
             for p in sorted(RUNNER_SRC.rglob("*.rs"))]
 
 
+def _blank_strings(text: str) -> str:
+    """`text` with the contents of every string literal (and char literal)
+    replaced by spaces, so bracket counting and name matching see code only."""
+    text = re.sub(r'r(#*)"(?:.|\n)*?"\1', lambda m: '"' + " " * (len(m.group(0)) - 2) + '"', text)
+    text = re.sub(r'"(?:\\.|[^"\\])*"', lambda m: '"' + " " * (len(m.group(0)) - 2) + '"', text)
+    return re.sub(r"'(?:\\.|[^'\\])'", "' '", text)
+
+
 def _drop_spans(text: str, start_pattern: str, opener: str = "(") -> str:
     """`text` with every balanced span that opens at `start_pattern` removed."""
     closer = {"(": ")", "{": "}"}[opener]
@@ -199,24 +207,37 @@ def probe_a() -> List[str]:
     assemble = _extract_fn_body(prompt, "pub fn assemble")
     if assemble is None:
         return offenders + [f"{rel(PROMPT_RS)}: `pub fn assemble` not found"]
-    # Trust follows who wrote the text (2026-09-30). The order's title and
-    # instructions are owner-authored only when there is no recommendation, so
-    # outside the `None =>` arm they may appear only as arguments of
-    # render_untrusted_block (i.e. inside the envelope); recommendation fields
-    # (`rec.`) may appear nowhere else at all.
-    if "untrusted_envelope" not in assemble:
+    # Trust follows who wrote the text (DEC-FBR-IMPL-33). String literals are
+    # blanked first, so brackets or names inside them cannot shift a span.
+    body = _blank_strings(assemble)
+    if "untrusted_envelope" not in body:
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` builds no `untrusted_envelope`")
-    outside = _drop_spans(assemble, r"\brender_untrusted_block\s*\(")
-    none_arm = re.search(r"\bNone\s*=>\s*\{", outside)
-    if none_arm:
+    # (1) The recommendation is reached exactly once: the match head. Any other
+    # `recommendation` (an `if let`, a second match, a field access) is a path
+    # this probe cannot follow, so it fails.
+    heads = re.findall(r"\bmatch\s+&\s*order\s*\.\s*recommendation\s*\{", body)
+    mentions = re.findall(r"\brecommendation\b", body)
+    if len(heads) != 1 or len(mentions) != 1:
+        offenders.append(f"{rel(PROMPT_RS)}: `assemble` must read the recommendation only as one "
+                         f"`match &order.recommendation {{..}}` (found {len(heads)} match head(s), "
+                         f"{len(mentions)} mention(s))")
+    # (2) Whatever the Some arm binds may appear only as an argument of
+    # render_untrusted_block, whatever it is named.
+    outside = _drop_spans(body, r"\brender_untrusted_block\s*\(")
+    for name in set(re.findall(r"\bSome\s*\(\s*(?:ref\s+)?(\w+)\s*\)\s*=>", body)):
+        rest = re.sub(r"\bSome\s*\(\s*(?:ref\s+)?" + re.escape(name) + r"\s*\)", "", outside)
+        if re.search(r"\b" + re.escape(name) + r"\b", rest):
+            offenders.append(f"{rel(PROMPT_RS)}: `assemble` uses the recommendation binding `{name}` outside "
+                             "render_untrusted_block -- it reaches the trusted instruction layer")
+    # (3) The order's title/instructions are owner-authored only in the
+    # `None =>` arm; everywhere else they may only feed the envelope.
+    if re.search(r"\bNone\s*=>\s*\{", outside):
         outside = _drop_spans(outside, r"\bNone\s*=>\s*\{", opener="{")
     else:
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` has no owner-authored `None => {{..}}` arm")
     if re.search(r"\border\s*\.\s*(title|instructions)\b", outside):
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` puts the order's title/instructions in the trusted layer "
                          "for a recommendation-grounded order (they are copied from the model-written recommendation)")
-    if re.search(r"\brec\s*\.", outside):
-        offenders.append(f"{rel(PROMPT_RS)}: `assemble` reads the recommendation in the trusted instruction layer")
     if not re.search(r"wrap_untrusted\s*\(\s*&?\s*render_untrusted_block\s*\(", assemble):
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` does not route the recommendation through "
                          "wrap_untrusted(render_untrusted_block(..))")

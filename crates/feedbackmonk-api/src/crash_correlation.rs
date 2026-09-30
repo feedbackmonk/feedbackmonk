@@ -87,7 +87,9 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 /// via the Sentry-compatible REST API:
 /// `GET {base}/api/0/projects/{org}/{project}/events/{event_id}/`.
 pub struct GlitchtipCorrelator {
-    http: reqwest::Client,
+    /// `None` when a client with a timeout could not be built; correlation is
+    /// then `Unavailable` rather than risking a request with no timeout.
+    http: Option<reqwest::Client>,
     /// Base URL, no trailing slash, e.g. `https://glitchtip.gitcellar.com`.
     base_url: String,
     org_slug: String,
@@ -106,10 +108,7 @@ impl GlitchtipCorrelator {
         project_slug: impl Into<String>,
         token: impl Into<String>,
     ) -> Self {
-        let http = reqwest::Client::builder()
-            .timeout(DEFAULT_TIMEOUT)
-            .build()
-            .unwrap_or_default();
+        let http = reqwest::Client::builder().timeout(DEFAULT_TIMEOUT).build().ok();
         Self {
             http,
             base_url: base_url.into().trim_end_matches('/').to_string(),
@@ -137,12 +136,27 @@ impl GlitchtipCorrelator {
         Some(Self::new(base_url, org_slug, project_slug, token))
     }
 
-    /// The Sentry-compatible single-event URL for a given id.
-    fn event_url(&self, crash_event_id: &str) -> String {
-        format!(
-            "{}/api/0/projects/{}/{}/events/{}/",
-            self.base_url, self.org_slug, self.project_slug, crash_event_id
-        )
+    /// The Sentry-compatible single-event URL for a given id, or `None` when the
+    /// id is not a plain event id. Each value is appended as one encoded path
+    /// segment, so nothing in it can climb out of the events route (`..`, `/`,
+    /// `?`, `#`). The id is client-asserted at submit and otherwise unchecked,
+    /// so this is the gate that keeps it from steering the operator's token.
+    fn event_url(&self, crash_event_id: &str) -> Option<reqwest::Url> {
+        if !is_event_id(crash_event_id) {
+            return None;
+        }
+        let mut url = reqwest::Url::parse(&self.base_url).ok()?;
+        url.path_segments_mut().ok()?.pop_if_empty().extend([
+            "api",
+            "0",
+            "projects",
+            &self.org_slug,
+            &self.project_slug,
+            "events",
+            crash_event_id,
+            "",
+        ]);
+        Some(url)
     }
 
     /// Parse a Glitchtip/Sentry event JSON body into a [`CrashEvent`]. Pulled
@@ -200,17 +214,29 @@ impl GlitchtipCorrelator {
     }
 }
 
+/// A crash-tracker event id as trackers mint them: 1-128 ASCII letters, digits
+/// or dashes (Sentry/Glitchtip ids are 32 hex chars). Anything else is not an
+/// id this deployment will ever ask a tracker about.
+#[must_use]
+pub fn is_event_id(id: &str) -> bool {
+    (1..=128).contains(&id.len()) && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+
 #[async_trait]
 impl CrashCorrelator for GlitchtipCorrelator {
     async fn correlate(&self, crash_event_id: &str) -> CorrelationOutcome {
         let id = crash_event_id.trim();
-        if id.is_empty() {
+        // Not an event id (empty, or carrying path/query syntax): nothing a
+        // tracker could have, and never sent — no I/O at all.
+        let Some(url) = self.event_url(id) else {
             return CorrelationOutcome::NotFound;
-        }
+        };
+        let Some(http) = &self.http else {
+            return CorrelationOutcome::Unavailable;
+        };
 
-        let Ok(resp) = self
-            .http
-            .get(self.event_url(id))
+        let Ok(resp) = http
+            .get(url)
             .bearer_auth(&self.token)
             .send()
             .await
@@ -372,7 +398,7 @@ mod tests {
             "tok",
         );
         assert_eq!(
-            c.event_url("abc123"),
+            c.event_url("abc123").unwrap().as_str(),
             "https://glitchtip.gitcellar.com/api/0/projects/gitcellar/desktop/events/abc123/"
         );
     }
@@ -417,5 +443,34 @@ mod tests {
         assert!(GlitchtipCorrelator::parse_event("id", r#"{"culprit": "x"}"#).is_none());
         // Not JSON at all.
         assert!(GlitchtipCorrelator::parse_event("id", "<html>down</html>").is_none());
+    }
+
+    #[test]
+    fn event_ids_are_plain_tokens_only() {
+        assert!(super::is_event_id("a1b2c3d4e5f60718293a4b5c6d7e8f90"));
+        assert!(super::is_event_id("550e8400-e29b-41d4-a716-446655440000"));
+        for bad in ["", "../../issues/1", "abc/def", "abc?x=1", "abc#frag", "a b", "%2e%2e", &"a".repeat(129)] {
+            assert!(!super::is_event_id(bad), "{bad:?} must not be an event id");
+        }
+    }
+
+    #[test]
+    fn event_url_stays_inside_the_events_route() {
+        let c = super::GlitchtipCorrelator::new("https://gt.example/", "org", "proj", "t");
+        assert_eq!(
+            c.event_url("abc123").unwrap().as_str(),
+            "https://gt.example/api/0/projects/org/proj/events/abc123/"
+        );
+        assert!(c.event_url("../../../../issues/1").is_none());
+        assert!(c.event_url("x?y").is_none());
+    }
+
+    #[tokio::test]
+    async fn a_path_shaped_id_is_never_requested() {
+        // Port 9 on loopback: any real request would come back Unavailable, so
+        // NotFound proves no request was made.
+        let c = super::GlitchtipCorrelator::new("http://127.0.0.1:9", "org", "proj", "t");
+        assert_eq!(c.correlate("../../issues/1").await, super::CorrelationOutcome::NotFound);
+        assert_eq!(c.correlate("abc123").await, super::CorrelationOutcome::Unavailable);
     }
 }

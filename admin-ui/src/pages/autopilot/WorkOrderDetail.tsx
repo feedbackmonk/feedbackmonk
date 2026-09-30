@@ -297,8 +297,13 @@ function TransitionDialog({
   const { notify } = useToast();
   const meta = eventMeta(t)[event];
   const [note, setNote] = useState("");
-  const [title, setTitle] = useState(wo.title);
-  const [instructions, setInstructions] = useState(wo.instructions);
+  // A recommendation-grounded order's title/instructions were copied from the
+  // model-written recommendation, so its override fields start EMPTY: the
+  // runner trusts `owner_overrides` as the owner's own words (DEC-FBR-IMPL-33).
+  // An owner-authored order's text is already the owner's, so it pre-fills.
+  const derived = wo.recommendation_id !== null;
+  const [title, setTitle] = useState(derived ? "" : wo.title);
+  const [instructions, setInstructions] = useState(derived ? "" : wo.instructions);
   const [inlineError, setInlineError] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -357,8 +362,19 @@ function TransitionDialog({
         {meta.needsOverrides ? (
           <>
             <p className="muted">
-              {t("admin.workOrderDetail.transitionDialog.requestChangesExplain")}
+              {derived
+                ? t("admin.workOrderDetail.transitionDialog.requestChangesExplainDerived")
+                : t("admin.workOrderDetail.transitionDialog.requestChangesExplain")}
             </p>
+            {derived ? (
+              <section
+                className="ap-approve-preview"
+                aria-label={t("admin.workOrderDetail.transitionDialog.currentOrderAria")}
+              >
+                <strong>{wo.title}</strong>
+                <p className="ap-rec-text" dir="auto">{wo.instructions}</p>
+              </section>
+            ) : null}
             <label htmlFor={`${dialogId}-title-input`}>
               {t("admin.workOrderDetail.transitionDialog.titleLabel")}
             </label>

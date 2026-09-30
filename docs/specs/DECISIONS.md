@@ -1186,6 +1186,8 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 
 **Alternatives considered**: *Resolve inside the detail read* — couples triage latency to a third-party tracker (rejected). *Serve it on `/me/feedback`* — exposes internal tracker links to end users and nobody consumes it (rejected). *Retract the promise and delete the module* — the owner chose to wire it.
 
+**Amended 2026-09-30 (critic VETO on `5a7046b`)**: `crash_event_id` is client-asserted and was pasted into the tracker URL unescaped, so a tenant could store `../../..` and read other tracker paths with the operator's token. Now (a) the correlator sends only a plain event id (`is_event_id`: 1–128 ASCII letters, digits, dashes) and answers `not_found` for anything else with no request; (b) the URL is built from encoded path segments; (c) a fifth setting, `FEEDBACKMONK_GLITCHTIP_TENANT_ID`, binds the tracker to the one tenant whose credential it is — every other tenant gets `unavailable` without a tracker call; (d) a failed client build disables correlation rather than falling back to a client with no timeout.
+
 ---
 
 ### DEC-FBR-IMPL-33: In the runner prompt, trust follows who wrote the text — a recommendation-grounded order's title and instructions are data
@@ -1197,6 +1199,8 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Rationale**: an injection in a feedback body can survive into the analyst's recommendation; in the trusted layer it would read as an instruction, and the only guard was a human skimming a model's summary at approval. The owner's approval endorses the work order, not every sentence a model wrote.
 
 **Alternatives considered**: *Treat approval as the trust boundary* (record that approved text is owner-endorsed) — rejected by the owner.
+
+**Amended 2026-09-30 (critic VETO on `5a7046b`)**: `owner_overrides` stay trusted, so they must hold only the owner's words. The console's Tweak & approve and request-changes dialogs used to pre-fill the override fields with the model-written text, so one edited word carried every model sentence into the trusted layer. For a recommendation-grounded order the fields now start empty, the model text shown read-only above them; an owner-authored order still pre-fills (its text is the owner's). The oracle's Probe A was tightened the same day: one `match &order.recommendation` and no other mention, and the Some-arm binding — whatever its name — only inside `render_untrusted_block`.
 
 ---
 

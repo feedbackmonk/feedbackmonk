@@ -67,3 +67,16 @@ Added with DEC-FBR-IMPL-33 (2026-09-30), also against scratch copies, each exiti
    in the trusted layer" and "no owner-authored `None =>` arm".
 5. `instructions.push_str(&rec.body)` beside `DERIVED_TASK`. Caught as "reads the
    recommendation in the trusted instruction layer".
+
+After an independent critic showed two bypasses of that version (2026-09-30), Probe A requires
+exactly one `match &order.recommendation` and no other mention of `recommendation`, allows the
+Some-arm binding (whatever its name) only inside `render_untrusted_block`, and blanks string
+literals before counting brackets. Each exits 1:
+
+6. `Some(r) => { instructions.push_str(&r.body); ..` (renamed binding; passed before).
+7. `if let Some(x) = &order.recommendation { instructions.push_str(&x.body); }` above the
+   overrides block (passed before).
+8. `instructions.push_str(&rec.rationale.clone().unwrap_or_default())` beside `DERIVED_TASK`.
+
+And one that must stay clean: a string literal `"fixed (text) with } braces {"` in the trusted
+layer exits 0.

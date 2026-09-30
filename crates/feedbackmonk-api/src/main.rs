@@ -236,13 +236,22 @@ async fn main() -> Result<()> {
         domains: Arc::clone(&host_state.domains),
         config: host_config,
     };
-    // Parity gap #2: crash detail resolves only when all four
-    // FEEDBACKMONK_GLITCHTIP_* settings are set; otherwise every row answers
-    // `unavailable` and the stored crash_event_id is still shown.
+    // Parity gap #2: crash detail resolves only when all five
+    // FEEDBACKMONK_GLITCHTIP_* settings are set, and only for the tenant that
+    // owns the tracker (its token is that tenant's credential). Otherwise every
+    // row answers `unavailable` and the stored crash_event_id is still shown.
+    let crash_tenant = std::env::var("FEEDBACKMONK_GLITCHTIP_TENANT_ID")
+        .ok()
+        .and_then(|v| uuid::Uuid::parse_str(v.trim()).ok());
     let crash_correlator = feedbackmonk_api::GlitchtipCorrelator::from_env()
+        .filter(|_| crash_tenant.is_some())
         .map(|c| Arc::new(c) as Arc<dyn feedbackmonk_api::CrashCorrelator>);
     tracing::info!(configured = crash_correlator.is_some(), "crash correlation");
-    let crash_state = CrashState { app: state.clone(), correlator: crash_correlator };
+    let crash_state = CrashState {
+        app: state.clone(),
+        correlator: crash_correlator,
+        tenant_id: crash_tenant,
+    };
 
     let app = build_app(
         state,

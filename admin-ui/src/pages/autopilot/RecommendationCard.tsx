@@ -161,8 +161,13 @@ function ApproveDialog({
   // Rung 1 is the default — the safest rung that still produces a work order
   // (the owner signs every order; the rung only governs post-approval reach).
   const [rung, setRung] = useState<AutonomyRung>(1);
-  const [title, setTitle] = useState(rec.title);
-  const [instructions, setInstructions] = useState(rec.body);
+  // The override fields start EMPTY (DEC-FBR-IMPL-33): the runner trusts
+  // `owner_overrides` as the owner's own words, so they must hold only text the
+  // owner typed. Pre-filling them with the model-written recommendation let one
+  // edited word carry every model sentence into the trusted prompt layer. The
+  // recommendation stays visible, read-only, above the fields.
+  const [title, setTitle] = useState("");
+  const [instructions, setInstructions] = useState("");
   // C31 §4 — optional named-runner routing. Set/overridden at approve (the Q17
   // tweak surface); empty means first-claim-wins (any runner). Coordination
   // metadata, not a trust boundary — the approval signature is the security gate.
@@ -176,10 +181,8 @@ function ApproveDialog({
       let overrides: OwnerOverrides | undefined;
       if (tweak) {
         overrides = {};
-        if (title.trim() && title !== rec.title) overrides.title = title.trim();
-        if (instructions.trim() && instructions !== rec.body) {
-          overrides.instructions = instructions.trim();
-        }
+        if (title.trim()) overrides.title = title.trim();
+        if (instructions.trim()) overrides.instructions = instructions.trim();
         if (Object.keys(overrides).length === 0) overrides = undefined;
       }
       // Step 1: create the draft work order at the chosen rung.
@@ -220,10 +223,6 @@ function ApproveDialog({
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     setInlineError(null);
-    if (tweak && !title.trim()) {
-      setInlineError(t("admin.newStory.errors.titleRequired"));
-      return;
-    }
     mutation.mutate();
   }
 
@@ -246,6 +245,14 @@ function ApproveDialog({
             : t("admin.recommendationCard.approveDialog.approveExplain")}
         </p>
 
+        <section
+          className="ap-approve-preview"
+          aria-label={t("admin.recommendationCard.approveDialog.previewAria")}
+        >
+          <strong>{rec.title}</strong>
+          <p className="ap-rec-text" dir="auto">{rec.body}</p>
+        </section>
+
         {tweak ? (
           <>
             <label htmlFor={`${dialogId}-title-input`}>
@@ -256,7 +263,6 @@ function ApproveDialog({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              required
               maxLength={200}
               autoFocus
             />
@@ -271,15 +277,7 @@ function ApproveDialog({
               rows={6}
             />
           </>
-        ) : (
-          <section
-            className="ap-approve-preview"
-            aria-label={t("admin.recommendationCard.approveDialog.previewAria")}
-          >
-            <strong>{rec.title}</strong>
-            <p className="ap-rec-text" dir="auto">{rec.body}</p>
-          </section>
-        )}
+        ) : null}
 
         <AutonomyRungDial
           value={rung}

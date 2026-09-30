@@ -22,6 +22,8 @@ use axum::routing::get;
 use axum::{Json, Router};
 use serde::Serialize;
 
+use uuid::Uuid;
+
 use feedbackmonk_core::FeedbackId;
 
 use crate::auth::session::AdminSession;
@@ -31,12 +33,16 @@ use crate::handlers::admin_feedback::sole_project_scope;
 use crate::state::AppState;
 
 /// Sub-state: carries `AppState` so `AdminSession` extracts, plus the
-/// correlator. `None` when the four `FEEDBACKMONK_GLITCHTIP_*` settings are not
-/// all set -- the endpoint then answers `unavailable` for every row.
+/// correlator and the one tenant it serves. The tracker's token is ONE
+/// tenant's credential (the operator's, e.g. GitCellar's Glitchtip), so on a
+/// shared instance every other tenant is answered `unavailable` without a
+/// tracker call. `correlator` is `None` unless all five
+/// `FEEDBACKMONK_GLITCHTIP_*` settings are set.
 #[derive(Clone)]
 pub struct CrashState {
     pub app: AppState,
     pub correlator: Option<Arc<dyn CrashCorrelator>>,
+    pub tenant_id: Option<Uuid>,
 }
 
 impl FromRef<CrashState> for AppState {
@@ -74,9 +80,10 @@ async fn get_crash(
     let Some(crash_event_id) = feedback.crash_event_id.filter(|id| !id.trim().is_empty()) else {
         return Ok(Json(CrashResponse { status: "none", crash_event_id: None, crash: None }));
     };
+    let ours = state.tenant_id == Some(session.scope.tenant_id());
     let outcome = match &state.correlator {
-        Some(c) => c.correlate(&crash_event_id).await,
-        None => CorrelationOutcome::Unavailable,
+        Some(c) if ours => c.correlate(&crash_event_id).await,
+        _ => CorrelationOutcome::Unavailable,
     };
     let (status, crash) = match outcome {
         CorrelationOutcome::Linked(ev) => ("linked", Some(ev)),
