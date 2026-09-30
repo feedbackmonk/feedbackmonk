@@ -29,6 +29,10 @@ pub mod health;
 // P1 Stage 2: admin status workflow + replies (Contracts C7 + C8).
 pub mod admin_feedback;
 
+// Parity gap #2: resolved crash detail for one feedback row (admin-only,
+// best-effort, pull-mode against Glitchtip; adoption contract §5.6).
+pub mod admin_crash;
+
 // P2: promote-to-roadmap admin action (FR-FBR-12, Contract C16, Worker C).
 pub mod promote;
 

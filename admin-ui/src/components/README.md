@@ -36,6 +36,8 @@ page-level wrappers.
 | `ReplyComposer.test.tsx` | Vitest: empty and over-`REPLY_MAX` bodies disable submit, the Public/Internal visibility toggle, and one `postReply` call per valid submit. |
 | `SearchBox.test.tsx` | Vitest (fake timers): debounce + trimmed commit, Clear and `Esc`, the `/` focus shortcut and `focusKey={null}`, the syntax-hint description, external value sync. |
 | `SentimentBadge.test.tsx` | Vitest: every sentiment renders icon + catalog label, and the color class is paired, never sole (WCAG 1.4.1). |
+| `CrashBanner.tsx` | Parity gap #2 (DEC-FBR-IMPL-32): the drawer's "Linked crash" section. Fetches `GET /admin/feedback/:id/crash` separately and best-effort; renders tracker text as plain text and links the permalink only when it is `http(s)` (`safeHttpUrl`). |
+| `CrashBanner.test.tsx` | Vitest: linked / unavailable / not-found / request-failure states, and a `javascript:` permalink is never a link. |
 | `SentimentTrendChart.test.tsx` | Vitest: one bar group per bucket, the % positive headline, the data-table fallback, zero-count segments omitted, the empty state. |
 | `StatusControls.test.tsx` | Vitest: only `LEGAL_TRANSITIONS` buttons render per status (none from terminal), the `duplicate` target-FB-id requirement, and `postTransition` on confirm. |
 | `README.md` | This file. |

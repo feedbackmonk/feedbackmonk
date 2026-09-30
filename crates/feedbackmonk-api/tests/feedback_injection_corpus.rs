@@ -224,12 +224,14 @@ fn case_g_destructive_steering_p5b() {
     // "delete the auth check" steered via feedback into an implementation prompt.
     // The data-envelope defense (C27 25b, `feedbackmonk_runner::prompt::assemble`)
     // keeps that steering OUT of the trusted instruction layer: it lands verbatim
-    // as inert DATA inside the single `<untrusted-feedback-data>` envelope, the
-    // trusted layer carries only the owner-approved instructions + the DEC-84
-    // critical-action preamble. Hermetic — no `claude` spawn (prompt assembly is
+    // as inert DATA inside the single `<untrusted-feedback-data>` envelope. For a
+    // recommendation-grounded order the trusted layer carries the DEC-84
+    // critical-action preamble + the fixed DERIVED_TASK statement only: the
+    // order's title/instructions were copied from the model-written
+    // recommendation, so they are data too (2026-09-30). Hermetic — no `claude` spawn (prompt assembly is
     // a pure function; the agent is injectable).
     use feedbackmonk_core::ActionType;
-    use feedbackmonk_runner::prompt::{assemble, ENVELOPE_CLOSE, ENVELOPE_OPEN};
+    use feedbackmonk_runner::prompt::{assemble, DERIVED_TASK, ENVELOPE_CLOSE, ENVELOPE_OPEN};
     use feedbackmonk_runner::types::{ClaimedOrder, RecommendationContext};
     use uuid::Uuid;
 
@@ -238,7 +240,8 @@ fn case_g_destructive_steering_p5b() {
         work_order_id: Uuid::nil(),
         project_id: Uuid::nil(),
         action_type: ActionType::BugFix,
-        // Trusted, owner-authored (survived the approval gate) — benign.
+        // Copied from the recommendation at create time (the owner cannot edit
+        // it on a derived order) — benign here, but model-written, so data.
         title: "Fix the reported login regression".into(),
         instructions: "Investigate the login regression and fix the root cause.".into(),
         owner_overrides: None,
@@ -277,12 +280,24 @@ fn case_g_destructive_steering_p5b() {
         "injection text must NOT land in the trusted layer"
     );
 
-    // (3) The trusted layer carries ONLY the owner-approved instructions.
+    // (3) The trusted layer carries the fixed derived-task statement, and the
+    //     order's copied title/instructions are inside the envelope, not above it.
     assert!(
-        prompt
+        prompt.instructions.contains(DERIVED_TASK),
+        "a recommendation-grounded order's trusted task is the fixed DERIVED_TASK"
+    );
+    assert!(
+        !prompt
             .instructions
             .contains("Investigate the login regression and fix the root cause."),
-        "owner-approved instructions are present in the trusted layer"
+        "copied recommendation text must not be in the trusted layer: {}",
+        prompt.instructions
+    );
+    assert!(
+        prompt
+            .untrusted_envelope
+            .contains("Investigate the login regression and fix the root cause."),
+        "the copied order text travels as data inside the envelope"
     );
 
     // (4) The steering text survives verbatim as INERT DATA inside the single

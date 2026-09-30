@@ -16,7 +16,10 @@ Comments and `#[cfg(test)]` modules are stripped before scanning.
 - **A: envelope.**
   - `prompt.rs` defines `wrap_untrusted`, and no other runner file names the envelope
     delimiters.
-  - `assemble` reads nothing of the recommendation before it builds `untrusted_envelope`.
+  - In `assemble`, the order's `title`/`instructions` appear only in the owner-authored
+    `None =>` arm or as arguments of `render_untrusted_block`, and recommendation fields
+    (`rec.`) only inside it (DEC-FBR-IMPL-33: a recommendation-grounded order's text is
+    copied model output, so it is data).
   - `assemble` routes the recommendation through
     `wrap_untrusted(render_untrusted_block(..))`, and nothing else calls
     `render_untrusted_block`.
@@ -30,10 +33,9 @@ Comments and `#[cfg(test)]` modules are stripped before scanning.
 
 ## What it does not see
 
-Text that enters the order's trusted fields upstream, in the API: `create_work_order`
-copies a recommendation's title and body into the work order's title and instructions. That
-is an open design decision, recorded in
-`docs/planning/deferred/runner-recommendation-text-in-trusted-layer-20260930.md`.
+Where the API gets an order's text. It relies on the runner-side rule that a
+recommendation-grounded order's title and instructions are data. An owner-authored order
+(`recommendation: None`) is trusted by construction, since C31 lets only the owner write it.
 
 ## Invocation
 
@@ -57,3 +59,11 @@ Each mutation ran against a scratch copy of `crates/feedbackmonk-runner`, and ea
 
 The previous version checked egress at the level of whole files, so it passed mutation 1.
 That was a real leak, fixed the same day.
+
+Added with DEC-FBR-IMPL-33 (2026-09-30), also against scratch copies, each exiting 1:
+
+4. `prompt.rs` restored to its pre-DEC-FBR-IMPL-33 form, which put a derived order's copied
+   title and instructions in the trusted layer. Caught as "puts the order's title/instructions
+   in the trusted layer" and "no owner-authored `None =>` arm".
+5. `instructions.push_str(&rec.body)` beside `DERIVED_TASK`. Caught as "reads the
+   recommendation in the trusted instruction layer".

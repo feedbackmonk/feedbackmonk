@@ -164,6 +164,22 @@ def _runner_sources() -> List[Tuple[Path, str]]:
             for p in sorted(RUNNER_SRC.rglob("*.rs"))]
 
 
+def _drop_spans(text: str, start_pattern: str, opener: str = "(") -> str:
+    """`text` with every balanced span that opens at `start_pattern` removed."""
+    closer = {"(": ")", "{": "}"}[opener]
+    out, i = "", 0
+    for m in re.finditer(start_pattern, text):
+        if m.start() < i:
+            continue
+        out += text[i:m.start()]
+        depth, j = 1, m.end()
+        while j < len(text) and depth:
+            depth += 1 if text[j] == opener else -1 if text[j] == closer else 0
+            j += 1
+        i = j
+    return out + text[i:]
+
+
 def probe_a() -> List[str]:
     """Feedback-derived text enters the prompt only inside the envelope."""
     offenders: List[str] = []
@@ -183,13 +199,23 @@ def probe_a() -> List[str]:
     assemble = _extract_fn_body(prompt, "pub fn assemble")
     if assemble is None:
         return offenders + [f"{rel(PROMPT_RS)}: `pub fn assemble` not found"]
-    # The trusted layer is everything `assemble` builds before the envelope; it
-    # must not read the recommendation (feedback-derived, model-summarised).
-    split = assemble.find("untrusted_envelope")
-    trusted = assemble[:split] if split >= 0 else assemble
-    if split < 0:
+    # Trust follows who wrote the text (2026-09-30). The order's title and
+    # instructions are owner-authored only when there is no recommendation, so
+    # outside the `None =>` arm they may appear only as arguments of
+    # render_untrusted_block (i.e. inside the envelope); recommendation fields
+    # (`rec.`) may appear nowhere else at all.
+    if "untrusted_envelope" not in assemble:
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` builds no `untrusted_envelope`")
-    if re.search(r"\brecommendation\b|\brec\.", trusted):
+    outside = _drop_spans(assemble, r"\brender_untrusted_block\s*\(")
+    none_arm = re.search(r"\bNone\s*=>\s*\{", outside)
+    if none_arm:
+        outside = _drop_spans(outside, r"\bNone\s*=>\s*\{", opener="{")
+    else:
+        offenders.append(f"{rel(PROMPT_RS)}: `assemble` has no owner-authored `None => {{..}}` arm")
+    if re.search(r"\border\s*\.\s*(title|instructions)\b", outside):
+        offenders.append(f"{rel(PROMPT_RS)}: `assemble` puts the order's title/instructions in the trusted layer "
+                         "for a recommendation-grounded order (they are copied from the model-written recommendation)")
+    if re.search(r"\brec\s*\.", outside):
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` reads the recommendation in the trusted instruction layer")
     if not re.search(r"wrap_untrusted\s*\(\s*&?\s*render_untrusted_block\s*\(", assemble):
         offenders.append(f"{rel(PROMPT_RS)}: `assemble` does not route the recommendation through "

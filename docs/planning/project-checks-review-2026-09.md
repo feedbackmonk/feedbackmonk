@@ -32,9 +32,9 @@ The failures came from four causes:
 | `widget_config` (unauthenticated, three DB queries per hit), `me_feedback`, `me_feedback_data` (including the export) and `solicitation` had **no per-IP rate limit**, although `main.rs` and commit `2af28ec` said every public router did | review of `public-route-ceiling`'s hand-kept list | **Fixed** on the owner's word: all four are wrapped in `apply_public_rate_limit`, which shares the existing per-IP budget. `host-tenant-binding` now fails any public router without it |
 | **Opt-out race** (privacy, DEC-FBR-IMPL-24): the handler reads the state, checks it in memory, then writes without a condition, so a concurrent `prompted` could overwrite `opted_out` | review of `solicitation-invariant-check` | **Fixed** on the owner's word: the upsert refuses to overwrite `opted_out` in SQL, and test `stale_write_cannot_overwrite_opted_out` covers it |
 | A runner **failure reason reached the wire with only PII scrubbing**, not the egress sanitizer. Agent-controlled text got there through serde's error message | review of `feedback-as-data-audit` | **Fixed** on the owner's word: `failure_reason_for_egress` in `report.rs`, with a test. The redone oracle fails on the old code |
-| Recommendation title and body (model-derived from feedback) enter the runner prompt's **trusted** layer | same | **Owner's decision**: `docs/planning/deferred/runner-recommendation-text-in-trusted-layer-20260930.md` |
+| Recommendation title and body (model-derived from feedback) enter the runner prompt's **trusted** layer | same | **Fixed** on the owner's word (DEC-FBR-IMPL-33): a recommendation-grounded order's title and instructions now travel inside the envelope; the oracle enforces it |
 | Five settings the api reads were missing from `SELFHOST_ENV.md`: the solicitation snooze and four GlitchTip variables | review of `selfhost-compose-smoke` | **Fixed**: catalog rows added, and new Probe D fails on any gap |
-| **Crash correlation is built but never wired.** Nothing constructs `GlitchtipCorrelator`, so setting the four GlitchTip variables does nothing, contrary to the adoption contract §5.6 | same | **Owner's decision**: `docs/planning/deferred/crash-correlation-not-wired-20260930.md`. The contract carries a correction note |
+| **Crash correlation is built but never wired.** Nothing constructs `GlitchtipCorrelator`, so setting the four GlitchTip variables does nothing, contrary to the adoption contract §5.6 | same | **Fixed** on the owner's word (DEC-FBR-IMPL-32): admin-only `GET /api/v1/admin/feedback/:id/crash` plus a banner in the console's feedback drawer |
 | The committed `widget/dist` was never checked against `widget/src`, and **CI never built or tested the widget or admin-ui** | review of `widget-bundle-size` | **Fixed**: CI job `frontends` runs the widget's tests, rebuilds it and fails when the committed `dist/` differs; the build is deterministic. It also runs admin-ui's tests and build |
 | admin-ui tests failed under load on vitest's 5 s default timeout (the userEvent form tests) | running admin-ui's suite, which nothing did | **Fixed**: `testTimeout: 20_000`. No assertion changed |
 
@@ -116,13 +116,13 @@ blocked, and it raised two low findings:
 - **C-002, fixed.** The rate-limit docs and GitCellar's adoption contract did not say
   that widget-config, `/me/feedback` and `/me/solicitation` can now return `429`. The
   contract's change log now records it.
-- **C-001, open.** `failure_reason_for_egress` withholds a failure reason longer than the
+- **C-001, decided: withhold (DEC-FBR-IMPL-34).** `failure_reason_for_egress` withholds a failure reason longer than the
   sanitizer's 2,048-character ceiling in full, so a long error chain loses its diagnostic.
   - A fix that cut the reason to 1,024 characters *before* sanitizing was **FLAGged by
     the test-change judge** and withdrawn. It weakened egress: a secret token
     straddling the cut falls below the 40-character high-entropy threshold and would
     leave unredacted, and a source dump's head could leave the runner (C27, "references,
     never contents").
-  - The shipped behaviour errs safe. A fix must sanitize first and cut after, or cut at
-    a token boundary, and prove that a straddling token is never emitted.
+  - The owner kept the safe behaviour: a rejected reason is withheld whole. A later fix
+    would have to sanitize first and cut after, and prove a straddling token is never emitted.
 

@@ -1,5 +1,5 @@
 ---
-status: open
+status: resolved 2026-09-30 (enveloped on the owner's word, DEC-FBR-IMPL-33)
 source: project-checks review, 2026-09-30 (docs/planning/project-checks-review-2026-09.md)
 deferred_because: the owner's decision — a design choice about the prompt's trust layers (FR-FBR-25b), not a defect with one fix
 harm: model-derived feedback text reaches the runner agent's trusted instruction layer, guarded only by owner approval

@@ -1175,3 +1175,39 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Alternatives considered**: *Locale claim in the end-user JWT (Contract C2)* — a clean channel for authenticated widgets, but leaves anonymous mode (GitCellar's landing) with nothing; `data-locale` serves both and is set from the same value the host would put in a claim (rejected for v1; may be added as an optional claim later). *Cookie instead of `localStorage` on public hosts* — the SPA never server-renders, so a cookie buys nothing and adds a consent-banner question (rejected). *Persist the widget's locale in `localStorage` on the host origin* — would let the widget drift from a host that later changes language (rejected pending Q26).
 
 ---
+
+### DEC-FBR-IMPL-32: Crash correlation is wired, admin-only, as its own best-effort request
+
+**Status**: **RESOLVED 2026-09-30** (owner's word, after the project-checks review found the resolver built but never constructed).
+
+**Decision**: the api binary builds `GlitchtipCorrelator` from the four `FEEDBACKMONK_GLITCHTIP_*` settings at start-up (absent any one, correlation is off). `GET /api/v1/admin/feedback/:id/crash` resolves the row's stored `crash_event_id` and answers `{status: none | linked | not_found | unavailable, crash_event_id, crash?}` with the adoption contract §5.6 banner shape; the admin detail read carries `crash_event_id`; the console's feedback drawer renders the banner. It is a separate request from the detail read, so a slow or down tracker delays only the banner, and every failure is `unavailable`, never an error.
+
+**Rationale**: the adoption contract promised that setting the four variables enables crash detail, and nothing used them. GitCellar Desktop's own crash-link banner is on its submit form and reads the local recent crash, so the reader of *resolved* detail is the triager. End-user reads carry nothing new: the tracker's permalinks and code locations are the data controller's, not the submitter's.
+
+**Alternatives considered**: *Resolve inside the detail read* — couples triage latency to a third-party tracker (rejected). *Serve it on `/me/feedback`* — exposes internal tracker links to end users and nobody consumes it (rejected). *Retract the promise and delete the module* — the owner chose to wire it.
+
+---
+
+### DEC-FBR-IMPL-33: In the runner prompt, trust follows who wrote the text — a recommendation-grounded order's title and instructions are data
+
+**Status**: **RESOLVED 2026-09-30** (owner's word; brief `runner-recommendation-text-in-trusted-layer-20260930.md`).
+
+**Decision**: `create_work_order` copies a recommendation's title and body into the order, and the owner cannot edit them (only add `owner_overrides`), so for a recommendation-grounded order they are model-written text derived from public feedback. `feedbackmonk_runner::prompt::assemble` now puts them INSIDE the untrusted envelope, and the trusted layer carries the fixed `DERIVED_TASK` statement in their place. Owner-authored orders (C31, `recommendation: None`) keep their title and instructions in the trusted layer. `action_type` and `owner_overrides` are trusted either way. The `feedback-as-data-audit` oracle enforces the split.
+
+**Rationale**: an injection in a feedback body can survive into the analyst's recommendation; in the trusted layer it would read as an instruction, and the only guard was a human skimming a model's summary at approval. The owner's approval endorses the work order, not every sentence a model wrote.
+
+**Alternatives considered**: *Treat approval as the trust boundary* (record that approved text is owner-endorsed) — rejected by the owner.
+
+---
+
+### DEC-FBR-IMPL-34: A runner failure reason the egress sanitizer rejects is withheld whole, never cut to fit
+
+**Status**: **RESOLVED 2026-09-30** (owner's word; critic finding C-001 on `e5d3514`).
+
+**Decision**: `failure_reason_for_egress` sends a failure reason only if `sanitize_outbound` accepts it whole; a reason it rejects — over the 2,048-character ceiling, or secret-shaped — is replaced by a fixed "withheld" message. Operators lose the diagnostic of a very long error chain; the runner's own logs keep it.
+
+**Rationale**: cutting before sanitizing was tried and flagged by the test-change judge: a secret token straddling the cut falls below the sanitizer's 40-character high-entropy threshold and would leave unredacted, and the head of a source dump would leave the runner, against C27's "references, never contents". Withholding errs safe.
+
+**Alternatives considered**: *Sanitize first, then cut; or cut at a token boundary* — possible later, with a test proving a straddling token is never emitted; not needed now.
+
+---

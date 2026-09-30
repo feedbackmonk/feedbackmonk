@@ -95,9 +95,27 @@ export interface FeedbackDetail {
   submitted_at: string;
   submitter: FeedbackSubmitter;
   external_metadata?: Record<string, unknown>;
+  // Parity gap #2: the crash-tracker event linked at submit time, or null.
+  // Resolve it with fetchFeedbackCrash (a separate, best-effort call).
+  crash_event_id?: string | null;
   status_history: StatusHistoryEntry[];
   replies: ReplyEntry[];
   sentiment?: SentimentValue | null; // first-class sentiment; null = unclassified
+}
+
+// Parity gap #2 — GET /admin/feedback/:id/crash (adoption contract §5.6).
+export interface CrashEvent {
+  crash_event_id: string;
+  title: string;
+  culprit?: string | null;
+  level?: string | null;
+  permalink?: string | null;
+  last_seen?: string | null; // RFC3339
+}
+export interface FeedbackCrash {
+  status: "none" | "linked" | "not_found" | "unavailable";
+  crash_event_id: string | null;
+  crash?: CrashEvent; // present only when status === "linked"
 }
 
 // Contract C7 — transition request/response

@@ -5,7 +5,7 @@
   "lane": "fast",
   "expected_runtime_ms": 1600,
   "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
-  "question": "Does feedback-derived text reach the runner's agent only inside the untrusted envelope, and does every outbound payload pass the egress sanitizer? A: assemble reads nothing of the recommendation before the envelope and routes it through wrap_untrusted(render_untrusted_block(..)); only prompt.rs names the delimiters. B, per function: each runner_transition/post_recommendation payload is None or bound from sanitize_outbound/sanitize_clean/failure_reason_for_egress; only client.rs names an HTTP client.",
+  "question": "Does feedback-derived text reach the runner's agent only inside the untrusted envelope, and does every outbound payload pass the egress sanitizer? A: in assemble, the order's title/instructions appear only in the owner-authored `None =>` arm or as arguments of render_untrusted_block, recommendation fields only inside it, and it is wrapped by wrap_untrusted; only prompt.rs names the delimiters (DEC-FBR-IMPL-33). B, per function: each runner_transition/post_recommendation payload is None or bound from sanitize_outbound/sanitize_clean/failure_reason_for_egress; only client.rs names an HTTP client.",
   "category": "security",
   "invocation": {
     "unix": ".claude/project-oracles/feedback-as-data-audit/oracle.py",

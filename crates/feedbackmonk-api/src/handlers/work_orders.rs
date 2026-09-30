@@ -1264,9 +1264,11 @@ const MAX_CLAIMED_ORDER_MEMBER_BODIES: i64 = 200;
 /// Assemble the FROZEN C26 `ClaimedOrder` JSON for one work order,
 /// STRUCTURALLY: the API crate has NO Rust dependency on the runner crate — the
 /// runner deserializes this into `feedbackmonk_runner::types::ClaimedOrder`.
-/// Joins the **trusted** work-order instruction layer (`title`/`instructions`/
-/// `owner_overrides` — owner-approved, survived the gate) with the
-/// **untrusted** feedback-derived grounding (recommendation body/rationale/
+/// Joins the work order's own fields (`title`/`instructions`, which are
+/// owner-authored only on a C31 order and otherwise copied from the
+/// recommendation — the runner decides their layer, DEC-FBR-IMPL-33 — plus the
+/// owner-ratified `owner_overrides`) with the **untrusted** feedback-derived
+/// grounding (recommendation body/rationale/
 /// `source_refs` + cluster summary + verbatim member bodies), all via
 /// tenant-scoped repos (DEC-FBR-03; NO raw SQL here). `action_type` serialises
 /// `snake_case` (`feedbackmonk_core::ActionType`), round-tripping into the

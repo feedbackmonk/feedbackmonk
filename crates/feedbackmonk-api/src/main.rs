@@ -49,14 +49,14 @@ use feedbackmonk_api::translation::{DeepLTranslator, LibreTranslateTranslator, T
 use feedbackmonk_api::{
     account_recovery_router, admin_feedback_routes, admin_roadmap_router, admin_tier_router,
     apply_public_rate_limit, attachments_router, bind_admin_routes, bind_public_routes,
-    board_router, capabilities_router, cluster_admin_router, domains_router,
+    board_router, capabilities_router, cluster_admin_router, crash_admin_router, domains_router,
     me_feedback_data_router, me_feedback_router, moderation_router, ops_router, parse_origins,
     promote_router, public_cors_layer, public_site_router, recommendation_admin_router,
     roadmap_router, runner_tokens_admin_router, solicitation_router, spawn_translation_worker,
     tenant_settings_router,
     spawn_voting_cache_refresh, submission_router, sweep_admin_router, widget_config_router,
     work_order_admin_router, work_order_runner_router, AccountRecoveryState, AttachmentState,
-    DomainAdminState, HostConfig, HostState, MeFeedbackDataState, PublicRateLimit,
+    CrashState, DomainAdminState, HostConfig, HostState, MeFeedbackDataState, PublicRateLimit,
     PublicSiteState, VotingCache, DEFAULT_TRANSLATION_POLL_SECS,
     DEFAULT_TRANSLATION_TARGET_LANG,
 };
@@ -236,6 +236,13 @@ async fn main() -> Result<()> {
         domains: Arc::clone(&host_state.domains),
         config: host_config,
     };
+    // Parity gap #2: crash detail resolves only when all four
+    // FEEDBACKMONK_GLITCHTIP_* settings are set; otherwise every row answers
+    // `unavailable` and the stored crash_event_id is still shown.
+    let crash_correlator = feedbackmonk_api::GlitchtipCorrelator::from_env()
+        .map(|c| Arc::new(c) as Arc<dyn feedbackmonk_api::CrashCorrelator>);
+    tracing::info!(configured = crash_correlator.is_some(), "crash correlation");
+    let crash_state = CrashState { app: state.clone(), correlator: crash_correlator };
 
     let app = build_app(
         state,
@@ -245,6 +252,7 @@ async fn main() -> Result<()> {
         &host_state,
         public_site_state,
         domain_admin_state,
+        crash_state,
         &cors_origins,
     );
 
@@ -584,6 +592,7 @@ fn build_app(
     host_state: &HostState,
     public_site_state: PublicSiteState,
     domain_admin_state: DomainAdminState,
+    crash_state: CrashState,
     cors_origins: &[String],
 ) -> Router {
     // FR-FBR-18: every request is wrapped in a span carrying a `request_id`
@@ -658,6 +667,9 @@ fn build_app(
             hs.clone(),
         ))
         .merge(bind_admin_routes(admin_feedback_routes(state.clone()), hs.clone()))
+        // Parity gap #2: resolved crash detail, admin-only (AdminSession, no
+        // CORS) -- a separate request so a slow tracker never delays triage.
+        .merge(bind_admin_routes(crash_admin_router(crash_state), hs.clone()))
         .merge(bind_public_routes(
             apply_public_rate_limit(widget_config_router(state.clone()), prl.clone()),
             hs.clone(),

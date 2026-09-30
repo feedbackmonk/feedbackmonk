@@ -91,6 +91,7 @@ ROUTERS: dict[str, tuple[str, bool, str]] = {
     "promote_router": (ADMIN, False, "feedback -> roadmap promotion"),
     "domains_router": (ADMIN, False, "subdomain / custom-domain claim + release"),
     "tenant_settings_router": (ADMIN, False, "tenant language settings (FR-FBR-38 / C38)"),
+    "crash_admin_router": (ADMIN, False, "resolved crash detail for one feedback row (parity gap #2)"),
     "work_order_admin_router": (ADMIN, False, "work-order approval state machine"),
     "work_order_runner_router": (ADMIN, False, "runner write-token surface, server-to-server"),
     "runner_tokens_admin_router": (ADMIN, False, "runner token lifecycle"),

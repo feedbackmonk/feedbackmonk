@@ -12,6 +12,7 @@ import type {
   ClusterPriority,
   ClusterStatus,
   CreateWorkOrderRequest,
+  FeedbackCrash,
   FeedbackDetail,
   FeedbackListResponse,
   FeedbackStatus,
@@ -157,6 +158,18 @@ export async function fetchFeedbackDetail(
 ): Promise<FeedbackDetail> {
   const r = await api.get<FeedbackDetail>(
     `/admin/feedback/${encodeURIComponent(feedbackId)}`,
+  );
+  return r.data;
+}
+
+// Parity gap #2: resolved crash detail for one feedback row. Best-effort by
+// contract -- an unconfigured or unreachable tracker answers
+// `{status: "unavailable"}`, never an error.
+export async function fetchFeedbackCrash(
+  feedbackId: string,
+): Promise<FeedbackCrash> {
+  const r = await api.get<FeedbackCrash>(
+    `/admin/feedback/${encodeURIComponent(feedbackId)}/crash`,
   );
   return r.data;
 }

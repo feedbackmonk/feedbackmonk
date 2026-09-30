@@ -689,6 +689,10 @@ pub struct FeedbackDetailResponse {
     pub submitter_locale: Option<String>,
     pub submitter: SubmitterWire,
     pub external_metadata: Option<serde_json::Value>,
+    /// Parity gap #2: the crash-tracker event this feedback was linked to at
+    /// submit time, or `null`. Resolve it with
+    /// `GET /api/v1/admin/feedback/:id/crash` (a separate, best-effort call).
+    pub crash_event_id: Option<String>,
     pub status_history: Vec<StatusHistoryEntryWire>,
     pub replies: Vec<ReplyEntryWire>,
 }
@@ -790,6 +794,7 @@ pub async fn get_admin_feedback(
         submitter_locale: feedback.submitter_locale,
         submitter,
         external_metadata: feedback.external_metadata,
+        crash_event_id: feedback.crash_event_id,
         status_history: history_wire,
         replies: replies_wire,
     }))

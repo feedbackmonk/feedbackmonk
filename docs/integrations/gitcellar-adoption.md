@@ -356,9 +356,12 @@ except `crash_event_id`/`title` as optional.
 > `FEEDBACKMONK_GLITCHTIP_{URL,ORG,PROJECT,TOKEN}` env vars set at deploy. Until then, `crash_event_id`
 > is still captured + stored; only the resolved banner detail is "unavailable".
 >
-> **Correction (2026-09-30):** setting the four vars is not enough — nothing in the api binary
-> constructs the correlator yet, so no response carries resolved crash detail. Wiring it is an open
-> decision: `docs/planning/deferred/crash-correlation-not-wired-20260930.md`.
+> **Wired (2026-09-30, DEC-FBR-IMPL-32):** until this date nothing constructed the resolver, so the
+> note above was untrue. The api now builds it from the four vars at start-up and serves the banner
+> shape, admin-only, at `GET /api/v1/admin/feedback/:id/crash` →
+> `{"status": "none"|"linked"|"not_found"|"unavailable", "crash_event_id", "crash"?}`; the admin
+> detail read carries `crash_event_id`. No end-user read changed: Desktop's own crash-link banner
+> (on its submit form) is unaffected.
 
 ---
 
@@ -806,6 +809,9 @@ rating is entirely unaffected; one that does can feature-detect before sending.
 ---
 
 ## Change log
+- 2026-09-30 (crash correlation wired, DEC-FBR-IMPL-32) — ADDITIVE, admin-only. New
+  `GET /api/v1/admin/feedback/:id/crash`; `crash_event_id` added to the admin feedback detail. No
+  end-user or public response changed.
 - 2026-09-30 (per-IP rate limit on four more public routes) — BEHAVIOUR CHANGE, no field changes.
   `GET widget-config`, the `/me/feedback` read/export/erasure routes and `/me/solicitation` now sit
   behind the same class-level per-IP ceiling as submit/attachments/board/roadmap

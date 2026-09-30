@@ -20,10 +20,14 @@ pub struct ClaimedOrder {
     pub work_order_id: Uuid,
     pub project_id: Uuid,
     pub action_type: ActionType,
-    /// Owner-authored title (trusted — survived the approval gate).
+    /// The order's title. Trusted ONLY on an owner-authored order
+    /// (`recommendation: None`); on a recommendation-grounded order it was
+    /// copied from the model-written recommendation and is data
+    /// (DEC-FBR-IMPL-33) — `prompt::assemble` puts it inside the envelope.
     pub title: String,
-    /// **Trusted** instruction layer: owner-approved, ratified at the approval
-    /// gate (FR-FBR-25a). Safe to place in the instruction/system layer.
+    /// The order's instructions. Same rule as `title`: trusted only when the
+    /// owner authored them (C31); otherwise copied recommendation text, which
+    /// `prompt::assemble` puts inside the envelope.
     pub instructions: String,
     /// **Trusted** Q17 owner edits merged over the recommendation (overrides win).
     pub owner_overrides: Option<serde_json::Value>,

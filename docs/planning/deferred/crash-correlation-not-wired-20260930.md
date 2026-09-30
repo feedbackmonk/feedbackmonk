@@ -1,5 +1,5 @@
 ---
-status: open
+status: resolved 2026-09-30 (wired on the owner's word, DEC-FBR-IMPL-32)
 source: project-checks review, 2026-09-30 (docs/planning/project-checks-review-2026-09.md)
 deferred_because: the owner's decision — wiring it adds a product surface GitCellar consumes
 harm: the adoption contract promises crash-banner detail once four env vars are set; setting them does nothing

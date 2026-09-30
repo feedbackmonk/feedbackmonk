@@ -7,6 +7,7 @@ import { SentimentBadge } from "../components/SentimentBadge";
 import { StatusControls } from "../components/StatusControls";
 import { ReplyComposer } from "../components/ReplyComposer";
 import { PromoteButton } from "./roadmap/PromoteButton";
+import { CrashBanner } from "../components/CrashBanner";
 import { formatAbsolute, formatRelative } from "../shared/format";
 import { Trans } from "react-i18next";
 import { useTranslation } from "../i18n";
@@ -179,6 +180,10 @@ export function FeedbackDrawer({ feedbackId, onClose }: FeedbackDrawerProps) {
                   : detail.body}
               </p>
             </section>
+
+            {detail.crash_event_id ? (
+              <CrashBanner feedbackId={feedbackId} crashEventId={detail.crash_event_id} />
+            ) : null}
 
             <section aria-labelledby="drawer-history-label">
               <h3 id="drawer-history-label">{t("admin.feedbackDrawer.historyHeading")}</h3>
