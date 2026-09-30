@@ -78,12 +78,19 @@ fi
 
 if $run_frontends; then
   step "widget + admin-ui  (CI frontends job; uses the installed node_modules)"
-  (cd widget && npm test && npm run build) || fail=1
-  # dist/ is committed and the build is deterministic: a rebuild that changes it
-  # means a src change was committed without its build.
-  if [ -n "$(git status --porcelain -- widget/dist)" ]; then
-    git status --porcelain -- widget/dist
-    echo "widget/dist is stale -- commit the rebuilt dist/"
+  # dist/ is committed and the build is deterministic, so a rebuild that CHANGES
+  # dist means dist does not match src. Compare dist before and after the
+  # rebuild -- not `git status`, which would also flag a correct, not-yet-
+  # committed rebuild at finalize time (proofs run before the commit).
+  dist_digest() { (cd widget/dist 2>/dev/null && find . -type f -print0 | sort -z | xargs -0 sha256sum) | sha256sum; }
+  before=$(dist_digest)
+  if (cd widget && npm test && npm run build); then
+    if [ "$before" != "$(dist_digest)" ]; then
+      git status --porcelain -- widget/dist
+      echo "widget/dist did not match widget/src -- the rebuild changed it; commit the rebuilt dist/"
+      fail=1
+    fi
+  else
     fail=1
   fi
   (cd admin-ui && npm test && npm run build) || fail=1

@@ -59,15 +59,32 @@ if ($Tests) {
 
 if ($Frontends) {
   Step "widget + admin-ui  (CI frontends job; uses the installed node_modules)"
+  # Compare dist before and after the rebuild (see ci-local.sh): `git status`
+  # would also flag a correct, not-yet-committed rebuild at finalize time.
+  function DistDigest {
+    if (-not (Test-Path widget/dist)) { return '' }
+    (Get-ChildItem widget/dist -Recurse -File | Sort-Object FullName |
+      ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash + ' ' + $_.FullName }) -join "`n"
+  }
+  $before = DistDigest
   Push-Location widget
-  npm test; if ($LASTEXITCODE -ne 0) { $fail = 1 }
-  npm run build; if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  npm test
+  if ($LASTEXITCODE -ne 0) { $fail = 1 } else {
+    npm run build
+    if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  }
   Pop-Location
-  $stale = git status --porcelain -- widget/dist
-  if ($stale) { Write-Host $stale; Write-Host "widget/dist is stale -- commit the rebuilt dist/"; $fail = 1 }
+  if ($fail -eq 0 -and $before -ne (DistDigest)) {
+    git status --porcelain -- widget/dist | ForEach-Object { Write-Host $_ }
+    Write-Host "widget/dist did not match widget/src -- the rebuild changed it; commit the rebuilt dist/"
+    $fail = 1
+  }
   Push-Location admin-ui
-  npm test; if ($LASTEXITCODE -ne 0) { $fail = 1 }
-  npm run build; if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  npm test
+  if ($LASTEXITCODE -ne 0) { $fail = 1 } else {
+    npm run build
+    if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  }
   Pop-Location
 }
 
