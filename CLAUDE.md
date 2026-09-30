@@ -61,7 +61,7 @@ All registered in `~/.claude/MACHINE_CONFIG.md` Dev Port Registry.
 
 ## Build, run, push
 
-- `bash scripts/ci-local.sh` (PowerShell: `pwsh scripts/ci-local.ps1`) is the CI-parity gate; add `--tests` / `-Tests` to run the suite too. **Never push Rust changes without it.** Why a plain `cargo build` is not enough, and the `sqlx prepare` incantation CI needs, are in `docs/dev-notes/rust-ci-parity.md` — delivered when you run cargo or push.
+- `bash scripts/ci-local.sh` (PowerShell: `pwsh scripts/ci-local.ps1`) is the CI-parity gate; add `--tests` / `-Tests` to run the suite too, `--frontends` for the widget and admin-ui. `--tests --frontends` is the declared finalize gate (`finalize.test_command`), so `/0-uldf-finalize` runs clippy and the front ends as well. **Never push Rust changes without it.** Why a plain `cargo build` is not enough, and the `sqlx prepare` incantation CI needs, are in `docs/dev-notes/rust-ci-parity.md` — delivered when you run cargo or push.
 - `origin` is the real public GitHub remote, not this machine's local Gitea, and **a plain `git push` from an automated shell fails** — twice over, on HTTP/2 and on the credential-helper order. Both workarounds are in `docs/dev-notes/git-push-github.md`, delivered at the push.
 - Local dev setup and the migration-ledger state: `docs/operations/LOCAL_DEV.md`.
 

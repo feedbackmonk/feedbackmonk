@@ -12,6 +12,7 @@
 #   pwsh scripts/ci-local.ps1            # fast, DB-free: oracle + compile/lint gate
 #   pwsh scripts/ci-local.ps1 -Tests     # also run the suite (needs DATABASE_URL + Postgres)
 #   pwsh scripts/ci-local.ps1 -Deny      # also run cargo-deny
+#   pwsh scripts/ci-local.ps1 -Frontends # also the widget + admin-ui job (needs node_modules)
 #   pwsh scripts/ci-local.ps1 -All
 #
 # Fix for "no cached data for this query":
@@ -20,12 +21,13 @@
 param(
   [switch]$Tests,
   [switch]$Deny,
+  [switch]$Frontends,
   [switch]$All
 )
 $ErrorActionPreference = 'Continue'
 Set-Location (Join-Path $PSScriptRoot '..')
 $env:SQLX_OFFLINE = 'true'   # match CI: compile against the .sqlx cache, no DB
-if ($All) { $Tests = $true; $Deny = $true }
+if ($All) { $Tests = $true; $Deny = $true; $Frontends = $true }
 
 $fail = 0
 function Step($m) { Write-Host "`n=== $m ===" }
@@ -53,6 +55,20 @@ if ($Tests) {
     cargo test --workspace -- --nocapture
     if ($LASTEXITCODE -ne 0) { $fail = 1 }
   }
+}
+
+if ($Frontends) {
+  Step "widget + admin-ui  (CI frontends job; uses the installed node_modules)"
+  Push-Location widget
+  npm test; if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  npm run build; if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  Pop-Location
+  $stale = git status --porcelain -- widget/dist
+  if ($stale) { Write-Host $stale; Write-Host "widget/dist is stale -- commit the rebuilt dist/"; $fail = 1 }
+  Push-Location admin-ui
+  npm test; if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  npm run build; if ($LASTEXITCODE -ne 0) { $fail = 1 }
+  Pop-Location
 }
 
 if ($Deny) {

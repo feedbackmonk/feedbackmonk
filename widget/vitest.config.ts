@@ -13,5 +13,9 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     // e2e/ is Playwright's; running it under vitest would hang on its fixtures.
     exclude: ["e2e/**", "node_modules/**", "dist/**"],
+    // The lazy locale-chunk import test takes ~1 s idle and passed 5 s (the
+    // vitest default) under a concurrent cargo build, failing on time, not on
+    // an assertion. A wider ceiling changes no assertion; a hung test still fails.
+    testTimeout: 20_000,
   },
 });

@@ -19,7 +19,12 @@
 #   bash scripts/ci-local.sh            # fast, DB-free: oracle + the compile/lint gate
 #   bash scripts/ci-local.sh --tests    # also run the test suite (needs DATABASE_URL + Postgres)
 #   bash scripts/ci-local.sh --deny     # also run cargo-deny (needs `cargo install cargo-deny`)
+#   bash scripts/ci-local.sh --frontends  # also the widget + admin-ui job (needs node_modules)
 #   bash scripts/ci-local.sh --all      # everything
+#
+# `bash scripts/ci-local.sh --tests --frontends` is this project's finalize gate
+# (`finalize.test_command` in .claude/config.json): clippy is part of it because a
+# clippy-only error once passed a tests-only finalize and turned CI red.
 #
 # If the gate fails with "no cached data for this query", regenerate the cache:
 #   DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev \
@@ -31,13 +36,15 @@ export SQLX_OFFLINE=true   # match CI: compile against the .sqlx cache, no DB
 
 run_tests=false
 run_deny=false
+run_frontends=false
 for arg in "$@"; do
   case "$arg" in
     --tests) run_tests=true ;;
     --deny)  run_deny=true ;;
-    --all)   run_tests=true; run_deny=true ;;
-    -h|--help) sed -n '1,33p' "$0"; exit 0 ;;
-    *) echo "unknown arg: $arg (try --tests, --deny, --all, --help)" >&2; exit 2 ;;
+    --frontends) run_frontends=true ;;
+    --all)   run_tests=true; run_deny=true; run_frontends=true ;;
+    -h|--help) sed -n '1,38p' "$0"; exit 0 ;;
+    *) echo "unknown arg: $arg (try --tests, --deny, --frontends, --all, --help)" >&2; exit 2 ;;
   esac
 done
 
@@ -67,6 +74,19 @@ if $run_tests; then
     # test in isolation, or lower parallelism: `... -- --test-threads=8`.
     cargo test --workspace -- --nocapture || fail=1
   fi
+fi
+
+if $run_frontends; then
+  step "widget + admin-ui  (CI frontends job; uses the installed node_modules)"
+  (cd widget && npm test && npm run build) || fail=1
+  # dist/ is committed and the build is deterministic: a rebuild that changes it
+  # means a src change was committed without its build.
+  if [ -n "$(git status --porcelain -- widget/dist)" ]; then
+    git status --porcelain -- widget/dist
+    echo "widget/dist is stale -- commit the rebuilt dist/"
+    fail=1
+  fi
+  (cd admin-ui && npm test && npm run build) || fail=1
 fi
 
 if $run_deny; then
