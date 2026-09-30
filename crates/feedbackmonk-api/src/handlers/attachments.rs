@@ -299,6 +299,11 @@ fn extract_bearer(headers: &HeaderMap) -> Option<String> {
 ///
 /// Any failure returns **404** (never 401/403) so the endpoint is not an
 /// existence oracle for short codes / attachment ids.
+// reason: the Err variant is the axum `Response` this request answers with,
+// returned once per request and never stored; boxing it would ripple into
+// every caller for no benefit (same call as `attachments::validate_image`).
+// Flagged by clippy 1.98's `result_large_err`, which CI's stable picked up.
+#[allow(clippy::result_large_err)]
 async fn authorize_submitter(
     state: &AttachmentState,
     scope: &ProjectScope,

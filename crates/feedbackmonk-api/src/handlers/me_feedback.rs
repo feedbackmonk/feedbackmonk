@@ -563,6 +563,11 @@ pub async fn export_my_feedback(
 ///
 /// Order matches `handlers/feedback.rs`: project scope first (so an unknown
 /// project 404s before any auth work), then token presence, then verify.
+// reason: the Err variant is the axum `Response` this request answers with,
+// returned once per request and never stored; boxing it would ripple into
+// every caller for no benefit (same call as `attachments::validate_image`).
+// Flagged by clippy 1.98's `result_large_err`, which CI's stable picked up.
+#[allow(clippy::result_large_err)]
 async fn authenticate(
     state: &AppState,
     project_id: Uuid,
@@ -581,6 +586,11 @@ async fn authenticate(
 /// Repo-handle-level body of [`authenticate`], shared by the `AppState`
 /// (list/thread) and [`MeFeedbackDataState`] (delete/export) routes so the
 /// auth chain is implemented exactly once.
+// reason: the Err variant is the axum `Response` this request answers with,
+// returned once per request and never stored; boxing it would ripple into
+// every caller for no benefit (same call as `attachments::validate_image`).
+// Flagged by clippy 1.98's `result_large_err`, which CI's stable picked up.
+#[allow(clippy::result_large_err)]
 async fn authenticate_parts(
     projects: &dyn ProjectRepo,
     signing_keys: &dyn SigningKeyRepo,

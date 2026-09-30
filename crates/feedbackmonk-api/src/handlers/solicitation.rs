@@ -283,6 +283,11 @@ fn build_response(record: Option<&SolicitationRecord>) -> SolicitationResponse {
 // Auth helper (mirrors handlers/me_feedback.rs)
 // ---------------------------------------------------------------------------
 
+// reason: the Err variant is the axum `Response` this request answers with,
+// returned once per request and never stored; boxing it would ripple into
+// every caller for no benefit (same call as `attachments::validate_image`).
+// Flagged by clippy 1.98's `result_large_err`, which CI's stable picked up.
+#[allow(clippy::result_large_err)]
 async fn authenticate(
     state: &AppState,
     project_id: Uuid,
