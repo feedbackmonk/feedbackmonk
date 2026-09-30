@@ -112,6 +112,27 @@ describe("WorkOrderDetail — owner actions mirror the C22 authz table", () => {
     );
   });
 
+  it("request-changes on a recommendation-grounded order starts the override fields empty (DEC-FBR-IMPL-33)", async () => {
+    mockedDetail.mockResolvedValue(wo("reported"));
+    const user = userEvent.setup();
+    renderWithClient(<WorkOrderDetailPage workOrderId="wo-1" />, { withRouter: true });
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Request changes/ })).toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: /Request changes/ }));
+    const dialog = await screen.findByRole("dialog", { name: /Request changes/ });
+    // The copied model text is shown read-only; the fields hold only what the owner types.
+    expect(within(dialog).getByLabelText(/^Title$/)).toHaveValue("");
+    expect(within(dialog).getByLabelText(/^Instructions$/)).toHaveValue("");
+    expect(within(dialog).getByRole("region", { name: "Current order text" })).toBeInTheDocument();
+
+    // Submitting with nothing typed sends no overrides at all.
+    await user.click(within(dialog).getByRole("button", { name: /^Request changes$/ }));
+    await waitFor(() => expect(mockedTransition).toHaveBeenCalledTimes(1));
+    expect(mockedTransition.mock.calls[0][2].detail?.owner_overrides).toBeUndefined();
+  });
+
   it("request-changes carries an authoritative overrides delta", async () => {
     mockedDetail.mockResolvedValue(wo("reported"));
     const user = userEvent.setup();

@@ -68,6 +68,16 @@ Added with DEC-FBR-IMPL-33 (2026-09-30), also against scratch copies, each exiti
 5. `instructions.push_str(&rec.body)` beside `DERIVED_TASK`. Caught as "reads the
    recommendation in the trusted instruction layer".
 
+**What Probe A is, honestly (second critic pass, 2026-09-30):** a tripwire for the plain shapes of
+the regression, not the enforcement. It is pattern matching over `assemble`, and six more
+elaborate rewrites pass it (a `Some(rec,)` or `rec @ _` pattern, destructuring
+`ClaimedOrder { title: t, .. }`, `(*order).instructions`, `let o = order`, a helper function
+outside `assemble`, a block expression inside `render_untrusted_block`'s arguments). All six
+fail the behavioural tests, which are what enforce the trust split:
+`assemble_keeps_feedback_out_of_the_trusted_layer`,
+`injection_surviving_into_the_recommendation_title_stays_data` (prompt.rs) and corpus case (g).
+Making the probe a proof would need a real Rust parser; the tests make that unnecessary.
+
 After an independent critic showed two bypasses of that version (2026-09-30), Probe A requires
 exactly one `match &order.recommendation` and no other mention of `recommendation`, allows the
 Some-arm binding (whatever its name) only inside `render_untrusted_block`, and blanks string

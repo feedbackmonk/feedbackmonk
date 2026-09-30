@@ -28,10 +28,14 @@ the anti-reward-hacking leg — a worker cannot satisfy it with a flag.
 THREE probes (detection-from-code; comments and #[cfg(test)] modules stripped):
 
   A) ENVELOPE: prompt.rs defines `wrap_untrusted`; no other runner file names the
-     envelope delimiters; `assemble` reads nothing of the recommendation before it
-     builds `untrusted_envelope`, and routes it through
-     wrap_untrusted(render_untrusted_block(..)); nothing else calls
-     render_untrusted_block.
+     envelope delimiters; `assemble` matches `&order.recommendation` exactly once,
+     uses the Some-arm binding and the order's title/instructions only as
+     arguments of render_untrusted_block (outside the owner-authored `None =>` arm),
+     and wraps that in wrap_untrusted. A TRIPWIRE for the plain shapes of a
+     regression, not a proof: it is pattern matching, and a determined rewrite
+     (destructuring, a helper fn, `o = order`) passes it. The enforcement of the
+     trust split is the behavioural tests in crates/feedbackmonk-runner/src/prompt.rs
+     and case (g) of tests/feedback_injection_corpus.rs (DEC-FBR-IMPL-33).
 
   B) EGRESS, per function: every `.runner_transition(..)` result_ref /
      failure_reason and every `.post_recommendation(..)` payload is `None` or a
@@ -41,9 +45,10 @@ THREE probes (detection-from-code; comments and #[cfg(test)] modules stripped):
 
   C) CORPUS (--full): cargo test -p feedbackmonk-api --test feedback_injection_corpus.
 
-What it does not see: text that enters the ClaimedOrder's trusted fields
-(title, instructions) upstream in the API -- see
-docs/planning/deferred/runner-recommendation-text-in-trusted-layer-20260930.md.
+What it does not see: how the API fills the order (it relies on the runner-side
+rule, DEC-FBR-IMPL-33), what the console puts in owner_overrides (the dialogs
+start empty for derived orders; RecommendationCard/WorkOrderDetail tests), and
+the non-plain rewrites of `assemble` noted under Probe A.
 
 Output: machine-parseable PASS / FAIL. Exit 0 PASS, 1 FAIL, 2 environment.
 
