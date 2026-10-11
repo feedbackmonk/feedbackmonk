@@ -95,12 +95,21 @@ def validate_locale_namespace(locale: str, namespace: str, baseline: set) -> Lis
         if key not in loc_flat:
             findings.append(_finding("missing_key", "info", locale, namespace, key, "absent from this locale"))
 
+    required_cats = cat.plural_categories(locale)
     for key, loc_value in loc_flat.items():
-        if key not in en_flat:
-            findings.append(_finding("extra_key", "error", locale, namespace, key, "not present in en"))
-            continue
-
-        en_value = en_flat[key]
+        if key in en_flat:
+            en_value = en_flat[key]
+        else:
+            # A plural category this locale requires and English lacks (ru's
+            # _few/_many, lv's _zero) is no extra key: complete-plurals.py
+            # writes it, and class 9 below demands it. It is checked against
+            # English's _other, the form it was instantiated from.
+            pb = cat.plural_base(key)
+            en_other = f"{pb[0]}_other" if pb else None
+            if not (pb and pb[1] in required_cats and en_other in en_flat):
+                findings.append(_finding("extra_key", "error", locale, namespace, key, "not present in en"))
+                continue
+            en_value = en_flat[en_other]
         en_ph, loc_ph = cat.placeholders(en_value), cat.placeholders(loc_value)
         if en_ph != loc_ph:
             findings.append(_finding("placeholder_mismatch", "error", locale, namespace, key,
