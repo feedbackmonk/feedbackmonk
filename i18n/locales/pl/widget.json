@@ -1,6 +1,105 @@
 {
   "_meta": {
     "language": "Polski",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Opinia",
+      "openAria": "Otwórz formularz opinii {{brand}}"
+    },
+    "modal": {
+      "title": "Wyślij opinię",
+      "description": "Napisz, co myślisz. Zgłoszenia trafiają do zespołu {{brand}}.",
+      "closeAria": "Zamknij formularz opinii",
+      "logoAlt": "Logo {{brand}}"
+    },
+    "form": {
+      "kind": "Rodzaj",
+      "message": "Wiadomość",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail (opcjonalnie)",
+      "logConsent": "Dołącz logi diagnostyczne, które pomogą nam znaleźć błąd",
+      "cancel": "Anuluj",
+      "send": "Wyślij",
+      "sending": "Wysyłanie…",
+      "emailHint": "Tylko jeśli chcesz dostać odpowiedź."
+    },
+    "kind": {
+      "bug": "Błąd",
+      "feature": "Propozycja funkcji",
+      "question": "Pytanie",
+      "other": "Inne"
+    },
+    "attach": {
+      "label": "Zrzuty ekranu (opcjonalnie)",
+      "help": "Obrazy: maks. {{max}}, do 5 MB każdy. Wklej je lub przeciągnij tutaj i zakryj poufne dane.",
+      "button": "Załącz zrzut ekranu",
+      "buttonFull_one": "Maksymalnie {{count}} zrzut ekranu",
+      "buttonFull_many": "Maksymalnie {{count}} zrzutów ekranu",
+      "buttonFull_few": "Maksymalnie {{count}} zrzuty ekranu",
+      "buttonFull_other": "Maksymalnie {{count}} zrzutu ekranu",
+      "listAria": "Załączone zrzuty ekranu",
+      "previewAlt": "Podgląd: {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · dane zakryte",
+      "redact": "Zakryj",
+      "redactAria": "Zakryj dane: {{name}}",
+      "reRedactAria": "Ponownie zakryj dane: {{name}}",
+      "remove": "Usuń",
+      "removeAria": "Usuń {{name}}",
+      "loading": "Ładowanie…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Można załączać tylko obrazy PNG, JPEG lub WebP.",
+      "errorSize": "Każdy obraz może mieć najwyżej 5 MB.",
+      "errorMax_one": "Możesz załączyć maksymalnie {{count}} zrzut ekranu.",
+      "errorMax_many": "Możesz załączyć maksymalnie {{count}} zrzutów ekranu.",
+      "errorMax_few": "Możesz załączyć maksymalnie {{count}} zrzuty ekranu.",
+      "errorMax_other": "Możesz załączyć maksymalnie {{count}} zrzutu ekranu.",
+      "errorRedactLoad": "Nie udało się wczytać narzędzia do zakrywania. Obraz nadal możesz wysłać w obecnej postaci."
+    },
+    "redact": {
+      "title": "Zakryj dane na zrzucie ekranu",
+      "hint": "Przeciągnij po obrazie, aby zaczernić poufne obszary, a potem kliknij „Zastosuj”.",
+      "canvasAria": "Obszar zakrywania danych na zrzucie ekranu. Przeciągnij wskaźnikiem, aby dodać czarne prostokąty.",
+      "undo": "Cofnij",
+      "apply": "Zastosuj"
+    },
+    "status": {
+      "sent": "Twoja opinia została wysłana.",
+      "sentAttachmentsFailed": "Opinia wysłana, ale nie udało się przesłać załączników."
+    },
+    "error": {
+      "invalid_input": "Sprawdź wpisane dane i spróbuj jeszcze raz.",
+      "network_error": "Nie udało się wysłać. Spróbuj ponownie za chwilę.",
+      "payload_too_large": "To za dużo, by wysłać. Spróbuj usunąć któryś załącznik.",
+      "rate_limited": "Zbyt wiele zgłoszeń w krótkim czasie. Spróbuj ponownie za minutę.",
+      "tier_cap": "Ten projekt osiągnął limit opinii. Skontaktuj się z właścicielem strony.",
+      "unauthorized": "Twoja sesja wygasła. Odśwież stronę i spróbuj jeszcze raz.",
+      "not_found": "Ten formularz opinii nie jest już dostępny.",
+      "internal": "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.",
+      "http_4xx": "Nie udało się wysłać. Sprawdź wpisane dane i spróbuj jeszcze raz.",
+      "http_5xx": "Coś poszło nie tak po naszej stronie. Spróbuj ponownie za chwilę.",
+      "generic": "Nie udało się wysłać. Spróbuj ponownie za chwilę."
+    },
+    "prompt": {
+      "bug": "Co się stało i co powinno było się stać?",
+      "feature": "Czego potrzebujesz i w czym by ci to pomogło?",
+      "question": "Czego chcesz się dowiedzieć?",
+      "other": "Napisz, co myślisz."
+    },
+    "identity": {
+      "replyTo": "Odpowiedzi trafią na adres {{email}}",
+      "account": "Wysyłane z twojego konta",
+      "anonymous": "Wyślij anonimowo",
+      "anonymousHint": "Twoje konto i adres e-mail nie zostaną dołączone."
+    },
+    "sent": {
+      "title": "Dziękujemy za opinię",
+      "replyTo": "Odpowiemy na adres {{email}}.",
+      "close": "Gotowe"
+    }
   }
 }

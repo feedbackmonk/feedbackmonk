@@ -1,6 +1,103 @@
 {
   "_meta": {
     "language": "Latviešu",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Atsauksmes",
+      "openAria": "Atvērt {{brand}} atsauksmju veidlapu"
+    },
+    "modal": {
+      "title": "Nosūtīt atsauksmi",
+      "description": "Pastāsti, kas tev uz sirds. Tavu atsauksmi saņems {{brand}} komanda.",
+      "closeAria": "Aizvērt atsauksmju veidlapu",
+      "logoAlt": "{{brand}} logotips"
+    },
+    "form": {
+      "kind": "Veids",
+      "message": "Ziņojums",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-pasts (neobligāts)",
+      "logConsent": "Pievienot diagnostikas žurnālus, kas palīdz mums novērst kļūdas",
+      "cancel": "Atcelt",
+      "send": "Nosūtīt",
+      "sending": "Nosūta…",
+      "emailHint": "Tikai tad, ja vēlies saņemt atbildi."
+    },
+    "kind": {
+      "bug": "Kļūda",
+      "feature": "Funkcijas pieprasījums",
+      "question": "Jautājums",
+      "other": "Cits"
+    },
+    "attach": {
+      "label": "Ekrānuzņēmumi (neobligāti)",
+      "help": "Līdz {{max}} attēliem, katrs līdz 5 MB. Ielīmē vai ievelc tos šeit un aizklāj visu sensitīvo.",
+      "button": "Pievienot ekrānuzņēmumu",
+      "buttonFull_one": "Maksimums: {{count}} ekrānuzņēmums",
+      "buttonFull_zero": "Maksimums: {{count}} ekrānuzņēmumi",
+      "buttonFull_other": "Maksimums: {{count}} ekrānuzņēmumi",
+      "listAria": "Pievienotie ekrānuzņēmumi",
+      "previewAlt": "{{name}} priekšskatījums",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · aizklāts",
+      "redact": "Aizklāt",
+      "redactAria": "Aizklāt sensitīvo attēlā {{name}}",
+      "reRedactAria": "Vēlreiz aizklāt sensitīvo attēlā {{name}}",
+      "remove": "Noņemt",
+      "removeAria": "Noņemt {{name}}",
+      "loading": "Ielādē…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Var pievienot tikai PNG, JPEG vai WebP attēlus.",
+      "errorSize": "Katram attēlam jābūt ne lielākam par 5 MB.",
+      "errorMax_one": "Vari pievienot ne vairāk kā {{count}} ekrānuzņēmumu.",
+      "errorMax_zero": "Vari pievienot ne vairāk kā {{count}} ekrānuzņēmumus.",
+      "errorMax_other": "Vari pievienot ne vairāk kā {{count}} ekrānuzņēmumus.",
+      "errorRedactLoad": "Aizklāšanas rīku neizdevās ielādēt. Attēlu joprojām vari nosūtīt tādu, kāds tas ir."
+    },
+    "redact": {
+      "title": "Aizklāt ekrānuzņēmumā",
+      "hint": "Velc pāri attēlam, lai aizklātu sensitīvās vietas, un pēc tam apstiprini.",
+      "canvasAria": "Ekrānuzņēmuma aizklāšanas laukums. Velc ar rādītāju, lai pievienotu melnus taisnstūrus.",
+      "undo": "Atsaukt",
+      "apply": "Apstiprināt aizklāšanu"
+    },
+    "status": {
+      "sent": "Tava atsauksme ir nosūtīta.",
+      "sentAttachmentsFailed": "Atsauksme nosūtīta, taču pielikumus neizdevās augšupielādēt."
+    },
+    "error": {
+      "invalid_input": "Pārbaudi ievadīto un mēģini vēlreiz.",
+      "network_error": "Neizdevās nosūtīt. Pēc brīža mēģini vēlreiz.",
+      "payload_too_large": "Tas ir par lielu, lai nosūtītu. Mēģini noņemt kādu pielikumu.",
+      "rate_limited": "Pārāk daudz iesniegumu īsā laikā. Lūdzu, mēģini vēlreiz pēc minūtes.",
+      "tier_cap": "Šis projekts ir sasniedzis atsauksmju limitu. Lūdzu, sazinies ar vietnes īpašnieku.",
+      "unauthorized": "Tava sesija ir beigusies. Pārlādē lapu un mēģini vēlreiz.",
+      "not_found": "Šī atsauksmju veidlapa vairs nav pieejama.",
+      "internal": "Mūsu pusē radās kļūda. Lūdzu, pēc brīža mēģini vēlreiz.",
+      "http_4xx": "Neizdevās nosūtīt. Pārbaudi ievadīto un mēģini vēlreiz.",
+      "http_5xx": "Mūsu pusē radās kļūda. Lūdzu, pēc brīža mēģini vēlreiz.",
+      "generic": "Neizdevās nosūtīt. Pēc brīža mēģini vēlreiz."
+    },
+    "prompt": {
+      "bug": "Kas notika un ko tu gaidīji?",
+      "feature": "Ko tu vēlētos un kā tas tev palīdzētu?",
+      "question": "Ko tu vēlētos uzzināt?",
+      "other": "Pastāsti, kas tev uz sirds."
+    },
+    "identity": {
+      "replyTo": "Atbildes tiks sūtītas uz {{email}}",
+      "account": "Tiks nosūtīts no tava konta",
+      "anonymous": "Nosūtīt anonīmi",
+      "anonymousHint": "Tavs konts un e-pasts netiks pievienoti."
+    },
+    "sent": {
+      "title": "Paldies par atsauksmi",
+      "replyTo": "Mēs atbildēsim uz {{email}}.",
+      "close": "Gatavs"
+    }
   }
 }

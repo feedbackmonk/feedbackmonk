@@ -13,7 +13,7 @@
     "stackDetail": {
       "backend": "rust",
       "frontend": "typescript",
-      "widget": "typescript (vanilla, <40KB bundle target)",
+      "widget": "typescript (vanilla, lightweight, size reported not capped)",
       "landingSite": "astro (planned at P4)"
     },
     "databases": ["postgresql"],

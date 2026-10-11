@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Bahasa Indonesia",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Masukan",
+      "openAria": "Buka formulir masukan untuk {{brand}}"
+    },
+    "modal": {
+      "title": "Kirim masukan",
+      "description": "Ceritakan apa yang ada di pikiranmu. Kirimanmu akan diterima oleh tim {{brand}}.",
+      "closeAria": "Tutup formulir masukan",
+      "logoAlt": "Logo {{brand}}"
+    },
+    "form": {
+      "kind": "Jenis",
+      "message": "Pesan",
+      "counter": "{{n}} / {{max}}",
+      "email": "Email (opsional)",
+      "logConsent": "Sertakan log diagnostik agar kami lebih mudah menelusuri masalah",
+      "cancel": "Batal",
+      "send": "Kirim",
+      "sending": "Mengirim…",
+      "emailHint": "Hanya jika kamu ingin dibalas."
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "Permintaan fitur",
+      "question": "Pertanyaan",
+      "other": "Lainnya"
+    },
+    "attach": {
+      "label": "Tangkapan layar (opsional)",
+      "help": "Maksimal {{max}} gambar, masing-masing hingga 5 MB. Tempel atau letakkan di sini, lalu sensor informasi yang sensitif.",
+      "button": "Lampirkan tangkapan layar",
+      "buttonFull_one": "Maksimal {{count}} tangkapan layar",
+      "buttonFull_other": "Maksimal {{count}} tangkapan layar",
+      "listAria": "Tangkapan layar terlampir",
+      "previewAlt": "Pratinjau {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · disensor",
+      "redact": "Sensor",
+      "redactAria": "Sensor bagian sensitif di {{name}}",
+      "reRedactAria": "Sensor ulang {{name}}",
+      "remove": "Hapus",
+      "removeAria": "Hapus {{name}}",
+      "loading": "Memuat…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Hanya gambar PNG, JPEG, atau WebP yang dapat dilampirkan.",
+      "errorSize": "Ukuran setiap gambar maksimal 5 MB.",
+      "errorMax_one": "Kamu hanya dapat melampirkan maksimal {{count}} tangkapan layar.",
+      "errorMax_other": "Kamu hanya dapat melampirkan maksimal {{count}} tangkapan layar.",
+      "errorRedactLoad": "Alat sensor tidak dapat dimuat. Kamu tetap bisa mengirim gambar apa adanya."
+    },
+    "redact": {
+      "title": "Sensor tangkapan layar",
+      "hint": "Seret di atas gambar untuk menghitamkan area sensitif, lalu terapkan.",
+      "canvasAria": "Area sensor tangkapan layar. Seret dengan penunjuk untuk menambahkan kotak hitam.",
+      "undo": "Urungkan",
+      "apply": "Terapkan sensor"
+    },
+    "status": {
+      "sent": "Masukanmu telah terkirim.",
+      "sentAttachmentsFailed": "Masukan terkirim, tetapi lampiran gagal diunggah."
+    },
+    "error": {
+      "invalid_input": "Periksa isianmu, lalu coba lagi.",
+      "network_error": "Gagal mengirim. Coba lagi sebentar lagi.",
+      "payload_too_large": "Ukurannya terlalu besar untuk dikirim. Coba hapus salah satu lampiran.",
+      "rate_limited": "Terlalu banyak kiriman dalam waktu singkat. Coba lagi dalam satu menit.",
+      "tier_cap": "Proyek ini telah mencapai batas masukan. Silakan hubungi pemilik situs.",
+      "unauthorized": "Sesimu telah berakhir. Muat ulang halaman, lalu coba lagi.",
+      "not_found": "Formulir masukan ini sudah tidak tersedia.",
+      "internal": "Terjadi masalah di pihak kami. Coba lagi sebentar lagi.",
+      "http_4xx": "Gagal mengirim. Periksa isianmu, lalu coba lagi.",
+      "http_5xx": "Terjadi masalah di pihak kami. Coba lagi sebentar lagi.",
+      "generic": "Gagal mengirim. Coba lagi sebentar lagi."
+    },
+    "prompt": {
+      "bug": "Apa yang terjadi, dan apa yang seharusnya terjadi?",
+      "feature": "Apa yang kamu inginkan, dan apa manfaatnya untukmu?",
+      "question": "Apa yang ingin kamu ketahui?",
+      "other": "Ceritakan apa yang ada di pikiranmu."
+    },
+    "identity": {
+      "replyTo": "Balasan dikirim ke {{email}}",
+      "account": "Dikirim dari akunmu",
+      "anonymous": "Kirim secara anonim",
+      "anonymousHint": "Akun dan emailmu tidak akan disertakan."
+    },
+    "sent": {
+      "title": "Terima kasih atas masukanmu",
+      "replyTo": "Kami akan membalas ke {{email}}.",
+      "close": "Selesai"
+    }
   }
 }

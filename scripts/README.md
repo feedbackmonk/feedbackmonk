@@ -12,7 +12,7 @@ every file is a command.
 | File | Purpose |
 |---|---|
 | `fast-check.sh` | the landing check's fast lane (`finalize.fast_command`): `SQLX_OFFLINE=true cargo check --workspace --all-targets` as CI compiles, then the widget and admin-ui type checks; runs with no Postgres up. |
-| `run-selected-tests.sh` | runs only the named tests, each with its own runner (vitest, playwright, or `cargo test -p` for a crate path) — the `finalize.test_select` command the landing check uses; a path it cannot place exits 2. |
+| `run-selected-tests.sh` | runs only the named tests, each with its own runner (vitest, playwright, `cargo test -p` for a crate path, `python -m unittest` for a `tests/test_*.py`) — the `finalize.test_select` command the landing check uses; a path it cannot place exits 2. |
 | `ci-local.sh`, `ci-local.ps1` | the CI-parity gate — runs the oracle suite, then offline `clippy --all-targets -D warnings`; `--tests` / `-Tests` adds the suite, `--frontends` / `-Frontends` the widget + admin-ui job (tests, rebuild, committed `widget/dist` fresh). `--tests --frontends` is the declared finalize gate (`finalize.test_command`), so finalize runs clippy too (`docs/dev-notes/rust-ci-parity.md`). |
 | `run-verification-oracles.sh` | the single source of truth for "the verification-oracle suite": runs each `.claude/project-oracles/<name>/oracle.py` in its `ORACLES` array; CI job `verification-oracles` and `ci-local` both call it. |
 | `e2e-p0-curl.sh`, `e2e-p0-curl.ps1` | the P0 exit-gate witness: signup → project → key-register → JWT-signed and anonymous submission → rate limit, against a running dev instance. |

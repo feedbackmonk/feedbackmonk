@@ -44,7 +44,7 @@ The arc plan is the single most important downstream artifact — it pre-commits
 ## Stack (load-bearing for tooling decisions)
 
 - **Backend**: Rust. A reference implementation lives in the peer GitCellar repo, under its `gitcellar-cloud` crate's feedback module — read-only reference, NOT a base to extract from (DEC-FBR-07).
-- **Admin UI / widget**: TypeScript. React for admin UI (port pattern from that repo's admin-ui); vanilla JS+CSS for the embeddable widget (<40KB bundle cap per FR-FBR-04).
+- **Admin UI / widget**: TypeScript. React for admin UI (port pattern from that repo's admin-ui); vanilla JS+CSS for the embeddable widget (kept light per FR-FBR-04; its size is reported by `widget-bundle-size`, not capped — DEC-FBR-IMPL-36).
 - **Marketing site**: Astro (deferred until `feedbackmonk.com` is live).
 - **Database**: PostgreSQL. Multi-tenant via `tenant_id` + `project_id` on every domain row; tenant-scoped repository layer is the **sole** query path (raw SQL is a security incident — DEC-FBR-03).
 - **Distribution**: SaaS + self-host via `docker compose up`.
@@ -106,7 +106,7 @@ The table says only **what each oracle defends**, so you can tell which invarian
 | `public-board-moderation-gate` | no public board **read or vote** touches a non-`approved` row; board wire shape leaks no PII (C30) |
 | `translation-egress-q24-isolation` | translation provider defaults `off`; no public read of `body_translated` (DEC-FBR-IMPL-25/26) |
 | `tier-enforcement-status` | every path that inserts a chargeable row checks the tier quota first (FR-FBR-14) |
-| `widget-bundle-size` | committed widget build present, page-load set ≤ 40,960 B, each `dist/locales/<code>.js` ≤ 4,096 B, no trackers (FR-FBR-04, DEC-FBR-02) |
+| `widget-bundle-size` | committed widget build present, each `dist/locales/<code>.js` only strings, no trackers; sizes reported, never capped (FR-FBR-04, DEC-FBR-02, DEC-FBR-IMPL-36) |
 | `i18n-catalog-integrity` | catalog shape + generated locale tables (C35, C41) — the exit gate of every localization stage |
 | `i18n-literal-ratchet` | **baseline 0** — any new hard-coded user-facing literal in `widget/src` or `admin-ui/src` is a hard failure |
 | `selfhost-compose-smoke` (slow) | compose validates; every setting compose or the api reads is in `docs/operations/SELFHOST_ENV.md` (FR-FBR-17, C21) |

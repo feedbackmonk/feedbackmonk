@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "繁體中文（台灣）",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "意見回饋",
+      "openAria": "開啟 {{brand}} 意見回饋表單"
+    },
+    "modal": {
+      "title": "傳送意見回饋",
+      "description": "歡迎告訴我們您的想法。您送出的內容將傳送給 {{brand}}。",
+      "closeAria": "關閉意見回饋表單",
+      "logoAlt": "{{brand}} 標誌"
+    },
+    "form": {
+      "kind": "類型",
+      "message": "內容",
+      "counter": "{{n}} / {{max}}",
+      "email": "電子郵件（選填）",
+      "logConsent": "附上診斷記錄，協助我們排除問題",
+      "cancel": "取消",
+      "send": "傳送",
+      "sending": "傳送中…",
+      "emailHint": "如果希望收到回覆，請填寫此欄。"
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "功能建議",
+      "question": "問題",
+      "other": "其他"
+    },
+    "attach": {
+      "label": "螢幕截圖（選填）",
+      "help": "最多 {{max}} 張圖片，每張不超過 5 MB。可貼上或拖曳至此處，並請遮蔽所有敏感資訊。",
+      "button": "附加螢幕截圖",
+      "buttonFull_one": "最多 {{count}} 張螢幕截圖",
+      "buttonFull_other": "最多 {{count}} 張螢幕截圖",
+      "listAria": "已附加的螢幕截圖",
+      "previewAlt": "{{name}} 的預覽",
+      "nameSize": "{{name}}（{{size}}）",
+      "nameRedacted": "{{name}} · 已遮蔽",
+      "redact": "遮蔽",
+      "redactAria": "遮蔽 {{name}}",
+      "reRedactAria": "再次遮蔽 {{name}}",
+      "remove": "移除",
+      "removeAria": "移除 {{name}}",
+      "loading": "載入中…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "僅支援 PNG、JPEG 或 WebP 格式的圖片。",
+      "errorSize": "每張圖片不得超過 5 MB。",
+      "errorMax_one": "最多只能附加 {{count}} 張螢幕截圖。",
+      "errorMax_other": "最多只能附加 {{count}} 張螢幕截圖。",
+      "errorRedactLoad": "無法載入遮蔽工具。您仍可直接傳送原始圖片。"
+    },
+    "redact": {
+      "title": "遮蔽螢幕截圖",
+      "hint": "在圖片上拖曳，將敏感區域塗黑，然後套用。",
+      "canvasAria": "螢幕截圖遮蔽區域。以指標拖曳即可新增黑色遮蔽框。",
+      "undo": "復原",
+      "apply": "套用遮蔽"
+    },
+    "status": {
+      "sent": "已送出您的意見回饋。",
+      "sentAttachmentsFailed": "已送出意見回饋，但附件無法上傳。"
+    },
+    "error": {
+      "invalid_input": "請檢查輸入的內容，然後再試一次。",
+      "network_error": "無法傳送，請稍後再試。",
+      "payload_too_large": "內容過大，無法傳送。請試著移除一個附件。",
+      "rate_limited": "送出次數過於頻繁，請一分鐘後再試。",
+      "tier_cap": "此專案的意見回饋已達上限。請與網站擁有者聯絡。",
+      "unauthorized": "工作階段已逾時。請重新載入頁面，然後再試一次。",
+      "not_found": "此意見回饋表單已無法使用。",
+      "internal": "伺服器發生問題，請稍後再試。",
+      "http_4xx": "無法傳送。請檢查輸入的內容，然後再試一次。",
+      "http_5xx": "伺服器發生問題，請稍後再試。",
+      "generic": "無法傳送，請稍後再試。"
+    },
+    "prompt": {
+      "bug": "發生了什麼事？您原本預期的結果是什麼？",
+      "feature": "您希望新增什麼功能？它能幫助您做到什麼？",
+      "question": "您想了解什麼？",
+      "other": "歡迎告訴我們您的想法。"
+    },
+    "identity": {
+      "replyTo": "回覆將寄至 {{email}}",
+      "account": "將以您的帳號傳送",
+      "anonymous": "匿名傳送",
+      "anonymousHint": "不會附上您的帳號和電子郵件地址。"
+    },
+    "sent": {
+      "title": "感謝您的意見回饋",
+      "replyTo": "我們會回覆至 {{email}}。",
+      "close": "完成"
+    }
   }
 }

@@ -1,11 +1,11 @@
 {
   "name": "widget-bundle-size",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "kind": "verification",
   "lane": "fast",
   "expected_runtime_ms": 600,
   "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
-  "question": "Is the widget's committed build present, within budget and tracker-free? widget.js exists; the English page-load set (top-level dist/*.{js,mjs,css}) is <= 40,960 B; each dist/locales/<code>.js is <= 4,096 B and chunks exist when non-en locales do; no listed tracker hostname appears anywhere in dist/. Freshness against src/ is CI job `frontends`.",
+  "question": "Is the widget's committed build present and tracker-free, and what does it weigh? widget.js exists; locale chunks exist when non-en locales do; each dist/locales/<code>.js is a flat map of widget.* keys to strings; no listed tracker hostname appears anywhere in dist/. The size of the English page-load set and of each locale chunk is reported on every run and fails nothing (DEC-FBR-IMPL-36). Freshness against src/ is CI job `frontends`.",
   "category": "privacy",
   "invocation": {
     "unix": ".claude/project-oracles/widget-bundle-size/oracle.py",
@@ -13,17 +13,16 @@
   },
   "output": {
     "format": "text",
-    "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
+    "schema": "PASS or FAIL with offender detail (file:line); every report prints the tracker-list hash and the sizes. Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
   },
   "assertion": {
-    "asserts": "A page that embeds the widget downloads at most 40 KiB of feedbackmonk code and styles no matter which of the 31 locales the visitor reads it in, and downloads no third-party tracker at all.",
-    "measures": "Built artifacts under widget/dist/ only (never source): (A) the summed byte size of TOP-LEVEL widget/dist/*.{js,mjs,css} — widget.js + widget.css + redact.js, the set every page load fetches — against SIZE_CAP_BYTES=30720; (B) case-insensitive substring scan of every *.{js,mjs,css} file under widget/dist/ RECURSIVELY (locale chunks included) for any hostname in expected-trackers.txt, whose canonical sorted form is SHA-256-hashed and printed on every run; (C) the individual byte size of each widget/dist/locales/*.js against LOCALE_CHUNK_CAP_BYTES=4096.",
+    "asserts": "A page that embeds the widget downloads no third-party tracker at all, every locale chunk it may fetch is only strings, and whoever changes the widget sees what it now weighs.",
+    "measures": "Built artifacts under widget/dist/ only (never source): (trackers) case-insensitive substring scan of every *.{js,mjs,css} file under widget/dist/ RECURSIVELY for any hostname in expected-trackers.txt, whose canonical sorted form is SHA-256-hashed and printed on every run; (chunks) each widget/dist/locales/*.js parsed as `const <id> = {...}; export { <id> as default };` with a JSON object of widget.* keys to string values; (size, reported only) the byte size of TOP-LEVEL widget/dist/*.{js,mjs,css} and of each locale chunk.",
     "known_gaps": [
-      "Measures the working tree's LAST BUILD, not the source. A stale dist/ passes while over-budget source sits unbuilt — the caller must build first (npm run build), which is why the freshness triggers list widget/src/** and the CI-parity gate builds before running it.",
-      "Pre-gzip bytes only. An embedder serving with Content-Encoding: gzip transfers roughly a third of these numbers; the cap is the worst-case wire ceiling, deliberately conservative.",
-      "Probe A sums the page-load set but cannot know that a visitor loads exactly ONE locale chunk. A page that deliberately imported all 31 chunks would pass both probes while transferring ~30 KiB extra. Nothing in the widget does that (loadLocale is called once, for the one resolved locale) and Contract C42 forbids it, but the oracle measures sizes, not call counts.",
-      "Probe B matches hostnames as case-folded substrings, so a tracker reached via an IP address, a CNAME alias, or a runtime-assembled string would not be seen. The a11y e2e run (real network requests visible to Playwright) is the second leg.",
-      "Probe C bounds a chunk's SIZE, not its content: a 3 KB chunk of executable code rather than a flat string map passes. The catalog format itself is verified by i18n-catalog-integrity against Contract C35/C42."
+      "Measures the working tree's LAST BUILD, not the source — the caller must build first (npm run build), which is why the freshness triggers list widget/src/** and the CI-parity gate builds before running it.",
+      "Size is reported, never judged: a large increase passes. It is visible in every check's output, and the person landing the change is expected to read it (DEC-FBR-IMPL-36).",
+      "The tracker scan matches hostnames as case-folded substrings, so a tracker reached via an IP address, a CNAME alias, or a runtime-assembled string would not be seen. The a11y e2e run (real network requests visible to Playwright) is the second leg.",
+      "The chunk-shape check reads the build output's literal form; if the bundler changes how it emits a constant object, the check fails loudly rather than passing, and the parser here needs updating."
     ]
   },
   "freshness": {
@@ -48,12 +47,12 @@
   "validation": {
     "self_test_unix": null,
     "self_test_windows": null,
-    "last_validated": "2026-09-06T22:40:00Z"
+    "last_validated": "2026-10-10T00:00:00Z"
   },
   "fallback": "Read .claude/project-oracles/widget-bundle-size/README.md: it lists each probe as rewritten on 2026-09-30 and what to check by hand; the `question` above is the one-paragraph form.",
   "provenance": {
     "authored_by": "CLAUDE-A worker (P2 Customer-Facing, Task Zero — collab-20260514-035703)",
     "created": "2026-05-14T03:59:00Z",
-    "rationale": "FR-FBR-04 (<40KB bundle; 30KB until DEC-FBR-IMPL-35, 2026-10-10) + DEC-FBR-02 (no third-party trackers brand promise). Three-leg defense per D-FBR-02 pattern: (1) vite.config.ts terser+CSP-safe bundler config; (2) THIS oracle (size probe + tracker-hostname probe + list-hash drift detection); (3) Playwright + axe-core a11y harness for behavioural regressions. The cap is reified as a code-level invariant per arc-plan Testability Gate Q3=4 finding: without the oracle the agent would accept 'looks small enough' and ship over-budget."
+    "rationale": "FR-FBR-04 (lightweight widget) + DEC-FBR-02 (no third-party trackers brand promise). The 30 KiB cap (raised to 40 KiB by DEC-FBR-IMPL-35) was removed by DEC-FBR-IMPL-36 on the owner's word: it entered as one cell of a scope table with no stated reason, and size is now reported rather than capped. The per-chunk 4 KiB cap was a proxy for 'a chunk is only strings' and is replaced by a direct check of that."
   }
 }

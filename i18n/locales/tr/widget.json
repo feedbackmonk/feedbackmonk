@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Türkçe",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Geri bildirim",
+      "openAria": "{{brand}} geri bildirim formunu aç"
+    },
+    "modal": {
+      "title": "Geri bildirim gönder",
+      "description": "Aklından geçenleri bize anlat. Gönderdiklerin {{brand}} ekibine iletilir.",
+      "closeAria": "Geri bildirim formunu kapat",
+      "logoAlt": "{{brand}} logosu"
+    },
+    "form": {
+      "kind": "Tür",
+      "message": "Mesaj",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-posta (isteğe bağlı)",
+      "logConsent": "Hata ayıklamamıza yardımcı olan tanılama günlüklerini ekle",
+      "cancel": "İptal",
+      "send": "Gönder",
+      "sending": "Gönderiliyor…",
+      "emailHint": "Yalnızca yanıt almak istersen."
+    },
+    "kind": {
+      "bug": "Hata",
+      "feature": "Özellik isteği",
+      "question": "Soru",
+      "other": "Diğer"
+    },
+    "attach": {
+      "label": "Ekran görüntüleri (isteğe bağlı)",
+      "help": "En fazla {{max}} görsel, her biri en çok 5 MB. Buraya yapıştır ya da sürükleyip bırak; hassas bilgileri karart.",
+      "button": "Ekran görüntüsü ekle",
+      "buttonFull_one": "En fazla {{count}} ekran görüntüsü",
+      "buttonFull_other": "En fazla {{count}} ekran görüntüsü",
+      "listAria": "Eklenen ekran görüntüleri",
+      "previewAlt": "{{name}} önizlemesi",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · karartıldı",
+      "redact": "Karart",
+      "redactAria": "{{name}} görselindeki hassas alanları karart",
+      "reRedactAria": "{{name}} görselinde yeniden karart",
+      "remove": "Kaldır",
+      "removeAria": "{{name}} dosyasını kaldır",
+      "loading": "Yükleniyor…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Yalnızca PNG, JPEG veya WebP görselleri eklenebilir.",
+      "errorSize": "Her görsel en fazla 5 MB olabilir.",
+      "errorMax_one": "En fazla {{count}} ekran görüntüsü ekleyebilirsin.",
+      "errorMax_other": "En fazla {{count}} ekran görüntüsü ekleyebilirsin.",
+      "errorRedactLoad": "Karartma aracı yüklenemedi. Görseli yine de olduğu gibi gönderebilirsin."
+    },
+    "redact": {
+      "title": "Ekran görüntüsünü karart",
+      "hint": "Hassas alanları karartmak için görselin üzerinde sürükle, ardından uygula.",
+      "canvasAria": "Ekran görüntüsü karartma alanı. Siyah kutu eklemek için işaretçiyle sürükle.",
+      "undo": "Geri al",
+      "apply": "Karartmayı uygula"
+    },
+    "status": {
+      "sent": "Geri bildirimin gönderildi.",
+      "sentAttachmentsFailed": "Geri bildirim gönderildi ancak ekler yüklenemedi."
+    },
+    "error": {
+      "invalid_input": "Girdiğin bilgileri kontrol edip tekrar dene.",
+      "network_error": "Gönderilemedi. Biraz sonra tekrar dene.",
+      "payload_too_large": "Gönderilemeyecek kadar büyük. Bir eki kaldırmayı dene.",
+      "rate_limited": "Kısa sürede çok fazla gönderim yapıldı. Lütfen bir dakika sonra tekrar dene.",
+      "tier_cap": "Bu proje geri bildirim sınırına ulaştı. Lütfen site sahibiyle iletişime geç.",
+      "unauthorized": "Oturumunun süresi doldu. Sayfayı yenileyip tekrar dene.",
+      "not_found": "Bu geri bildirim formu artık kullanılamıyor.",
+      "internal": "Bizim tarafımızda bir sorun oluştu. Lütfen biraz sonra tekrar dene.",
+      "http_4xx": "Gönderilemedi. Girdiğin bilgileri kontrol edip tekrar dene.",
+      "http_5xx": "Bizim tarafımızda bir sorun oluştu. Lütfen biraz sonra tekrar dene.",
+      "generic": "Gönderilemedi. Biraz sonra tekrar dene."
+    },
+    "prompt": {
+      "bug": "Ne oldu ve ne olmasını bekliyordun?",
+      "feature": "Ne istersin ve bu ne yapmana yardımcı olur?",
+      "question": "Ne öğrenmek istersin?",
+      "other": "Aklından geçenleri bize anlat."
+    },
+    "identity": {
+      "replyTo": "Yanıtlar {{email}} adresine gönderilir",
+      "account": "Hesabından gönderilir",
+      "anonymous": "Anonim gönder",
+      "anonymousHint": "Hesabın ve e-posta adresin eklenmez."
+    },
+    "sent": {
+      "title": "Geri bildirimin için teşekkürler",
+      "replyTo": "{{email}} adresine yanıt vereceğiz.",
+      "close": "Tamam"
+    }
   }
 }

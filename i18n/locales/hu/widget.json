@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Magyar nyelv",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Visszajelzés",
+      "openAria": "Visszajelzési űrlap megnyitása – {{brand}}"
+    },
+    "modal": {
+      "title": "Visszajelzés küldése",
+      "description": "Mondd el, mi jár a fejedben. A beküldött üzeneteidet a {{brand}} csapata kapja meg.",
+      "closeAria": "Visszajelzési űrlap bezárása",
+      "logoAlt": "{{brand}} logó"
+    },
+    "form": {
+      "kind": "Típus",
+      "message": "Üzenet",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail-cím (nem kötelező)",
+      "logConsent": "Diagnosztikai naplók csatolása a hibakereséshez",
+      "cancel": "Mégse",
+      "send": "Küldés",
+      "sending": "Küldés…",
+      "emailHint": "Csak ha választ szeretnél."
+    },
+    "kind": {
+      "bug": "Hiba",
+      "feature": "Funkciókérés",
+      "question": "Kérdés",
+      "other": "Egyéb"
+    },
+    "attach": {
+      "label": "Képernyőképek (nem kötelező)",
+      "help": "Legfeljebb {{max}} kép, egyenként max. 5 MB. Illeszd be vagy húzd ide őket, és takard ki az érzékeny adatokat.",
+      "button": "Képernyőkép csatolása",
+      "buttonFull_one": "Legfeljebb {{count}} képernyőkép",
+      "buttonFull_other": "Legfeljebb {{count}} képernyőkép",
+      "listAria": "Csatolt képernyőképek",
+      "previewAlt": "{{name}} előnézete",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · kitakarva",
+      "redact": "Kitakarás",
+      "redactAria": "{{name}} kitakarása",
+      "reRedactAria": "{{name}} újbóli kitakarása",
+      "remove": "Eltávolítás",
+      "removeAria": "{{name}} eltávolítása",
+      "loading": "Betöltés…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Csak PNG, JPEG vagy WebP formátumú képet csatolhatsz.",
+      "errorSize": "Egy kép legfeljebb 5 MB lehet.",
+      "errorMax_one": "Legfeljebb {{count}} képernyőképet csatolhatsz.",
+      "errorMax_other": "Legfeljebb {{count}} képernyőképet csatolhatsz.",
+      "errorRedactLoad": "A kitakaró eszközt nem sikerült betölteni. A képet változatlanul is elküldheted."
+    },
+    "redact": {
+      "title": "Képernyőkép kitakarása",
+      "hint": "Húzd végig a mutatót a képen az érzékeny részek kitakarásához, majd alkalmazd a kitakarást.",
+      "canvasAria": "Képernyőkép-kitakarási felület. Húzd a mutatót fekete takarómezők hozzáadásához.",
+      "undo": "Visszavonás",
+      "apply": "Kitakarás alkalmazása"
+    },
+    "status": {
+      "sent": "A visszajelzésedet elküldtük.",
+      "sentAttachmentsFailed": "A visszajelzést elküldtük — a mellékleteket azonban nem sikerült feltölteni."
+    },
+    "error": {
+      "invalid_input": "Ellenőrizd a megadott adatokat, és próbáld újra.",
+      "network_error": "Nem sikerült elküldeni. Próbáld újra egy kicsit később.",
+      "payload_too_large": "Ez túl nagy az elküldéshez. Próbálj meg eltávolítani egy mellékletet.",
+      "rate_limited": "Most túl sok beküldés érkezett. Próbáld újra egy perc múlva.",
+      "tier_cap": "Ez a projekt elérte a visszajelzési keretét. Lépj kapcsolatba a webhely tulajdonosával.",
+      "unauthorized": "A munkameneted lejárt. Töltsd újra az oldalt, és próbáld újra.",
+      "not_found": "Ez a visszajelzési űrlap már nem érhető el.",
+      "internal": "Hiba történt nálunk. Próbáld újra hamarosan.",
+      "http_4xx": "Nem sikerült elküldeni. Ellenőrizd a megadott adatokat, és próbáld újra.",
+      "http_5xx": "Hiba történt nálunk. Próbáld újra hamarosan.",
+      "generic": "Nem sikerült elküldeni. Próbáld újra egy kicsit később."
+    },
+    "prompt": {
+      "bug": "Mi történt, és mire számítottál?",
+      "feature": "Mit szeretnél, és miben segítene neked?",
+      "question": "Mit szeretnél tudni?",
+      "other": "Mondd el, mi jár a fejedben."
+    },
+    "identity": {
+      "replyTo": "A válaszokat erre a címre küldjük: {{email}}",
+      "account": "A fiókodból küldve",
+      "anonymous": "Küldés névtelenül",
+      "anonymousHint": "A fiókodat és az e-mail-címedet nem csatoljuk."
+    },
+    "sent": {
+      "title": "Köszönjük a visszajelzésedet",
+      "replyTo": "A válaszunkat erre a címre küldjük: {{email}}.",
+      "close": "Kész"
+    }
   }
 }

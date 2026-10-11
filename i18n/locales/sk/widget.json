@@ -1,6 +1,105 @@
 {
   "_meta": {
     "language": "Slovenčina",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Spätná väzba",
+      "openAria": "Otvoriť formulár spätnej väzby pre {{brand}}"
+    },
+    "modal": {
+      "title": "Poslať spätnú väzbu",
+      "description": "Napíš nám, čo máš na srdci. Správy dostáva tím {{brand}}.",
+      "closeAria": "Zavrieť formulár spätnej väzby",
+      "logoAlt": "Logo {{brand}}"
+    },
+    "form": {
+      "kind": "Typ",
+      "message": "Správa",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail (nepovinné)",
+      "logConsent": "Priložiť diagnostické záznamy, ktoré nám pomôžu nájsť chybu",
+      "cancel": "Zrušiť",
+      "send": "Odoslať",
+      "sending": "Odosiela sa…",
+      "emailHint": "Len ak chceš odpoveď."
+    },
+    "kind": {
+      "bug": "Chyba",
+      "feature": "Návrh funkcie",
+      "question": "Otázka",
+      "other": "Iné"
+    },
+    "attach": {
+      "label": "Snímky obrazovky (nepovinné)",
+      "help": "Obrázky: najviac {{max}}, každý do 5 MB. Vlož ich sem alebo pretiahni a všetko citlivé začierni.",
+      "button": "Priložiť snímku obrazovky",
+      "buttonFull_one": "Najviac {{count}} snímka obrazovky",
+      "buttonFull_many": "Najviac {{count}} snímky obrazovky",
+      "buttonFull_few": "Najviac {{count}} snímky obrazovky",
+      "buttonFull_other": "Najviac {{count}} snímok obrazovky",
+      "listAria": "Priložené snímky obrazovky",
+      "previewAlt": "Náhľad {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · začiernené",
+      "redact": "Začierniť",
+      "redactAria": "Začierniť {{name}}",
+      "reRedactAria": "Znova začierniť {{name}}",
+      "remove": "Odobrať",
+      "removeAria": "Odobrať {{name}}",
+      "loading": "Načítava sa…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} kB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Priložiť sa dajú len obrázky PNG, JPEG alebo WebP.",
+      "errorSize": "Každý obrázok môže mať najviac 5 MB.",
+      "errorMax_one": "Môžeš priložiť najviac {{count}} snímku obrazovky.",
+      "errorMax_many": "Môžeš priložiť najviac {{count}} snímky obrazovky.",
+      "errorMax_few": "Môžeš priložiť najviac {{count}} snímky obrazovky.",
+      "errorMax_other": "Môžeš priložiť najviac {{count}} snímok obrazovky.",
+      "errorRedactLoad": "Nástroj na začiernenie sa nepodarilo načítať. Obrázok môžeš aj tak poslať tak, ako je."
+    },
+    "redact": {
+      "title": "Začierniť snímku obrazovky",
+      "hint": "Ťahaním po obrázku začierni citlivé miesta a potom klikni na „Použiť začiernenie“.",
+      "canvasAria": "Plocha na začiernenie snímky obrazovky. Ťahaním ukazovateľa pridáš čierne obdĺžniky.",
+      "undo": "Späť",
+      "apply": "Použiť začiernenie"
+    },
+    "status": {
+      "sent": "Tvoja spätná väzba bola odoslaná.",
+      "sentAttachmentsFailed": "Spätná väzba odoslaná, prílohy sa však nepodarilo nahrať."
+    },
+    "error": {
+      "invalid_input": "Skontroluj zadané údaje a skús to znova.",
+      "network_error": "Odoslanie zlyhalo. Skús to o chvíľu znova.",
+      "payload_too_large": "Je to príliš veľké na odoslanie. Skús odobrať niektorú prílohu.",
+      "rate_limited": "Príliš veľa odoslaní za krátky čas. Skús to znova o minútu.",
+      "tier_cap": "Tento projekt vyčerpal limit spätnej väzby. Obráť sa na prevádzkovateľa webu.",
+      "unauthorized": "Platnosť relácie vypršala. Obnov stránku a skús to znova.",
+      "not_found": "Tento formulár spätnej väzby už nie je k dispozícii.",
+      "internal": "Na našej strane sa niečo pokazilo. Skús to prosím o chvíľu znova.",
+      "http_4xx": "Odoslanie zlyhalo. Skontroluj zadané údaje a skús to znova.",
+      "http_5xx": "Na našej strane sa niečo pokazilo. Skús to prosím o chvíľu znova.",
+      "generic": "Odoslanie zlyhalo. Skús to o chvíľu znova."
+    },
+    "prompt": {
+      "bug": "Čo sa stalo a čo sa malo stať?",
+      "feature": "Čo ti chýba a s čím by ti to pomohlo?",
+      "question": "Na čo sa chceš opýtať?",
+      "other": "Napíš nám, čo máš na srdci."
+    },
+    "identity": {
+      "replyTo": "Odpovede prídu na {{email}}",
+      "account": "Odosiela sa z tvojho účtu",
+      "anonymous": "Odoslať anonymne",
+      "anonymousHint": "Tvoj účet ani e-mail nebudú pripojené."
+    },
+    "sent": {
+      "title": "Ďakujeme za spätnú väzbu",
+      "replyTo": "Odpovieme na {{email}}.",
+      "close": "Hotovo"
+    }
   }
 }

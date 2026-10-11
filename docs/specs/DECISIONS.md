@@ -1225,3 +1225,15 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Rationale**: the form was redesigned for customer #1 (GitCellar) — kind chips first with a per-kind prompt, one message box (the required subject is the message's first line), the counter shown only near the limit, paste/drop screenshots, Send disabled until there is a message, Ctrl/Cmd+Enter, and an in-dialog confirmation in place of the toast. With the identity line and the token endpoint it measured 2,053 B over 30 KiB after a refactor that folded seven script-attribute resolvers into one and recovered ~1 KB. The 30 KiB figure entered as one cell of DEC-FBR-08's scope table with no stated reason; the owner chose 40 KiB over cutting the features or a 33 KiB cap. A page-baked `data-jwt` does not suit a web page: the tokens live ~5 minutes and a tab stays open for hours, hence the endpoint.
 
 **Alternatives considered**: *Cut features to fit 30 KiB* — rejected by the owner. *Lazy-load the form on first open* — the bytes still count in Probe A's set and would only add a round trip at open. *Make the cap a setting* — still rejected, per DISCOVERIES: a configurable cap defeats the oracle.
+
+---
+
+### DEC-FBR-IMPL-36: The widget's size is reported, not capped
+
+**Status**: **RESOLVED 2026-10-10** (owner's word: "drop the size limit"). Supersedes the cap half of DEC-FBR-IMPL-35, and FR-FBR-04's byte figure.
+
+**Decision**: `widget-bundle-size` no longer fails on size. It prints the English page-load set (`widget.js` + `widget.css` + `redact.js`, pre-gzip) and every locale chunk on every run, and fails on two things only: a canonical tracker hostname anywhere in `dist/` (DEC-FBR-02, unchanged) and a locale chunk that is not a flat map of `widget.*` keys to strings (Contract C42 — what the 4 KiB per-chunk cap was standing in for, now checked directly).
+
+**Rationale**: the 30 KiB figure entered as one cell of DEC-FBR-08's scope table with no reason recorded, then hardened into an oracle and "never raise" prose. No visitor can tell 30 KiB from 40; the cap's only measured effect was to stall the 2026-10-10 form redesign and force a refactor. "Lightweight" is still the goal and the number is still in front of whoever changes the widget — judged by what it is for, not by a threshold. The 4 KiB chunk cap guarded against code or a second namespace leaking into a chunk; a size proxy for that passes a small chunk of code and fails a long honest translation, so the content is checked instead.
+
+**Alternatives considered**: *Keep 40 KiB* (DEC-FBR-IMPL-35, a few hours old) — the owner asked why any cap existed and chose to drop it. *Warn above a number* — the same mechanism with a quieter voice.

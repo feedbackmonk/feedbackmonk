@@ -1,6 +1,105 @@
 {
   "_meta": {
     "language": "Čeština",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Zpětná vazba",
+      "openAria": "Otevřít formulář zpětné vazby pro {{brand}}"
+    },
+    "modal": {
+      "title": "Odeslat zpětnou vazbu",
+      "description": "Napiš nám, co máš na srdci. Zprávy dostává tým {{brand}}.",
+      "closeAria": "Zavřít formulář zpětné vazby",
+      "logoAlt": "Logo {{brand}}"
+    },
+    "form": {
+      "kind": "Typ",
+      "message": "Zpráva",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail (nepovinné)",
+      "logConsent": "Přiložit diagnostické protokoly, které nám pomohou najít chybu",
+      "cancel": "Zrušit",
+      "send": "Odeslat",
+      "sending": "Odesílání…",
+      "emailHint": "Jen pokud chceš odpověď."
+    },
+    "kind": {
+      "bug": "Chyba",
+      "feature": "Návrh funkce",
+      "question": "Otázka",
+      "other": "Jiné"
+    },
+    "attach": {
+      "label": "Snímky obrazovky (nepovinné)",
+      "help": "Obrázky: nejvýše {{max}}, každý do 5 MB. Vlož je sem nebo přetáhni a vše citlivé začerni.",
+      "button": "Přiložit snímek obrazovky",
+      "buttonFull_one": "Nejvýše {{count}} snímek obrazovky",
+      "buttonFull_many": "Nejvýše {{count}} snímku obrazovky",
+      "buttonFull_few": "Nejvýše {{count}} snímky obrazovky",
+      "buttonFull_other": "Nejvýše {{count}} snímků obrazovky",
+      "listAria": "Přiložené snímky obrazovky",
+      "previewAlt": "Náhled {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · začerněno",
+      "redact": "Začernit",
+      "redactAria": "Začernit {{name}}",
+      "reRedactAria": "Znovu začernit {{name}}",
+      "remove": "Odebrat",
+      "removeAria": "Odebrat {{name}}",
+      "loading": "Načítání…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} kB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Přiložit lze jen obrázky PNG, JPEG nebo WebP.",
+      "errorSize": "Každý obrázek smí mít nejvýše 5 MB.",
+      "errorMax_one": "Můžeš přiložit nejvýše {{count}} snímek obrazovky.",
+      "errorMax_many": "Můžeš přiložit nejvýše {{count}} snímku obrazovky.",
+      "errorMax_few": "Můžeš přiložit nejvýše {{count}} snímky obrazovky.",
+      "errorMax_other": "Můžeš přiložit nejvýše {{count}} snímků obrazovky.",
+      "errorRedactLoad": "Nástroj na začernění se nepodařilo načíst. Obrázek můžeš i tak odeslat tak, jak je."
+    },
+    "redact": {
+      "title": "Začernit snímek obrazovky",
+      "hint": "Táhnutím přes obrázek začerni citlivá místa a pak klikni na „Použít začernění“.",
+      "canvasAria": "Plocha pro začernění snímku obrazovky. Táhnutím ukazatele přidáš černé obdélníky.",
+      "undo": "Zpět",
+      "apply": "Použít začernění"
+    },
+    "status": {
+      "sent": "Tvoje zpětná vazba byla odeslána.",
+      "sentAttachmentsFailed": "Zpětná vazba odeslána, přílohy se ale nepodařilo nahrát."
+    },
+    "error": {
+      "invalid_input": "Zkontroluj zadané údaje a zkus to znovu.",
+      "network_error": "Odeslání se nezdařilo. Zkus to za chvíli znovu.",
+      "payload_too_large": "Je to příliš velké na odeslání. Zkus odebrat některou přílohu.",
+      "rate_limited": "Příliš mnoho odeslání během krátké doby. Zkus to znovu za minutu.",
+      "tier_cap": "Tento projekt vyčerpal limit zpětné vazby. Obrať se na provozovatele webu.",
+      "unauthorized": "Platnost relace vypršela. Obnov stránku a zkus to znovu.",
+      "not_found": "Tento formulář zpětné vazby už není k dispozici.",
+      "internal": "Na naší straně se něco pokazilo. Zkus to prosím za chvíli znovu.",
+      "http_4xx": "Odeslání se nezdařilo. Zkontroluj zadané údaje a zkus to znovu.",
+      "http_5xx": "Na naší straně se něco pokazilo. Zkus to prosím za chvíli znovu.",
+      "generic": "Odeslání se nezdařilo. Zkus to za chvíli znovu."
+    },
+    "prompt": {
+      "bug": "Co se stalo a co se mělo stát?",
+      "feature": "Co ti chybí a s čím by ti to pomohlo?",
+      "question": "Na co se chceš zeptat?",
+      "other": "Napiš nám, co máš na srdci."
+    },
+    "identity": {
+      "replyTo": "Odpovědi přijdou na {{email}}",
+      "account": "Odesílá se z tvého účtu",
+      "anonymous": "Odeslat anonymně",
+      "anonymousHint": "Tvůj účet ani e-mail nebudou připojeny."
+    },
+    "sent": {
+      "title": "Díky za zpětnou vazbu",
+      "replyTo": "Odpovíme na {{email}}.",
+      "close": "Hotovo"
+    }
   }
 }

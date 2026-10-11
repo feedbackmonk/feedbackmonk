@@ -43,8 +43,9 @@ import type { CapturedLogs } from "./types.js";
 //     specifiers, which `script-src 'self'` permits (proved on every commit by
 //     e2e/fixture-csp.html). No computed specifier ever reaches `import()`.
 //   - No third-party trackers (DEC-FBR-02). Verified by Probe B.
-//   - English page-load set <30KB (FR-FBR-04); each locale chunk <4KB (C42).
-//     Verified by Probes A and C of the widget-bundle-size oracle.
+//   - Lightweight (FR-FBR-04): the widget-bundle-size oracle reports the English
+//     page-load set and each locale chunk on every run (DEC-FBR-IMPL-36: reported,
+//     not capped) and fails on a locale chunk that is not only strings (C42).
 //   - A11y: keyboard trap inside modal; ESC closes; focus returns to launcher.
 //   - The widget speaks the host page's language (FR-FBR-35) and declares it:
 //     `lang` + `dir` on its own root, never inherited from the host.

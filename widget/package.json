@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "version": "0.1.0",
-  "description": "Embeddable feedbackmonk widget (vanilla JS+CSS, <30KB, CSP-safe, no third-party trackers).",
+  "description": "Embeddable feedbackmonk widget (vanilla JS+CSS, lightweight, CSP-safe, no third-party trackers).",
   "license": "AGPL-3.0-or-later",
   "scripts": {
     "gen:locales": "node scripts/slice-locales.mjs",

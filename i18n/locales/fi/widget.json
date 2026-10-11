@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Suomi",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Palaute",
+      "openAria": "Avaa palvelun {{brand}} palautelomake"
+    },
+    "modal": {
+      "title": "Lähetä palautetta",
+      "description": "Kerro meille, mitä mielessäsi on. Lähettämäsi palaute toimitetaan palvelulle {{brand}}.",
+      "closeAria": "Sulje palautelomake",
+      "logoAlt": "{{brand}}-logo"
+    },
+    "form": {
+      "kind": "Tyyppi",
+      "message": "Viesti",
+      "counter": "{{n}} / {{max}}",
+      "email": "Sähköposti (valinnainen)",
+      "logConsent": "Liitä diagnostiikkalokit vianetsinnän avuksi",
+      "cancel": "Peruuta",
+      "send": "Lähetä",
+      "sending": "Lähetetään…",
+      "emailHint": "Vain jos haluat vastauksen."
+    },
+    "kind": {
+      "bug": "Virhe",
+      "feature": "Ominaisuustoive",
+      "question": "Kysymys",
+      "other": "Muu"
+    },
+    "attach": {
+      "label": "Kuvakaappaukset (valinnainen)",
+      "help": "Enintään {{max}} kuvaa, kukin enintään 5 Mt. Liitä tai pudota ne tähän ja peitä arkaluontoiset tiedot.",
+      "button": "Liitä kuvakaappaus",
+      "buttonFull_one": "Enintään {{count}} kuvakaappaus",
+      "buttonFull_other": "Enintään {{count}} kuvakaappausta",
+      "listAria": "Liitetyt kuvakaappaukset",
+      "previewAlt": "Esikatselu: {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · peitetty",
+      "redact": "Peitä",
+      "redactAria": "Peitä tietoja: {{name}}",
+      "reRedactAria": "Peitä tietoja uudelleen: {{name}}",
+      "remove": "Poista",
+      "removeAria": "Poista {{name}}",
+      "loading": "Ladataan…",
+      "sizeBytes": "{{n}} t",
+      "sizeKb": "{{n}} kt",
+      "sizeMb": "{{n}} Mt",
+      "errorType": "Vain PNG-, JPEG- ja WebP-kuvia voi liittää.",
+      "errorSize": "Kunkin kuvan on oltava enintään 5 Mt.",
+      "errorMax_one": "Voit liittää enintään {{count}} kuvakaappauksen.",
+      "errorMax_other": "Voit liittää enintään {{count}} kuvakaappausta.",
+      "errorRedactLoad": "Peittotyökalua ei voitu ladata. Voit silti lähettää kuvan sellaisenaan."
+    },
+    "redact": {
+      "title": "Peitä tietoja kuvakaappauksesta",
+      "hint": "Peitä arkaluontoiset alueet vetämällä kuvan yli ja ota peitto sitten käyttöön.",
+      "canvasAria": "Kuvakaappauksen peittoalue. Lisää mustia peittolaatikoita vetämällä osoittimella.",
+      "undo": "Kumoa",
+      "apply": "Ota peitto käyttöön"
+    },
+    "status": {
+      "sent": "Palautteesi on lähetetty.",
+      "sentAttachmentsFailed": "Palaute lähetetty — liitteitä ei kuitenkaan voitu ladata."
+    },
+    "error": {
+      "invalid_input": "Tarkista syöttämäsi tiedot ja yritä uudelleen.",
+      "network_error": "Lähettäminen epäonnistui. Yritä hetken kuluttua uudelleen.",
+      "payload_too_large": "Lähetys on liian suuri. Kokeile poistaa jokin liite.",
+      "rate_limited": "Lähetyksiä on juuri nyt liikaa. Yritä uudelleen minuutin kuluttua.",
+      "tier_cap": "Tämä projekti on saavuttanut palautteiden enimmäismäärän. Ota yhteyttä sivuston omistajaan.",
+      "unauthorized": "Istuntosi on vanhentunut. Päivitä sivu ja yritä uudelleen.",
+      "not_found": "Tämä palautelomake ei ole enää käytettävissä.",
+      "internal": "Meillä tapahtui virhe. Yritä hetken kuluttua uudelleen.",
+      "http_4xx": "Lähettäminen epäonnistui. Tarkista syöttämäsi tiedot ja yritä uudelleen.",
+      "http_5xx": "Meillä tapahtui virhe. Yritä hetken kuluttua uudelleen.",
+      "generic": "Lähettäminen epäonnistui. Yritä hetken kuluttua uudelleen."
+    },
+    "prompt": {
+      "bug": "Mitä tapahtui, ja mitä odotit tapahtuvan?",
+      "feature": "Mitä toivoisit, ja missä se auttaisi sinua?",
+      "question": "Mitä haluaisit tietää?",
+      "other": "Kerro meille, mitä mielessäsi on."
+    },
+    "identity": {
+      "replyTo": "Vastaukset lähetetään osoitteeseen {{email}}",
+      "account": "Lähetetään tililtäsi",
+      "anonymous": "Lähetä nimettömänä",
+      "anonymousHint": "Tiliäsi ja sähköpostiosoitettasi ei liitetä mukaan."
+    },
+    "sent": {
+      "title": "Kiitos palautteestasi",
+      "replyTo": "Vastaamme osoitteeseen {{email}}.",
+      "close": "Valmis"
+    }
   }
 }

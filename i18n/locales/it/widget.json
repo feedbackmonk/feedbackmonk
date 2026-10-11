@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Italiano",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Feedback",
+      "openAria": "Apri il modulo di feedback per {{brand}}"
+    },
+    "modal": {
+      "title": "Invia un feedback",
+      "description": "Dicci cosa ne pensi. I tuoi messaggi arrivano al team di {{brand}}.",
+      "closeAria": "Chiudi il modulo di feedback",
+      "logoAlt": "Logo di {{brand}}"
+    },
+    "form": {
+      "kind": "Tipo",
+      "message": "Messaggio",
+      "counter": "{{n}} / {{max}}",
+      "email": "Email (facoltativa)",
+      "logConsent": "Includi i log di diagnostica per aiutarci nel debug",
+      "cancel": "Annulla",
+      "send": "Invia",
+      "sending": "Invio in corso…",
+      "emailHint": "Solo se vuoi ricevere una risposta."
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "Richiesta di funzionalità",
+      "question": "Domanda",
+      "other": "Altro"
+    },
+    "attach": {
+      "label": "Screenshot (facoltativi)",
+      "help": "Fino a {{max}} immagini, massimo 5 MB ciascuna. Incollale o trascinale qui e oscura eventuali informazioni sensibili.",
+      "button": "Allega screenshot",
+      "buttonFull_one": "Massimo {{count}} screenshot",
+      "buttonFull_other": "Massimo {{count}} screenshot",
+      "listAria": "Screenshot allegati",
+      "previewAlt": "Anteprima di {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · oscurato",
+      "redact": "Oscura",
+      "redactAria": "Oscura parti di {{name}}",
+      "reRedactAria": "Oscura di nuovo parti di {{name}}",
+      "remove": "Rimuovi",
+      "removeAria": "Rimuovi {{name}}",
+      "loading": "Caricamento…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Puoi allegare solo immagini PNG, JPEG o WebP.",
+      "errorSize": "Ogni immagine non può superare i 5 MB.",
+      "errorMax_one": "Puoi allegare al massimo {{count}} screenshot.",
+      "errorMax_other": "Puoi allegare al massimo {{count}} screenshot.",
+      "errorRedactLoad": "Impossibile caricare lo strumento di oscuramento. Puoi comunque inviare l’immagine così com’è."
+    },
+    "redact": {
+      "title": "Oscura screenshot",
+      "hint": "Trascina sull’immagine per coprire di nero le aree sensibili, poi applica l’oscuramento.",
+      "canvasAria": "Area di oscuramento dello screenshot. Trascina con il puntatore per aggiungere riquadri neri.",
+      "undo": "Annulla",
+      "apply": "Applica oscuramento"
+    },
+    "status": {
+      "sent": "Il tuo feedback è stato inviato.",
+      "sentAttachmentsFailed": "Feedback inviato, ma non è stato possibile caricare gli allegati."
+    },
+    "error": {
+      "invalid_input": "Controlla i dati inseriti e riprova.",
+      "network_error": "Invio non riuscito. Riprova tra un attimo.",
+      "payload_too_large": "Il contenuto è troppo grande per essere inviato. Prova a rimuovere un allegato.",
+      "rate_limited": "Troppi invii in poco tempo. Riprova tra un minuto.",
+      "tier_cap": "Questo progetto ha raggiunto il limite di feedback. Contatta il gestore del sito.",
+      "unauthorized": "La sessione è scaduta. Ricarica la pagina e riprova.",
+      "not_found": "Questo modulo di feedback non è più disponibile.",
+      "internal": "Si è verificato un problema da parte nostra. Riprova tra poco.",
+      "http_4xx": "Invio non riuscito. Controlla i dati inseriti e riprova.",
+      "http_5xx": "Si è verificato un problema da parte nostra. Riprova tra poco.",
+      "generic": "Invio non riuscito. Riprova tra un attimo."
+    },
+    "prompt": {
+      "bug": "Cosa è successo e cosa ti aspettavi che succedesse?",
+      "feature": "Cosa vorresti e in che modo ti aiuterebbe?",
+      "question": "Cosa vorresti sapere?",
+      "other": "Dicci cosa ne pensi."
+    },
+    "identity": {
+      "replyTo": "Le risposte arriveranno a {{email}}",
+      "account": "Inviato dal tuo account",
+      "anonymous": "Invia in forma anonima",
+      "anonymousHint": "Il tuo account e la tua email non verranno allegati."
+    },
+    "sent": {
+      "title": "Grazie per il tuo feedback",
+      "replyTo": "Ti risponderemo all’indirizzo {{email}}.",
+      "close": "Fatto"
+    }
   }
 }

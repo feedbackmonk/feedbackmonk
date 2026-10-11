@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "日本語",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "フィードバック",
+      "openAria": "{{brand}} のフィードバックフォームを開く"
+    },
+    "modal": {
+      "title": "フィードバックを送信",
+      "description": "ご意見・ご要望をお聞かせください。送信内容は {{brand}} に届きます。",
+      "closeAria": "フィードバックフォームを閉じる",
+      "logoAlt": "{{brand}} のロゴ"
+    },
+    "form": {
+      "kind": "種類",
+      "message": "メッセージ",
+      "counter": "{{n}} / {{max}}",
+      "email": "メールアドレス（任意）",
+      "logConsent": "不具合調査のために診断ログを含める",
+      "cancel": "キャンセル",
+      "send": "送信",
+      "sending": "送信中…",
+      "emailHint": "返信をご希望の場合のみ入力してください。"
+    },
+    "kind": {
+      "bug": "バグ",
+      "feature": "機能リクエスト",
+      "question": "質問",
+      "other": "その他"
+    },
+    "attach": {
+      "label": "スクリーンショット（任意）",
+      "help": "画像は {{max}} 枚まで、1 枚あたり 5 MB までです。ここに貼り付けるかドロップしてください。機密情報は黒塗りで隠してください。",
+      "button": "スクリーンショットを添付",
+      "buttonFull_one": "スクリーンショットは最大 {{count}} 枚",
+      "buttonFull_other": "スクリーンショットは最大 {{count}} 枚",
+      "listAria": "添付したスクリーンショット",
+      "previewAlt": "{{name}} のプレビュー",
+      "nameSize": "{{name}}（{{size}}）",
+      "nameRedacted": "{{name}} · 黒塗り済み",
+      "redact": "黒塗り",
+      "redactAria": "{{name}} を黒塗り",
+      "reRedactAria": "{{name}} をもう一度黒塗り",
+      "remove": "削除",
+      "removeAria": "{{name}} を削除",
+      "loading": "読み込み中…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "添付できるのは PNG、JPEG、WebP 形式の画像のみです。",
+      "errorSize": "画像は 1 枚あたり 5 MB 以下にしてください。",
+      "errorMax_one": "スクリーンショットは最大 {{count}} 枚まで添付できます。",
+      "errorMax_other": "スクリーンショットは最大 {{count}} 枚まで添付できます。",
+      "errorRedactLoad": "黒塗りツールを読み込めませんでした。画像はそのまま送信できます。"
+    },
+    "redact": {
+      "title": "スクリーンショットを黒塗り",
+      "hint": "画像上をドラッグして機密情報を黒く塗りつぶし、適用してください。",
+      "canvasAria": "スクリーンショットの黒塗り領域。ポインターでドラッグすると黒塗りの枠を追加できます。",
+      "undo": "元に戻す",
+      "apply": "黒塗りを適用"
+    },
+    "status": {
+      "sent": "フィードバックを送信しました。",
+      "sentAttachmentsFailed": "フィードバックは送信しましたが、添付ファイルをアップロードできませんでした。"
+    },
+    "error": {
+      "invalid_input": "入力内容を確認して、もう一度お試しください。",
+      "network_error": "送信できませんでした。しばらくしてからもう一度お試しください。",
+      "payload_too_large": "サイズが大きすぎるため送信できません。添付ファイルを減らしてお試しください。",
+      "rate_limited": "短時間に送信が集中しています。1 分ほどしてからもう一度お試しください。",
+      "tier_cap": "このプロジェクトはフィードバックの上限に達しました。サイトの管理者にお問い合わせください。",
+      "unauthorized": "セッションの有効期限が切れました。ページを再読み込みして、もう一度お試しください。",
+      "not_found": "このフィードバックフォームは利用できなくなりました。",
+      "internal": "サーバー側で問題が発生しました。しばらくしてからもう一度お試しください。",
+      "http_4xx": "送信できませんでした。入力内容を確認して、もう一度お試しください。",
+      "http_5xx": "サーバー側で問題が発生しました。しばらくしてからもう一度お試しください。",
+      "generic": "送信できませんでした。しばらくしてからもう一度お試しください。"
+    },
+    "prompt": {
+      "bug": "何が起きましたか？本来はどうなるはずでしたか？",
+      "feature": "どのような機能をご希望ですか？それによって何ができるようになりますか？",
+      "question": "どのようなことを知りたいですか？",
+      "other": "ご意見・ご要望をお聞かせください。"
+    },
+    "identity": {
+      "replyTo": "返信先：{{email}}",
+      "account": "お使いのアカウントから送信されます",
+      "anonymous": "匿名で送信",
+      "anonymousHint": "アカウントとメールアドレスは添付されません。"
+    },
+    "sent": {
+      "title": "フィードバックをありがとうございます",
+      "replyTo": "{{email}} 宛てに返信いたします。",
+      "close": "完了"
+    }
   }
 }

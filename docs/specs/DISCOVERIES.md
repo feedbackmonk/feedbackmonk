@@ -537,7 +537,7 @@ first complaint, not a witnessed one.
 
 **Deliberately excluded**, so a future reader does not re-propose them: `scripts/i18n/translate.py`'s
 `MAX_BATCH` / timeouts are owner-only release-time tooling, not runtime config; and the widget's byte caps
-(`40960` since DEC-FBR-IMPL-35, and `4096`) are **invariants, not settings** — `widget-bundle-size` exists precisely to stop them
+(removed by DEC-FBR-IMPL-36 on 2026-10-10; size is now reported, not capped) were **invariants, not settings** — `widget-bundle-size` exists precisely to stop them
 being raised, and making them configurable would defeat the oracle.
 
 **Suggested action**: fold all four into C21 as `FEEDBACKMONK_TRANSLATION_*` env vars in a single future

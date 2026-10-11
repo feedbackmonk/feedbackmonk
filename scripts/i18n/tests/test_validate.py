@@ -155,6 +155,35 @@ class TestValidate(unittest.TestCase):
             findings = V.run("ru", "widget")
             self.assertEqual([f for f in findings if f["class"] == "plural_category_gap"], [])
 
+    def test_required_plural_categories_are_not_extra_keys(self):
+        # complete-plurals.py writes _few/_many for ru; English has only
+        # _one/_other. Those forms are required, so they must not be reported
+        # as keys "not present in en" — the first real widget translation run
+        # (2026-10-10) produced 22 such false errors. A category the locale
+        # does NOT use stays an extra key, and a required one is still checked
+        # against the English _other value (here: a dropped {{count}}).
+        with TempCatalogTree():
+            cat.write_catalog_verified(cat.catalog_path("en", "widget"), {
+                "_meta": {"language": "English", "status": "source"},
+                "widget": {"items_one": "{{count}} item", "items_other": "{{count}} items"}})
+            cat.write_catalog_verified(cat.catalog_path("ru", "widget"), {
+                "_meta": {"language": "Русский", "status": "machine-translated — community review welcome"},
+                "widget": {"items_one": "{{count}} элемент", "items_few": "{{count}} элемента",
+                           "items_many": "{{count}} элементов", "items_other": "{{count}} элемента",
+                           "items_two": "{{count}} два"}})
+            findings = V.run("ru", "widget")
+            extra = [f["key"] for f in findings if f["class"] == "extra_key"]
+            self.assertEqual(extra, ["widget.items_two"])
+
+            ru = cat.load_catalog(cat.catalog_path("ru", "widget"))
+            del ru["widget"]["items_two"]
+            ru["widget"]["items_few"] = "несколько элементов"
+            cat.write_catalog_verified(cat.catalog_path("ru", "widget"), ru)
+            findings = V.run("ru", "widget")
+            self.assertEqual([f for f in findings if f["class"] == "extra_key"], [])
+            self.assertTrue(any(f["class"] == "placeholder_mismatch" and f["key"] == "widget.items_few"
+                                for f in findings))
+
     def test_untranslated_plural_base_is_not_a_gap(self):
         # a base never touched at all (no categories present in the locale)
         # is a MISSING-key concern, not a plural-completeness error.
