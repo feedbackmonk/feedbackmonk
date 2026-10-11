@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "한국어",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "피드백",
+      "openAria": "{{brand}} 피드백 양식 열기"
+    },
+    "modal": {
+      "title": "피드백 보내기",
+      "description": "의견을 자유롭게 들려주세요. 보내신 내용은 {{brand}} 팀에 전달됩니다.",
+      "closeAria": "피드백 양식 닫기",
+      "logoAlt": "{{brand}} 로고"
+    },
+    "form": {
+      "kind": "유형",
+      "message": "메시지",
+      "counter": "{{n}} / {{max}}",
+      "email": "이메일(선택)",
+      "logConsent": "문제 해결을 위해 진단 로그 포함",
+      "cancel": "취소",
+      "send": "보내기",
+      "sending": "보내는 중…",
+      "emailHint": "답변을 원하는 경우에만 입력하세요."
+    },
+    "kind": {
+      "bug": "버그",
+      "feature": "기능 요청",
+      "question": "질문",
+      "other": "기타"
+    },
+    "attach": {
+      "label": "스크린샷(선택)",
+      "help": "이미지는 최대 {{max}}장, 장당 5MB까지 첨부할 수 있습니다. 여기에 붙여넣거나 끌어다 놓고, 민감한 정보는 가려 주세요.",
+      "button": "스크린샷 첨부",
+      "buttonFull_one": "스크린샷 최대 {{count}}장",
+      "buttonFull_other": "스크린샷 최대 {{count}}장",
+      "listAria": "첨부된 스크린샷",
+      "previewAlt": "{{name}} 미리보기",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · 가림 처리됨",
+      "redact": "가리기",
+      "redactAria": "{{name}} 가리기",
+      "reRedactAria": "{{name}} 다시 가리기",
+      "remove": "삭제",
+      "removeAria": "{{name}} 삭제",
+      "loading": "불러오는 중…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "PNG, JPEG, WebP 이미지만 첨부할 수 있습니다.",
+      "errorSize": "이미지는 장당 5MB 이하여야 합니다.",
+      "errorMax_one": "스크린샷은 최대 {{count}}장까지 첨부할 수 있습니다.",
+      "errorMax_other": "스크린샷은 최대 {{count}}장까지 첨부할 수 있습니다.",
+      "errorRedactLoad": "가리기 도구를 불러오지 못했습니다. 이미지는 그대로 보낼 수 있습니다."
+    },
+    "redact": {
+      "title": "스크린샷 가리기",
+      "hint": "이미지 위를 드래그해 민감한 부분을 검게 가린 다음 적용하세요.",
+      "canvasAria": "스크린샷 가리기 영역. 포인터로 드래그하면 검은 상자가 추가됩니다.",
+      "undo": "실행 취소",
+      "apply": "가리기 적용"
+    },
+    "status": {
+      "sent": "피드백을 보냈습니다.",
+      "sentAttachmentsFailed": "피드백을 보냈지만 첨부 파일은 업로드하지 못했습니다."
+    },
+    "error": {
+      "invalid_input": "입력 내용을 확인한 후 다시 시도해 주세요.",
+      "network_error": "보내지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      "payload_too_large": "크기가 너무 커서 보낼 수 없습니다. 첨부 파일을 하나 삭제해 보세요.",
+      "rate_limited": "짧은 시간에 너무 많이 보냈습니다. 1분 후에 다시 시도해 주세요.",
+      "tier_cap": "이 프로젝트의 피드백 한도에 도달했습니다. 사이트 운영자에게 문의해 주세요.",
+      "unauthorized": "세션이 만료되었습니다. 페이지를 새로고침한 후 다시 시도해 주세요.",
+      "not_found": "이 피드백 양식은 더 이상 사용할 수 없습니다.",
+      "internal": "서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+      "http_4xx": "보내지 못했습니다. 입력 내용을 확인한 후 다시 시도해 주세요.",
+      "http_5xx": "서버에 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+      "generic": "보내지 못했습니다. 잠시 후 다시 시도해 주세요."
+    },
+    "prompt": {
+      "bug": "어떤 문제가 있었나요? 원래는 어떻게 동작해야 했나요?",
+      "feature": "어떤 기능을 원하시나요? 그 기능으로 무엇을 할 수 있게 되나요?",
+      "question": "무엇이 궁금하신가요?",
+      "other": "의견을 자유롭게 들려주세요."
+    },
+    "identity": {
+      "replyTo": "답변 받을 주소: {{email}}",
+      "account": "내 계정으로 보냅니다",
+      "anonymous": "익명으로 보내기",
+      "anonymousHint": "계정과 이메일 주소가 첨부되지 않습니다."
+    },
+    "sent": {
+      "title": "피드백을 보내 주셔서 감사합니다",
+      "replyTo": "답변은 다음 주소로 보내 드리겠습니다: {{email}}",
+      "close": "완료"
+    }
   }
 }

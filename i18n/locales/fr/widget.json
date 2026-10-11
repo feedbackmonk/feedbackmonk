@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Français",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Avis",
+      "openAria": "Ouvrir le formulaire d’avis sur {{brand}}"
+    },
+    "modal": {
+      "title": "Donner ton avis",
+      "description": "Dis-nous ce que tu en penses. Tes messages sont transmis à l’équipe de {{brand}}.",
+      "closeAria": "Fermer le formulaire d’avis",
+      "logoAlt": "Logo de {{brand}}"
+    },
+    "form": {
+      "kind": "Type",
+      "message": "Message",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail (facultatif)",
+      "logConsent": "Joindre les journaux de diagnostic pour faciliter le débogage",
+      "cancel": "Annuler",
+      "send": "Envoyer",
+      "sending": "Envoi…",
+      "emailHint": "Seulement si tu souhaites une réponse."
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "Suggestion de fonctionnalité",
+      "question": "Question",
+      "other": "Autre"
+    },
+    "attach": {
+      "label": "Captures d’écran (facultatif)",
+      "help": "Jusqu’à {{max}} images de 5 Mo maximum chacune. Colle-les ou dépose-les ici, et masque toute information sensible.",
+      "button": "Joindre une capture d’écran",
+      "buttonFull_one": "{{count}} capture d’écran maximum",
+      "buttonFull_other": "{{count}} captures d’écran maximum",
+      "listAria": "Captures d’écran jointes",
+      "previewAlt": "Aperçu de {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · masquée",
+      "redact": "Masquer",
+      "redactAria": "Masquer des zones de {{name}}",
+      "reRedactAria": "Masquer à nouveau des zones de {{name}}",
+      "remove": "Retirer",
+      "removeAria": "Retirer {{name}}",
+      "loading": "Chargement…",
+      "sizeBytes": "{{n}} o",
+      "sizeKb": "{{n}} Ko",
+      "sizeMb": "{{n}} Mo",
+      "errorType": "Seules les images PNG, JPEG ou WebP peuvent être jointes.",
+      "errorSize": "Chaque image doit faire 5 Mo maximum.",
+      "errorMax_one": "Tu peux joindre {{count}} capture d’écran au maximum.",
+      "errorMax_other": "Tu peux joindre {{count}} captures d’écran au maximum.",
+      "errorRedactLoad": "L’outil de masquage n’a pas pu être chargé. Tu peux quand même envoyer l’image telle quelle."
+    },
+    "redact": {
+      "title": "Masquer des zones de la capture",
+      "hint": "Fais glisser le pointeur sur l’image pour masquer en noir les zones sensibles, puis applique le masquage.",
+      "canvasAria": "Zone de masquage de la capture d’écran. Fais glisser le pointeur pour ajouter des rectangles noirs.",
+      "undo": "Annuler",
+      "apply": "Appliquer le masquage"
+    },
+    "status": {
+      "sent": "Ton avis a bien été envoyé.",
+      "sentAttachmentsFailed": "Avis envoyé, mais les pièces jointes n’ont pas pu être téléversées."
+    },
+    "error": {
+      "invalid_input": "Vérifie ta saisie et réessaie.",
+      "network_error": "Envoi impossible. Réessaie dans un instant.",
+      "payload_too_large": "C’est trop volumineux pour être envoyé. Essaie de retirer une pièce jointe.",
+      "rate_limited": "Trop d’envois en peu de temps. Réessaie dans une minute.",
+      "tier_cap": "Ce projet a atteint sa limite d’avis. Contacte le responsable du site.",
+      "unauthorized": "Ta session a expiré. Recharge la page et réessaie.",
+      "not_found": "Ce formulaire d’avis n’est plus disponible.",
+      "internal": "Un problème est survenu de notre côté. Réessaie dans quelques instants.",
+      "http_4xx": "Envoi impossible. Vérifie ta saisie et réessaie.",
+      "http_5xx": "Un problème est survenu de notre côté. Réessaie dans quelques instants.",
+      "generic": "Envoi impossible. Réessaie dans un instant."
+    },
+    "prompt": {
+      "bug": "Que s’est-il passé, et à quoi t’attendais-tu ?",
+      "feature": "Qu’aimerais-tu, et en quoi cela t’aiderait-il ?",
+      "question": "Que veux-tu savoir ?",
+      "other": "Dis-nous ce que tu en penses."
+    },
+    "identity": {
+      "replyTo": "Les réponses seront envoyées à {{email}}",
+      "account": "Envoyé depuis ton compte",
+      "anonymous": "Envoyer anonymement",
+      "anonymousHint": "Ton compte et ton adresse e-mail ne seront pas joints."
+    },
+    "sent": {
+      "title": "Merci pour ton avis",
+      "replyTo": "Nous te répondrons à {{email}}.",
+      "close": "Terminé"
+    }
   }
 }

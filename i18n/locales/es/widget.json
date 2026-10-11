@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Español",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Comentarios",
+      "openAria": "Abrir el formulario de comentarios de {{brand}}"
+    },
+    "modal": {
+      "title": "Enviar comentarios",
+      "description": "Cuéntanos qué piensas. Tus comentarios llegan al equipo de {{brand}}.",
+      "closeAria": "Cerrar el formulario de comentarios",
+      "logoAlt": "Logotipo de {{brand}}"
+    },
+    "form": {
+      "kind": "Tipo",
+      "message": "Mensaje",
+      "counter": "{{n}} / {{max}}",
+      "email": "Correo electrónico (opcional)",
+      "logConsent": "Incluir registros de diagnóstico para ayudarnos a depurar",
+      "cancel": "Cancelar",
+      "send": "Enviar",
+      "sending": "Enviando…",
+      "emailHint": "Solo si quieres que te respondamos."
+    },
+    "kind": {
+      "bug": "Error",
+      "feature": "Sugerencia de función",
+      "question": "Pregunta",
+      "other": "Otro"
+    },
+    "attach": {
+      "label": "Capturas de pantalla (opcional)",
+      "help": "Hasta {{max}} imágenes de 5 MB como máximo cada una. Pégalas o arrástralas aquí, y oculta cualquier dato confidencial.",
+      "button": "Adjuntar captura de pantalla",
+      "buttonFull_one": "Máximo {{count}} captura de pantalla",
+      "buttonFull_other": "Máximo {{count}} capturas de pantalla",
+      "listAria": "Capturas de pantalla adjuntas",
+      "previewAlt": "Vista previa de {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · datos ocultos",
+      "redact": "Ocultar",
+      "redactAria": "Ocultar datos de {{name}}",
+      "reRedactAria": "Volver a ocultar datos de {{name}}",
+      "remove": "Quitar",
+      "removeAria": "Quitar {{name}}",
+      "loading": "Cargando…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Solo se pueden adjuntar imágenes PNG, JPEG o WebP.",
+      "errorSize": "Cada imagen debe ocupar 5 MB como máximo.",
+      "errorMax_one": "Puedes adjuntar como máximo {{count}} captura de pantalla.",
+      "errorMax_other": "Puedes adjuntar como máximo {{count}} capturas de pantalla.",
+      "errorRedactLoad": "No se ha podido cargar la herramienta para ocultar datos. Aun así, puedes enviar la imagen tal cual."
+    },
+    "redact": {
+      "title": "Ocultar datos de la captura",
+      "hint": "Arrastra sobre la imagen para tapar en negro las zonas confidenciales y, después, aplica los cambios.",
+      "canvasAria": "Área para ocultar datos de la captura de pantalla. Arrastra con el puntero para añadir recuadros negros.",
+      "undo": "Deshacer",
+      "apply": "Aplicar ocultación"
+    },
+    "status": {
+      "sent": "Se han enviado tus comentarios.",
+      "sentAttachmentsFailed": "Comentarios enviados, pero no se han podido subir los archivos adjuntos."
+    },
+    "error": {
+      "invalid_input": "Revisa lo que has escrito e inténtalo de nuevo.",
+      "network_error": "No se ha podido enviar. Inténtalo de nuevo en un momento.",
+      "payload_too_large": "Es demasiado grande para enviarlo. Prueba a quitar algún archivo adjunto.",
+      "rate_limited": "Demasiados envíos en poco tiempo. Inténtalo de nuevo en un minuto.",
+      "tier_cap": "Este proyecto ha alcanzado su límite de comentarios. Ponte en contacto con el responsable del sitio.",
+      "unauthorized": "Tu sesión ha caducado. Recarga la página e inténtalo de nuevo.",
+      "not_found": "Este formulario de comentarios ya no está disponible.",
+      "internal": "Algo ha fallado por nuestra parte. Inténtalo de nuevo en breve.",
+      "http_4xx": "No se ha podido enviar. Revisa lo que has escrito e inténtalo de nuevo.",
+      "http_5xx": "Algo ha fallado por nuestra parte. Inténtalo de nuevo en breve.",
+      "generic": "No se ha podido enviar. Inténtalo de nuevo en un momento."
+    },
+    "prompt": {
+      "bug": "¿Qué ha pasado y qué esperabas que pasara?",
+      "feature": "¿Qué te gustaría y en qué te ayudaría?",
+      "question": "¿Qué te gustaría saber?",
+      "other": "Cuéntanos qué piensas."
+    },
+    "identity": {
+      "replyTo": "Las respuestas se enviarán a {{email}}",
+      "account": "Se envía desde tu cuenta",
+      "anonymous": "Enviar de forma anónima",
+      "anonymousHint": "No se incluirán tu cuenta ni tu correo electrónico."
+    },
+    "sent": {
+      "title": "Gracias por tus comentarios",
+      "replyTo": "Te responderemos a {{email}}.",
+      "close": "Listo"
+    }
   }
 }

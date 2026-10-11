@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "简体中文",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "反馈",
+      "openAria": "打开 {{brand}} 反馈表单"
+    },
+    "modal": {
+      "title": "发送反馈",
+      "description": "欢迎告诉我们您的想法。您提交的内容将发送给 {{brand}}。",
+      "closeAria": "关闭反馈表单",
+      "logoAlt": "{{brand}} 徽标"
+    },
+    "form": {
+      "kind": "类型",
+      "message": "内容",
+      "counter": "{{n}} / {{max}}",
+      "email": "邮箱（选填）",
+      "logConsent": "附带诊断日志，帮助我们排查问题",
+      "cancel": "取消",
+      "send": "发送",
+      "sending": "正在发送…",
+      "emailHint": "仅在您希望收到回复时填写。"
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "功能建议",
+      "question": "问题",
+      "other": "其他"
+    },
+    "attach": {
+      "label": "截图（选填）",
+      "help": "最多 {{max}} 张图片，每张不超过 5 MB。可粘贴或拖放到此处，请遮盖所有敏感信息。",
+      "button": "添加截图",
+      "buttonFull_one": "最多 {{count}} 张截图",
+      "buttonFull_other": "最多 {{count}} 张截图",
+      "listAria": "已添加的截图",
+      "previewAlt": "{{name}} 的预览",
+      "nameSize": "{{name}}（{{size}}）",
+      "nameRedacted": "{{name}} · 已遮盖",
+      "redact": "遮盖",
+      "redactAria": "遮盖 {{name}}",
+      "reRedactAria": "再次遮盖 {{name}}",
+      "remove": "移除",
+      "removeAria": "移除 {{name}}",
+      "loading": "正在加载…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "仅支持 PNG、JPEG 或 WebP 格式的图片。",
+      "errorSize": "每张图片不得超过 5 MB。",
+      "errorMax_one": "最多只能添加 {{count}} 张截图。",
+      "errorMax_other": "最多只能添加 {{count}} 张截图。",
+      "errorRedactLoad": "遮盖工具加载失败。您仍可直接发送原图。"
+    },
+    "redact": {
+      "title": "遮盖截图",
+      "hint": "在图片上拖动以涂黑敏感区域，然后点击应用。",
+      "canvasAria": "截图遮盖区域。用指针拖动即可添加黑色遮盖框。",
+      "undo": "撤销",
+      "apply": "应用遮盖"
+    },
+    "status": {
+      "sent": "您的反馈已发送。",
+      "sentAttachmentsFailed": "反馈已发送，但附件上传失败。"
+    },
+    "error": {
+      "invalid_input": "请检查输入内容后重试。",
+      "network_error": "发送失败，请稍后重试。",
+      "payload_too_large": "内容过大，无法发送。请尝试移除一个附件。",
+      "rate_limited": "提交过于频繁，请一分钟后再试。",
+      "tier_cap": "此项目的反馈数量已达上限。请联系网站所有者。",
+      "unauthorized": "会话已过期。请刷新页面后重试。",
+      "not_found": "此反馈表单已不再可用。",
+      "internal": "服务器出现问题，请稍后重试。",
+      "http_4xx": "发送失败。请检查输入内容后重试。",
+      "http_5xx": "服务器出现问题，请稍后重试。",
+      "generic": "发送失败，请稍后重试。"
+    },
+    "prompt": {
+      "bug": "发生了什么？您原本期望的结果是什么？",
+      "feature": "您希望增加什么功能？它能帮您做什么？",
+      "question": "您想了解什么？",
+      "other": "欢迎告诉我们您的想法。"
+    },
+    "identity": {
+      "replyTo": "回复将发送至 {{email}}",
+      "account": "将以您的账号发送",
+      "anonymous": "匿名发送",
+      "anonymousHint": "不会附带您的账号和邮箱。"
+    },
+    "sent": {
+      "title": "感谢您的反馈",
+      "replyTo": "我们会回复至 {{email}}。",
+      "close": "完成"
+    }
   }
 }

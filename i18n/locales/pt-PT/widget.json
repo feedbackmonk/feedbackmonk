@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Português (Portugal)",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Feedback",
+      "openAria": "Abrir o formulário de feedback de {{brand}}"
+    },
+    "modal": {
+      "title": "Enviar feedback",
+      "description": "Diz-nos o que pensas. As mensagens são enviadas à equipa de {{brand}}.",
+      "closeAria": "Fechar o formulário de feedback",
+      "logoAlt": "Logótipo de {{brand}}"
+    },
+    "form": {
+      "kind": "Tipo",
+      "message": "Mensagem",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail (opcional)",
+      "logConsent": "Incluir registos de diagnóstico para ajudar na depuração",
+      "cancel": "Cancelar",
+      "send": "Enviar",
+      "sending": "A enviar…",
+      "emailHint": "Só se quiseres receber uma resposta."
+    },
+    "kind": {
+      "bug": "Erro",
+      "feature": "Pedido de funcionalidade",
+      "question": "Pergunta",
+      "other": "Outro"
+    },
+    "attach": {
+      "label": "Capturas de ecrã (opcional)",
+      "help": "Até {{max}} imagens com 5 MB no máximo cada uma. Cola-as ou arrasta-as para aqui e oculta qualquer informação confidencial.",
+      "button": "Anexar captura de ecrã",
+      "buttonFull_one": "Máximo de {{count}} captura de ecrã",
+      "buttonFull_other": "Máximo de {{count}} capturas de ecrã",
+      "listAria": "Capturas de ecrã anexadas",
+      "previewAlt": "Pré-visualização de {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · dados ocultos",
+      "redact": "Ocultar",
+      "redactAria": "Ocultar dados em {{name}}",
+      "reRedactAria": "Ocultar mais dados em {{name}}",
+      "remove": "Remover",
+      "removeAria": "Remover {{name}}",
+      "loading": "A carregar…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Só é possível anexar imagens PNG, JPEG ou WebP.",
+      "errorSize": "Cada imagem pode ter, no máximo, 5 MB.",
+      "errorMax_one": "Podes anexar, no máximo, {{count}} captura de ecrã.",
+      "errorMax_other": "Podes anexar, no máximo, {{count}} capturas de ecrã.",
+      "errorRedactLoad": "Não foi possível carregar a ferramenta de ocultação. Podes enviar a imagem tal como está."
+    },
+    "redact": {
+      "title": "Ocultar dados da captura de ecrã",
+      "hint": "Arrasta sobre a imagem para tapar a preto as áreas confidenciais e, depois, aplica.",
+      "canvasAria": "Área de ocultação da captura de ecrã. Arrasta com o ponteiro para adicionar retângulos pretos.",
+      "undo": "Anular",
+      "apply": "Aplicar ocultação"
+    },
+    "status": {
+      "sent": "O teu feedback foi enviado.",
+      "sentAttachmentsFailed": "Feedback enviado, mas não foi possível carregar os anexos."
+    },
+    "error": {
+      "invalid_input": "Verifica o que escreveste e tenta novamente.",
+      "network_error": "Não foi possível enviar. Tenta novamente daqui a pouco.",
+      "payload_too_large": "É demasiado grande para enviar. Experimenta remover um anexo.",
+      "rate_limited": "Demasiados envios em pouco tempo. Tenta novamente daqui a um minuto.",
+      "tier_cap": "Este projeto atingiu o limite de feedback. Contacta o responsável pelo site.",
+      "unauthorized": "A tua sessão expirou. Recarrega a página e tenta novamente.",
+      "not_found": "Este formulário de feedback já não está disponível.",
+      "internal": "Ocorreu um problema do nosso lado. Tenta novamente daqui a pouco.",
+      "http_4xx": "Não foi possível enviar. Verifica o que escreveste e tenta novamente.",
+      "http_5xx": "Ocorreu um problema do nosso lado. Tenta novamente daqui a pouco.",
+      "generic": "Não foi possível enviar. Tenta novamente daqui a pouco."
+    },
+    "prompt": {
+      "bug": "O que aconteceu e o que esperavas que acontecesse?",
+      "feature": "O que gostarias de ter e em que é que isso te ajudaria?",
+      "question": "O que gostarias de saber?",
+      "other": "Diz-nos o que pensas."
+    },
+    "identity": {
+      "replyTo": "As respostas são enviadas para {{email}}",
+      "account": "Enviado a partir da tua conta",
+      "anonymous": "Enviar anonimamente",
+      "anonymousHint": "A tua conta e o teu e-mail não serão incluídos."
+    },
+    "sent": {
+      "title": "Obrigado pelo teu feedback",
+      "replyTo": "Vamos responder-te para {{email}}.",
+      "close": "Concluído"
+    }
   }
 }

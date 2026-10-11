@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Deutsch",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Feedback",
+      "openAria": "Feedback-Formular für {{brand}} öffnen"
+    },
+    "modal": {
+      "title": "Feedback senden",
+      "description": "Sag uns, was dir auffällt oder was du dir wünschst. Deine Nachricht geht an das Team von {{brand}}.",
+      "closeAria": "Feedback-Formular schließen",
+      "logoAlt": "{{brand}}-Logo"
+    },
+    "form": {
+      "kind": "Art",
+      "message": "Nachricht",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-Mail (optional)",
+      "logConsent": "Diagnoseprotokolle zur Fehleranalyse beifügen",
+      "cancel": "Abbrechen",
+      "send": "Senden",
+      "sending": "Wird gesendet…",
+      "emailHint": "Nur, wenn du eine Antwort möchtest."
+    },
+    "kind": {
+      "bug": "Fehler",
+      "feature": "Funktionswunsch",
+      "question": "Frage",
+      "other": "Sonstiges"
+    },
+    "attach": {
+      "label": "Screenshots (optional)",
+      "help": "Bis zu {{max}} Bilder, je max. 5 MB. Füge sie hier ein oder zieh sie hierher und schwärze vertrauliche Inhalte.",
+      "button": "Screenshot anhängen",
+      "buttonFull_one": "Maximal {{count}} Screenshot",
+      "buttonFull_other": "Maximal {{count}} Screenshots",
+      "listAria": "Angehängte Screenshots",
+      "previewAlt": "Vorschau von {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · geschwärzt",
+      "redact": "Schwärzen",
+      "redactAria": "{{name}} schwärzen",
+      "reRedactAria": "{{name}} erneut schwärzen",
+      "remove": "Entfernen",
+      "removeAria": "{{name}} entfernen",
+      "loading": "Wird geladen…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Nur PNG-, JPEG- oder WebP-Bilder können angehängt werden.",
+      "errorSize": "Jedes Bild darf höchstens 5 MB groß sein.",
+      "errorMax_one": "Du kannst höchstens {{count}} Screenshot anhängen.",
+      "errorMax_other": "Du kannst höchstens {{count}} Screenshots anhängen.",
+      "errorRedactLoad": "Das Schwärzungswerkzeug konnte nicht geladen werden. Du kannst das Bild trotzdem unverändert senden."
+    },
+    "redact": {
+      "title": "Screenshot schwärzen",
+      "hint": "Zieh über das Bild, um vertrauliche Bereiche zu schwärzen, und übernimm dann die Schwärzung.",
+      "canvasAria": "Fläche zum Schwärzen des Screenshots. Zieh mit dem Zeiger, um schwarze Balken hinzuzufügen.",
+      "undo": "Rückgängig",
+      "apply": "Schwärzung übernehmen"
+    },
+    "status": {
+      "sent": "Dein Feedback wurde gesendet.",
+      "sentAttachmentsFailed": "Feedback gesendet – die Anhänge konnten aber nicht hochgeladen werden."
+    },
+    "error": {
+      "invalid_input": "Prüf deine Eingabe und versuch es noch einmal.",
+      "network_error": "Senden fehlgeschlagen. Versuch es gleich noch einmal.",
+      "payload_too_large": "Das ist zu groß zum Senden. Entferne einen Anhang und versuch es noch einmal.",
+      "rate_limited": "Gerade wurde zu viel gesendet. Versuch es in einer Minute noch einmal.",
+      "tier_cap": "Dieses Projekt hat sein Feedback-Limit erreicht. Wende dich bitte an den Betreiber der Website.",
+      "unauthorized": "Deine Sitzung ist abgelaufen. Lade die Seite neu und versuch es noch einmal.",
+      "not_found": "Dieses Feedback-Formular ist nicht mehr verfügbar.",
+      "internal": "Bei uns ist etwas schiefgelaufen. Versuch es bitte gleich noch einmal.",
+      "http_4xx": "Senden fehlgeschlagen. Prüf deine Eingabe und versuch es noch einmal.",
+      "http_5xx": "Bei uns ist etwas schiefgelaufen. Versuch es bitte gleich noch einmal.",
+      "generic": "Senden fehlgeschlagen. Versuch es gleich noch einmal."
+    },
+    "prompt": {
+      "bug": "Was ist passiert, und was hättest du stattdessen erwartet?",
+      "feature": "Was wünschst du dir, und wobei würde es dir helfen?",
+      "question": "Was möchtest du wissen?",
+      "other": "Sag uns, was dir auffällt oder was du dir wünschst."
+    },
+    "identity": {
+      "replyTo": "Antworten gehen an {{email}}",
+      "account": "Wird von deinem Konto gesendet",
+      "anonymous": "Anonym senden",
+      "anonymousHint": "Dein Konto und deine E-Mail-Adresse werden nicht mitgesendet."
+    },
+    "sent": {
+      "title": "Danke für dein Feedback",
+      "replyTo": "Wir antworten an {{email}}.",
+      "close": "Fertig"
+    }
   }
 }

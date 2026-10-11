@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Svenska",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Feedback",
+      "openAria": "Öppna feedbackformuläret för {{brand}}"
+    },
+    "modal": {
+      "title": "Skicka feedback",
+      "description": "Berätta vad du tänker på. Det du skickar går till {{brand}}.",
+      "closeAria": "Stäng feedbackformuläret",
+      "logoAlt": "Logotyp för {{brand}}"
+    },
+    "form": {
+      "kind": "Typ",
+      "message": "Meddelande",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-post (valfritt)",
+      "logConsent": "Bifoga diagnostikloggar för felsökning",
+      "cancel": "Avbryt",
+      "send": "Skicka",
+      "sending": "Skickar…",
+      "emailHint": "Bara om du vill ha svar."
+    },
+    "kind": {
+      "bug": "Bugg",
+      "feature": "Funktionsönskemål",
+      "question": "Fråga",
+      "other": "Övrigt"
+    },
+    "attach": {
+      "label": "Skärmbilder (valfritt)",
+      "help": "Upp till {{max}} bilder på högst 5 MB vardera. Klistra in eller släpp dem här och maskera allt känsligt.",
+      "button": "Bifoga skärmbild",
+      "buttonFull_one": "Högst {{count}} skärmbild",
+      "buttonFull_other": "Högst {{count}} skärmbilder",
+      "listAria": "Bifogade skärmbilder",
+      "previewAlt": "Förhandsgranskning av {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · maskerad",
+      "redact": "Maskera",
+      "redactAria": "Maskera {{name}}",
+      "reRedactAria": "Maskera {{name}} igen",
+      "remove": "Ta bort",
+      "removeAria": "Ta bort {{name}}",
+      "loading": "Läser in…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Endast PNG-, JPEG- eller WebP-bilder kan bifogas.",
+      "errorSize": "Varje bild får vara högst 5 MB.",
+      "errorMax_one": "Du kan bifoga högst {{count}} skärmbild.",
+      "errorMax_other": "Du kan bifoga högst {{count}} skärmbilder.",
+      "errorRedactLoad": "Maskeringsverktyget kunde inte läsas in. Du kan ändå skicka bilden som den är."
+    },
+    "redact": {
+      "title": "Maskera skärmbild",
+      "hint": "Dra över bilden för att svärta känsliga områden och tillämpa sedan maskeringen.",
+      "canvasAria": "Yta för maskering av skärmbilden. Dra med pekaren för att lägga till svarta rutor.",
+      "undo": "Ångra",
+      "apply": "Tillämpa maskering"
+    },
+    "status": {
+      "sent": "Din feedback har skickats.",
+      "sentAttachmentsFailed": "Feedbacken har skickats — men bilagorna kunde inte laddas upp."
+    },
+    "error": {
+      "invalid_input": "Kontrollera det du har angett och försök igen.",
+      "network_error": "Det gick inte att skicka. Försök igen om en stund.",
+      "payload_too_large": "Det är för stort för att skickas. Försök ta bort en bilaga.",
+      "rate_limited": "För många inskick just nu. Försök igen om en minut.",
+      "tier_cap": "Projektet har nått sin gräns för feedback. Kontakta webbplatsens ägare.",
+      "unauthorized": "Din session har gått ut. Ladda om sidan och försök igen.",
+      "not_found": "Det här feedbackformuläret är inte längre tillgängligt.",
+      "internal": "Något gick fel hos oss. Försök igen om en liten stund.",
+      "http_4xx": "Det gick inte att skicka. Kontrollera det du har angett och försök igen.",
+      "http_5xx": "Något gick fel hos oss. Försök igen om en liten stund.",
+      "generic": "Det gick inte att skicka. Försök igen om en stund."
+    },
+    "prompt": {
+      "bug": "Vad hände, och vad hade du väntat dig?",
+      "feature": "Vad önskar du dig, och vad skulle det hjälpa dig med?",
+      "question": "Vad vill du veta?",
+      "other": "Berätta vad du tänker på."
+    },
+    "identity": {
+      "replyTo": "Svar skickas till {{email}}",
+      "account": "Skickas från ditt konto",
+      "anonymous": "Skicka anonymt",
+      "anonymousHint": "Ditt konto och din e-postadress bifogas inte."
+    },
+    "sent": {
+      "title": "Tack för din feedback",
+      "replyTo": "Vi svarar till {{email}}.",
+      "close": "Klar"
+    }
   }
 }

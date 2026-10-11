@@ -293,10 +293,9 @@ describe("setLocale / loadLocale / dir", () => {
     await loadLocale("de");
     expect(activeLocale()).toBe("de");
     expect(dir()).toBe("ltr");
-    // The catalog is an untranslated skeleton in this arc (DEC-FBR-17), so
-    // every key still renders English — which is exactly the shippable state
-    // C35 rule 6 promises.
-    expect(t("widget.modal.title")).toBe("Send feedback");
+    // The widget namespace was translated on the owner's word on 2026-10-10
+    // (DEC-FBR-17), so the chunk's own strings now render.
+    expect(t("widget.modal.title")).toBe("Feedback senden");
   });
 
   it("stays English when the chunk cannot be fetched at all", async () => {

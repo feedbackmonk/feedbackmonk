@@ -66,10 +66,13 @@ async function expectNoAxeViolations(page: Page, label: string, scope?: string) 
 // `lang` is the language of the WORDS, which is not always `code` (R-A11Y A-2):
 // `fa` has no MT provider, so its catalog is English permanently. `dir` and the
 // fetched chunk still follow the resolved locale.
+// `open` is the launcher's accessible name in that locale: German proves the
+// fetched chunk is APPLIED, not only fetched (the widget namespace was
+// translated 2026-10-10); `fa` stays English by design.
 const MATRIX = [
-  { browser: "en-US", code: "en", lang: "en", dir: "ltr", chunk: null },
-  { browser: "de-DE", code: "de", lang: "de", dir: "ltr", chunk: "de" },
-  { browser: "fa-IR", code: "fa", lang: "en", dir: "rtl", chunk: "fa" },
+  { browser: "en-US", code: "en", lang: "en", dir: "ltr", chunk: null, open: /Open feedback form/i },
+  { browser: "de-DE", code: "de", lang: "de", dir: "ltr", chunk: "de", open: /Feedback-Formular .* öffnen/ },
+  { browser: "fa-IR", code: "fa", lang: "en", dir: "rtl", chunk: "fa", open: /Open feedback form/i },
 ] as const;
 
 for (const row of MATRIX) {
@@ -95,7 +98,7 @@ for (const row of MATRIX) {
         expect(chunks, `expected the ${row.chunk} chunk`).toContain(row.chunk);
       }
 
-      await page.getByRole("button", { name: /Open feedback form/i }).click();
+      await page.getByRole("button", { name: row.open }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       // Scoped to the widget: this fixture omits `lang` on <html> ON PURPOSE
       // (that is what puts `navigator.languages` in charge), and axe would
@@ -165,9 +168,9 @@ test.describe("CSP (script-src 'self')", () => {
     expect(chunks, "the de chunk must load under CSP").toContain("de");
     expect(violations, "no CSP violation may be logged").toEqual([]);
 
-    // And the widget is fully operable under that policy.
-    await page.getByRole("button", { name: /Open feedback form/i }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
+    // And the widget is fully operable, in German, under that policy.
+    await page.getByRole("button", { name: /Feedback-Formular .* öffnen/ }).click();
+    await expect(page.getByRole("dialog", { name: "Feedback senden" })).toBeVisible();
     await expectNoAxeViolations(page, "modal-open under CSP");
   });
 });

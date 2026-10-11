@@ -1,6 +1,101 @@
 {
   "_meta": {
     "language": "Nederlands",
-    "status": "untranslated"
+    "status": "machine-translated — community review welcome"
+  },
+  "widget": {
+    "launcher": {
+      "label": "Feedback",
+      "openAria": "Feedbackformulier voor {{brand}} openen"
+    },
+    "modal": {
+      "title": "Feedback sturen",
+      "description": "Laat ons weten wat je bezighoudt. Je feedback gaat naar {{brand}}.",
+      "closeAria": "Feedbackformulier sluiten",
+      "logoAlt": "Logo van {{brand}}"
+    },
+    "form": {
+      "kind": "Soort",
+      "message": "Bericht",
+      "counter": "{{n}} / {{max}}",
+      "email": "E-mail (optioneel)",
+      "logConsent": "Diagnostische logbestanden meesturen voor foutopsporing",
+      "cancel": "Annuleren",
+      "send": "Versturen",
+      "sending": "Versturen…",
+      "emailHint": "Alleen als je een antwoord wilt."
+    },
+    "kind": {
+      "bug": "Bug",
+      "feature": "Functieverzoek",
+      "question": "Vraag",
+      "other": "Anders"
+    },
+    "attach": {
+      "label": "Screenshots (optioneel)",
+      "help": "Maximaal {{max}} afbeeldingen van elk max. 5 MB. Plak of sleep ze hierheen en scherm gevoelige informatie af.",
+      "button": "Screenshot toevoegen",
+      "buttonFull_one": "Maximaal {{count}} screenshot",
+      "buttonFull_other": "Maximaal {{count}} screenshots",
+      "listAria": "Toegevoegde screenshots",
+      "previewAlt": "Voorbeeld van {{name}}",
+      "nameSize": "{{name}} ({{size}})",
+      "nameRedacted": "{{name}} · afgeschermd",
+      "redact": "Afschermen",
+      "redactAria": "{{name}} afschermen",
+      "reRedactAria": "{{name}} opnieuw afschermen",
+      "remove": "Verwijderen",
+      "removeAria": "{{name}} verwijderen",
+      "loading": "Laden…",
+      "sizeBytes": "{{n}} B",
+      "sizeKb": "{{n}} KB",
+      "sizeMb": "{{n}} MB",
+      "errorType": "Je kunt alleen PNG-, JPEG- of WebP-afbeeldingen toevoegen.",
+      "errorSize": "Elke afbeelding mag maximaal 5 MB zijn.",
+      "errorMax_one": "Je kunt maximaal {{count}} screenshot toevoegen.",
+      "errorMax_other": "Je kunt maximaal {{count}} screenshots toevoegen.",
+      "errorRedactLoad": "Het afschermhulpmiddel kon niet worden geladen. Je kunt de afbeelding nog wel ongewijzigd versturen."
+    },
+    "redact": {
+      "title": "Screenshot afschermen",
+      "hint": "Sleep over de afbeelding om gevoelige delen zwart te maken en pas de afscherming daarna toe.",
+      "canvasAria": "Vlak voor het afschermen van de screenshot. Sleep met de aanwijzer om zwarte vakken toe te voegen.",
+      "undo": "Ongedaan maken",
+      "apply": "Afscherming toepassen"
+    },
+    "status": {
+      "sent": "Je feedback is verstuurd.",
+      "sentAttachmentsFailed": "Feedback verstuurd — maar de bijlagen konden niet worden geüpload."
+    },
+    "error": {
+      "invalid_input": "Controleer je invoer en probeer het opnieuw.",
+      "network_error": "Versturen is mislukt. Probeer het zo opnieuw.",
+      "payload_too_large": "Dit is te groot om te versturen. Probeer een bijlage te verwijderen.",
+      "rate_limited": "Er zijn net te veel inzendingen gedaan. Probeer het over een minuut opnieuw.",
+      "tier_cap": "Dit project heeft zijn feedbacklimiet bereikt. Neem contact op met de eigenaar van de site.",
+      "unauthorized": "Je sessie is verlopen. Laad de pagina opnieuw en probeer het nog eens.",
+      "not_found": "Dit feedbackformulier is niet meer beschikbaar.",
+      "internal": "Er is aan onze kant iets misgegaan. Probeer het straks opnieuw.",
+      "http_4xx": "Versturen is mislukt. Controleer je invoer en probeer het opnieuw.",
+      "http_5xx": "Er is aan onze kant iets misgegaan. Probeer het straks opnieuw.",
+      "generic": "Versturen is mislukt. Probeer het zo opnieuw."
+    },
+    "prompt": {
+      "bug": "Wat gebeurde er, en wat had je verwacht?",
+      "feature": "Wat zou je willen, en waarbij zou het je helpen?",
+      "question": "Wat wil je weten?",
+      "other": "Laat ons weten wat je bezighoudt."
+    },
+    "identity": {
+      "replyTo": "Antwoorden gaan naar {{email}}",
+      "account": "Verstuurd vanaf je account",
+      "anonymous": "Anoniem versturen",
+      "anonymousHint": "Je account en e-mailadres worden niet meegestuurd."
+    },
+    "sent": {
+      "title": "Bedankt voor je feedback",
+      "replyTo": "We sturen ons antwoord naar {{email}}.",
+      "close": "Klaar"
+    }
   }
 }
