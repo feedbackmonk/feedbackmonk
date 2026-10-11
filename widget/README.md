@@ -2,14 +2,19 @@
 
 ## Synopsis
 
-Greenfield vanilla-TS+CSS embeddable widget that customer sites load via a `<script type="module" data-project-id="...">` tag. Mounts a launcher button + accessible modal that fetches widget-config (Contract C12) once on mount, then POSTs feedback to the submission endpoint. Speaks 31 languages: the English catalog is inlined and every other locale is a lazily fetched per-locale chunk under `dist/locales/` (FR-FBR-35). Hard-capped at 30 KiB for the English page-load set, 4 KiB per locale chunk, and zero third-party trackers — all enforced as code-level invariants by the `widget-bundle-size` Verification Oracle (FR-FBR-04, DEC-FBR-02, C42).
+Greenfield vanilla-TS+CSS embeddable widget that customer sites load via a `<script type="module" data-project-id="...">` tag. Mounts a launcher button + accessible modal that fetches widget-config (Contract C12) once on mount, then POSTs feedback to the submission endpoint. Speaks 31 languages: the English catalog is inlined and every other locale is a lazily fetched per-locale chunk under `dist/locales/` (FR-FBR-35). Hard-capped at 40 KiB for the English page-load set (30 KiB until DEC-FBR-IMPL-35), 4 KiB per locale chunk, and zero third-party trackers — all enforced as code-level invariants by the `widget-bundle-size` Verification Oracle (FR-FBR-04, DEC-FBR-02, C42).
 
 ## Purpose & Responsibilities
 
 Ship the customer-facing end-user surface of feedbackmonk:
 
 - A bottom-right launcher button rendered on customer pages.
-- A keyboard-accessible modal (subject + body + kind + optional email).
+- A keyboard-accessible modal: the kind as a row of chips (with a per-kind
+  prompt), one message box (the API's required subject is its first line),
+  and either an optional email (anonymous) or the signed-in user's reply
+  address with a "Send anonymously" choice (auth). Send stays disabled until
+  there is a message, Ctrl/Cmd+Enter sends, and the confirmation replaces the
+  form inside the dialog (DEC-FBR-IMPL-35).
 - Submission via the existing `POST /api/v1/projects/{project_id}/feedback`
   P0 endpoint.
 - Optional attachments: ≤4 screenshots with a canvas redaction tool, plus
@@ -60,6 +65,7 @@ the P0 submission shape.
 | `e2e/fixture-locale.html` | No `lang`, no `data-locale` — puts `navigator.languages` in charge so the matrix can drive it with Playwright's `locale`. |
 | `e2e/fixture-locale-attr.html` | `data-locale="fa"` against an English host page and a German browser — proves embed-wins precedence and is the RTL case. |
 | `e2e/fixture-csp.html` | `script-src 'self'` fixture (TGF-…-01): proves the lazy locale chunk loads under a real embedder's policy with no CSP violation logged. |
+| `e2e/fixture-signed-in.html` | Fixture variant with `data-token-url` — the spec routes the token endpoint to answer signed in, signed out, or with a near-expired token, and asserts the reply line, the token on the wire, and no token at all under "Send anonymously" (DEC-FBR-IMPL-35). |
 | `e2e/fixture-no-launcher.html` | Fixture variant with `data-fbm-no-auto-mount` + a `[data-feedback-open]` host trigger — exercises launcher-less / embedder-trigger mode (DEC-FBR-IMPL-13). |
 | `dist/widget.js` | Built ES2020 minified entry bundle (vite + terser). Committed for oracle inspection. |
 | `dist/redact.js` | Built minified lazy redaction chunk. Committed for oracle inspection (Probe A counts it toward the cap). |
@@ -129,6 +135,7 @@ Persian one lays out right-to-left without the host doing anything.
 |---|---|
 | `data-project-id` | **Required.** The project the feedback belongs to. |
 | `data-jwt` | Optional. End-user identity (auth mode); anonymous without it. |
+| `data-token-url` | Optional. Same-origin endpoint answering `GET` with `{token, expires_at}` for the host page's signed-in user. Fetched when the form opens and again before a send whose token has under 30 s left; an answer with no token means anonymous mode. Use it instead of `data-jwt` on a web page, where a page-baked token would expire under a long-open tab (DEC-FBR-IMPL-35). |
 | `data-api-base` | Optional. Backend origin; defaults to `https://api.feedbackmonk.com`. |
 | `data-locale` | Optional. UI language (this section). |
 | `data-theme` | Optional. `auto` \| `light` \| `dark`. |

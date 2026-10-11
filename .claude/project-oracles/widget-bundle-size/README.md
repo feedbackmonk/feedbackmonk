@@ -20,7 +20,7 @@ Verification Oracle (P2 Task Zero; amended for FR-FBR-35 localization) defending
 Sums the byte count of every **top-level** file in `widget/dist/` matching
 `*.{js,mjs,css}` — `widget.js` + `widget.css` + `redact.js` — post-minification,
 post-terser, **pre-gzip** (the cap is on the wire-format bytes the browser must
-download in the worst case). Cap is `SIZE_CAP_BYTES = 30 * 1024 = 30720`.
+download in the worst case). Cap is `SIZE_CAP_BYTES = 40 * 1024 = 40960` (30720 until DEC-FBR-IMPL-35, 2026-10-10).
 Over → FAIL with per-file size breakdown + overage.
 
 **Subdirectories are excluded deliberately** (`glob`, not `rglob`) — see
@@ -133,8 +133,8 @@ or
 FAIL widget-bundle-size (<N> probe(s) failed)
   tracker-list hash: <sha256-hex> (<N> hostnames)
 
-Probe A failure (bundle exceeds 30720B / 30KiB cap per FR-FBR-04):
-  current_size=<X>B  cap=30720B  over_by=<Y>B
+Probe A failure (bundle exceeds 40960B / 40KiB cap per FR-FBR-04):
+  current_size=<X>B  cap=40960B  over_by=<Y>B
     widget/dist/widget.js  <SIZE>B
     ...
   Remediation: drop a feature or aggressive-minify before re-running. Never silently raise SIZE_CAP_BYTES.
@@ -197,7 +197,7 @@ inner-loop closer. CI is the outer-loop redundancy.
 
 ## Lineage
 
-- **FR-FBR-04** — Embeddable widget, <30KB bundle
+- **FR-FBR-04** — Embeddable widget, <40KB bundle (<30KB until DEC-FBR-IMPL-35)
 - **DEC-FBR-02** — Brand promise: no third-party trackers in the widget, ever
 - **DEC-FBR-IMPL-03** — Python-canonical oracle implementations
 - **P2 plan §Oracle Pre-Build Plan** — Probe A + Probe B + drift-detection contract
@@ -210,10 +210,17 @@ inner-loop closer. CI is the outer-loop redundancy.
   consistency with existing sibling oracles (`pii-scrub-audit/oracle.py`,
   `multi-tenant-isolation-check/oracle.py`). Brief's `run.*` was a generic
   template placeholder; the project's established convention wins.
-- **Cap value `30 * 1024 = 30720`**: KiB, not metric KB. FR-FBR-04 says
-  "<30KB" — the conservative interpretation is binary kibibytes (what
+- **Cap value `40 * 1024 = 40960`**: KiB, not metric KB. FR-FBR-04 says
+  "<40KB" — the conservative interpretation is binary kibibytes (what
   bundlers report; what `ls -la` reports). 30000 would be tighter but
   outside the spec's expressed intent.
+- **Raised from 30 KiB to 40 KiB on 2026-10-10, on the owner's word**
+  (DEC-FBR-IMPL-35). The feedback-form redesign — kind chips, the signed-in
+  identity line with its "Send anonymously" choice, the token endpoint, the
+  in-dialog confirmation, paste/drop screenshots — measured 2,053 B over the
+  old cap after a refactor that recovered ~1 KB. The owner chose 40 KiB over
+  cutting features or a 33 KiB cap, to leave room for the next few features.
+  The constant is still not a setting: a further raise is again a spec change.
 - **Bundle extensions `.js`/`.mjs`/`.css`**: covers ESM + CommonJS + style
   outputs from vite. SourceMaps (`.map`) are excluded — they're dev-only
   and not shipped to embedders.
@@ -241,7 +248,7 @@ inner-loop closer. CI is the outer-loop redundancy.
   the aggregate.** An aggregate would couple 31 independent artifacts: adding a
   32nd language would eat the widget's code budget, and one oversized chunk
   could hide inside a small total. A per-chunk ceiling says the thing that is
-  actually true — *whatever locale you read this in, you download at most 30 KiB
+  actually true — *whatever locale you read this in, you download at most 40 KiB
   plus at most 4 KiB.*
 - **4096 B for a chunk**: a translated widget catalog is ~59 short strings,
   measured at ~2 KB for a verbose language. 4 KiB is roughly 2x that — loose

@@ -119,21 +119,41 @@ test.describe("feedbackmonk widget a11y", () => {
     expect(focusedTag).toMatch(/Open feedback form/i);
   });
 
-  test("submit happy-path renders success toast and closes modal", async ({
+  test("submit happy-path shows the confirmation in the dialog, then closes", async ({
     page,
   }) => {
+    let sent: Record<string, unknown> | null = null;
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().endsWith("/feedback")) {
+        sent = req.postDataJSON();
+      }
+    });
     await page.goto("/e2e/fixture.html");
     const launcher = page.getByRole("button", { name: /Open feedback form/i });
     await launcher.click();
     const dialog = page.getByRole("dialog", { name: /Send feedback/i });
     await expect(dialog).toBeVisible();
 
-    await page.getByLabel("Subject").fill("Test subject");
-    await page.getByLabel("Message").fill("This is a test message body.");
-    await page.getByRole("button", { name: /^Send$/ }).click();
+    const send = page.getByRole("button", { name: /^Send$/ });
+    await expect(send).toBeDisabled();
+    await page.getByRole("radio", { name: "Question" }).check();
+    await page
+      .getByLabel("Message")
+      .fill("How do I export my data?\nI looked in settings and found nothing.");
+    await send.click();
 
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole("status")).toContainText(/Thanks/i);
+    const thanks = page.getByRole("dialog", { name: /Thanks for your feedback/i });
+    await expect(thanks).toBeVisible();
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent.");
+    expect(sent).toMatchObject({
+      kind: "question",
+      subject: "How do I export my data?",
+      body: "How do I export my data?\nI looked in settings and found nothing.",
+    });
+    await expectNoAxeViolations(page, "confirmation");
+
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(thanks).toBeHidden();
   });
 });
 
@@ -264,6 +284,21 @@ test.describe("feedbackmonk widget attachments", () => {
     await expect(page.locator(".fbm-attach-error")).toContainText(/at most 4/i);
   });
 
+  test("a pasted image becomes an attachment", async ({ page }) => {
+    await openModal(page);
+    await page.getByLabel("Message").focus();
+    await page.evaluate((b64) => {
+      const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      const dt = new DataTransfer();
+      dt.items.add(new File([bytes], "pasted.png", { type: "image/png" }));
+      document
+        .querySelector("textarea")!
+        .dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+    }, PNG_1x1);
+    await expect(page.locator(".fbm-attach-item")).toHaveCount(1);
+    await expect(page.locator(".fbm-attach-item")).toContainText("pasted.png");
+  });
+
   test("redaction overlay opens, is axe-clean, and applies", async ({ page }) => {
     await openModal(page);
     await page.locator('input[type="file"]').setInputFiles(pngFile("secret.png"));
@@ -289,14 +324,12 @@ test.describe("feedbackmonk widget attachments", () => {
       });
     });
 
-    const dialog = await openModal(page);
+    await openModal(page);
     await page.locator('input[type="file"]').setInputFiles(pngFile("bug.png"));
-    await page.getByLabel("Subject").fill("Has a screenshot");
     await page.getByLabel("Message").fill("See the attached screenshot.");
     await page.getByRole("button", { name: /^Send$/ }).click();
 
-    await expect(dialog).toBeHidden();
-    await expect(page.getByRole("status")).toContainText(/Thanks/i);
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent.");
     expect(attachBody).not.toBeNull();
     expect(attachBody!).toContain('name="files[]"');
     expect(attachBody!).toContain("bug.png");
@@ -330,11 +363,10 @@ test.describe("feedbackmonk widget log capture", () => {
     const consent = page.getByLabel(/Include diagnostic logs/i);
     await expect(consent).toBeChecked();
 
-    await page.getByLabel("Subject").fill("With logs");
     await page.getByLabel("Message").fill("Reproduces intermittently.");
     await page.getByRole("button", { name: /^Send$/ }).click();
 
-    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent.");
     expect(attachBody).not.toBeNull();
     expect(attachBody!).toContain('name="console_log"');
     expect(attachBody!).toContain("diagnostic-marker-42");
@@ -412,5 +444,121 @@ test.describe("feedbackmonk widget config-value hardening (P2-2)", () => {
     expect(probe.footerHref).toBe("https://acme.example/feedback");
     expect(probe.logoSrc).toBe("https://acme.example/logo.png");
     expect(probe.primary).toBe("#123456");
+  });
+});
+
+// DEC-FBR-IMPL-35: a signed-in host page serves the user's token at
+// data-token-url. The widget must show where replies go, ask for no email,
+// send the token — and send NO token when the person chooses anonymity.
+test.describe("feedbackmonk widget signed-in host (DEC-FBR-IMPL-35)", () => {
+  function userToken(email: string, sub = "u-1"): string {
+    const payload = Buffer.from(JSON.stringify({ sub, email }))
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+    return "eyJhbGciOiJFZERTQSJ9." + payload + ".sig";
+  }
+
+  async function serveToken(page: Page, status: number, body?: unknown) {
+    await page.route("**/e2e/mock/token", async (route: Route) => {
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: body === undefined ? "" : JSON.stringify(body),
+      });
+    });
+  }
+
+  function captureSubmit(page: Page): { auth: string | null | undefined } {
+    const seen: { auth: string | null | undefined } = { auth: undefined };
+    page.on("request", (req) => {
+      if (req.method() === "POST" && req.url().endsWith("/feedback")) {
+        seen.auth = req.headers()["authorization"] ?? null;
+      }
+    });
+    return seen;
+  }
+
+  async function open(page: Page) {
+    await page.goto("/e2e/fixture-signed-in.html");
+    await page.getByRole("button", { name: /Open feedback form/i }).click();
+    const dialog = page.getByRole("dialog", { name: /Send feedback/i });
+    await expect(dialog).toBeVisible();
+    return dialog;
+  }
+
+  test.beforeEach(async ({ page }) => {
+    await installMocks(page);
+  });
+
+  test("shows where replies go, asks for no email, and sends the token", async ({ page }) => {
+    const jwt = userToken("ada@example.com");
+    await serveToken(page, 200, { token: jwt, expires_at: Date.now() / 1000 + 300 });
+    const seen = captureSubmit(page);
+    const dialog = await open(page);
+
+    await expect(dialog).toContainText("Replies go to ada@example.com");
+    await expect(page.locator('input[type="email"]')).toHaveCount(0);
+    await expect(page.getByLabel("Send anonymously")).not.toBeChecked();
+    await expectNoAxeViolations(page, "signed-in modal-open");
+
+    await page.getByLabel("Message").fill("Signed-in report.");
+    await page.getByRole("button", { name: /^Send$/ }).click();
+    await expect(page.getByRole("status")).toContainText("We'll reply to ada@example.com.");
+    expect(seen.auth).toBe("Bearer " + jwt);
+  });
+
+  test("Send anonymously sends no token at all", async ({ page }) => {
+    await serveToken(page, 200, {
+      token: userToken("ada@example.com"),
+      expires_at: Date.now() / 1000 + 300,
+    });
+    const seen = captureSubmit(page);
+    await open(page);
+
+    await page.getByLabel("Send anonymously").check();
+    await page.getByLabel("Message").fill("Anonymous report.");
+    await page.getByRole("button", { name: /^Send$/ }).click();
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent.");
+    await expect(page.getByRole("status")).not.toContainText("ada@example.com");
+    expect(seen.auth).toBeNull();
+  });
+
+  test("a signed-out answer leaves the anonymous form with its email field", async ({
+    page,
+  }) => {
+    await serveToken(page, 401, { error: "sign in required" });
+    const seen = captureSubmit(page);
+    await open(page);
+
+    await expect(page.getByLabel("Email (optional)")).toBeVisible();
+    await expect(page.getByLabel("Send anonymously")).toHaveCount(0);
+    await page.getByLabel("Message").fill("Signed-out report.");
+    await page.getByRole("button", { name: /^Send$/ }).click();
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent.");
+    expect(seen.auth).toBeNull();
+  });
+
+  test("an expired token is replaced before the send", async ({ page }) => {
+    const fresh = userToken("ada@example.com", "u-2");
+    let calls = 0;
+    await page.route("**/e2e/mock/token", async (route: Route) => {
+      calls++;
+      // The first token is already inside the 30-second refresh margin.
+      const body =
+        calls === 1
+          ? { token: userToken("ada@example.com"), expires_at: Date.now() / 1000 + 5 }
+          : { token: fresh, expires_at: Date.now() / 1000 + 300 };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    });
+    const seen = captureSubmit(page);
+    await open(page);
+
+    await page.getByLabel("Message").fill("Long-open tab.");
+    await page.getByRole("button", { name: /^Send$/ }).click();
+    await expect(page.getByRole("status")).toContainText("Your feedback was sent.");
+    expect(calls).toBe(2);
+    expect(seen.auth).toBe("Bearer " + fresh);
   });
 });

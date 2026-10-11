@@ -5,7 +5,7 @@
   "lane": "fast",
   "expected_runtime_ms": 600,
   "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
-  "question": "Is the widget's committed build present, within budget and tracker-free? widget.js exists; the English page-load set (top-level dist/*.{js,mjs,css}) is <= 30,720 B; each dist/locales/<code>.js is <= 4,096 B and chunks exist when non-en locales do; no listed tracker hostname appears anywhere in dist/. Freshness against src/ is CI job `frontends`.",
+  "question": "Is the widget's committed build present, within budget and tracker-free? widget.js exists; the English page-load set (top-level dist/*.{js,mjs,css}) is <= 40,960 B; each dist/locales/<code>.js is <= 4,096 B and chunks exist when non-en locales do; no listed tracker hostname appears anywhere in dist/. Freshness against src/ is CI job `frontends`.",
   "category": "privacy",
   "invocation": {
     "unix": ".claude/project-oracles/widget-bundle-size/oracle.py",
@@ -16,7 +16,7 @@
     "schema": "PASS or FAIL <n> with probe-level offender detail (file:line). Exit 0 PASS, 1 FAIL, 2 environment error. A missing target is a FAIL, never a vacuous PASS."
   },
   "assertion": {
-    "asserts": "A page that embeds the widget downloads at most 30 KiB of feedbackmonk code and styles no matter which of the 31 locales the visitor reads it in, and downloads no third-party tracker at all.",
+    "asserts": "A page that embeds the widget downloads at most 40 KiB of feedbackmonk code and styles no matter which of the 31 locales the visitor reads it in, and downloads no third-party tracker at all.",
     "measures": "Built artifacts under widget/dist/ only (never source): (A) the summed byte size of TOP-LEVEL widget/dist/*.{js,mjs,css} — widget.js + widget.css + redact.js, the set every page load fetches — against SIZE_CAP_BYTES=30720; (B) case-insensitive substring scan of every *.{js,mjs,css} file under widget/dist/ RECURSIVELY (locale chunks included) for any hostname in expected-trackers.txt, whose canonical sorted form is SHA-256-hashed and printed on every run; (C) the individual byte size of each widget/dist/locales/*.js against LOCALE_CHUNK_CAP_BYTES=4096.",
     "known_gaps": [
       "Measures the working tree's LAST BUILD, not the source. A stale dist/ passes while over-budget source sits unbuilt — the caller must build first (npm run build), which is why the freshness triggers list widget/src/** and the CI-parity gate builds before running it.",
@@ -54,6 +54,6 @@
   "provenance": {
     "authored_by": "CLAUDE-A worker (P2 Customer-Facing, Task Zero — collab-20260514-035703)",
     "created": "2026-05-14T03:59:00Z",
-    "rationale": "FR-FBR-04 (<30KB bundle) + DEC-FBR-02 (no third-party trackers brand promise). Three-leg defense per D-FBR-02 pattern: (1) vite.config.ts terser+CSP-safe bundler config; (2) THIS oracle (size probe + tracker-hostname probe + list-hash drift detection); (3) Playwright + axe-core a11y harness for behavioural regressions. The cap is reified as a code-level invariant per arc-plan Testability Gate Q3=4 finding: without the oracle the agent would accept 'looks small enough' and ship over-budget."
+    "rationale": "FR-FBR-04 (<40KB bundle; 30KB until DEC-FBR-IMPL-35, 2026-10-10) + DEC-FBR-02 (no third-party trackers brand promise). Three-leg defense per D-FBR-02 pattern: (1) vite.config.ts terser+CSP-safe bundler config; (2) THIS oracle (size probe + tracker-hostname probe + list-hash drift detection); (3) Playwright + axe-core a11y harness for behavioural regressions. The cap is reified as a code-level invariant per arc-plan Testability Gate Q3=4 finding: without the oracle the agent would accept 'looks small enough' and ship over-budget."
   }
 }

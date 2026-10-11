@@ -103,6 +103,7 @@ export interface AttachmentsController {
   element: HTMLDivElement; // field container to insert into the modal
   getInputs(): AttachmentInput[];
   count(): number;
+  add(files: FileList): void; // stage pasted or dropped images
   destroy(): void; // revoke all object URLs
 }
 
@@ -334,6 +335,7 @@ export function createAttachments(root: HTMLElement): AttachmentsController {
     element: container,
     getInputs: () => items.map((i) => ({ file: i.file, name: i.name })),
     count: () => items.length,
+    add: addFiles,
     destroy: () => {
       for (const i of items) URL.revokeObjectURL(i.url);
     },

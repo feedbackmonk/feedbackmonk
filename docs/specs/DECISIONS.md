@@ -1215,3 +1215,13 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Alternatives considered**: *Sanitize first, then cut; or cut at a token boundary* — possible later, with a test proving a straddling token is never emitted; not needed now.
 
 ---
+
+### DEC-FBR-IMPL-35: The widget's page-weight cap is 40 KiB; a signed-in host page hands the widget a short-lived token through a same-origin endpoint
+
+**Status**: **RESOLVED 2026-10-10** (owner's word).
+
+**Decision**: (1) FR-FBR-04's cap on the English page-load set (`widget.js` + `widget.css` + `redact.js`, pre-gzip) moves from 30 KiB to 40 KiB; `widget-bundle-size` Probe A enforces the new number. (2) The widget gains `data-token-url` / `MountOptions.tokenUrl`: a same-origin endpoint answering `GET` with `{token, expires_at}` for whoever is signed in to the host page. The widget fetches it when the form opens and again before a send whose token has under 30 s left; an answer without a token leaves it in anonymous mode. (3) In auth mode the form shows where a reply goes (the token's `email` claim) and, when the project accepts anonymous submissions, a "Send anonymously" checkbox; checked, the submission and its attachments carry no token at all.
+
+**Rationale**: the form was redesigned for customer #1 (GitCellar) — kind chips first with a per-kind prompt, one message box (the required subject is the message's first line), the counter shown only near the limit, paste/drop screenshots, Send disabled until there is a message, Ctrl/Cmd+Enter, and an in-dialog confirmation in place of the toast. With the identity line and the token endpoint it measured 2,053 B over 30 KiB after a refactor that folded seven script-attribute resolvers into one and recovered ~1 KB. The 30 KiB figure entered as one cell of DEC-FBR-08's scope table with no stated reason; the owner chose 40 KiB over cutting the features or a 33 KiB cap. A page-baked `data-jwt` does not suit a web page: the tokens live ~5 minutes and a tab stays open for hours, hence the endpoint.
+
+**Alternatives considered**: *Cut features to fit 30 KiB* — rejected by the owner. *Lazy-load the form on first open* — the bytes still count in Probe A's set and would only add a round trip at open. *Make the cap a setting* — still rejected, per DISCOVERIES: a configurable cap defeats the oracle.

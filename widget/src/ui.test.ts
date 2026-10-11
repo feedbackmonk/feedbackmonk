@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { WidgetConfig } from "./types.js";
-import { createLauncher, createModal, createRoot, errorKey, showError } from "./ui.js";
+import { createLauncher, createModal, createRoot, errorKey, showError, showSent } from "./ui.js";
+import { jwtEmail } from "./widget.js";
 import { applyCatalog, setLocale, t } from "./i18n.js";
 
 // The English-rendering guard for FR-FBR-35.
@@ -62,7 +63,6 @@ describe("English rendering is unchanged by the catalog extraction", () => {
       "[alt] Fixture Project logo",
       "Send feedback",
       "Tell us what's on your mind. Submissions are sent to Fixture Project.",
-      "Subject",
       "Type",
       "Bug",
       "Feature request",
@@ -71,6 +71,7 @@ describe("English rendering is unchanged by the catalog extraction", () => {
       "Message",
       "0 / 16384",
       "Email (optional)",
+      "Only if you'd like a reply.",
       "Include diagnostic logs to help us debug",
       "Cancel",
       "Send",
@@ -140,14 +141,14 @@ describe("the modal speaks the active locale", () => {
     setLocale("de");
     applyCatalog("de", {
       "widget.modal.title": "Feedback senden",
-      "widget.form.subject": "Betreff",
+      "widget.form.message": "Nachricht",
     });
     const els = createModal(CONFIG, "auth", async () => {}, () => {}, false);
     const text = renderedText(els.scrim);
     expect(text).toContain("Feedback senden");
-    expect(text).toContain("Betreff");
+    expect(text).toContain("Nachricht");
     // Untranslated keys still render English, never a raw key.
-    expect(text).toContain("Message");
+    expect(text).toContain("Type");
     expect(text.some((s) => s.includes("widget."))).toBe(false);
   });
 });
@@ -201,5 +202,153 @@ describe("server error text is never rendered verbatim", () => {
     for (const [code] of cases) {
       expect(t(errorKey(code))).not.toBe(errorKey(code));
     }
+  });
+});
+
+// A token whose payload carries the given claims. The widget never verifies a
+// token — the server does — so the signature segment is a placeholder.
+function token(claims: Record<string, unknown>): string {
+  const b64 = btoa(JSON.stringify(claims))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return "eyJhbGciOiJFZERTQSJ9." + b64 + ".sig";
+}
+
+describe("the redesigned form (DEC-FBR-IMPL-35)", () => {
+  it("shows the destination line, not a screen-reader-only one", () => {
+    const els = createModal(CONFIG, "anonymous", async () => {}, () => {}, false);
+    const desc = els.modal.querySelector(".fbm-desc");
+    expect(desc?.textContent).toContain("Fixture Project");
+    expect(els.modal.querySelector(".fbm-sr-only")).toBeNull();
+  });
+
+  it("offers the kinds as one radio group, first checked, and prompts per kind", () => {
+    const els = createModal(CONFIG, "anonymous", async () => {}, () => {}, false);
+    const radios = Array.from(
+      els.modal.querySelectorAll<HTMLInputElement>('input[type="radio"]'),
+    );
+    expect(radios.map((r) => r.value)).toEqual(["bug", "feature", "question", "other"]);
+    expect(new Set(radios.map((r) => r.name)).size).toBe(1);
+    expect(els.kind()).toBe("bug");
+    expect(els.bodyTextarea.placeholder).toBe(t("widget.prompt.bug"));
+    radios[2].checked = true;
+    radios[2].dispatchEvent(new Event("change"));
+    expect(els.kind()).toBe("question");
+    expect(els.bodyTextarea.placeholder).toBe(t("widget.prompt.question"));
+  });
+
+  it("asks for no subject", () => {
+    const els = createModal(CONFIG, "anonymous", async () => {}, () => {}, false);
+    expect(els.modal.querySelectorAll("input[type=text]").length).toBe(0);
+  });
+
+  it("keeps Send disabled until there is a message", () => {
+    const els = createModal(CONFIG, "anonymous", async () => {}, () => {}, false);
+    expect(els.submitBtn.disabled).toBe(true);
+    els.bodyTextarea.value = "   ";
+    els.bodyTextarea.dispatchEvent(new Event("input"));
+    expect(els.submitBtn.disabled).toBe(true);
+    els.bodyTextarea.value = "It broke";
+    els.bodyTextarea.dispatchEvent(new Event("input"));
+    expect(els.submitBtn.disabled).toBe(false);
+  });
+
+  it("hides the counter until the message nears the limit", () => {
+    const els = createModal(
+      { ...CONFIG, max_body_chars: 10 },
+      "anonymous",
+      async () => {},
+      () => {},
+      false,
+    );
+    expect(els.counter.hidden).toBe(true);
+    els.bodyTextarea.value = "1234567";
+    els.bodyTextarea.dispatchEvent(new Event("input"));
+    expect(els.counter.hidden).toBe(true);
+    els.bodyTextarea.value = "12345678";
+    els.bodyTextarea.dispatchEvent(new Event("input"));
+    expect(els.counter.hidden).toBe(false);
+  });
+
+  it("sends on Ctrl+Enter only once there is a message", () => {
+    let sent = 0;
+    const els = createModal(CONFIG, "anonymous", async () => { sent++; }, () => {}, false);
+    const ctrlEnter = () =>
+      els.bodyTextarea.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Enter", ctrlKey: true, bubbles: true }),
+      );
+    ctrlEnter();
+    expect(sent).toBe(0);
+    els.bodyTextarea.value = "It broke";
+    els.bodyTextarea.dispatchEvent(new Event("input"));
+    ctrlEnter();
+    expect(sent).toBe(1);
+  });
+});
+
+describe("a signed-in sender (DEC-FBR-IMPL-35)", () => {
+  it("asks for no email, says where replies go, and offers to send anonymously", () => {
+    const els = createModal(CONFIG, "auth", async () => {}, () => {}, false, "ada@example.com");
+    expect(els.emailInput).toBeNull();
+    expect(els.modal.querySelector('input[type="email"]')).toBeNull();
+    const text = renderedText(els.scrim);
+    expect(text).toContain("Replies go to ada@example.com");
+    expect(text).toContain("Send anonymously");
+    expect(els.anonToggle?.checked).toBe(false);
+  });
+
+  it("marks the account line off and explains when Send anonymously is checked", () => {
+    const els = createModal(CONFIG, "auth", async () => {}, () => {}, false, "ada@example.com");
+    const who = els.modal.querySelector(".fbm-who")!;
+    const hint = Array.from(els.modal.querySelectorAll<HTMLElement>(".fbm-hint")).find(
+      (h) => h.textContent === t("widget.identity.anonymousHint"),
+    )!;
+    expect(hint.hidden).toBe(true);
+    els.anonToggle!.checked = true;
+    els.anonToggle!.dispatchEvent(new Event("change"));
+    expect(who.classList.contains("fbm-off")).toBe(true);
+    expect(hint.hidden).toBe(false);
+  });
+
+  it("offers no anonymous choice to a project that accepts only auth", () => {
+    const els = createModal(
+      { ...CONFIG, auth_modes: ["auth"] },
+      "auth",
+      async () => {},
+      () => {},
+      false,
+      "ada@example.com",
+    );
+    expect(els.anonToggle).toBeNull();
+  });
+
+  it("says the account sends it when the token carries no email", () => {
+    const els = createModal(CONFIG, "auth", async () => {}, () => {}, false, null);
+    expect(renderedText(els.scrim)).toContain("Sent from your account");
+  });
+
+  it("reads the email claim from a token, and nothing from a malformed one", () => {
+    expect(jwtEmail(token({ sub: "u1", email: "ada@example.com" }))).toBe("ada@example.com");
+    expect(jwtEmail(token({ sub: "u1" }))).toBeNull();
+    expect(jwtEmail("not-a-token")).toBeNull();
+    expect(jwtEmail(undefined)).toBeNull();
+  });
+});
+
+describe("the confirmation replaces the form", () => {
+  it("shows the sent lines in a status region with a Done button", () => {
+    let closed = 0;
+    const els = createModal(CONFIG, "anonymous", async () => {}, () => { closed++; }, false);
+    showSent(els, ["Your feedback was sent.", "We'll reply to ada@example.com."], () => { closed++; });
+    expect(els.titleEl.textContent).toBe(t("widget.sent.title"));
+    const status = els.modal.querySelector('[role="status"]')!;
+    expect(status.textContent).toContain("We'll reply to ada@example.com.");
+    expect(els.modal.querySelector("textarea")).toBeNull();
+    const done = Array.from(els.modal.querySelectorAll("button")).find(
+      (b) => b.textContent === t("widget.sent.close"),
+    )!;
+    done.click();
+    expect(closed).toBe(1);
   });
 });

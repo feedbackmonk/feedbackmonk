@@ -5,7 +5,7 @@ Three probes:
   A) Total byte size of the ENGLISH PAGE-LOAD SET — the TOP-LEVEL files in
      `widget/dist/` matching `*.{js,mjs,css}` (`widget.js` + `widget.css` +
      `redact.js`), post-minification, post-terser, pre-gzip — is at most
-     30720 bytes (= 30 * 1024). The cap defends FR-FBR-04's <30KB contract
+     40960 bytes (= 40 * 1024). The cap defends FR-FBR-04's <40KB contract
      as a code-level invariant rather than aspiration.
   B) No canonical third-party tracker hostname appears anywhere in any
      `widget/dist/*` file — scanned RECURSIVELY, locale chunks included.
@@ -60,9 +60,10 @@ WIDGET_DIST = REPO_ROOT / "widget" / "dist"
 WIDGET_LOCALE_DIR = WIDGET_DIST / "locales"
 EXPECTED_TRACKERS = SCRIPT_DIR / "expected-trackers.txt"
 
-# Cap = 30 KiB. Hard contract per FR-FBR-04. Reviewable change only:
-# changing this constant requires a deliberate spec-level decision.
-SIZE_CAP_BYTES = 30 * 1024
+# Cap = 40 KiB. Hard contract per FR-FBR-04. Reviewable change only:
+# changing this constant requires a deliberate spec-level decision. It was
+# 30 KiB until the owner raised it on 2026-10-10 (DEC-FBR-IMPL-35).
+SIZE_CAP_BYTES = 40 * 1024
 
 # Per-locale-chunk cap (Probe C). A catalog chunk holds ~40 short strings for
 # one locale; 4 KiB is roughly 2x the largest plausible translated widget
@@ -254,7 +255,7 @@ def main() -> int:
     if over_cap:
         print()
         print(
-            f"Probe A failure (English page-load set exceeds {SIZE_CAP_BYTES}B / 30KiB cap "
+            f"Probe A failure (English page-load set exceeds {SIZE_CAP_BYTES}B / 40KiB cap "
             f"per FR-FBR-04):"
         )
         print(f"  current_size={total}B  cap={SIZE_CAP_BYTES}B  over_by={total - SIZE_CAP_BYTES}B")

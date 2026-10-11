@@ -14,11 +14,15 @@ export interface ModalElements {
   modal: HTMLDivElement;
   closeBtn: HTMLButtonElement;
   titleEl: HTMLElement;
-  subjectInput: HTMLInputElement;
   bodyTextarea: HTMLTextAreaElement;
-  kindSelect: HTMLSelectElement;
+  // The checked submission kind; the kinds render as a radio group of chips.
+  kind: () => string;
+  // The first kind chip — where focus lands when the modal opens.
+  firstKind: HTMLInputElement;
   emailInput: HTMLInputElement | null;
-  emailField: HTMLDivElement | null;
+  // "Send anonymously", offered in auth mode when the project also accepts
+  // anonymous submissions. Checked ⇒ the submission carries no token at all.
+  anonToggle: HTMLInputElement | null;
   counter: HTMLSpanElement;
   errorRegion: HTMLDivElement;
   submitBtn: HTMLButtonElement;
@@ -27,7 +31,6 @@ export interface ModalElements {
   attachContainer: HTMLDivElement;
   // Diagnostic-log consent checkbox; null unless log capture is available.
   logConsent: HTMLInputElement | null;
-  focusables: HTMLElement[];
 }
 
 function makeId(prefix: string): string {
@@ -137,6 +140,9 @@ export function createModal(
   onSubmit: () => Promise<void>,
   onClose: Listener,
   logCaptureAvailable: boolean,
+  // The signed-in user's email, read from the token, shown so they know
+  // where a reply goes. null in anonymous mode or when the token has none.
+  email: string | null = null,
 ): ModalElements {
   const titleId = makeId("fbm-title");
   const bodyId = makeId("fbm-body");
@@ -173,62 +179,72 @@ export function createModal(
   const titleEl = createElement("h2", "fbm-title", t("widget.modal.title"));
   titleEl.id = titleId;
 
+  // Visible, not screen-reader-only: who receives the submission is a claim
+  // the person should be able to read before they send.
   const descEl = createElement(
     "p",
-    "fbm-sr-only",
+    "fbm-desc",
     t("widget.modal.description", { brand: config.display_name }),
   );
   descEl.id = bodyId;
 
-  const subjectField = createElement("div", "fbm-field");
-  const subjectLabel = createElement("label", undefined, t("widget.form.subject"));
-  const subjectInput = createElement("input");
-  subjectInput.type = "text";
-  subjectInput.required = true;
-  subjectInput.maxLength = 200;
-  const subjectId = makeId("fbm-subject");
-  subjectInput.id = subjectId;
-  subjectLabel.htmlFor = subjectId;
-  subjectField.append(subjectLabel, subjectInput);
+  const bodyTextarea = createElement("textarea");
 
-  const kindField = createElement("div", "fbm-field");
-  const kindLabel = createElement("label", undefined, t("widget.form.kind"));
-  const kindSelect = createElement("select");
-  const kindId = makeId("fbm-kind");
-  kindSelect.id = kindId;
-  kindLabel.htmlFor = kindId;
-  for (const kind of config.submission_kinds) {
-    const opt = createElement("option");
-    opt.value = kind;
+  // The kind comes first and every option is visible: one click instead of a
+  // dropdown, and the choice sets the message prompt below it. Native radios,
+  // so arrow keys move within the group and Tab enters it once.
+  const kindField = createElement("fieldset", "fbm-field");
+  kindField.appendChild(createElement("legend", undefined, t("widget.form.kind")));
+  const chips = createElement("div", "fbm-chips");
+  const kindName = makeId("fbm-kind");
+  const kindInputs: HTMLInputElement[] = [];
+  const kind = (): string =>
+    (kindInputs.find((r) => r.checked) ?? kindInputs[0])?.value ?? "other";
+  const setPrompt = (): void => {
+    const key = "widget.prompt." + kind();
+    bodyTextarea.placeholder = hasKey(key) ? t(key) : "";
+  };
+  config.submission_kinds.forEach((k, i) => {
+    const chip = createElement("label", "fbm-chip");
+    const radio = createElement("input");
+    radio.type = "radio";
+    radio.name = kindName;
+    radio.value = k;
+    radio.checked = i === 0;
+    radio.addEventListener("change", setPrompt);
     // An unknown kind from a newer server renders its wire value rather than
     // a raw catalog key — `t()` returns the key when nothing matches, so the
     // `hasKey` guard is what keeps that path honest.
-    const key = "widget.kind." + kind;
-    opt.textContent = hasKey(key) ? t(key) : kind;
-    kindSelect.appendChild(opt);
-  }
-  kindField.append(kindLabel, kindSelect);
+    const key = "widget.kind." + k;
+    chip.append(radio, createElement("span", undefined, hasKey(key) ? t(key) : k));
+    chips.appendChild(chip);
+    kindInputs.push(radio);
+  });
+  kindField.appendChild(chips);
 
+  // One message box, no subject line: the subject the API requires is taken
+  // from the message's first line at submit.
   const bodyField = createElement("div", "fbm-field");
   const bodyLabel = createElement("label", undefined, t("widget.form.message"));
-  const bodyTextarea = createElement("textarea");
   bodyTextarea.required = true;
   bodyTextarea.maxLength = config.max_body_chars;
   const bodyTextareaId = makeId("fbm-textarea");
   bodyTextarea.id = bodyTextareaId;
   bodyLabel.htmlFor = bodyTextareaId;
+  setPrompt();
   const counterText = (n: number): string =>
     t("widget.form.counter", { n, max: config.max_body_chars });
+  // The counter is noise until the limit is in sight.
   const counter = createElement("span", "fbm-counter", counterText(0));
+  counter.hidden = true;
   bodyField.append(bodyLabel, bodyTextarea, counter);
-  bodyTextarea.addEventListener("input", () => {
-    counter.textContent = counterText(bodyTextarea.value.length);
-  });
 
-  let emailField: HTMLDivElement | null = null;
+  // Who the submission is from. Anonymous mode offers an optional email; auth
+  // mode says where a reply goes and offers to send without the account.
+  const whoField = createElement("div", "fbm-field");
   let emailInput: HTMLInputElement | null = null;
+  let anonToggle: HTMLInputElement | null = null;
   if (mode === "anonymous") {
-    emailField = createElement("div", "fbm-field");
     const emailLabel = createElement("label", undefined, t("widget.form.email"));
     emailInput = createElement("input");
     emailInput.type = "email";
@@ -236,7 +252,42 @@ export function createModal(
     const emailId = makeId("fbm-email");
     emailInput.id = emailId;
     emailLabel.htmlFor = emailId;
-    emailField.append(emailLabel, emailInput);
+    const hint = createElement("span", "fbm-hint", t("widget.form.emailHint"));
+    hint.id = makeId("fbm-hint");
+    emailInput.setAttribute("aria-describedby", hint.id);
+    whoField.append(emailLabel, emailInput, hint);
+  } else {
+    const who = createElement(
+      "p",
+      "fbm-who",
+      email ? t("widget.identity.replyTo", { email }) : t("widget.identity.account"),
+    );
+    whoField.appendChild(who);
+    if (config.auth_modes.includes("anonymous")) {
+      const row = createElement("div", "fbm-consent");
+      const toggle = createElement("input");
+      toggle.type = "checkbox";
+      toggle.id = makeId("fbm-anon");
+      const anonLabel = createElement(
+        "label",
+        "fbm-consent-label",
+        t("widget.identity.anonymous"),
+      );
+      anonLabel.htmlFor = toggle.id;
+      row.append(toggle, anonLabel);
+      const anonHint = createElement(
+        "span",
+        "fbm-hint",
+        t("widget.identity.anonymousHint"),
+      );
+      anonHint.hidden = true;
+      toggle.addEventListener("change", () => {
+        anonHint.hidden = !toggle.checked;
+        who.classList.toggle("fbm-off", toggle.checked);
+      });
+      whoField.append(row, anonHint);
+      anonToggle = toggle;
+    }
   }
 
   // Attachments mount point — populated by attachments.ts after the modal
@@ -283,16 +334,30 @@ export function createModal(
     t("widget.form.send"),
   );
   submitBtn.type = "button";
+  // Nothing to send until there is a message.
+  submitBtn.disabled = true;
   submitBtn.addEventListener("click", () => {
     void onSubmit();
   });
   actions.append(cancelBtn, submitBtn);
 
+  bodyTextarea.addEventListener("input", () => {
+    const n = bodyTextarea.value.length;
+    counter.textContent = counterText(n);
+    counter.hidden = n < config.max_body_chars * 0.8;
+    submitBtn.disabled = !bodyTextarea.value.trim();
+  });
+  // Ctrl+Enter (Cmd+Enter on a Mac) sends from anywhere in the form.
+  modal.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !submitBtn.disabled) {
+      e.preventDefault();
+      void onSubmit();
+    }
+  });
+
   modal.appendChild(closeBtn);
   if (logoEl) modal.appendChild(logoEl);
-  modal.append(titleEl, descEl, subjectField, kindField, bodyField);
-  modal.appendChild(attachContainer);
-  if (emailField) modal.appendChild(emailField);
+  modal.append(titleEl, descEl, kindField, bodyField, attachContainer, whoField);
   if (logConsentField) modal.appendChild(logConsentField);
   modal.append(errorRegion, actions);
 
@@ -312,33 +377,45 @@ export function createModal(
 
   scrim.appendChild(modal);
 
-  const focusables: HTMLElement[] = [
-    closeBtn,
-    subjectInput,
-    kindSelect,
-    bodyTextarea,
-  ];
-  if (emailInput) focusables.push(emailInput);
-  focusables.push(cancelBtn, submitBtn);
-
   return {
     scrim,
     modal,
     closeBtn,
     titleEl,
-    subjectInput,
     bodyTextarea,
-    kindSelect,
+    kind,
+    firstKind: kindInputs[0],
     emailInput,
-    emailField,
+    anonToggle,
     counter,
     errorRegion,
     submitBtn,
     cancelBtn,
     attachContainer,
     logConsent,
-    focusables,
   };
+}
+
+/// Replace the form with the confirmation, in the same dialog: the person sees
+/// that it worked, and where a reply will go, without a toast racing them.
+export function showSent(
+  els: ModalElements,
+  lines: string[],
+  onClose: Listener,
+): void {
+  els.titleEl.textContent = t("widget.sent.title");
+  const panel = createElement("div", "fbm-sent");
+  panel.setAttribute("role", "status");
+  panel.id = makeId("fbm-sent");
+  for (const line of lines) panel.appendChild(createElement("p", undefined, line));
+  els.modal.setAttribute("aria-describedby", panel.id);
+  const done = createElement("button", "fbm-btn fbm-btn-primary", t("widget.sent.close"));
+  done.type = "button";
+  done.addEventListener("click", onClose);
+  const actions = createElement("div", "fbm-actions");
+  actions.appendChild(done);
+  els.modal.replaceChildren(els.closeBtn, els.titleEl, panel, actions);
+  done.focus();
 }
 
 /// Apply runtime theming to the widget root (DEC-FBR-IMPL-12).
@@ -402,22 +479,4 @@ export function showError(els: ModalElements, code: string): void {
 export function clearError(els: ModalElements): void {
   els.errorRegion.hidden = true;
   els.errorRegion.textContent = "";
-}
-
-export function showToast(
-  root: HTMLElement,
-  message: string,
-  kind: "success" | "error",
-): void {
-  const toast = createElement(
-    "div",
-    "fbm-toast fbm-toast-" + kind,
-    message,
-  );
-  toast.setAttribute("role", kind === "error" ? "alert" : "status");
-  toast.setAttribute("aria-live", "polite");
-  root.appendChild(toast);
-  window.setTimeout(() => {
-    toast.remove();
-  }, 4000);
 }

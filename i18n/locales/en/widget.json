@@ -15,7 +15,6 @@
       "logoAlt": "{{brand}} logo"
     },
     "form": {
-      "subject": "Subject",
       "kind": "Type",
       "message": "Message",
       "counter": "{{n}} / {{max}}",
@@ -23,7 +22,8 @@
       "logConsent": "Include diagnostic logs to help us debug",
       "cancel": "Cancel",
       "send": "Send",
-      "sending": "Sending…"
+      "sending": "Sending…",
+      "emailHint": "Only if you'd like a reply."
     },
     "kind": {
       "bug": "Bug",
@@ -33,7 +33,7 @@
     },
     "attach": {
       "label": "Screenshots (optional)",
-      "help": "PNG, JPEG, or WebP · up to {{max}} · 5 MB each. Redact sensitive areas before sending.",
+      "help": "Up to {{max}} images, 5 MB each. Paste or drop them here, and redact anything sensitive.",
       "button": "Attach screenshot",
       "buttonFull_one": "Maximum {{count}} screenshot",
       "buttonFull_other": "Maximum {{count}} screenshots",
@@ -64,7 +64,7 @@
       "apply": "Apply redaction"
     },
     "status": {
-      "sent": "Thanks — your feedback was sent.",
+      "sent": "Your feedback was sent.",
       "sentAttachmentsFailed": "Feedback sent — but attachments couldn't be uploaded."
     },
     "error": {
@@ -79,6 +79,23 @@
       "http_4xx": "Could not send. Check your entry and try again.",
       "http_5xx": "Something went wrong on our side. Please try again shortly.",
       "generic": "Could not send. Try again in a moment."
+    },
+    "prompt": {
+      "bug": "What happened, and what did you expect to happen?",
+      "feature": "What would you like, and what would it help you do?",
+      "question": "What would you like to know?",
+      "other": "Tell us what's on your mind."
+    },
+    "identity": {
+      "replyTo": "Replies go to {{email}}",
+      "account": "Sent from your account",
+      "anonymous": "Send anonymously",
+      "anonymousHint": "Your account and email won't be attached."
+    },
+    "sent": {
+      "title": "Thanks for your feedback",
+      "replyTo": "We'll reply to {{email}}.",
+      "close": "Done"
     }
   }
 }

@@ -72,6 +72,11 @@ export interface FeedbackMonkHandle {
 
 export interface MountOptions {
   jwt?: string;
+  // Same-origin URL that answers GET with {token, expires_at} for whoever is
+  // signed in to the host page, and with no token for anyone else. Fetched
+  // when the form opens and again before a send whose token is near expiry,
+  // so a long-open tab never sends a stale one. Set via `data-token-url`.
+  tokenUrl?: string;
   projectId?: string;
   apiBase?: string;
   // Theme override (highest precedence): "auto" | "light" | "dark". Falls back

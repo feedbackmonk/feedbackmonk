@@ -896,3 +896,13 @@ rating is entirely unaffected; one that does can feature-detect before sending.
   `SameSite=None; Secure`. Fixes the gitcellar.com embed blocker (preflight `OPTIONS` was `405`).
   Surfaced from the GitCellar side. Deploy action: set `FEEDBACKMONK_CORS_ORIGINS=https://gitcellar.com`
   on the `feedbackmonk-api` service (see §1.1 + §4).
+
+## Addendum 2026-10-10 — signed-in web pages (DEC-FBR-IMPL-35)
+
+An additive, optional widget attribute; nothing above changes. A host page whose user is signed in
+may set `data-token-url` to a same-origin endpoint that answers `GET` with
+`{"token": "<user JWT>", "expires_at": <epoch seconds>}`, minted exactly as § 5 describes, and with
+no token (any non-2xx, or a body without `token`) for a signed-out visitor. The widget then submits
+in auth mode, shows the token's `email` claim as where replies go, and offers "Send anonymously",
+which sends the submission and its attachments with no `Authorization` header at all. The Cloud
+Forge uses this so a signed-in user is no longer asked for an email it already has.

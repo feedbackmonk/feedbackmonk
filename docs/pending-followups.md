@@ -44,9 +44,8 @@
   `deepl === null` (the *cause* of the fallback), so it self-corrects if a provider ever covers one.
   FR-FBR-34 amended; `i18n/README.md` C35 rule 2 carries the runtime consequence.
 
-  **Widget headroom is now 689 B** of the 30,720 cap (was 884 B; Stage 2 spent 197 B on a locale-gate
-  prototype-chain fix, a restored 5xx error message and the A-2 content-language fix). No further widget bytes without spending the
-  documented `widget.`-prefix lever (~735 B, `widget/README.md`).
+  Stage 2 spent 197 B of widget headroom on a locale-gate prototype-chain fix, a restored 5xx error
+  message and the A-2 content-language fix. The cap has since moved to 40,960 B (DEC-FBR-IMPL-35).
 
   **Dev DB**: resolved — `feedbackmonk_dev` was recreated on the owner's word 2026-09-07 and is back at
   **32/32**, so it is the normal `DATABASE_URL` target again. `feedbackmonk_prepare` is also 32/32 and stays

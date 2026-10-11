@@ -180,6 +180,57 @@
   border-color: var(--fbm-primary);
 }
 
+/* The line under the title naming who receives the submission. */
+.fbm-desc,
+.fbm-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--fbm-muted);
+}
+.fbm-desc { font-size: 13px; }
+
+/* The kind picker: a radio group drawn as chips. The radio stays in the
+   accessibility tree and takes focus; only its box is invisible. */
+fieldset.fbm-field {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.fbm-field legend {
+  padding: 0;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.fbm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.fbm-chip { position: relative; }
+.fbm-chip input { position: absolute; inset: 0; margin: 0; opacity: 0; }
+.fbm-chip span {
+  display: block;
+  padding: 6px 12px;
+  border: 1px solid var(--fbm-border);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.fbm-chip input:checked + span {
+  background: var(--fbm-primary);
+  border-color: var(--fbm-primary);
+  color: var(--fbm-on-primary);
+}
+.fbm-chip input:focus-visible + span {
+  outline: 2px solid var(--fbm-primary);
+  outline-offset: 2px;
+}
+.fbm-field textarea::placeholder { color: var(--fbm-muted); }
+
+.fbm-who { margin: 0; font-size: 13px; }
+.fbm-who.fbm-off { color: var(--fbm-muted); text-decoration: line-through; }
+
+.fbm-sent { display: flex; flex-direction: column; gap: 6px; }
+.fbm-sent p { margin: 0; }
+
 .fbm-counter {
   font-size: 12px;
   color: var(--fbm-muted);
@@ -221,27 +272,6 @@
   color: var(--fbm-error);
   font-size: 13px;
 }
-
-.fbm-toast {
-  position: fixed;
-  bottom: 24px;
-  /* Direction-agnostic centering: `inset-inline: 0` + `margin-inline: auto`
-     centers in both directions, where `left: 50%` + `translateX(-50%)` reads
-     as a physical-property regression to the RTL grep test. */
-  inset-inline: 0;
-  margin-inline: auto;
-  width: max-content;
-  max-width: calc(100vw - 32px);
-  background: var(--fbm-text);
-  color: var(--fbm-surface);
-  padding: 10px 16px;
-  border-radius: var(--fbm-radius);
-  font-size: 14px;
-  pointer-events: auto;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-.fbm-toast-success { background: var(--fbm-success); }
-.fbm-toast-error { background: var(--fbm-error); }
 
 .fbm-footer {
   font-size: 11px;

@@ -29,7 +29,7 @@ proven against.
 | `public-board-moderation-gate/` | fast | every public board query carries the `approved` filter; the board handler calls only board-safe reads |
 | `tier-enforcement-status/` | fast | every path that inserts a chargeable row checks the tier quota first |
 | `translation-egress-q24-isolation/` | fast | translation provider off by default; `body_translated` never reaches a public router |
-| `widget-bundle-size/` | fast | committed widget build present, page-load set ≤ 30,720 B, locale chunks ≤ 4,096 B, no trackers |
+| `widget-bundle-size/` | fast | committed widget build present, page-load set ≤ 40,960 B, locale chunks ≤ 4,096 B, no trackers |
 | `selfhost-compose-smoke/` | slow | compose validates (Docker); every setting compose or the api reads is in `SELFHOST_ENV.md` |
 | `feedback-parity-status/` | operator | GitCellar's cutover gate: the four customer-#1 parity gaps, read from code |
 | `translation-gap-status/` | operator | advisory: is a `/1-translate` pass due (kind `project-state`) |
