@@ -10,6 +10,8 @@
     }
   },
   "finalize": {
-    "test_command": "bash scripts/ci-local.sh --tests --frontends"
+    "test_command": "bash scripts/ci-local.sh --tests --frontends",
+    "test_select": "bash scripts/run-selected-tests.sh {tests}",
+    "fast_command": "bash scripts/fast-check.sh"
   }
 }
