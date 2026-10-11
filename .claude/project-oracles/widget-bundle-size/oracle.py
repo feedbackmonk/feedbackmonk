@@ -1,54 +1,53 @@
 #!/usr/bin/env python3
 """widget-bundle-size Verification Oracle (canonical implementation).
 
-Three probes:
-  A) Total byte size of the ENGLISH PAGE-LOAD SET — the TOP-LEVEL files in
-     `widget/dist/` matching `*.{js,mjs,css}` (`widget.js` + `widget.css` +
-     `redact.js`), post-minification, post-terser, pre-gzip — is at most
-     40960 bytes (= 40 * 1024). The cap defends FR-FBR-04's <40KB contract
-     as a code-level invariant rather than aspiration.
-  B) No canonical third-party tracker hostname appears anywhere in any
-     `widget/dist/*` file — scanned RECURSIVELY, locale chunks included.
-     The hostname list is hashed and printed in the report so that silent
-     shrinking of the list (Q5 drift) surfaces as a visible hash change.
-  C) Every per-locale catalog chunk `widget/dist/locales/*.js` (FR-FBR-35 /
-     Contract C42, lazily imported only when a non-English locale resolves)
-     is at most 4096 bytes on its own.
+Reports what the widget weighs, and fails on what it must never carry.
 
-Probe A/C split (FR-FBR-35, 2026-09-06): before localization, `dist/` held
-only the English page-load set, so "sum everything under dist/" and "the
-bytes an English visitor downloads" were the same number. They no longer
-are: `dist/locales/<code>.js` is fetched by exactly one visitor in one
-locale, and never by an English one. Summing all 31 into one 30 KiB total
-would measure a page load nobody performs while letting a single 20 KB
-chunk hide inside the total. So the measured SET is redefined (what the
-cap is about) while the CAP ITSELF IS UNTOUCHED — `SIZE_CAP_BYTES` is the
-same 30720 it has always been, and Probe C adds a second, per-chunk
-ceiling that did not exist before. This is a tightening, not a raise.
+  Size (reported, never a failure): the byte size of the ENGLISH PAGE-LOAD
+     SET — the TOP-LEVEL files in `widget/dist/` matching `*.{js,mjs,css}`
+     (`widget.js` + `widget.css` + `redact.js`), post-terser, pre-gzip — and
+     of every per-locale chunk `widget/dist/locales/*.js`, printed on every
+     run so growth is visible in every check's output.
+  Trackers (a failure): no canonical third-party tracker hostname appears
+     anywhere in any `widget/dist/*` file — scanned RECURSIVELY, locale chunks
+     included. The hostname list is hashed and printed in the report so that
+     silent shrinking of the list (Q5 drift) surfaces as a visible hash change.
+  Presence (a failure): `widget.js` exists, and locale chunks exist when
+     non-English catalogs do.
+  Chunk shape (a failure): every `widget/dist/locales/*.js` is
+     `const <id> = {...}; export { <id> as default };` whose object is a flat
+     map of `widget.*` keys to strings (Contract C42) — no code, no other
+     namespace.
+
+Why size is not a failure (DEC-FBR-IMPL-36, owner ruling 2026-10-10): the
+30 KiB cap entered as one cell of DEC-FBR-08's scope table with no stated
+reason, and a number no visitor can tell from its neighbour stalled a feature
+for nothing. The page weight is judged by what it is for, with the number in
+front of whoever changes it — not by a threshold. The per-chunk 4 KiB ceiling
+went with it: it stood in for "a chunk is only strings", which the chunk-shape
+probe now checks directly.
 
 The list of forbidden hostnames is sourced from
 `expected-trackers.txt` (newline-delimited; `#` comments stripped;
 blank lines ignored). The file's SHA-256 over the canonical-serialised
 list is computed and emitted with every report — drift defender.
 
-Cold-start (no `widget/dist/` yet) emits GREEN: 0 files = 0 bytes <= cap;
-nothing to scan for trackers. This is intentional so the oracle can land
-BEFORE the widget source, then re-evaluate after every build.
-
 Output: machine-parseable PASS / FAIL. Exit 0 on PASS, 1 on FAIL,
 2 on environment failure.
 
 Lineage:
-- FR-FBR-04 (<30KB widget) + DEC-FBR-02 (no third-party trackers brand promise)
-- P2 plan § Oracle Pre-Build Plan (Probe A + Probe B + drift-detection)
+- FR-FBR-04 (lightweight widget) + DEC-FBR-02 (no third-party trackers brand promise)
+- DEC-FBR-IMPL-36 (size reported, not capped)
 - Three-leg defense pattern (DEC-FBR-IMPL-03):
     leg 1 = vite.config.ts terser+CSP-safe bundler config
-    leg 2 = THIS oracle (size probe + hostname probe + list-hash drift)
+    leg 2 = THIS oracle (size report + hostname probe + list-hash drift)
     leg 3 = Playwright + axe-core a11y harness (catches behaviour regressions)
 """
 from __future__ import annotations
 
 import hashlib
+import json
+import re
 import sys
 from pathlib import Path
 from typing import List, Tuple
@@ -59,20 +58,6 @@ REPO_ROOT = SCRIPT_DIR.parents[2]
 WIDGET_DIST = REPO_ROOT / "widget" / "dist"
 WIDGET_LOCALE_DIR = WIDGET_DIST / "locales"
 EXPECTED_TRACKERS = SCRIPT_DIR / "expected-trackers.txt"
-
-# Cap = 40 KiB. Hard contract per FR-FBR-04. Reviewable change only:
-# changing this constant requires a deliberate spec-level decision. It was
-# 30 KiB until the owner raised it on 2026-10-10 (DEC-FBR-IMPL-35).
-SIZE_CAP_BYTES = 40 * 1024
-
-# Per-locale-chunk cap (Probe C). A catalog chunk holds ~40 short strings for
-# one locale; 4 KiB is roughly 2x the largest plausible translated widget
-# catalog, so a chunk that trips this is carrying something that is not
-# strings. Same discipline as SIZE_CAP_BYTES: NEVER silently raise it — a
-# chunk over budget means the slice step is emitting code, duplicated keys or
-# a non-widget namespace, and the fix is upstream in
-# `widget/scripts/slice-locales.mjs`, not in this constant.
-LOCALE_CHUNK_CAP_BYTES = 4 * 1024
 
 # File extensions in scope. `mjs` is included for ESM output if vite emits it.
 BUNDLE_EXTENSIONS = {".js", ".mjs", ".css"}
@@ -106,47 +91,64 @@ def load_trackers() -> Tuple[List[str], str]:
     return hosts, hashlib.sha256(canonical).hexdigest()
 
 
-def probe_a_size() -> Tuple[int, List[Tuple[str, int]], bool]:
-    """Sum the ENGLISH page-load set. Returns (total, per_file, over_cap).
+def page_load_set() -> Tuple[int, List[Tuple[str, int]]]:
+    """The ENGLISH page-load set's total and per-file sizes.
 
     TOP-LEVEL only (`glob`, not `rglob`): `widget.js` + `widget.css` +
-    `redact.js`. Subdirectories are deliberately excluded — `dist/locales/`
-    holds per-locale chunks that no single page load fetches more than one
-    of, and they carry their own per-chunk cap in Probe C.
+    `redact.js`. `dist/locales/` holds per-locale chunks that no single page
+    load fetches more than one of, so they are reported on their own.
     """
     per_file: List[Tuple[str, int]] = []
     total = 0
-    if not WIDGET_DIST.exists():
-        return 0, per_file, False
     for path in sorted(WIDGET_DIST.glob("*")):
-        if not path.is_file():
+        if not path.is_file() or path.suffix.lower() not in BUNDLE_EXTENSIONS:
             continue
-        if path.suffix.lower() not in BUNDLE_EXTENSIONS:
-            continue
-        try:
-            size = path.stat().st_size
-        except OSError:
-            continue
+        size = path.stat().st_size
         per_file.append((rel(path), size))
         total += size
-    return total, per_file, total > SIZE_CAP_BYTES
+    return total, per_file
 
 
-def probe_c_locale_chunks() -> Tuple[List[Tuple[str, int]], List[Tuple[str, int]]]:
-    """Per-locale chunk sizes. Returns (all_chunks, offenders_over_cap)."""
-    chunks: List[Tuple[str, int]] = []
+def locale_chunks() -> List[Tuple[str, int]]:
+    """Each per-locale chunk's size."""
     if not WIDGET_LOCALE_DIR.exists():
-        return chunks, []
-    for path in sorted(WIDGET_LOCALE_DIR.glob("*.js")):
-        if not path.is_file():
-            continue
-        try:
-            size = path.stat().st_size
-        except OSError:
-            continue
-        chunks.append((rel(path), size))
-    offenders = [(f, sz) for f, sz in chunks if sz > LOCALE_CHUNK_CAP_BYTES]
-    return chunks, offenders
+        return []
+    return [
+        (rel(p), p.stat().st_size)
+        for p in sorted(WIDGET_LOCALE_DIR.glob("*.js"))
+        if p.is_file()
+    ]
+
+
+# The bundler's emitted form of a catalog chunk (vite lib mode, unminified):
+#   const catalog = { "widget.x": "…", … };
+#   export {
+#     catalog as default
+#   };
+CHUNK_RE = re.compile(
+    r"^\s*const\s+(?P<id>[A-Za-z_$][\w$]*)\s*=\s*(?P<obj>\{.*\})\s*;\s*"
+    r"export\s*\{\s*(?P=id)\s+as\s+default\s*\}\s*;?\s*$",
+    re.S,
+)
+
+
+def chunk_problem(text: str) -> str:
+    """Why a locale chunk is not a flat map of widget.* keys to strings; "" when it is."""
+    m = CHUNK_RE.match(text)
+    if not m:
+        return "not a single `const <id> = {...}; export { <id> as default }` module"
+    try:
+        obj = json.loads(m.group("obj"))
+    except ValueError as e:
+        return f"its object is not a plain string map ({e.msg})"
+    if not isinstance(obj, dict):
+        return "its default export is not an object"
+    for key, value in obj.items():
+        if not key.startswith("widget."):
+            return f"key {key!r} is outside the widget.* namespace"
+        if not isinstance(value, str):
+            return f"key {key!r} holds a {type(value).__name__}, not a string"
+    return ""
 
 
 def probe_b_trackers(hosts: List[str]) -> List[Tuple[str, str, int]]:
@@ -211,87 +213,59 @@ def main() -> int:
         print("  Run `npm run build` in widget/ and commit dist/.")
         return 1
 
-    total, per_file, over_cap = probe_a_size()
+    total, per_file = page_load_set()
+    chunks = locale_chunks()
     tracker_hits = probe_b_trackers(hosts)
-    locale_chunks, chunk_offenders = probe_c_locale_chunks()
+    bad_chunks = [
+        (f, why)
+        for f, why in (
+            (rel(p), chunk_problem(p.read_text(encoding="utf-8")))
+            for p in sorted(WIDGET_LOCALE_DIR.glob("*.js"))
+        )
+        if why
+    ] if WIDGET_LOCALE_DIR.exists() else []
 
-    fails = (
-        (1 if over_cap else 0)
-        + (1 if tracker_hits else 0)
-        + (1 if chunk_offenders else 0)
-    )
+    size_lines = [f"  size: English page-load set {total}B pre-gzip across {len(per_file)} file(s)"]
+    size_lines += [f"    {f}  {sz}B" for f, sz in per_file]
+    if chunks:
+        largest = max(chunks, key=lambda c: c[1])
+        size_lines.append(
+            f"  size: {len(chunks)} locale chunk(s), largest {largest[0]} at {largest[1]}B "
+            f"(a visitor loads at most one)"
+        )
 
-    header_lines = [
-        f"  tracker-list hash: {list_hash} ({len(hosts)} hostnames)",
-    ]
-
-    if fails == 0:
+    if not tracker_hits and not bad_chunks:
         print("PASS widget-bundle-size")
-        for ln in header_lines:
+        print(f"  tracker-list hash: {list_hash} ({len(hosts)} hostnames)")
+        for ln in size_lines:
             print(ln)
-        print(
-            f"  Probe A (English page-load set, top-level {rel(WIDGET_DIST)}/*.{{js,mjs,css}} "
-            f"<= {SIZE_CAP_BYTES}B): clean "
-            f"({total}B used, {SIZE_CAP_BYTES - total}B headroom across "
-            f"{len(per_file)} file(s))"
-        )
-        for f, sz in per_file:
-            print(f"    {f}  {sz}B")
-        print(
-            f"  Probe B (no canonical tracker hostnames in {rel(WIDGET_DIST)}, recursive): clean"
-        )
-        if locale_chunks:
-            largest = max(locale_chunks, key=lambda c: c[1])
-            print(
-                f"  Probe C (each locale chunk <= {LOCALE_CHUNK_CAP_BYTES}B): clean "
-                f"({len(locale_chunks)} chunk(s), largest {largest[0]} at {largest[1]}B, "
-                f"{LOCALE_CHUNK_CAP_BYTES - largest[1]}B headroom)"
-            )
+        print(f"  trackers: no canonical tracker hostname in {rel(WIDGET_DIST)} (recursive)")
+        print(f"  chunks: every locale chunk is a flat map of widget.* strings ({len(chunks)} checked)")
         return 0
 
-    print(f"FAIL widget-bundle-size ({fails} probe(s) failed)")
-    for ln in header_lines:
+    what = [w for w, bad in (("tracker hostname in the built widget", tracker_hits),
+                            ("locale chunk that is not only strings", bad_chunks)) if bad]
+    print(f"FAIL widget-bundle-size ({'; '.join(what)})")
+    print(f"  tracker-list hash: {list_hash} ({len(hosts)} hostnames)")
+    for ln in size_lines:
         print(ln)
-    if over_cap:
-        print()
-        print(
-            f"Probe A failure (English page-load set exceeds {SIZE_CAP_BYTES}B / 40KiB cap "
-            f"per FR-FBR-04):"
-        )
-        print(f"  current_size={total}B  cap={SIZE_CAP_BYTES}B  over_by={total - SIZE_CAP_BYTES}B")
-        for f, sz in per_file:
-            print(f"    {f}  {sz}B")
-        print(
-            "  Remediation: drop a feature or aggressive-minify before "
-            "re-running. Never silently raise SIZE_CAP_BYTES."
-        )
     if tracker_hits:
         print()
-        print(
-            "Probe B failure (canonical third-party tracker hostname in built bundle — "
-            "DEC-FBR-02 brand promise violation):"
-        )
+        print("Tracker failure (DEC-FBR-02 brand promise violation):")
         for host, f, lineno in tracker_hits:
             print(f"  {f}:{lineno}  hostname='{host}' (canonical-tracker; not permitted in widget bundle)")
         print(
             "  Remediation: remove the offending import / script-src / fetch URL. "
             "feedbackmonk's widget calls home ONLY to feedbackmonk's own backend."
         )
-    if chunk_offenders:
+    if bad_chunks:
         print()
+        print("Chunk failure (Contract C42: a locale chunk is a flat map of widget.* strings):")
+        for f, why in bad_chunks:
+            print(f"  {f}: {why}")
         print(
-            f"Probe C failure (per-locale catalog chunk exceeds {LOCALE_CHUNK_CAP_BYTES}B "
-            f"cap per Contract C42):"
-        )
-        for f, sz in chunk_offenders:
-            print(
-                f"  {f}  {sz}B  over_by={sz - LOCALE_CHUNK_CAP_BYTES}B "
-                f"(cap={LOCALE_CHUNK_CAP_BYTES}B)"
-            )
-        print(
-            "  Remediation: a locale chunk is a flat map of ~40 short strings and nothing "
-            "else. Check widget/scripts/slice-locales.mjs for leaked code, a non-widget "
-            "namespace or duplicated keys. Never silently raise LOCALE_CHUNK_CAP_BYTES."
+            "  Remediation: check widget/scripts/slice-locales.mjs for leaked code, a non-widget "
+            "namespace or a non-string value; never hand-edit dist/."
         )
     return 1
 

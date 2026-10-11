@@ -2,33 +2,35 @@
 
 **Kind**: Verification Oracle (Probandurgy — Task Zero leg 2 of three-leg defense).
 
-**Question**: Is the **English page-load set** of the built feedbackmonk widget
-(TOP-LEVEL `widget/dist/*.{js,mjs,css}`) at most 30720 bytes (30 KiB; FR-FBR-04
-cap), is every per-locale catalog chunk (`widget/dist/locales/*.js`) at most
-4096 bytes, and does the built tree contain zero canonical third-party tracker
-hostnames anywhere (DEC-FBR-02 brand promise)? Has the canonical tracker-list
-drifted from its hashed baseline?
+**Question**: Is the built feedbackmonk widget present, free of every canonical third-party
+tracker hostname (DEC-FBR-02 brand promise), and is every per-locale catalog chunk
+(`widget/dist/locales/*.js`) only a flat map of `widget.*` strings (Contract C42)? Has the
+canonical tracker list drifted from its hashed baseline? And what does the widget weigh — the
+**English page-load set** (TOP-LEVEL `widget/dist/*.{js,mjs,css}`) and each locale chunk — which
+is reported on every run and judged by no threshold (DEC-FBR-IMPL-36).
 
 ## Synopsis
 
-Verification Oracle (P2 Task Zero; amended for FR-FBR-35 localization) defending two widget brand promises as code-level invariants: the English page-load set (top-level `widget/dist/*.{js,mjs,css}`) is ≤30720 bytes (30 KiB, FR-FBR-04), each lazily-loaded locale chunk under `dist/locales/` is ≤4096 bytes on its own (Contract C42), and the whole built tree contains zero canonical third-party tracker hostnames (DEC-FBR-02), with the tracker list pinned to a hashed baseline. Re-run after any widget build, catalog change or dependency change.
+Verification Oracle (P2 Task Zero; amended for FR-FBR-35 localization; size cap retired by
+DEC-FBR-IMPL-36) defending the widget's no-tracker brand promise and the shape of its locale
+chunks as code-level invariants, with the tracker list pinned to a hashed baseline, and printing
+the widget's size so growth is visible in every check. Re-run after any widget build, catalog
+change or dependency change.
 
-## Probes
+## What it checks
 
-### Probe A — English page-load set size
+### Size — reported, never a failure (DEC-FBR-IMPL-36, 2026-10-10)
 
-Sums the byte count of every **top-level** file in `widget/dist/` matching
-`*.{js,mjs,css}` — `widget.js` + `widget.css` + `redact.js` — post-minification,
-post-terser, **pre-gzip** (the cap is on the wire-format bytes the browser must
-download in the worst case). Cap is `SIZE_CAP_BYTES = 40 * 1024 = 40960` (30720 until DEC-FBR-IMPL-35, 2026-10-10).
-Over → FAIL with per-file size breakdown + overage.
+Prints the byte count of every **top-level** file in `widget/dist/` matching `*.{js,mjs,css}` —
+`widget.js` + `widget.css` + `redact.js`, post-terser, pre-gzip — with their total, and the count
+and largest of the locale chunks under `dist/locales/` (a visitor loads at most one). No number
+fails the run. Until 2026-10-10 this was "Probe A", a hard cap: 30,720 B from P2, raised to
+40,960 B by DEC-FBR-IMPL-35 that morning, and removed the same day on the owner's word because it
+had entered as one unexplained cell of DEC-FBR-08's scope table and its only measured effect was to
+stall a feature. The number stays in front of whoever changes the widget.
 
-**Subdirectories are excluded deliberately** (`glob`, not `rglob`) — see
-*Why the measured set was redefined* below.
-
-A missing `widget/dist/widget.js` is a FAIL: the widget exists, so a
-commit without its build is broken (until 2026-09-30 this was a cold-start
-vacuous PASS).
+A missing `widget/dist/widget.js` is a FAIL: the widget exists, so a commit without its build is
+broken (until 2026-09-30 this was a cold-start vacuous PASS).
 
 ### Probe B — No canonical third-party tracker hostnames
 
@@ -57,48 +59,33 @@ changes and the diff surfaces in every subsequent commit's oracle output.
 The list itself is `git`-tracked, so the canonical record lives in
 version control — the hash is the second leg.
 
-### Probe C — Per-locale chunk size
+### Chunk shape — each locale chunk is only strings
 
-Each `widget/dist/locales/*.js` is measured **individually** against
-`LOCALE_CHUNK_CAP_BYTES = 4 * 1024 = 4096`. One chunk holds ~59 short strings
-for one locale (Contract C42); 4 KiB is roughly twice the largest plausible
-translated widget catalog, so a chunk that trips this is carrying something
-that is not strings — leaked code, a non-`widget` namespace, duplicated keys —
-and the fix is upstream in `widget/scripts/slice-locales.mjs`. Never silently
-raise the constant.
+Each `widget/dist/locales/*.js` must be exactly the bundler's form of a catalog —
+`const <id> = {...}; export { <id> as default };` — whose object parses as JSON with every key in
+the `widget.*` namespace and every value a string (Contract C42). Anything else — code, a second
+namespace, a non-string value — fails, naming the chunk and why; the fix is upstream in
+`widget/scripts/slice-locales.mjs`. This replaced the 4 KiB per-chunk size cap (DEC-FBR-IMPL-36),
+which stood in for exactly this and could not tell a small chunk of code from a long honest
+translation.
 
-No chunks in `dist/locales/` while `i18n/locales/` holds non-English
-locales → FAIL (formerly a vacuous PASS).
+No chunks in `dist/locales/` while `i18n/locales/` holds non-English locales → FAIL (formerly a
+vacuous PASS).
 
-## Why the measured set was redefined (FR-FBR-35, 2026-09-06)
+## Why the measured set is the English page-load set (FR-FBR-35, 2026-09-06)
 
-Before localization, `dist/` held only the English page-load set, so "sum
-everything under `dist/`" and "the bytes an English visitor downloads" were the
-same number. With 31 locales they are not:
-
-- a visitor fetches `widget.js` + `widget.css` + (on first redact) `redact.js`,
-  and **at most one** `locales/<code>.js`;
-- an English visitor fetches **no** locale chunk at all — `en` is inlined.
-
-Summing all 31 into one 30 KiB total would therefore measure a page load nobody
-performs, and — worse — would let a single oversized chunk hide inside the
-total while the aggregate still passed.
-
-**The cap itself was not touched.** `SIZE_CAP_BYTES` is the same 30720 it has
-always been; what changed is the SET it is applied to, and Probe C adds a
-second ceiling that did not exist before. This is a tightening: a 20 KB locale
-chunk passed the old aggregate check whenever the rest of the bundle was small
-enough, and fails now.
-
-Both constants carry a "never silently raise" comment in `oracle.py` for the
-same reason: a cap that moves when it is inconvenient is not an invariant.
+Before localization, `dist/` held only the English page-load set, so "sum everything under `dist/`"
+and "the bytes an English visitor downloads" were the same number. With 31 locales they are not: a
+visitor fetches `widget.js` + `widget.css` + (on first redact) `redact.js`, and **at most one**
+`locales/<code>.js`; an English visitor fetches no locale chunk at all — `en` is inlined. So the
+reported total is that set, and the chunks are reported on their own.
 
 ## Three-leg defense (per D-FBR-02 pattern)
 
 | Leg | Mechanism | File / location |
 |---|---|---|
 | 1. Bundler chokepoint | `widget/vite.config.ts` — terser + CSP-safe (no `eval`, no `Function()`, no `inline-script`); no third-party SDK imports declared in `package.json` | `widget/vite.config.ts`, `widget/package.json` |
-| 2. AST / artifact oracle (this file) | Probe A (size) + Probe B (tracker scan) + list-hash drift | `.claude/project-oracles/widget-bundle-size/` |
+| 2. AST / artifact oracle (this file) | tracker scan + list-hash drift + chunk shape, size reported | `.claude/project-oracles/widget-bundle-size/` |
 | 3. Runtime a11y harness | Playwright + `@axe-core/playwright` integration test; will surface a behavioural regression if a tracker were to load dynamically at runtime (network requests visible in Playwright) | `widget/e2e/widget-a11y.spec.ts`, `widget/e2e/widget-locale.spec.ts` (locale matrix + the `script-src 'self'` fixture, which is also where "the chunk actually loads" is proven — this oracle only sees file sizes) |
 
 ## Invocation
@@ -119,34 +106,29 @@ committed `dist/` differs from the rebuild, which is what proves `dist/` matches
 ```
 PASS widget-bundle-size
   tracker-list hash: <sha256-hex> (<N> hostnames)
-  Probe A (English page-load set, top-level widget/dist/*.{js,mjs,css} <= 30720B): clean (<USED>B used, <HEADROOM>B headroom across <N> file(s))
+  size: English page-load set <TOTAL>B pre-gzip across <N> file(s)
     widget/dist/redact.js  <SIZE>B
     widget/dist/widget.css  <SIZE>B
     widget/dist/widget.js  <SIZE>B
-  Probe B (no canonical tracker hostnames in widget/dist, recursive): clean
-  Probe C (each locale chunk <= 4096B): clean (<N> chunk(s), largest <FILE> at <SIZE>B, <HEADROOM>B headroom)
+  size: <N> locale chunk(s), largest <FILE> at <SIZE>B (a visitor loads at most one)
+  trackers: no canonical tracker hostname in widget/dist (recursive)
+  chunks: every locale chunk is a flat map of widget.* strings (<N> checked)
 ```
 
 or
 
 ```
-FAIL widget-bundle-size (<N> probe(s) failed)
+FAIL widget-bundle-size (tracker hostname in the built widget; locale chunk that is not only strings)
   tracker-list hash: <sha256-hex> (<N> hostnames)
+  size: … (as above)
 
-Probe A failure (bundle exceeds 40960B / 40KiB cap per FR-FBR-04):
-  current_size=<X>B  cap=40960B  over_by=<Y>B
-    widget/dist/widget.js  <SIZE>B
-    ...
-  Remediation: drop a feature or aggressive-minify before re-running. Never silently raise SIZE_CAP_BYTES.
-
-Probe B failure (canonical third-party tracker hostname in built bundle — DEC-FBR-02 brand promise violation):
+Tracker failure (DEC-FBR-02 brand promise violation):
   widget/dist/widget.js:42  hostname='segment.io' (canonical-tracker; not permitted in widget bundle)
-  ...
   Remediation: remove the offending import / script-src / fetch URL. feedbackmonk's widget calls home ONLY to feedbackmonk's own backend.
 
-Probe C failure (per-locale catalog chunk exceeds 4096B cap per Contract C42):
-  widget/dist/locales/de.js  5023B  over_by=927B (cap=4096B)
-  Remediation: a locale chunk is a flat map of ~40 short strings and nothing else. Check widget/scripts/slice-locales.mjs for leaked code, a non-widget namespace or duplicated keys. Never silently raise LOCALE_CHUNK_CAP_BYTES.
+Chunk failure (Contract C42: a locale chunk is a flat map of widget.* strings):
+  widget/dist/locales/de.js: key 'admin.title' is outside the widget.* namespace
+  Remediation: check widget/scripts/slice-locales.mjs for leaked code, a non-widget namespace or a non-string value; never hand-edit dist/.
 ```
 
 Missing build:
@@ -156,7 +138,16 @@ FAIL widget-bundle-size (widget/dist/widget.js is missing)
   Run `npm run build` in widget/ and commit dist/.
 ```
 
-## Adversarial self-test (v1.1.0, recorded 2026-09-06)
+## Adversarial self-test (v2.0.0, recorded 2026-10-10)
+
+| Injected defect | Expected | Observed |
+|---|---|---|
+| a tracker hostname appended to `dist/widget.css` | FAIL, tracker | FAIL naming the file and line |
+| a function appended inside a translated `dist/locales/de.js` | FAIL, chunk shape | FAIL naming `de.js` |
+| a `public.*` key inside a translated chunk | FAIL, chunk shape | FAIL: outside the widget.* namespace |
+| the real 33 KB build, over the old 30 KiB cap | PASS, size printed | PASS with the totals |
+
+## Adversarial self-test (v1.1.0, recorded 2026-09-06 — historical, Probes A/C retired)
 
 A passing oracle proves nothing until it has been made to fail on purpose.
 What was run, against a real build (`cd widget && npm run build`):
@@ -188,16 +179,9 @@ Workflow for adding a tracker:
 3. Tag the commit (or a follow-up `channels/decisions.md` entry) with
    `self_mediated=true; ratification_pending=true; matches_spec_at=docs/planning/plans/20260514T034730-feedbackmonk-p2-customer-facing.md#oracle-pre-build-plan`.
 
-## Why the size cap is reified here (vs. in CI alone)
-
-Per arc-plan Testability Gate Q3=4 finding: without a deterministic
-verifier reachable from the inner develop/test/fix loop, an agent will
-accept "looks small enough" and ship over-budget. The oracle is the
-inner-loop closer. CI is the outer-loop redundancy.
-
 ## Lineage
 
-- **FR-FBR-04** — Embeddable widget, <40KB bundle (<30KB until DEC-FBR-IMPL-35)
+- **FR-FBR-04** — Embeddable widget, lightweight; size reported, not capped (DEC-FBR-IMPL-36; <30KB until 2026-10-10)
 - **DEC-FBR-02** — Brand promise: no third-party trackers in the widget, ever
 - **DEC-FBR-IMPL-03** — Python-canonical oracle implementations
 - **P2 plan §Oracle Pre-Build Plan** — Probe A + Probe B + drift-detection contract
@@ -210,24 +194,16 @@ inner-loop closer. CI is the outer-loop redundancy.
   consistency with existing sibling oracles (`pii-scrub-audit/oracle.py`,
   `multi-tenant-isolation-check/oracle.py`). Brief's `run.*` was a generic
   template placeholder; the project's established convention wins.
-- **Cap value `40 * 1024 = 40960`**: KiB, not metric KB. FR-FBR-04 says
-  "<40KB" — the conservative interpretation is binary kibibytes (what
-  bundlers report; what `ls -la` reports). 30000 would be tighter but
-  outside the spec's expressed intent.
-- **Raised from 30 KiB to 40 KiB on 2026-10-10, on the owner's word**
-  (DEC-FBR-IMPL-35). The feedback-form redesign — kind chips, the signed-in
-  identity line with its "Send anonymously" choice, the token endpoint, the
-  in-dialog confirmation, paste/drop screenshots — measured 2,053 B over the
-  old cap after a refactor that recovered ~1 KB. The owner chose 40 KiB over
-  cutting features or a 33 KiB cap, to leave room for the next few features.
-  The constant is still not a setting: a further raise is again a spec change.
+- **No size cap (DEC-FBR-IMPL-36, 2026-10-10).** The cap began as `30 * 1024 = 30720` (FR-FBR-04
+  "<30KB", read as KiB), was raised to 40,960 B by DEC-FBR-IMPL-35 for the form redesign (2,053 B
+  over after a ~1 KB refactor), and was removed hours later on the owner's word. Size is printed,
+  never judged; the person landing a change reads it.
 - **Bundle extensions `.js`/`.mjs`/`.css`**: covers ESM + CommonJS + style
   outputs from vite. SourceMaps (`.map`) are excluded — they're dev-only
   and not shipped to embedders.
-- **`pre-gzip` size, not `post-gzip`**: the cap is the wire-format ceiling
-  in the worst case (an embedder serving with `Content-Encoding: identity`).
-  If gzip is on, the actual transfer is smaller. Defending pre-gzip is
-  the conservative invariant.
+- **`pre-gzip` size, not `post-gzip`**: the reported figure is the worst-case
+  wire size (an embedder serving with `Content-Encoding: identity`). With gzip
+  on, the transfer is roughly a third of it.
 - **Tracker list canonical form (sort + lowercase + `\n`-join)**: stable
   serialisation so cosmetic edits (reordering, casing) don't churn the
   hash. The hash is the drift defender, not a strict-format defender.
@@ -240,21 +216,13 @@ inner-loop closer. CI is the outer-loop redundancy.
   before `widget/dist/` existed (Task Zero ordering). The widget has shipped
   since, so a missing build now fails; freshness against `src/` is CI job
   `frontends` (rebuild + `git status --porcelain -- widget/dist`).
-- **Probe A measures the ENGLISH PAGE-LOAD SET, not everything under `dist/`**
-  (FR-FBR-35 amendment, v1.1.0). Rationale in full above. The short version:
-  once `dist/` contains 31 mutually-exclusive locale chunks, a recursive sum
-  measures a page load nobody performs. `SIZE_CAP_BYTES` was NOT changed.
-- **Locale chunks get their own per-file cap (Probe C) rather than a share of
-  the aggregate.** An aggregate would couple 31 independent artifacts: adding a
-  32nd language would eat the widget's code budget, and one oversized chunk
-  could hide inside a small total. A per-chunk ceiling says the thing that is
-  actually true — *whatever locale you read this in, you download at most 40 KiB
-  plus at most 4 KiB.*
-- **4096 B for a chunk**: a translated widget catalog is ~59 short strings,
-  measured at ~2 KB for a verbose language. 4 KiB is roughly 2x that — loose
-  enough never to fire on honest translation, tight enough that code or a
-  second namespace leaking into a chunk fires it immediately.
-- **Probe B still recurses.** The Probe A split narrowed ONE probe on purpose;
+- **The reported total is the ENGLISH PAGE-LOAD SET, not everything under `dist/`**
+  (FR-FBR-35 amendment, v1.1.0): once `dist/` holds 31 mutually-exclusive locale chunks, a
+  recursive sum measures a page load nobody performs.
+- **Chunk shape replaced the per-chunk 4 KiB cap (v2.0.0).** The cap guarded against code or a
+  second namespace leaking into a chunk; a size proxy passes a small chunk of code and would fail
+  a long honest translation, so the content is parsed instead.
+- **The tracker scan still recurses.** The page-load set narrowed what is summed, on purpose;
   the tracker scan must keep seeing every built file, locale chunks included,
   and there is an adversarial self-test row above whose only job is to keep that
   true.

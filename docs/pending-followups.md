@@ -45,7 +45,7 @@
   FR-FBR-34 amended; `i18n/README.md` C35 rule 2 carries the runtime consequence.
 
   Stage 2 spent 197 B of widget headroom on a locale-gate prototype-chain fix, a restored 5xx error
-  message and the A-2 content-language fix. The cap has since moved to 40,960 B (DEC-FBR-IMPL-35).
+  message and the A-2 content-language fix. The cap has since been removed; the size is reported, not capped (DEC-FBR-IMPL-36).
 
   **Dev DB**: resolved — `feedbackmonk_dev` was recreated on the owner's word 2026-09-07 and is back at
   **32/32**, so it is the normal `DATABASE_URL` target again. `feedbackmonk_prepare` is also 32/32 and stays
