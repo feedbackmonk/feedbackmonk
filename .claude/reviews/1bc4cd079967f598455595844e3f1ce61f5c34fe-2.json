@@ -1,0 +1,79 @@
+{
+ "schema": "review-window/1",
+ "n": 2,
+ "base": "8e9f672ef4fc8f624945c8c0fa461ae6d8bdf39e",
+ "tip": "1bc4cd079967f598455595844e3f1ce61f5c34fe",
+ "tree": "8931ed2a407136bf7299919017ade2ee7c37eb13",
+ "reviewed": [
+  "84ea85388894fe2a793eb72011d40d08125ed1ad"
+ ],
+ "supersedes": "1bc4cd079967f598455595844e3f1ce61f5c34fe-1",
+ "suite": {
+  "result": "pass",
+  "suite_tip": "3b9cadbc1ecaedf4b5e1f9dc04cad3210b4e4dd8",
+  "suite_tree": "d839c192105c4e8603722be98be3ab7512fa593e",
+  "receipt": "this run",
+  "oracles": "pass",
+  "oracle_reds": []
+ },
+ "verdict": "CONCERN",
+ "approach": {
+  "verdict": "sound",
+  "why": "The fix (e460de70a655, merged at 3d5933f31b83) changes the two probes at the layer the held findings named rather than special-casing the reproductions. Erasure: parse_schema returns a Schema whose FKs carry a name (explicit CONSTRAINT or Postgres default <table>_<cols>_fkey via pg_default_name with NAMEDATALEN truncation); DROP/RENAME CONSTRAINT, DROP [COLUMN] and DROP TABLE remove or rename them; Probe B compares the raw REFERENCES feedback count against every FK ever declared (declared_to_feedback) so a drop cannot unbalance it; an unresolvable dropped/renamed name that is not a default _pkey/_key/_check/_excl fails closed (oracle.py:509-535, 561-597, 722-738). Host binding: Probe E scans every .nest/.nest_service in the api crate, fails closed on a non-literal prefix, flags any literal prefix that is a whole-segment prefix of a ROUTE_HOMES path outside that path's home fn, and compares path parameters by position via _segments (oracle.py:643-706, 724-726). Verified on a scratch copy through the in-tree runners: mutations.py for all three oracles exits 0 (clean copy green; E5-E8, F1-F4, G1, G2 red; H1-H6 red; M12 red). G1 is the held C-001 reproduction verbatim and H5 the held C-002 reproduction verbatim; both now exit 1. Both oracles exit 0 on the real tree, and the real migrations' existing DROP CONSTRAINTs (feedback_body_check, submit_idempotency_pkey, feedback_short_code_key) resolve as non-FK defaults, so nothing in the tree trips the fail-closed branch. Beyond the recorded rows, on a scratch copy via --spec: a drop-and-re-add of the CASCADE FK (two statements, or one ALTER with DROP CONSTRAINT, ADD CONSTRAINT) stays green, so the common migration pattern is not a false positive; rename-then-drop, drop-then-re-add as SET NULL, and DROP COLUMN feedback_id go red; a .nest at the board prefix inside board_router stays green, while a const prefix, a {pid} prefix and a .nest_service(\"/api\", ..) in health_router go red. The window's own commit 84ea85388894 changes two README lines (finding ids). The whole suite exited 0 in the checkout at 3b9cadbc (finalize-gates.jsonl 2026-10-13T20:26:48Z, head 3b9cadbc, tree d839c192, `bash scripts/ci-local.sh --tests --frontends exit 0`). Nothing the fix touches is broken."
+ },
+ "findings": [
+  {
+   "id": "1bc4cd079967:C-001",
+   "lens": "general",
+   "severity": "low",
+   "summary": "The backstop has never been green for this project: its tree copy has no node_modules and no DATABASE_URL, so cargo test and both front-end suites never run there and every record is red 'named no cell' -- the only whole-suite pass is the session's own run in the checkout",
+   "evidence": ".claude/session-state/backstop/records/*.json: 13 records red, 1 unmeasured, none green; each why = 'the suite failed and named no cell: ... bash scripts/ci-local.sh --tests --frontends exit 1; last line: operable program or batch file.'; status.json rounds = ['red at 3b9cadbc1eca', ...]; since_green = null. Cause, from .claude/session-state/evidence/finalize-check-20261013T203029-root.log (cwd S:/Apps/FeedbackMonk/.claude/session-state/backstop/tree): line 108 'DATABASE_URL not set -- cannot run the suite' (the .env fallback 3b9cadb added reads an untracked file the copy does not have), lines 380-383 ''vitest' is not recognized as an internal or external command' twice (ls .claude/session-state/backstop/tree/admin-ui/node_modules and widget/node_modules: No such file or directory; the checkout's exist). So the backstop measures the 13 oracle lanes and cargo clippy only, and the prompt's 'whole suite: pass' rests on the checkout run at finalize-gates.jsonl ran_at 2026-10-13T20:26:48Z (exit 0), not on the backstop (VER-40/42). Outside this window's diff: the fix is in the backstop runner (lib/uldf/backstop.py: npm ci in the copy, or run against a tree with node_modules; pass DATABASE_URL into its env) and belongs in the framework source at S:/ULDF/claude-template, or as a hazard entry. Low because no check claimed a pass it did not earn; the cost is a backstop that cannot catch a post-push regression in cargo test or the front ends."
+  },
+  {
+   "id": "1bc4cd079967:C-002",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The three mutations.py runners (held C-004's program) exist but no declared check runs them, so a parser change that un-reds a row is only caught when someone runs them by hand",
+   "evidence": "Files: .claude/project-oracles/{feedback-erasure-completeness,host-tenant-binding,public-board-moderation-gate}/mutations.py (byte-identical; diff empty) and mutations.json (10, 6, 1 rows). grep -n mutations scripts/ci-local.sh scripts/run-verification-oracles.sh .claude/config.json: no match; the only mentions are the three READMEs' 'Re-running the mutations' paragraphs (feedback-erasure-completeness/README.md:96-105, host-tenant-binding/README.md:133-143, public-board-moderation-gate/README.md:102-111). Each run on this machine took under a minute and wrote only to a temp dir (prefix oracle-mut-). Mode: oracle self-check in the slow lane (beside selfhost-compose-smoke), owned by scripts/run-verification-oracles.sh or a slow-lane oracle.json entry per directory, so the README tables are a program the suite runs rather than one the next session remembers to run."
+  },
+  {
+   "id": "1bc4cd079967:C-003",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The closing session verified by repetition and polling where parking would do: tsc -b run 4x with no edit between, two reruns after a failure with no edit, and a background verification polled 14 times over 25.7 min",
+   "evidence": "verification-demand lines in the prompt, session 8c0335d2 (the closing session; request.json session = 8c0335d2-b0cf-486b-9f49-21b7e0f44fc0): `static: npx tsc -b` run 4 times with no code edit between (0.9 min); `unit: cargo test -p feedbackmonk-api --test board_admin --test board_admin_privacy` rerun 1 time after a failure with no edit (4.5 min); `unit: npx vitest run` rerun 1 time after a failure with no edit (1.4 min); polled a background verification 14 times (25.7 min), 5 times (5.7 min), 3 times (1.9 min). None of these touched the window's diff (two README lines). The program that owns the wait is the background check with the session parked on it (CLAUDE.md 'Wait by parking, never by polling'); a rerun after a failure with no edit re-grades a tree a check already graded. Not a defect in the tree; recorded so the next window can see whether the habit persists."
+  }
+ ],
+ "veto_reason": null,
+ "reviewer": {
+  "model": "claude-fable-5-1",
+  "seat": "distinct",
+  "requested": {
+   "model": "claude-fable-5-1",
+   "alias": "fable",
+   "seat": "distinct",
+   "note": null
+  }
+ },
+ "authors": [
+  "claude-opus-5-5"
+ ],
+ "closing_session": "8c0335d2-b0cf-486b-9f49-21b7e0f44fc0",
+ "minutes": 10.8,
+ "decided_at": "2026-10-13T20:37:30Z",
+ "debt": {
+  "cleared": 854.539,
+  "budget": 1715.1,
+  "next_budget": 1715.1,
+  "why": "the seed, from the replay (docs/planning/measurements/review-window); next: unchanged: neither of VER-34's adjustments applies"
+ },
+ "holds_on": "medium",
+ "carried": [],
+ "fixes": [
+  "84ea85388894fe2a793eb72011d40d08125ed1ad"
+ ],
+ "resolved": {
+  "1bc4cd079967:C-001": true,
+  "1bc4cd079967:C-002": true
+ }
+}
