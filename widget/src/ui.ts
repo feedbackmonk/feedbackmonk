@@ -396,6 +396,24 @@ export function createModal(
   };
 }
 
+/// The "See all requests" link to the hosted board (FR-FBR-45), placed above
+/// the form's buttons. Opens in a new tab with no opener and no Referer.
+export function addBoardLink(
+  els: ModalElements,
+  href: string,
+  onClick: (e: MouseEvent, link: HTMLAnchorElement) => void,
+): HTMLAnchorElement {
+  const row = createElement("div", "fbm-board");
+  const link = createElement("a", undefined, t("widget.board.link"));
+  link.href = href;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.addEventListener("click", (e) => onClick(e, link));
+  row.appendChild(link);
+  els.modal.insertBefore(row, els.cancelBtn.parentElement);
+  return link;
+}
+
 /// Replace the form with the confirmation, in the same dialog: the person sees
 /// that it worked, and where a reply will go, without a toast racing them.
 export function showSent(

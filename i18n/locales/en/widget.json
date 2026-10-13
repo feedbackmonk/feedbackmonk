@@ -92,6 +92,9 @@
       "anonymous": "Send anonymously",
       "anonymousHint": "Your account and email won't be attached."
     },
+    "board": {
+      "link": "See all requests"
+    },
     "sent": {
       "title": "Thanks for your feedback",
       "replyTo": "We'll reply to {{email}}.",

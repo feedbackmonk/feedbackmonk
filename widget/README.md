@@ -26,6 +26,11 @@ Ship the customer-facing end-user surface of feedbackmonk:
   widget follows `data-locale` → the host's `<html lang>` → the browser, sets
   its own `lang`/`dir`, renders its own error copy instead of the server's, and
   sends the resolved locale with the submission (Contract C37).
+- A "See all requests" link to the hosted public board (FR-FBR-45), shown
+  when the board is enabled: a user holding a token arrives signed in through
+  the board's one-time handoff, with the token in the URL fragment only
+  (FR-FBR-44); anyone else opens a public board unsigned, and sees no link on
+  a `signed_in` board.
 
 This module is **independent of `crates/`** — it is a separate npm-managed
 TypeScript project with its own toolchain. The only cross-module
@@ -48,7 +53,9 @@ the P0 submission shape.
 | `src/i18n.test.ts` | Vitest: `t()` semantics, plural selection, per-key fallback — and every case in `i18n/resolution-fixtures.json`, read at run time so the widget and the Rust resolver stay one contract. |
 | `src/ui.test.ts` | Vitest: the English-rendering snapshot (the guard that catalog extraction changed no visible text), `lang`/`dir` on the root, and the error-code → copy mapping. |
 | `src/plural-partition.test.ts` | Vitest: the DIFFERENTIAL between the platform's CLDR (`Intl.PluralRules`) and the hand-rolled Rust plural table carried in `i18n/plural-fixtures.json`, plus the digest proving this file's transcription of that table is still faithful. |
-| `vitest.config.ts` | jsdom environment for the three unit suites; `e2e/` is excluded (Playwright owns it). |
+| `src/board.ts` | The board link (FR-FBR-45): `fetchBoardAccess` (the anonymous, token-free `GET …/board?limit=1` probe — 200 public, 401 `SignInRequired` signed_in, anything else no link) and `boardLink` (the URL, or null when no link is shown). |
+| `src/board.test.ts` | Vitest: the link is present only on an enabled board, and with a token on a `signed_in` one; absent on `signed_in` without a token; the token rides in the fragment of the sign-in page, never the query, path or any request the widget makes. |
+| `vitest.config.ts` | jsdom environment for the unit suites; `e2e/` is excluded (Playwright owns it). |
 | `src/attachments.ts` | Screenshot attach UI (≤4, ≤5MB, PNG/JPEG/WebP), opt-in console/service log capture, and the multipart upload (`POST …/feedback/:fb/attachments`). Static import; dynamically imports `redact.ts` on first redact. |
 | `src/redact.ts` | **Code-split chunk** (`dist/redact.js`): canvas redaction editor — draw opaque rectangles, export flattened PNG. Self-contained (imports nothing from base) so the entry stays a single `widget.js`. Fetched lazily only when the user redacts. |
 | `playwright.config.ts` | Vite preview on port `14206` (`strictPort: true`, deconflicted from admin-ui's 14204 dev / 14205 e2e preview and api's 14304). |
@@ -137,6 +144,7 @@ Persian one lays out right-to-left without the host doing anything.
 | `data-jwt` | Optional. End-user identity (auth mode); anonymous without it. |
 | `data-token-url` | Optional. Same-origin endpoint answering `GET` with `{token, expires_at}` for the host page's signed-in user. Fetched when the form opens and again before a send whose token has under 30 s left; an answer with no token means anonymous mode. Use it instead of `data-jwt` on a web page, where a page-baked token would expire under a long-open tab (DEC-FBR-IMPL-35). |
 | `data-api-base` | Optional. Backend origin; defaults to `https://api.feedbackmonk.com`. |
+| `data-board-url` | Optional. Origin (and path prefix) of the hosted public board the "See all requests" link opens; defaults to `data-api-base`, the shape where one origin serves both (FR-FBR-45). |
 | `data-locale` | Optional. UI language (this section). |
 | `data-theme` | Optional. `auto` \| `light` \| `dark`. |
 | `data-capture-console` | Optional, opt-in. Capture `console.*` for diagnostics. |
@@ -219,6 +227,14 @@ Outbound:
   records how to write BACK to this person; it says nothing about what language
   the body is in. The server stores an unknown value as NULL and never rejects
   the submission for it.
+- `GET  /api/v1/projects/{project_id}/board?limit=1` → the board probe, sent
+  when the form opens, with no token and no cookie (`credentials: "omit"`).
+  It only decides whether the "See all requests" link is shown (Contract C43:
+  200 public, 401 `SignInRequired` signed_in, 404 disabled). The link itself
+  opens `{board}/public/projects/{id}/board/sign-in#token={token}` for a token
+  holder — the token is in the FRAGMENT, which no server, log or Referer ever
+  sees — and `{board}/public/projects/{id}/board` otherwise. A token from
+  `data-token-url` within 30 s of expiry is refreshed at the click.
 - `GET <widget.js origin>/locales/<code>.js` → the catalog chunk for a
   non-English locale, fetched once at mount. English is inlined and fetches
   nothing (Contract C42).
@@ -463,6 +479,7 @@ scripts loaded at runtime.
 
 ## Lineage
 
+- **FR-FBR-45** — The widget links a signed-in user to the board as themselves (via the FR-FBR-44 fragment handoff, Contract C43)
 - **FR-FBR-04** — Embeddable widget (lightweight, size reported not capped per DEC-FBR-IMPL-36; a11y-clean, CSP-safe)
 - **DEC-FBR-02** — No third-party trackers in the widget, ever (brand promise)
 - **DEC-FBR-04** — JWT is the only identity feedbackmonk ever has
