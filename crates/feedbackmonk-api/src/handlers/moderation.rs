@@ -10,7 +10,9 @@
 //!   POST  /api/v1/admin/feedback/{feedback_id}/moderate        (C28)
 //!   GET   /api/v1/admin/feedback/moderation-queue              (C28)
 //!   GET   /api/v1/admin/projects/{project_id}/board-settings   (C28-adjacent)
-//!   PATCH /api/v1/admin/projects/{project_id}/board-settings   (C28-adjacent)
+//!   PATCH /api/v1/admin/projects/{project_id}/board-settings   (C28-adjacent, + C44 board_access)
+//!   GET   /api/v1/admin/projects/{project_id}/priority         (C44, board_admin)
+//!   GET|PUT|DELETE /api/v1/admin/feedback/{feedback_id}/board-note (C44, board_admin)
 //! ```
 //!
 //! The `moderate` handler honours C28 Hard Invariant #1: the
@@ -36,12 +38,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use feedbackmonk_core::{
-    legal_moderation_transitions_from, FeedbackId, FeedbackKind, ModerationStatus,
+    legal_moderation_transitions_from, BoardAccess, FeedbackId, FeedbackKind, ModerationStatus,
 };
+use feedbackmonk_repository::BoardSettings;
 
 use crate::auth::AdminSession;
 use crate::error::ApiError;
 use crate::handlers::admin_feedback::{format_submitter_label, sole_project_scope};
+use crate::handlers::board_admin;
 use crate::state::AppState;
 
 const DEFAULT_QUEUE_LIMIT: u32 = 20;
@@ -61,6 +65,17 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/api/v1/admin/projects/:project_id/board-settings",
             get(get_board_settings).patch(patch_board_settings),
+        )
+        // Contract C44 (end-user prioritization, owner side).
+        .route(
+            "/api/v1/admin/projects/:project_id/priority",
+            get(board_admin::get_priority_view),
+        )
+        .route(
+            "/api/v1/admin/feedback/:feedback_id/board-note",
+            get(board_admin::get_board_note)
+                .put(board_admin::put_board_note)
+                .delete(board_admin::delete_board_note),
         )
         .with_state(state)
 }
@@ -199,7 +214,10 @@ pub async fn moderation_queue(
 ) -> Result<Json<QueueResponse>, ApiError> {
     let project_scope = sole_project_scope(&state, &session.scope).await?;
     let status = params.status.unwrap_or_default(); // ModerationStatus::Pending
-    let limit = params.limit.unwrap_or(DEFAULT_QUEUE_LIMIT).min(MAX_QUEUE_LIMIT);
+    let limit = params
+        .limit
+        .unwrap_or(DEFAULT_QUEUE_LIMIT)
+        .min(MAX_QUEUE_LIMIT);
     let offset = params.offset.unwrap_or(0);
 
     let (items, total) = state
@@ -233,6 +251,19 @@ pub async fn moderation_queue(
 pub struct BoardSettingsWire {
     pub public_board_enabled: bool,
     pub board_requires_moderation: bool,
+    /// Who may see the enabled board (FR-FBR-43, Contract C44): `public` or
+    /// `signed_in`. Only this owner surface changes it.
+    pub board_access: BoardAccess,
+}
+
+impl From<BoardSettings> for BoardSettingsWire {
+    fn from(s: BoardSettings) -> Self {
+        Self {
+            public_board_enabled: s.public_board_enabled,
+            board_requires_moderation: s.board_requires_moderation,
+            board_access: s.board_access,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -241,6 +272,16 @@ pub struct BoardSettingsPatch {
     pub public_board_enabled: Option<bool>,
     #[serde(default)]
     pub board_requires_moderation: Option<bool>,
+    /// Raw JSON so an unknown value is a 400 from [`BoardAccess::parse`], not
+    /// a serde 422 (C44: "anything else → 400").
+    #[serde(default)]
+    pub board_access: Option<serde_json::Value>,
+}
+
+fn parse_board_access(v: &serde_json::Value) -> Result<BoardAccess, ApiError> {
+    v.as_str().and_then(BoardAccess::parse).ok_or_else(|| {
+        ApiError::BadRequest(r#"board_access must be "public" or "signed_in""#.to_string())
+    })
 }
 
 pub async fn get_board_settings(
@@ -250,10 +291,7 @@ pub async fn get_board_settings(
 ) -> Result<Json<BoardSettingsWire>, ApiError> {
     let scope = state.projects.open(&session.scope, project_id).await?;
     let s = state.projects.get_board_settings(&scope).await?;
-    Ok(Json(BoardSettingsWire {
-        public_board_enabled: s.public_board_enabled,
-        board_requires_moderation: s.board_requires_moderation,
-    }))
+    Ok(Json(s.into()))
 }
 
 pub async fn patch_board_settings(
@@ -262,13 +300,23 @@ pub async fn patch_board_settings(
     Path(project_id): Path<Uuid>,
     Json(req): Json<BoardSettingsPatch>,
 ) -> Result<Json<BoardSettingsWire>, ApiError> {
+    // Validate the whole patch before writing any leg of it.
+    let access = req
+        .board_access
+        .as_ref()
+        .map(parse_board_access)
+        .transpose()?;
     let scope = state.projects.open(&session.scope, project_id).await?;
-    let s = state
+    let mut s = state
         .projects
-        .set_board_settings(&scope, req.public_board_enabled, req.board_requires_moderation)
+        .set_board_settings(
+            &scope,
+            req.public_board_enabled,
+            req.board_requires_moderation,
+        )
         .await?;
-    Ok(Json(BoardSettingsWire {
-        public_board_enabled: s.public_board_enabled,
-        board_requires_moderation: s.board_requires_moderation,
-    }))
+    if let Some(access) = access {
+        s = state.projects.set_board_access(&scope, access).await?;
+    }
+    Ok(Json(s.into()))
 }
