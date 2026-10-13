@@ -375,6 +375,32 @@ impl SqlxBoardSignalRepo {
         Ok(row.count)
     }
 
+    /// Serialize every rewrite of one user's list (critic C-004,
+    /// collab-20261013-145347). Two concurrent rewrites of the same list would
+    /// otherwise both delete, then both insert positions 0..n, and the second
+    /// insert would fail on the `(project, user, position)` UNIQUE constraint as
+    /// a raw database error. A transaction-scoped advisory lock keyed on
+    /// (project, user) makes the second wait for the first to commit; then it
+    /// sees the first's rows, deletes them and writes its own. Released at
+    /// commit or rollback. Reads no `feedback` row.
+    async fn lock_priority_list(
+        conn: &mut sqlx::PgConnection,
+        scope: &ProjectScope,
+        user_sub: &str,
+    ) -> Result<()> {
+        let key = format!("board_priority_entries:{}:{user_sub}", scope.project_id());
+        sqlx::query!(
+            r#"
+            SELECT 1::int4 AS "locked!"
+            FROM pg_advisory_xact_lock(hashtextextended($1, 0))
+            "#,
+            key,
+        )
+        .fetch_one(&mut *conn)
+        .await?;
+        Ok(())
+    }
+
     /// Rewrite one user's stored list as exactly `ids`, positions 0..n, on
     /// `conn`. Delete-then-insert keeps the `(project, user, position)` UNIQUE
     /// constraint satisfied at every row (FR-FBR-50: saved whole).
@@ -415,7 +441,14 @@ impl SqlxBoardSignalRepo {
             &positions,
         )
         .execute(&mut *conn)
-        .await?;
+        .await
+        .map_err(|e| match e {
+            // Unreachable while every caller holds `lock_priority_list`; kept
+            // so a future caller that forgets the lock gets `Conflict`, never
+            // a raw unique-violation error (critic C-004).
+            sqlx::Error::Database(db) if db.is_unique_violation() => RepoError::Conflict,
+            e => e.into(),
+        })?;
         Ok(())
     }
 }
@@ -648,6 +681,7 @@ impl BoardSignalRepo for SqlxBoardSignalRepo {
         }
 
         let mut tx = self.pool.begin().await?;
+        Self::lock_priority_list(&mut tx, scope, user_sub).await?;
 
         // FR-FBR-61: every entry resolves approved-only and in-pool BEFORE the
         // list is written. One miss refuses the whole save (FR-FBR-50: the list
@@ -674,6 +708,9 @@ impl BoardSignalRepo for SqlxBoardSignalRepo {
         user_sub: &str,
     ) -> Result<PriorityListView> {
         let mut tx = self.pool.begin().await?;
+        // The read may rewrite the list (dropping leavers), so it takes the
+        // same per-list lock as a save (critic C-004).
+        Self::lock_priority_list(&mut tx, scope, user_sub).await?;
         let view = Self::read_board_priority_view(&mut tx, scope, user_sub).await?;
 
         // FR-FBR-51: shown once as removed, then dropped. Rewrite the list as

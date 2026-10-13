@@ -4,10 +4,8 @@
 //! Hosted-board sign-in handoff and board session — Contract C43 (FR-FBR-43/44,
 //! DEC-FBR-21). Wire contract: `docs/planning/handoffs/prioritization-contracts.md`.
 //!
-//! **Contract stub.** The `contracts` piece froze the names, wire shapes and
-//! helper signatures below; the `public-api` piece writes the handler bodies
-//! and registers the routes inside `board::board_router` (so `build_app` and
-//! the `host-tenant-binding` classification do not change):
+//! The routes register inside `board::board_router`, so `build_app` and the
+//! `host-tenant-binding` classification do not change:
 //!
 //! ```text
 //!   POST   /api/v1/projects/{project_id}/board/session   exchange_board_session
@@ -21,22 +19,38 @@
 //! ([`hash_board_session_token`]) and the `sub` via
 //! `state.board_votes.sessions().create_board_session(..)`, and sets
 //! [`board_session_cookie_name`] HttpOnly; Secure; SameSite=Lax; Path=/;
-//! no Domain (host-only); Max-Age ≤ 8 h. A board viewer is then resolved by
-//! [`resolve_board_viewer`]: a bearer JWT first, else the session cookie.
+//! no Domain (host-only); Max-Age = 8 h. The token is read from that POST body
+//! and nowhere else: no query string, path or other header is ever exchanged.
+//!
+//! A board viewer is resolved by [`resolve_board_viewer`]: a bearer JWT first,
+//! else the session cookie, else anonymous. A session is refused once its
+//! `expires_at` has passed — in SQL, and again here by this process's clock.
+//!
+//! The session routes run the board-enabled check (a disabled board 404s) but
+//! never the sign-in check: they are how an anonymous viewer becomes signed in
+//! (critic C-001, collab-20261013-145347).
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::header::{CACHE_CONTROL, SET_COOKIE};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
+use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
+use feedbackmonk_core::{KeyClass, BOARD_SESSION_MAX_AGE_SECS};
+use feedbackmonk_jwt::{verify_with_leeway as jwt_verify_with_leeway, JwtError};
 use feedbackmonk_repository::ProjectScope;
 
 use crate::error::ApiError;
-use crate::handlers::voting_common::hex_encode;
+use crate::handlers::board::ensure_board_enabled;
+use crate::handlers::voting_common::{
+    current_unix_timestamp, extract_bearer, hex_encode, jwt_error_response,
+};
 use crate::state::AppState;
 
 /// Cookie-name prefix; the full name carries the project id so one browser can
@@ -89,6 +103,36 @@ impl BoardViewer {
     }
 }
 
+/// Why a viewer could not be resolved. A bad bearer token is the existing JWT
+/// error response (`401 {"error":"<variant>"}`), never a silent downgrade to
+/// anonymous; anything else is an ordinary API error.
+#[derive(Debug)]
+pub enum BoardViewerError {
+    Jwt(JwtError),
+    Api(ApiError),
+}
+
+impl From<ApiError> for BoardViewerError {
+    fn from(e: ApiError) -> Self {
+        Self::Api(e)
+    }
+}
+
+impl From<feedbackmonk_repository::RepoError> for BoardViewerError {
+    fn from(e: feedbackmonk_repository::RepoError) -> Self {
+        Self::Api(e.into())
+    }
+}
+
+impl IntoResponse for BoardViewerError {
+    fn into_response(self) -> Response {
+        match self {
+            Self::Jwt(e) => jwt_error_response(&e),
+            Self::Api(e) => e.into_response(),
+        }
+    }
+}
+
 /// The refusal for an anonymous viewer on a `signed_in` board (FR-FBR-43):
 /// `401 {"error":"SignInRequired"}` — distinct from the board-disabled 404 so
 /// the UI renders a sign-in prompt.
@@ -101,51 +145,178 @@ pub fn sign_in_required_response() -> Response {
         .into_response()
 }
 
+/// Verify an end-user JWT for this project (audience = project, identity-class
+/// keys only, P5b C25) and return its `sub`.
+#[allow(clippy::result_large_err)] // the error is a finished refusal response
+async fn verify_end_user_jwt(
+    state: &AppState,
+    scope: &ProjectScope,
+    token: &str,
+) -> Result<String, BoardViewerError> {
+    let keys = state
+        .signing_keys
+        .list_active_for_class(scope, KeyClass::Identity)
+        .await?;
+    let claims = jwt_verify_with_leeway(
+        token,
+        scope.project_id(),
+        &keys,
+        current_unix_timestamp(),
+        state.jwt_iat_leeway_seconds,
+    )
+    .map_err(BoardViewerError::Jwt)?;
+    Ok(claims.sub)
+}
+
+/// The raw board-session token this request carries for this project, if any.
+fn session_cookie_token(headers: &HeaderMap, project_id: Uuid) -> Option<String> {
+    let jar = CookieJar::from_headers(headers);
+    let value = jar.get(&board_session_cookie_name(project_id))?.value().to_string();
+    (!value.is_empty()).then_some(value)
+}
+
+/// The live session behind this request's cookie, refused once `expires_at`
+/// has passed by this process's clock as well as the database's.
+async fn live_session(
+    state: &AppState,
+    scope: &ProjectScope,
+    headers: &HeaderMap,
+) -> Result<Option<feedbackmonk_repository::BoardSession>, ApiError> {
+    let Some(token) = session_cookie_token(headers, scope.project_id()) else {
+        return Ok(None);
+    };
+    let session = state
+        .board_votes
+        .sessions()
+        .resolve_board_session(scope, &hash_board_session_token(&token))
+        .await?;
+    Ok(session.filter(|s| s.expires_at > Utc::now()))
+}
+
 /// Resolve the board viewer: a valid `Authorization: Bearer` JWT (audience =
 /// project) wins; else a live board-session cookie for this project; else
 /// anonymous. An invalid bearer token is an error, never a silent downgrade.
-///
-/// Contract stub: returns `Anonymous` until `public-api` implements it.
+/// The token is never read from a query string or path.
+#[allow(clippy::result_large_err)] // the error is a finished refusal response
 pub async fn resolve_board_viewer(
     state: &AppState,
     scope: &ProjectScope,
     headers: &HeaderMap,
-) -> Result<BoardViewer, ApiError> {
-    let _ = (state, scope, headers);
-    Ok(BoardViewer::Anonymous)
+) -> Result<BoardViewer, BoardViewerError> {
+    if let Some(token) = extract_bearer(headers) {
+        let sub = verify_end_user_jwt(state, scope, &token).await?;
+        return Ok(BoardViewer::SignedIn { sub });
+    }
+    Ok(match live_session(state, scope, headers).await? {
+        Some(session) => BoardViewer::SignedIn {
+            sub: session.user_sub,
+        },
+        None => BoardViewer::Anonymous,
+    })
+}
+
+fn session_cookie(project_id: Uuid, value: String, max_age_secs: i64) -> HeaderValue {
+    let cookie = Cookie::build((board_session_cookie_name(project_id), value))
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .path("/")
+        .max_age(time::Duration::seconds(max_age_secs))
+        .build();
+    // Name and value are hex/ASCII by construction.
+    HeaderValue::from_str(&cookie.to_string()).expect("ASCII cookie")
+}
+
+fn session_response(body: BoardSessionResponse, set_cookie: Option<HeaderValue>) -> Response {
+    let mut resp = (StatusCode::OK, Json(body)).into_response();
+    let headers = resp.headers_mut();
+    // A session answer is per browser; no cache may keep it.
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    if let Some(c) = set_cookie {
+        headers.insert(SET_COOKIE, c);
+    }
+    resp
 }
 
 /// `POST …/board/session` — the one-time token exchange (FR-FBR-44).
-/// Contract stub: 501 until `public-api` implements it.
 pub async fn exchange_board_session(
     State(state): State<AppState>,
     Path(project_id): Path<Uuid>,
     Json(req): Json<BoardSessionExchangeRequest>,
-) -> Response {
-    let _ = (state, project_id, req);
-    StatusCode::NOT_IMPLEMENTED.into_response()
+) -> Result<Response, ApiError> {
+    let scope = state.projects.open_for_submission(project_id).await?;
+    ensure_board_enabled(&state, &scope).await?;
+
+    let sub = match verify_end_user_jwt(&state, &scope, &req.token).await {
+        Ok(sub) => sub,
+        Err(e) => return Ok(e.into_response()),
+    };
+
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let token = hex_encode(&bytes);
+    let session = state
+        .board_votes
+        .sessions()
+        .create_board_session(
+            &scope,
+            &hash_board_session_token(&token),
+            &sub,
+            BOARD_SESSION_MAX_AGE_SECS,
+        )
+        .await?;
+
+    Ok(session_response(
+        BoardSessionResponse {
+            signed_in: true,
+            expires_at: Some(session.expires_at),
+        },
+        Some(session_cookie(project_id, token, BOARD_SESSION_MAX_AGE_SECS)),
+    ))
 }
 
-/// `GET …/board/session` — whether this browser holds a live session.
-/// Contract stub: 501 until `public-api` implements it.
+/// `GET …/board/session` — whether this browser holds a live session. Reads
+/// the cookie only; a token anywhere in the request is ignored.
 pub async fn get_board_session(
     State(state): State<AppState>,
     Path(project_id): Path<Uuid>,
     headers: HeaderMap,
-) -> Response {
-    let _ = (state, project_id, headers);
-    StatusCode::NOT_IMPLEMENTED.into_response()
+) -> Result<Response, ApiError> {
+    let scope = state.projects.open_for_submission(project_id).await?;
+    ensure_board_enabled(&state, &scope).await?;
+    let session = live_session(&state, &scope, &headers).await?;
+    Ok(session_response(
+        BoardSessionResponse {
+            signed_in: session.is_some(),
+            expires_at: session.map(|s| s.expires_at),
+        },
+        None,
+    ))
 }
 
-/// `DELETE …/board/session` — sign out of the board (ends the session and
-/// clears the cookie). Contract stub: 501 until `public-api` implements it.
+/// `DELETE …/board/session` — sign out of the board: ends the session and
+/// expires the cookie.
 pub async fn end_board_session(
     State(state): State<AppState>,
     Path(project_id): Path<Uuid>,
     headers: HeaderMap,
-) -> Response {
-    let _ = (state, project_id, headers);
-    StatusCode::NOT_IMPLEMENTED.into_response()
+) -> Result<Response, ApiError> {
+    let scope = state.projects.open_for_submission(project_id).await?;
+    ensure_board_enabled(&state, &scope).await?;
+    if let Some(token) = session_cookie_token(&headers, project_id) {
+        state
+            .board_votes
+            .sessions()
+            .end_board_session(&scope, &hash_board_session_token(&token))
+            .await?;
+    }
+    Ok(session_response(
+        BoardSessionResponse {
+            signed_in: false,
+            expires_at: None,
+        },
+        Some(session_cookie(project_id, String::new(), 0)),
+    ))
 }
 
 #[cfg(test)]
@@ -166,5 +337,33 @@ mod tests {
         let a = board_session_cookie_name(Uuid::nil());
         assert_eq!(a, "fbm_board_00000000000000000000000000000000");
         assert_ne!(a, board_session_cookie_name(Uuid::from_u128(1)));
+    }
+
+    #[test]
+    fn session_cookie_is_host_only_httponly_secure_lax() {
+        let c = session_cookie(Uuid::nil(), "t".into(), BOARD_SESSION_MAX_AGE_SECS);
+        let s = c.to_str().unwrap();
+        assert!(s.starts_with("fbm_board_00000000000000000000000000000000=t"));
+        for attr in ["HttpOnly", "Secure", "SameSite=Lax", "Path=/", "Max-Age=28800"] {
+            assert!(s.contains(attr), "{attr} missing: {s}");
+        }
+        assert!(!s.contains("Domain"), "host-only: {s}");
+    }
+
+    #[test]
+    fn session_token_is_read_from_this_projects_cookie_only() {
+        let pid = Uuid::from_u128(7);
+        let mut h = HeaderMap::new();
+        h.insert(
+            axum::http::header::COOKIE,
+            HeaderValue::from_str(&format!(
+                "other=1; {}=abc; {}=zzz",
+                board_session_cookie_name(pid),
+                board_session_cookie_name(Uuid::from_u128(8))
+            ))
+            .unwrap(),
+        );
+        assert_eq!(session_cookie_token(&h, pid).as_deref(), Some("abc"));
+        assert!(session_cookie_token(&HeaderMap::new(), pid).is_none());
     }
 }
