@@ -1,0 +1,7 @@
+{
+  "schema": "ids/1",
+  "floors": {
+    "REQ": {"FR-FBR": 41},
+    "DEC": 0
+  }
+}
