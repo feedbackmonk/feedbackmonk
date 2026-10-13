@@ -500,7 +500,7 @@ async fn no_public_response_carries_a_not_needed_count(pool: PgPool) {
         for k in &keys {
             let k = k.to_ascii_lowercase();
             assert!(
-                !(k.contains("not_needed") && k != "not_needed") && !k.contains("priority_score") && k != "rank",
+                (!k.contains("not_needed") || k == "not_needed") && !k.contains("priority_score") && k != "rank",
                 "public response carries `{k}`: {r}"
             );
         }
