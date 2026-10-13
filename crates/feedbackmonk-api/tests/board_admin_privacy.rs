@@ -468,15 +468,23 @@ async fn the_priority_view_does_not_depend_on_who_holds_which_list(pool: PgPool)
                 .unwrap()
                 .sort_by(|x, y| x["short_code"].as_str().cmp(&y["short_code"].as_str()));
             // The fit sums in short-code order, so the last bits of a float
-            // can differ between two projects; compare to 1e-9.
+            // can differ between two projects. Lift the uncertainties out and
+            // compare them within 1e-9 below; rounding both to 9 places
+            // would flake whenever two equal values straddle a rounding
+            // boundary (critic C-001, collab-20261013-185730).
+            let mut uncertainties = Vec::new();
             for item in view["ranked"].as_array_mut().unwrap() {
-                let u = item["uncertainty"].as_f64().unwrap();
-                item["uncertainty"] = json!(format!("{u:.9}"));
+                uncertainties.push(item["uncertainty"].as_f64().unwrap());
+                item["uncertainty"] = Value::Null;
             }
-            view
+            (view, uncertainties)
         }
     };
-    let a = view_of(&plain).await;
-    let b = view_of(&swapped).await;
+    let (a, ua) = view_of(&plain).await;
+    let (b, ub) = view_of(&swapped).await;
     assert_eq!(a, b, "the owner's view is a function of the lists, not of who holds them");
+    assert_eq!(ua.len(), ub.len());
+    for (x, y) in ua.iter().zip(&ub) {
+        assert!((x - y).abs() <= 1e-9, "uncertainty {x} vs {y} differs beyond float noise");
+    }
 }
