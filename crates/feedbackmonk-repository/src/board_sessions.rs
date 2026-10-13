@@ -270,11 +270,26 @@ mod tests {
         let repo = SqlxBoardVoteRepo::new(pool.clone());
         let scope = seed_project_scope(&pool, "sess-exp@example.com").await;
         repo.sessions()
-            .create_board_session(&scope, &hash('4'), "user-1", 1)
+            .create_board_session(&scope, &hash('4'), "user-1", 3600)
             .await
             .unwrap();
-        // Let the one-second session lapse.
-        tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+        assert!(repo
+            .sessions()
+            .resolve_board_session(&scope, &hash('4'))
+            .await
+            .unwrap()
+            .is_some());
+        // Move the session's whole life into the past instead of sleeping
+        // (critic C-005): it ended an hour ago, still within the 00034 8 h CHECK.
+        sqlx::query(
+            "UPDATE board_sessions \
+             SET created_at = now() - interval '9 hours', expires_at = now() - interval '1 hour' \
+             WHERE token_hash = $1",
+        )
+        .bind(hash('4'))
+        .execute(&pool)
+        .await
+        .unwrap();
         assert!(repo
             .sessions()
             .resolve_board_session(&scope, &hash('4'))
