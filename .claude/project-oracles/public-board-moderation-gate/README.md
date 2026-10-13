@@ -91,5 +91,13 @@ tree and reverted, and the oracle was run against the real tree each time:
 | M11 `board.rs::public_board_vote_cast` skips `resolve_approved_board_feedback_id` (the id is parsed from the short code) | exit 1: `public_board_vote_cast: ... before the .board_votes.cast write` |
 | restored | exit 0 |
 
+**Priority-list write (2026-10-13, end-user prioritization wave 1, no oracle change).** Same
+harness and method; the oracle unchanged at v1.2.0.
+
+| Mutation | v1.2.0 |
+|---|---|
+| M12 `board_signals.rs::save_priority_list` drops its `resolve_pool_board_items(..)` call (the codes map to fixed `PoolItem`s) | exit 1: `board.rs:616 (public_board_priorities_put): .board_votes.signals().save_priority_list(..) ... writes before (or without) calling resolve_pool_board_items` |
+| restored | exit 0 |
+
 Known static boundary: C29 inv. 2 (board-disabled project returns 404 on the read path) is
 covered by Probe C (`board_moderation_gate.rs::board_disabled_project_404s`), not statically.

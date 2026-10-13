@@ -44,6 +44,12 @@ A happy-path "the row is gone" test cannot see any of the failures below.
      CASCADE_COVERED with a rationale and verified to hang off feedback by a
      NOT NULL `ON DELETE CASCADE` FK. A new user-keyed table fails until erased.
 
+  F) ITEM-SIDE BOARD ARTEFACTS (migrations, FR-FBR-60): erasing one feedback
+     row removes its not-needed marks, priority-list entries and board note —
+     each table in ITEM_SIDE hangs off feedback by a NOT NULL
+     `ON DELETE CASCADE` FK — and no end-user-keyed table hangs off feedback
+     by anything but CASCADE.
+
   --full) runs tests/me_feedback_delete.rs against the real DB (behavioral drift).
 
 Exit 0 PASS, 1 FAIL, 2 environment error. `--root <path>` points the probes at
@@ -86,6 +92,21 @@ CASCADE_COVERED: Dict[str, Tuple[str, str]] = {
         "(00022: the same identity the row is attributed to), so erasing the "
         "row cascades the only rows carrying that submitter_id.",
     ),
+}
+
+
+# FR-FBR-60, item side: erasing ONE feedback row (per-item delete, or any row
+# the bulk erase removes) must remove every board artefact hung on that item --
+# other people's "not needed" marks, their priority-list entries naming it, and
+# the owner's public board note. None of these is deleted explicitly by the
+# per-item path; each relies on its FK. Probe F verifies each named table still
+# exists and its `feedback_id` is NOT NULL `REFERENCES feedback ON DELETE
+# CASCADE` (SET NULL would fail on NOT NULL or, without it, leave a mark / list
+# entry / note pointing at nothing). A removed table FAILS: rename it here.
+ITEM_SIDE: Dict[str, str] = {
+    "feedback_not_needed": "viewers' not-needed marks on the item (00035, FR-FBR-48)",
+    "board_priority_entries": "viewers' priority-list entries naming the item (00035, FR-FBR-50)",
+    "feedback_board_notes": "the owner's public board note on the item (00036, FR-FBR-57)",
 }
 
 
@@ -714,6 +735,37 @@ def probe_e(P: Paths, schema) -> List[str]:
     return offs
 
 
+def probe_f(P: Paths, schema) -> List[str]:
+    """FR-FBR-60 item side: erasing a feedback row takes its board artefacts
+    with it. Named tables (ITEM_SIDE) hang off feedback by a NOT NULL CASCADE
+    FK; and generally, no table keyed to a person may hang off feedback by
+    SET NULL (the person's row would outlive the item it was about)."""
+    tables, fks, _ = schema
+    offs: List[str] = []
+    for t, why in sorted(ITEM_SIDE.items()):
+        if t not in tables:
+            offs.append(f"migrations: item-side table `{t}` ({why}) is not in the final schema -- "
+                        "renamed or dropped; update ITEM_SIDE rather than pass blind.")
+            continue
+        col = tables[t].get("feedback_id")
+        if col is None or col.fk_table != "feedback":
+            offs.append(f"migrations: `{t}.feedback_id` has no FK to feedback -- erasing the item "
+                        f"leaves {why} behind (FR-FBR-60).")
+        elif col.on_delete != "CASCADE" or not col.not_null:
+            offs.append(f"migrations: `{t}.feedback_id` is {'NOT NULL' if col.not_null else 'nullable'} "
+                        f"ON DELETE {col.on_delete or 'NO ACTION (default)'}; it must be NOT NULL ON DELETE "
+                        f"CASCADE, or erasing the item leaves {why} behind or blocks the erasure (FR-FBR-60).")
+    for f in fks:
+        if f.target != "feedback" or f.on_delete == "CASCADE" or f.table not in tables:
+            continue
+        ids = sorted(c for c in tables[f.table] if IDENTITY_COL_RE.match(c))
+        if ids:
+            offs.append(f"{f.where}: `{f.table}.{f.column}` REFERENCES feedback ON DELETE {f.on_delete or 'NO ACTION'} "
+                        f"but the table carries end-user key(s) {ids} -- erasing the item leaves that person's row "
+                        "behind; it must CASCADE (FR-FBR-60).")
+    return offs
+
+
 def probe_full(P: Paths, full: bool) -> Tuple[Optional[bool], str]:
     if not full:
         return None, "skipped (pass --full to run tests/me_feedback_delete.rs)"
@@ -757,6 +809,8 @@ def main() -> int:
          "scrub_cluster_derived_text UPDATEs the four P5 tables; both erasure fns call it."),
         ("E (end-user table coverage)", probe_e(P, schema),
          "erase_all_for_end_user DELETEs from every end-user-keyed table (or it is CASCADE_COVERED)."),
+        ("F (item-side board artefacts)", probe_f(P, schema),
+         "marks, list entries and board notes hang off feedback by a NOT NULL ON DELETE CASCADE FK."),
     ]
     full_passed, full_msg = probe_full(P, args.full)
     failed = [r for r in results if r[1]]

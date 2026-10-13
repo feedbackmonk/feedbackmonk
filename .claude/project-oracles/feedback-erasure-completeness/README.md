@@ -21,7 +21,8 @@ runs `cargo test -p feedbackmonk-api --test me_feedback_delete` against a real d
 | B | `migrations/*.sql`, parsed into a final schema | Every FK to `feedback` (with or without `(id)`, inline, table-level or `ALTER … ADD CONSTRAINT`) is `ON DELETE CASCADE` or `SET NULL`; the raw count of `REFERENCES feedback` equals the parsed FKs (an unreadable form fails, not passes); every `*feedback_id` / `*feedback_uuid` column outside `feedback` has an FK to it. |
 | C | `repository/feedback.rs` | Every `DELETE` in `delete_for_end_user` / `erase_all_for_end_user` binds, **in its own WHERE** (SQL comments stripped, no top-level `OR`), `tenant_id` to `scope.tenant_id()`, `project_id` to `scope.project_id()` and an end-user key to `end_user_sub` — or is `DELETE FROM feedback WHERE id = $n` with `$n` = `<row>.id`, `<row>` bound by an earlier `SELECT … FROM feedback` scoped the same way. |
 | D | `repository/feedback.rs` | `scrub_cluster_derived_text` clears `feedback_clusters.summary`, `recommendations.body`, `work_orders.instructions`, `analysis_sweeps.digest_summary`; both erasure fns call it. |
-| E | migrations × `erase_all_for_end_user` | Every table carrying an end-user identity column (`end_user_*`, `*_sub`, `voter_id`, `submitter_id`) is erased by a DELETE scoped as in C and keyed on that column — or is listed in `CASCADE_COVERED` (in `oracle.py`, with a rationale) **and** verified to hang off `feedback` by a `NOT NULL … ON DELETE CASCADE` FK. Today: `feedback`, `feedback_solicitations`, `roadmap_votes`, `feedback_board_votes` by DELETE; `submit_idempotency` by cascade. |
+| E | migrations × `erase_all_for_end_user` | Every table carrying an end-user identity column (`end_user_*`, `*_sub`, `voter_id`, `submitter_id`) is erased by a DELETE scoped as in C and keyed on that column — or is listed in `CASCADE_COVERED` (in `oracle.py`, with a rationale) **and** verified to hang off `feedback` by a `NOT NULL … ON DELETE CASCADE` FK. Today: `feedback`, `feedback_solicitations`, `roadmap_votes`, `feedback_board_votes`, `feedback_not_needed`, `board_priority_entries`, `board_sessions` by DELETE (keyed on `voter_id` / `user_sub`); `submit_idempotency` by cascade. |
+| F | migrations, parsed into a final schema | FR-FBR-60, item side: erasing one feedback row removes the board artefacts hung on it. Each table in `ITEM_SIDE` (in `oracle.py`) — `feedback_not_needed` (viewers' marks), `board_priority_entries` (list entries naming the item), `feedback_board_notes` (the owner's note) — is in the final schema and its `feedback_id` is `NOT NULL REFERENCES feedback ON DELETE CASCADE`; a dropped or renamed table fails. And no table carrying an end-user key hangs off `feedback` by anything but CASCADE (Probe B alone accepts `SET NULL`, which would leave the person's row behind). |
 | --full | `tests/me_feedback_delete.rs` | The behavioral test passes; a missing test file is a FAIL. |
 
 There is no allowlist. A new end-user-keyed table fails E until `erase_all_for_end_user` erases it.
@@ -58,3 +59,22 @@ exited 0 before and after.
 
 D1 first came back 0: SQL comments inside the string literals were not stripped. The oracle now
 strips `--` and `/* */` from every SQL literal before reading it, and C5 was added to hold that.
+
+### End-user prioritization (2026-10-13, v1.1.0)
+
+Migrations 00034–00036 added three user-keyed tables and the board note. Probe E already
+reached the user-keyed ones through `*_sub`; Probe F was added for the item side. Mutations applied
+in place to the working tree by a scratch harness (one at a time, restored after each), run
+against the real tree; the "v1.0.0" column is the oracle before Probe F, on the same mutation.
+
+| # | Mutation | v1.1.0 | v1.0.0 |
+|---|---|---|---|
+| E5 | `erase_all_for_end_user` stops deleting `feedback_not_needed` | 1 (E) | 1 |
+| E6 | `erase_all_for_end_user` stops deleting `board_priority_entries` | 1 (E) | 1 |
+| E7 | `erase_all_for_end_user` stops deleting `board_sessions` | 1 (E) | 1 |
+| E8 | the `board_sessions` DELETE keyed on `token_hash = $3` instead of `user_sub` | 1 (C, E) | 1 |
+| F1 | `feedback_board_notes.feedback_id` → `ON DELETE SET NULL` | 1 (F) | 0 |
+| F2 | `feedback_not_needed.feedback_id` → nullable `ON DELETE SET NULL` | 1 (F) | 0 |
+| F3 | `board_priority_entries.feedback_id` → `ON DELETE SET NULL` | 1 (F) | 0 |
+| F4 | a later migration drops `feedback_board_notes` | 1 (F) | 0 |
+| — | restored | 0 | 0 |

@@ -1,11 +1,11 @@
 {
   "name": "feedback-erasure-completeness",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "kind": "verification",
   "lane": "fast",
   "expected_runtime_ms": 1200,
   "cost_provenance": "measured 2026-09-30 on the dev workstation (win32, under concurrent cargo load), static mode; see docs/planning/project-checks-review-2026-09.md",
-  "question": "Does erasure leave anything behind? Single delete purges bytes before rows and scopes the DELETE's own WHERE by end_user_sub + tenant + project; bulk erase purges bytes before rows after the ownership check; every reference to feedback(id) cascades or nulls and every feedback-id column has a foreign key; every table carrying an end-user key is deleted by erase_all_for_end_user; derived text is scrubbed.",
+  "question": "Does erasure leave anything behind? Single delete purges bytes before rows and scopes the DELETE's own WHERE by end_user_sub + tenant + project; bulk erase purges bytes before rows after the ownership check; every reference to feedback(id) cascades or nulls and every feedback-id column has a foreign key; every table carrying an end-user key is deleted by erase_all_for_end_user; derived text is scrubbed; erasing one item removes its not-needed marks, priority-list entries and board note (NOT NULL ON DELETE CASCADE, FR-FBR-60).",
   "category": "security",
   "invocation": {
     "unix": ".claude/project-oracles/feedback-erasure-completeness/oracle.py",

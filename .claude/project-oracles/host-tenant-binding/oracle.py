@@ -38,6 +38,9 @@ not count), never a self-reported flag:
   Probe C -- resolution purity: one host->tenant entry point, in the repository
              crate (DEC-FBR-03), no ad-hoc Host reads elsewhere.
   Probe D -- (--full) the behavioural fixtures.
+  Probe E -- route homes: the C43 board-session / signal routes and the C44
+             owner routes are registered only inside the router fn that
+             build_app merges under their class (ROUTE_HOMES).
 
 A missing target file is a FAIL: the host layer exists in this codebase, so its
 absence is a regression, not a self-host opt-out (self-host inertness is a
@@ -110,6 +113,27 @@ ROUTERS: dict[str, tuple[str, bool, str]] = {
 }
 
 WRAPPERS = ("bind_public_routes", "bind_admin_routes", "apply_public_rate_limit")
+
+# Route homes (Probe E). Probe A sees routers, not routes: a route moved into a
+# router that is classified, but in the wrong class (say the board-session
+# exchange into `health_router`, unbound), would pass it. So each route below is
+# pinned to the router fn that must register it, and that fn to the name it is
+# merged under in build_app, whose class Probe A then enforces. Every
+# `.route("<path>"` registration of the path anywhere in the api crate must sit
+# inside that fn; a path registered nowhere FAILS.
+#   path -> (file under crates/feedbackmonk-api/src, fn name, ROUTERS name, class)
+ROUTE_HOMES: dict[str, tuple[str, str, str, str]] = {
+    # C43 (FR-FBR-44): the hosted board's sign-in handoff -- public, host-bound,
+    # rate-floored, credentialed CORS with the rest of the board.
+    "/api/v1/projects/:project_id/board/session": ("handlers/board.rs", "board_router", "board_router", PUBLIC),
+    # C43 (FR-FBR-48/50): a signed-in viewer's private signals.
+    "/api/v1/projects/:project_id/board/priorities": ("handlers/board.rs", "board_router", "board_router", PUBLIC),
+    "/api/v1/projects/:project_id/board/items/:short_code/not-needed": (
+        "handlers/board.rs", "board_router", "board_router", PUBLIC),
+    # C44 (FR-FBR-52..58): the owner's priority view and board note -- admin host only.
+    "/api/v1/admin/projects/:project_id/priority": ("handlers/moderation.rs", "routes", "moderation_router", ADMIN),
+    "/api/v1/admin/feedback/:feedback_id/board-note": ("handlers/moderation.rs", "routes", "moderation_router", ADMIN),
+}
 
 # The only files permitted to CALL the host->tenant resolver.
 RESOLVE_CALLERS_ALLOWED = {
@@ -583,6 +607,82 @@ def probe_c(ctx: Ctx, offenders: list[str]) -> str:
     return "PASS" if ok else "FAIL"
 
 
+# ----------------------------------------------------------------------------
+# Probe E -- route homes (C43 board session / signals, C44 owner surfaces)
+# ----------------------------------------------------------------------------
+
+def _fn_spans(text: str) -> list[tuple[str, int, int]]:
+    """(name, body_start, body_end) for every fn with a body in `text`."""
+    out = []
+    for m in re.finditer(r"\bfn\s+(\w+)\s*[(<]", text):
+        brace, semi = text.find("{", m.end()), text.find(";", m.end())
+        if brace == -1 or (semi != -1 and semi < brace):
+            continue
+        body = balanced(text, brace)
+        if body is not None:
+            out.append((m.group(1), brace, brace + len(body)))
+    return out
+
+
+def _exported_as(lib_text: str, module: str, fn: str) -> set[str]:
+    """Names under which lib.rs re-exports `handlers::<module>::<fn>`."""
+    names: set[str] = set()
+    for m in re.finditer(rf"\bpub\s+use\s+handlers\s*::\s*{re.escape(module)}\s*::\s*(\{{[^}}]*\}}|[^;]+);", lib_text):
+        group = m.group(1).strip()
+        items = split_top(group[1:-1]) if group.startswith("{") else [group]
+        for item in items:
+            im = re.fullmatch(r"(\w+)(?:\s+as\s+(\w+))?", item.strip())
+            if im and im.group(1) == fn:
+                names.add(im.group(2) or im.group(1))
+    return names
+
+
+def probe_e(ctx: Ctx, offenders: list[str]) -> str:
+    src = ctx.api / "src"
+    lib = src / "lib.rs"
+    if not lib.exists():
+        offenders.append(f"{ctx.rel(lib)} does not exist -- router exports cannot be resolved")
+        return "FAIL"
+    lib_text = strip_comments(lib.read_text(encoding="utf-8", errors="replace"))
+    files = {p: strip_comments(p.read_text(encoding="utf-8", errors="replace")) for p in src.rglob("*.rs")}
+    ok = True
+    for path, (home_file, home_fn, router, cls) in ROUTE_HOMES.items():
+        where = f"route `{path}`"
+        if ROUTERS.get(router, (None,))[0] != cls:
+            offenders.append(f"{where}: its home router `{router}` is not classified {cls} in ROUTERS")
+            ok = False
+        home = src / home_file
+        module = home_file[len("handlers/"):-len(".rs")] if home_file.startswith("handlers/") else None
+        if module is None or router not in _exported_as(lib_text, module, home_fn):
+            offenders.append(
+                f"{where}: {ctx.rel(lib)} does not export `handlers::{module}::{home_fn}` as `{router}` -- "
+                f"the router build_app merges under that name is not the one that registers this route"
+            )
+            ok = False
+        found = 0
+        for p, text in files.items():
+            spans = _fn_spans(text)
+            for m in re.finditer(r"\.\s*route\s*\(\s*\"" + re.escape(path) + r"\"", text):
+                found += 1
+                encl = [s for s in spans if s[1] < m.start() < s[2]]
+                inner = min(encl, key=lambda s: s[2] - s[1]) if encl else None
+                if p != home or inner is None or inner[0] != home_fn:
+                    line = text.count("\n", 0, m.start()) + 1
+                    offenders.append(
+                        f"{ctx.rel(p)}:{line}  registers {where} in `{inner[0] if inner else '<no fn>'}` -- it must "
+                        f"be registered only in `{ctx.rel(home)}::{home_fn}`, merged as the {cls} router "
+                        f"`{router}`; anywhere else it escapes that router's host binding / rate floor / CORS class"
+                    )
+                    ok = False
+        if found == 0:
+            offenders.append(
+                f"{where} is registered nowhere as a `.route(\"...\")` literal under {ctx.rel(src)} -- "
+                f"renamed or built from a constant; update ROUTE_HOMES rather than pass blind"
+            )
+            ok = False
+    return "PASS" if ok else "FAIL"
+
+
 def probe_d(ctx: Ctx, offenders: list[str]) -> str:
     cmds = [
         ["cargo", "test", "-p", "feedbackmonk-api", "--test", "host_tenant_binding"],
@@ -617,6 +717,7 @@ def main() -> int:
         "A (build_app wiring: classify + bind + rate floor + CORS)": probe_a(ctx, offenders),
         "B (host layer: admin exclusivity + cross-tenant 404)": probe_b(ctx, offenders),
         "C (resolution purity)": probe_c(ctx, offenders),
+        "E (route homes: C43 board session/signals, C44 owner routes)": probe_e(ctx, offenders),
     }
     results["D (behavioural)"] = probe_d(ctx, offenders) if args.full else "SKIP (pass --full)"
 

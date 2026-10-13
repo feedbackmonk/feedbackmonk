@@ -51,6 +51,7 @@ covers it behaviourally.
 | **A** — build_app wiring | comments stripped, then the `let app = …;` chain is parsed paren-balanced: every element is `.merge(` (a chain `.layer(`/`.route(` FAILS); no `.merge(` outside that chain; no inline `.route/.nest/.fallback`; every merged router classified (unclassified FAILS), merged once (twice FAILS), and in its class's exact shape; every classified router still merged; the wrappers' second args are `prl`/`hs`; `let cors = public_cors_layer(..)`, `let prl = PublicRateLimit::new(..)` and `FEEDBACKMONK_CORS_ORIGINS` present; `.layer(cors` appears nowhere but on a cors=yes router |
 | **B** — host layer | `bind_public_routes`/`bind_admin_routes` install `public_host_binding`/`admin_host_binding` respectively; `admin_host_binding` maps `Tenant` → `not_found()` and `AdminAlias` → `redirect_to_admin`; `public_host_binding` compares the path project's tenant to the host's tenant and 404s both mismatch and unknown; no `StatusCode::FORBIDDEN` (a 403 is an existence oracle); `effective_host` gates `x-forwarded-host` on `trust_forwarded_host` |
 | **C** — resolution purity | host resolution lives in the repository crate (`sqlx::query!` in `domains.rs`, DEC-FBR-03); no `resolve_host(` call outside the allowed files; no ad-hoc `Host` header read outside `hosting.rs` |
+| **E** — route homes | each route in `ROUTE_HOMES` (the C43 board session, priorities and not-needed routes; the C44 owner priority view and board note) is registered, as a `.route("<path>"` literal anywhere in the api crate, only inside its home fn (`handlers/board.rs::board_router`, `handlers/moderation.rs::routes`); `lib.rs` exports that fn under the name build_app merges (`board_router`, `moderation_router`); and that name is classified in the route's class. Probe A sees routers, not routes, so without E a route moved into a *classified* router of the wrong class (the session exchange into `health_router`) passes. A path registered nowhere fails |
 | **D** — behavioural (`--full`) | `cargo test --test host_tenant_binding` + `--test domains_repo` |
 
 A missing `main.rs`, `hosting.rs` or repository `domains.rs` is a **FAIL**. The former
@@ -99,6 +100,21 @@ needed. All 28 mutations exit **1**, all 28 restores exit **0**.
 | 26 | delete `hosting.rs` | B | 1 |
 | 27 | second `resolve_host(` caller in a handler | C | 1 |
 | 28 | handler reads `header::HOST` directly | C | 1 |
+
+### End-user prioritization (2026-10-13, v1.1.0)
+
+The C43 session and signal routes ride `board_router`; the C44 owner routes ride
+`moderation::routes` (merged as `moderation_router`). Probe E was added. Mutations applied in
+place to the working tree by a scratch harness, restored after each; the v1.0.0 column is the
+oracle before Probe E on the same mutation.
+
+| # | Mutation | v1.1.0 | v1.0.0 |
+|---|---|---|---|
+| H1 | the board-session route moved into a new `board_session_router`, merged fully wrapped (public shape + cors) | 1 (A unclassified, E) | 1 |
+| H2 | the priorities route moved into `health_router` (classified unbound) | 1 (E) | 0 |
+| H3 | the C44 priority and board-note routes moved into a new `owner_priority_router`, merged with `bind_admin_routes` | 1 (A unclassified, E) | 1 |
+| H4 | the C44 board-note route also registered in `board_router` (public) | 1 (E) | 0 |
+| — | restored | 0 | 0 |
 
 The paren-balanced parser matters: real arguments nest
 (`bind_public_routes(apply_public_rate_limit(board_router(state).layer(cors.clone()), prl), hs)`),
