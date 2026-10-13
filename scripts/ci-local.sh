@@ -64,6 +64,14 @@ fi
 
 if $run_tests; then
   step "cargo test --workspace  (CI test job; needs DATABASE_URL + Postgres)"
+  # Locally the URL lives in the gitignored `.env` (docs/operations/LOCAL_DEV.md);
+  # read that one variable when the caller did not export it, so a finalize or
+  # window review run from a shell without it still reaches the Rust suite.
+  # CI exports DATABASE_URL itself and has no `.env`, so it is unaffected.
+  if [ -z "${DATABASE_URL:-}" ] && [ -f .env ]; then
+    DATABASE_URL="$(grep -E '^DATABASE_URL=' .env | tail -n 1 | cut -d= -f2- | tr -d '\r')"
+    [ -n "$DATABASE_URL" ] && export DATABASE_URL && echo "(DATABASE_URL read from .env)"
+  fi
   if [ -z "${DATABASE_URL:-}" ]; then
     echo "DATABASE_URL not set — cannot run the suite. Export your dev Postgres URL, e.g.:"
     echo "  export DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev"
