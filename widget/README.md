@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-Greenfield vanilla-TS+CSS embeddable widget that customer sites load via a `<script type="module" data-project-id="...">` tag. Mounts a launcher button + accessible modal that fetches widget-config (Contract C12) once on mount, then POSTs feedback to the submission endpoint. Speaks 31 languages: the English catalog is inlined and every other locale is a lazily fetched per-locale chunk under `dist/locales/` (FR-FBR-35). Its size is reported on every check rather than capped (DEC-FBR-IMPL-36), 4 KiB per locale chunk, and zero third-party trackers — all enforced as code-level invariants by the `widget-bundle-size` Verification Oracle (FR-FBR-04, DEC-FBR-02, C42).
+Greenfield vanilla-TS+CSS embeddable widget that customer sites load via a `<script type="module" data-project-id="...">` tag. Mounts a launcher button + accessible modal that fetches widget-config (Contract C12) once on mount, then POSTs feedback to the submission endpoint. Speaks 31 languages: the English catalog is inlined and every other locale is a lazily fetched per-locale chunk under `dist/locales/` (FR-FBR-35). Its size is reported on every check rather than capped (DEC-FBR-IMPL-36); each locale chunk must be a flat map of strings, and there are zero third-party trackers. Both are enforced as code-level invariants by the `widget-bundle-size` Verification Oracle (FR-FBR-04, DEC-FBR-02, C42).
 
 ## Purpose & Responsibilities
 
@@ -251,30 +251,21 @@ scripts loaded at runtime.
 
 ### Hard invariants (oracle-enforced)
 
-1. **English page-load set ≤ 30720 bytes**. Sum of the **top-level**
-   `dist/*.{js,mjs,css}` byte counts — `widget.js` + `widget.css` +
-   `redact.js`. `widget-bundle-size` Probe A. FR-FBR-04. Current: **29,836 B
-   used / 884 B headroom** (widget.js 21,601 + widget.css 5,390 + redact.js
-   2,845).
+1. **English page-load size is reported, never capped** (DEC-FBR-IMPL-36,
+   superseding the former 30720-byte cap and FR-FBR-04's byte figure).
+   `widget-bundle-size` prints the sum of the **top-level**
+   `dist/*.{js,mjs,css}` byte counts (`widget.js` + `widget.css` +
+   `redact.js`, pre-gzip) and every locale chunk on every run, and never
+   fails on a number. "Lightweight" is still the goal: judge a change by what
+   it costs a visitor, with the printed size in front of you, not by a
+   threshold. The page-load set excludes the locale chunks because summing all
+   31 would measure a page load nobody performs.
 
-   Localization redefined the measured SET, never the cap: before FR-FBR-35,
-   "everything under `dist/`" and "what a page load fetches" were the same
-   number; with 30 locale chunks they are not, and summing all 31 would measure
-   a page load nobody performs while letting one oversized chunk hide inside
-   the total. `SIZE_CAP_BYTES` is the same 30720 it has always been, and
-   Probe C (below) is a new, additional ceiling.
-
-   **If a future string does not fit**: the next lever is dropping the
-   redundant `widget.` prefix from the inlined catalog and the `t()` call sites
-   (the widget only ever reads its own namespace) — a mechanical **~735 B**,
-   deliberately left unspent so the code and the catalog files share one key
-   vocabulary. Raising the cap is not on the list.
-
-1b. **Each locale chunk ≤ 4096 bytes**, `dist/locales/*.js`.
-   `widget-bundle-size` Probe C, Contract C42. A chunk is a flat map of ~59
-   short strings; one that trips this is carrying something that is not
-   strings. Current largest: 53 B (the catalogs are untranslated skeletons
-   until the owner runs `/1-translate`).
+1b. **Each locale chunk is a flat map of strings**, `dist/locales/*.js`
+   (Contract C42). `widget-bundle-size` checks the content directly: a chunk
+   must map `widget.*` keys to strings and carry nothing else. This replaced
+   the former 4096-byte per-chunk cap, a size proxy that passed a small chunk
+   of code and failed a long honest translation.
 2. **Zero third-party tracker hostnames in built artifacts**.
    `widget-bundle-size` Probe B reads `expected-trackers.txt` and greps
    every `dist/*` file. DEC-FBR-02 brand promise.
@@ -350,8 +341,8 @@ scripts loaded at runtime.
   — CSP-safe under the embedder's existing `script-src` for the CDN origin; no
   policy change). `redact.ts` imports nothing from the base modules so Rollup
   keeps the entry a single `widget.js` instead of emitting a shared-chunk stub.
-  Note: the size oracle still counts the chunk — splitting is a *runtime*
-  base-load win, not an oracle-budget win.
+  Note: the size oracle still reports the chunk in the page-load set —
+  splitting is a *runtime* base-load win.
 - **Console capture is embedder opt-in, default OFF** (`data-capture-console`
   / `captureConsole`): privacy-by-default per DEC-FBR-02. When enabled, a
   bounded ring buffer captures `console.*` from mount, and a per-submission
@@ -372,7 +363,7 @@ scripts loaded at runtime.
   the `.gitignore` note). The `build` script now runs `vite build` then an
   explicit `terser … --module` pass per JS file (preserves ESM exports + the
   `import("./redact.js")` dynamic import). CSS is minified fine by vite. This
-  recovered ~10 KB and is what keeps the feature under the 30 KB cap.
+  recovered ~10 KB of the page-load size the oracle reports.
 - **Default `--fbm-primary` is blue-600 (#2563eb), not blue-500**: white text
   on blue-500 (#3b82f6) is only 3.67:1 — a real WCAG-AA contrast failure on the
   launcher + primary buttons, surfaced the first time the e2e harness was made
