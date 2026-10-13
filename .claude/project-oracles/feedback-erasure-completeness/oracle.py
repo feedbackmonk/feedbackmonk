@@ -23,6 +23,11 @@ A happy-path "the row is gone" test cannot see any of the failures below.
      the parser misses fails instead of passing; and every `*feedback_id`
      column outside `feedback` carries an FK to feedback (a feedback-id column
      with no FK survives erasure pointing at nothing, or at a recycled id).
+     The final schema models `DROP CONSTRAINT` / `RENAME CONSTRAINT` (by the
+     explicit name, or Postgres's default `<table>_<cols>_fkey`), `DROP
+     [COLUMN]` and `DROP TABLE`, each taking its FKs with it; a dropped or
+     renamed constraint name that resolves to nothing known (and is not a
+     default pkey/key/check/excl name) fails here instead of passing blind.
 
   C) SCOPED DELETES (repository feedback.rs): every `DELETE` statement inside
      `delete_for_end_user` / `erase_all_for_end_user` is scoped IN ITS OWN
@@ -381,6 +386,47 @@ class Fk:
     column: str
     target: str
     on_delete: Optional[str]
+    name: str = ""  # the constraint's name: explicit, or Postgres's default
+
+
+@dataclass
+class Schema:
+    """The final schema after every migration, in order.
+
+    `fks` are the FKs still standing; `declared_to_feedback` counts every FK to
+    feedback ever parsed (dropped ones included), which is what the raw
+    `REFERENCES feedback` count must equal; `unresolved` lists each
+    `DROP CONSTRAINT` / `RENAME CONSTRAINT` whose name matched nothing known
+    (where, table, name) -- the parse cannot vouch for the schema after it.
+    """
+    tables: Dict[str, Dict[str, Column]]
+    fks: List[Fk]
+    raw_refs: int
+    declared_to_feedback: int
+    unresolved: List[Tuple[str, str, str]]
+
+
+NAMEDATALEN = 64
+# Postgres default-name labels for constraints that are NOT foreign keys
+# (primary key, unique, check, exclusion); an FK's default label is `fkey`.
+NON_FK_DEFAULT_RE = re.compile(r"_(pkey|key|check|excl)$")
+
+
+def pg_default_name(table: str, cols: List[str], label: str) -> str:
+    """Postgres's makeObjectName(table, cols joined by `_`, label), with its
+    NAMEDATALEN truncation (the longer part loses a char until it fits). A
+    collision suffix (`_fkey1`) is not modelled: such a name stays unresolved
+    and fails closed."""
+    name2 = "_".join(cols)
+    overhead = len(label) + 1 + (1 if name2 else 0)
+    avail = NAMEDATALEN - 1 - overhead
+    n1, n2 = len(table), len(name2)
+    while n1 + n2 > avail:
+        if n1 > n2:
+            n1 -= 1
+        else:
+            n2 -= 1
+    return f"{table[:n1]}_{name2[:n2]}_{label}" if name2 else f"{table[:n1]}_{label}"
 
 
 def strip_sql_comments(text: str) -> str:
@@ -414,10 +460,38 @@ def _fk_of(text: str) -> Tuple[Optional[str], Optional[str]]:
     return m.group(1).lower(), (re.sub(r"\s+", " ", od.group(1).upper()) if od else None)
 
 
-def parse_schema(mig_dir: Path) -> Tuple[Dict[str, Dict[str, Column]], List[Fk], int]:
+def parse_schema(mig_dir: Path) -> Schema:
     tables: Dict[str, Dict[str, Column]] = {}
     fks: List[Fk] = []
     raw_refs = 0
+    declared_to_feedback = 0
+    unresolved: List[Tuple[str, str, str]] = []
+    # table -> constraint name -> the Fk it names, or None for a named non-FK.
+    cons: Dict[str, Dict[str, Optional[Fk]]] = {}
+
+    def register_fk(fk: Fk):
+        nonlocal declared_to_feedback
+        fks.append(fk)
+        cons.setdefault(fk.table, {})[fk.name] = fk
+        if fk.target == "feedback":
+            declared_to_feedback += 1
+
+    def refresh_col(table: str, column: str):
+        """A column's FK is whatever standing FK still covers it."""
+        col = tables.get(table, {}).get(column)
+        if col is None:
+            return
+        live = [f for f in fks if f.table == table and f.column == column]
+        col.fk_table, col.on_delete = (live[-1].target, live[-1].on_delete) if live else (None, None)
+
+    def drop_fks(pred):
+        gone = [f for f in fks if pred(f)]
+        for f in gone:
+            fks.remove(f)
+            if cons.get(f.table, {}).get(f.name) is f:
+                del cons[f.table][f.name]
+        for f in gone:
+            refresh_col(f.table, f.column)
 
     def add_col(table: str, item: str, where: str):
         m = re.match(r'(?:IF\s+NOT\s+EXISTS\s+)?"?(\w+)"?\s+(.*)$', item, re.IGNORECASE | re.DOTALL)
@@ -427,19 +501,38 @@ def parse_schema(mig_dir: Path) -> Tuple[Dict[str, Dict[str, Column]], List[Fk],
         tgt, od = _fk_of(rest)
         col = Column(name, rest, bool(re.search(r"\bNOT\s+NULL\b|\bPRIMARY\s+KEY\b", rest, re.I)), tgt, od)
         tables.setdefault(table, {})[name] = col
+        for cm in re.finditer(r"\bCONSTRAINT\s+\"?(\w+)\"?\s+(\w+)", rest, re.I):
+            if cm.group(2).upper() != "REFERENCES":
+                cons.setdefault(table, {})[cm.group(1).lower()] = None
         if tgt:
-            fks.append(Fk(where, table, name, tgt, od))
+            named = re.search(r"\bCONSTRAINT\s+\"?(\w+)\"?\s+REFERENCES\b", rest, re.I)
+            fk_name = named.group(1).lower() if named else pg_default_name(table, [name], "fkey")
+            register_fk(Fk(where, table, name, tgt, od, fk_name))
 
     def add_constraint(table: str, item: str, where: str):
+        named = re.match(r"(?:ADD\s+)?CONSTRAINT\s+\"?(\w+)\"?", item, re.IGNORECASE)
         m = re.search(r"\bFOREIGN\s+KEY\s*\(([^)]*)\)", item, re.IGNORECASE)
         tgt, od = _fk_of(item)
         if m and tgt:
-            for c in split_top(m.group(1)):
-                c = c.strip('" ').lower()
-                fks.append(Fk(where, table, c, tgt, od))
-                col = tables.get(table, {}).get(c)
-                if col:
-                    col.fk_table, col.on_delete = tgt, od
+            cols = [c.strip('" ').lower() for c in split_top(m.group(1))]
+            fk_name = named.group(1).lower() if named else pg_default_name(table, cols, "fkey")
+            for c in cols:
+                register_fk(Fk(where, table, c, tgt, od, fk_name))
+                refresh_col(table, c)
+        elif named:
+            cons.setdefault(table, {})[named.group(1).lower()] = None
+
+    def drop_constraint(table: str, name: str, where: str):
+        known = cons.get(table, {})
+        if name in known:
+            hit = known.pop(name)
+            if hit is not None:
+                drop_fks(lambda f: f.table == table and f.name == name)
+        elif not NON_FK_DEFAULT_RE.search(name):
+            # Not a constraint this parse saw named, and not a default-named
+            # pkey/unique/check/exclusion: it may be an FK whose name the parser
+            # cannot reproduce. Fail closed rather than keep the FK standing.
+            unresolved.append((where, table, name))
 
     for sql in sorted(mig_dir.glob("*.sql")):
         text = strip_sql_comments(sql.read_text(encoding="utf-8"))
@@ -468,9 +561,28 @@ def parse_schema(mig_dir: Path) -> Tuple[Dict[str, Dict[str, Column]], List[Fk],
                     if re.match(r"ADD\s+(CONSTRAINT|FOREIGN)\b", act, re.I):
                         add_constraint(t, act, where)
                         continue
-                    dm = re.match(r"DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?(\w+)", act, re.I)
+                    dm = re.match(r"DROP\s+CONSTRAINT\s+(?:IF\s+EXISTS\s+)?\"?(\w+)\"?", act, re.I)
                     if dm:
-                        tables.get(t, {}).pop(dm.group(1).lower(), None)
+                        drop_constraint(t, dm.group(1).lower(), where)
+                        continue
+                    rm = re.match(r"RENAME\s+CONSTRAINT\s+\"?(\w+)\"?\s+TO\s+\"?(\w+)\"?", act, re.I)
+                    if rm:
+                        old, new = rm.group(1).lower(), rm.group(2).lower()
+                        if old in cons.get(t, {}):
+                            hit = cons[t].pop(old)
+                            cons[t][new] = hit
+                            for f in fks:
+                                if f.table == t and f.name == old:
+                                    f.name = new
+                        elif not NON_FK_DEFAULT_RE.search(old):
+                            unresolved.append((where, t, old))
+                        continue
+                    dm = re.match(r"DROP\s+(?:COLUMN\s+)?(?:IF\s+EXISTS\s+)?\"?(\w+)\"?", act, re.I)
+                    if dm and dm.group(1).upper() != "CONSTRAINT":
+                        c = dm.group(1).lower()
+                        tables.get(t, {}).pop(c, None)
+                        # Postgres drops every constraint that covers the column.
+                        drop_fks(lambda f: f.table == t and f.column == c)
                         continue
                     nm = re.match(r"ALTER\s+COLUMN\s+(\w+)\s+(SET|DROP)\s+NOT\s+NULL", act, re.I)
                     if nm and nm.group(1).lower() in tables.get(t, {}):
@@ -478,8 +590,11 @@ def parse_schema(mig_dir: Path) -> Tuple[Dict[str, Dict[str, Column]], List[Fk],
                 continue
             m = re.match(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\w+)", s, re.I)
             if m:
-                tables.pop(m.group(1).lower(), None)
-    return tables, fks, raw_refs
+                t = m.group(1).lower()
+                tables.pop(t, None)
+                drop_fks(lambda f: f.table == t)
+                cons.pop(t, None)
+    return Schema(tables, fks, raw_refs, declared_to_feedback, unresolved)
 
 
 # ---------------------------------------------------------------------------
@@ -604,17 +719,23 @@ def probe_a(P: Paths) -> List[str]:
     return offs
 
 
-def probe_b(P: Paths, schema) -> List[str]:
-    tables, fks, raw_refs = schema
+def probe_b(P: Paths, schema: Schema) -> List[str]:
+    tables, fks, raw_refs = schema.tables, schema.fks, schema.raw_refs
     offs: List[str] = []
     to_fb = [f for f in fks if f.target == "feedback"]
     for f in to_fb:
         if f.on_delete not in ("CASCADE", "SET NULL"):
             offs.append(f"{f.where}: `{f.table}.{f.column}` REFERENCES feedback with "
                         f"ON DELETE {f.on_delete or 'NO ACTION (default)'} — blocks erasure or orphans child rows.")
-    if raw_refs != len(to_fb):
-        offs.append(f"migrations: {raw_refs} `REFERENCES feedback` occurrences but only {len(to_fb)} parsed "
-                    "as FKs — a form this oracle cannot read; extend the parser rather than pass blind.")
+    if raw_refs != schema.declared_to_feedback:
+        offs.append(f"migrations: {raw_refs} `REFERENCES feedback` occurrences but only "
+                    f"{schema.declared_to_feedback} parsed as FKs — a form this oracle cannot read; extend the "
+                    "parser rather than pass blind.")
+    for where, t, name in schema.unresolved:
+        offs.append(f"{where}: `ALTER TABLE {t}` drops or renames constraint `{name}`, which matches no constraint "
+                    "this oracle parsed (explicit name or Postgres default `<table>_<cols>_fkey`) and is not a "
+                    "default pkey/key/check/excl name — if it is an FK to feedback the parsed schema is wrong; "
+                    "use the declared name, or extend the parser rather than pass blind.")
     for t, cols in sorted(tables.items()):
         if t == "feedback":
             continue
@@ -700,8 +821,8 @@ def probe_d(P: Paths) -> List[str]:
     return offs
 
 
-def probe_e(P: Paths, schema) -> List[str]:
-    tables, _fks, _ = schema
+def probe_e(P: Paths, schema: Schema) -> List[str]:
+    tables = schema.tables
     offs: List[str] = []
     src = _load(P.repo_feedback, P, offs)
     if src is None:
@@ -740,7 +861,7 @@ def probe_f(P: Paths, schema) -> List[str]:
     with it. Named tables (ITEM_SIDE) hang off feedback by a NOT NULL CASCADE
     FK; and generally, no table keyed to a person may hang off feedback by
     SET NULL (the person's row would outlive the item it was about)."""
-    tables, fks, _ = schema
+    tables, fks = schema.tables, schema.fks
     offs: List[str] = []
     for t, why in sorted(ITEM_SIDE.items()):
         if t not in tables:

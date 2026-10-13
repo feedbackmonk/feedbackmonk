@@ -1,0 +1,109 @@
+[
+ {
+  "id": "E5",
+  "why": "erase_all_for_end_user stops deleting feedback_not_needed",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-repository/src/feedback.rs",
+    "old": "        sqlx::query!(\n            r#\"\n            DELETE FROM feedback_not_needed\n            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3\n            \"#,\n            scope.tenant_id(),\n            scope.project_id(),\n            end_user_sub,\n        )\n        .execute(&mut *tx)\n        .await?;\n",
+    "new": ""
+   }
+  ]
+ },
+ {
+  "id": "E6",
+  "why": "erase_all_for_end_user stops deleting board_priority_entries",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-repository/src/feedback.rs",
+    "old": "        sqlx::query!(\n            r#\"\n            DELETE FROM board_priority_entries\n            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3\n            \"#,\n            scope.tenant_id(),\n            scope.project_id(),\n            end_user_sub,\n        )\n        .execute(&mut *tx)\n        .await?;\n",
+    "new": ""
+   }
+  ]
+ },
+ {
+  "id": "E7",
+  "why": "erase_all_for_end_user stops deleting board_sessions",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-repository/src/feedback.rs",
+    "old": "        sqlx::query!(\n            r#\"\n            DELETE FROM board_sessions\n            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3\n            \"#,\n            scope.tenant_id(),\n            scope.project_id(),\n            end_user_sub,\n        )\n        .execute(&mut *tx)\n        .await?;\n",
+    "new": ""
+   }
+  ]
+ },
+ {
+  "id": "E8",
+  "why": "the board_sessions DELETE keyed on token_hash = $3 instead of user_sub",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-repository/src/feedback.rs",
+    "old": "DELETE FROM board_sessions\n            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3",
+    "new": "DELETE FROM board_sessions\n            WHERE tenant_id = $1 AND project_id = $2 AND token_hash = $3"
+   }
+  ]
+ },
+ {
+  "id": "F1",
+  "why": "feedback_board_notes.feedback_id -> ON DELETE SET NULL",
+  "edits": [
+   {
+    "file": "migrations/00036_feedback_board_notes.sql",
+    "old": "feedback_id UUID PRIMARY KEY REFERENCES feedback(id) ON DELETE CASCADE",
+    "new": "feedback_id UUID PRIMARY KEY REFERENCES feedback(id) ON DELETE SET NULL"
+   }
+  ]
+ },
+ {
+  "id": "F2",
+  "why": "feedback_not_needed.feedback_id -> nullable ON DELETE SET NULL",
+  "edits": [
+   {
+    "file": "migrations/00035_board_signals.sql",
+    "old": "    feedback_id UUID NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,\n    user_sub    TEXT NOT NULL CHECK (char_length(user_sub) BETWEEN 1 AND 512),\n    marked_at",
+    "new": "    feedback_id UUID REFERENCES feedback(id) ON DELETE SET NULL,\n    user_sub    TEXT NOT NULL CHECK (char_length(user_sub) BETWEEN 1 AND 512),\n    marked_at"
+   }
+  ]
+ },
+ {
+  "id": "F3",
+  "why": "board_priority_entries.feedback_id -> ON DELETE SET NULL",
+  "edits": [
+   {
+    "file": "migrations/00035_board_signals.sql",
+    "old": "    feedback_id UUID NOT NULL REFERENCES feedback(id) ON DELETE CASCADE,\n    -- 0-based",
+    "new": "    feedback_id UUID NOT NULL REFERENCES feedback(id) ON DELETE SET NULL,\n    -- 0-based"
+   }
+  ]
+ },
+ {
+  "id": "F4",
+  "why": "a later migration drops feedback_board_notes",
+  "edits": [
+   {
+    "file": "migrations/00099_mut_drop_notes.sql",
+    "content": "DROP TABLE feedback_board_notes;\n"
+   }
+  ]
+ },
+ {
+  "id": "G1",
+  "why": "C-001: a later migration drops feedback_not_needed's feedback FK by its Postgres default name",
+  "edits": [
+   {
+    "file": "migrations/00099_mut_drop_fk.sql",
+    "content": "ALTER TABLE feedback_not_needed DROP CONSTRAINT feedback_not_needed_feedback_id_fkey;\n"
+   }
+  ]
+ },
+ {
+  "id": "G2",
+  "why": "C-001 fail-closed: a later migration drops a constraint whose name resolves to nothing the parser knows",
+  "edits": [
+   {
+    "file": "migrations/00099_mut_drop_fk.sql",
+    "content": "ALTER TABLE feedback_not_needed DROP CONSTRAINT IF EXISTS not_needed_item_ref;\n"
+   }
+  ]
+ }
+]

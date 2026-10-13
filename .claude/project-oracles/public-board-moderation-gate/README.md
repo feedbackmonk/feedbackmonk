@@ -99,5 +99,16 @@ harness and method; the oracle unchanged at v1.2.0.
 | M12 `board_signals.rs::save_priority_list` drops its `resolve_pool_board_items(..)` call (the codes map to fixed `PoolItem`s) | exit 1: `board.rs:616 (public_board_priorities_put): .board_votes.signals().save_priority_list(..) ... writes before (or without) calling resolve_pool_board_items` |
 | restored | exit 0 |
 
+**Re-running the mutations.** M12 is recorded in `mutations.json` and replayed by
+`mutations.py`, which copies `crates/` and `migrations/` from the source tree into a temporary
+directory, checks the unmutated copy exits 0, applies each row alone to the copy, runs this
+`oracle.py --root <copy>` and requires exit 1, then restores the copy. The working tree is only
+read. From the repository root:
+
+    python .claude/project-oracles/public-board-moderation-gate/mutations.py [--root <tree>] [--only M12 ...]
+
+Exit 0 means the clean copy is green and every row red. M1–M11 predate the recorded harness and
+are not in `mutations.json`.
+
 Known static boundary: C29 inv. 2 (board-disabled project returns 404 on the read path) is
 covered by Probe C (`board_moderation_gate.rs::board_disabled_project_404s`), not statically.
