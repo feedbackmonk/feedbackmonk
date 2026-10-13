@@ -30,8 +30,8 @@ is accepted.
 #### FR-FBR-44: A signed-in identity reaches the hosted board only through a one-time token handoff [PLANNED]
 
 **Priority**: Must
-The hosted board accepts a customer-signed end-user JWT exactly once, carried in the URL fragment
-(never the query string or path) and posted to an exchange endpoint. That endpoint verifies the
+The hosted board receives a customer-signed end-user JWT only in the URL fragment (never the
+query string or path), and the board client posts it once to an exchange endpoint and discards it. That endpoint verifies the
 token with the existing verifier (audience = project) and returns a board session. The session is
 an HttpOnly, Secure, host-only cookie scoped to that one project. It lasts at most 8 hours from the
 exchange and cannot be extended without a fresh handoff. The board session carries the JWT's `sub`

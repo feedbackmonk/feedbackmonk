@@ -42,8 +42,10 @@ For every route under `/api/v1/projects/{project_id}/board…`:
    (audience = project) wins, else a live board-session cookie for this project, else anonymous. A
    bearer token that fails verification is the existing JWT error response, never a silent downgrade.
 4. If `BoardSettings::board_access == SignedIn` and the viewer is anonymous → **401**
-   `{"error":"SignInRequired"}` (`sign_in_required_response()`), on every read and write. The UI
-   renders a sign-in prompt for this body and "board not available" for the 404.
+   `{"error":"SignInRequired"}` (`sign_in_required_response()`), on every read and write **except
+   the three `/board/session` routes**, which are how an anonymous viewer becomes signed in (critic
+   C-001, collab-20261013-145347). The UI renders a sign-in prompt for this body and "board not
+   available" for the 404.
 5. Writes that need a person (not-needed, priority list) refuse an anonymous viewer with the same
    **401 SignInRequired** on a `public` board too (DEC-FBR-20).
 6. The moderation gate runs before every write (FR-FBR-61): votes resolve through
@@ -149,6 +151,12 @@ response (401). On success: random 32-byte token, `hash_board_session_token` sto
 new handoff mints a new one). All three return `{ "signed_in": bool, "expires_at": "…" | null }`.
 `DELETE` ends the session and expires the cookie. The token is accepted **only** in this `POST`
 body — never in a query string, path or header of a board page request.
+
+**Single use is not a server guarantee** (critic C-002). The schema keeps no consumed-token record,
+and none is wanted: a customer-signed JWT is already a bearer credential for its own lifetime (the
+board accepts it as `Authorization: Bearer` on every route), so refusing a second exchange would
+deny a token holder nothing it lacks. What is frozen is that the token travels only in the fragment
+and this `POST` body, and that the board client exchanges it once and discards it.
 
 The board client (`SignInHandoff`) reads `#token=` from the fragment, `POST`s it, then
 `history.replaceState`s the URL without the fragment before navigating on (FR-FBR-44).
