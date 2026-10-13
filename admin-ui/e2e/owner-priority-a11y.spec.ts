@@ -215,7 +215,11 @@ for (const browser of LOCALES) {
       await expect(group.getByRole("radio", { name: "Anyone with the link" })).toBeChecked();
       await expectNoAxeViolations(page, `board settings with access (${browser})`);
 
-      await group.getByRole("radio", { name: "Signed-in users only" }).check();
+      // `click`, not `check`: the radio is controlled by the SAVED setting and
+      // flips only once the PATCH answers, so `check()`'s immediate
+      // state-changed assertion races the fake server under load.
+      // `toBeChecked` then waits for the confirmed state.
+      await group.getByRole("radio", { name: "Signed-in users only" }).click();
       await expect(group.getByRole("radio", { name: "Signed-in users only" })).toBeChecked();
       expect(state.patches).toEqual([{ board_access: "signed_in" }]);
     });
