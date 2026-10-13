@@ -1,0 +1,30 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT h.to_status, h.transitioned_at\n            FROM feedback_status_history AS h\n            JOIN feedback AS f ON f.id = h.feedback_id\n            WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.id = $3\n              AND f.moderation_status = 'approved'\n            ORDER BY h.transitioned_at ASC, h.id ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "to_status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "transitioned_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "98ef5eb68aae05f90e29e2a69c89701a02427da1afe8531d8d0eedfce9f3afba"
+}

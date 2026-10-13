@@ -1,0 +1,36 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE projects\n            SET board_access = $3\n            WHERE id = $1 AND tenant_id = $2\n            RETURNING public_board_enabled, board_requires_moderation, board_access\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "public_board_enabled",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "board_requires_moderation",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "board_access",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0ed8e7d203e4e822eee39fd2d27394e586e49687d8cb9fc9eb8aa779cb88b1d5"
+}

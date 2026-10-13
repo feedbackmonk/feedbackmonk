@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM board_priority_entries\n            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "0be84c17b6c80a05db8530f8c18cd18ec9d6223b840ed376d19e8c2dc08be3ca"
+}

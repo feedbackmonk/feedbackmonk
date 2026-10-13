@@ -9,10 +9,12 @@
 #![deny(unsafe_code)]
 
 pub mod action_type;
+pub mod board_signals;
 pub mod hosting;
 pub mod ids;
 pub mod models;
 pub mod moderation;
+pub mod priority;
 pub mod rating;
 pub mod roadmap;
 pub mod sentiment;
@@ -23,6 +25,10 @@ pub mod tier;
 pub mod work_order;
 
 pub use action_type::ActionType;
+pub use board_signals::{
+    in_ranking_pool, BoardAccess, ViewerItemState, BOARD_SESSION_MAX_AGE_SECS,
+    RANKING_POOL_EXCLUDED_STATUSES,
+};
 pub use hosting::{
     normalize_host, subdomain_label_of, validate_subdomain_label, DomainKind, DomainStatus,
     DomainValueError, SubdomainError, RESERVED_LABELS,
@@ -34,6 +40,9 @@ pub use models::{
 };
 pub use moderation::{
     event_type_for_target, legal_moderation_transitions_from, ModerationError, ModerationStatus,
+};
+pub use priority::{
+    fit_priority, preference_weight, PriorityFit, PriorityFitConfig, RankedItem, UnrankedItem,
 };
 pub use rating::{Rating, RatingOutOfRange};
 pub use roadmap::{RoadmapItem, RoadmapItemStatus, RoadmapVote, RoadmapVoterMode};

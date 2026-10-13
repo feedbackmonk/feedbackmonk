@@ -17,6 +17,9 @@ The customer-embeddable public board surface for the Public Feedback Board + Mod
 | File | Role |
 |---|---|
 | `PublicBoard.tsx` | Page component — query + loading/empty/error/board-disabled/list states; `BoardItemRow` renders one approved item |
+| `BoardItemDetail.tsx` | Board item detail page (FR-FBR-57/58/59, Contract C43) — stub until the `public-ui` piece builds it |
+| `MyPriorities.tsx` | A signed-in viewer's priority list (FR-FBR-50/51, Contract C43) — stub until the `public-ui` piece builds it |
+| `SignInHandoff.tsx` | One-time `#token=` handoff to a board session (FR-FBR-44, Contract C43) — stub until the `public-ui` piece builds it |
 | `__tests__/PublicBoard.test.tsx` | Vitest suite — list render + vote button, **vote-cast on click (C30)**, **privacy-leak guard**, empty state, board-disabled (404) state |
 
 E2E a11y coverage lives in `admin-ui/e2e/public-board-a11y.spec.ts` (Playwright + axe-core, idle + board-disabled + the `en`/`de`/`fa` locale matrix, 0 violations).

@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO board_priority_entries (tenant_id, project_id, user_sub, feedback_id, position)\n            SELECT $1, $2, $3, t.feedback_id, t.position\n            FROM UNNEST($4::uuid[], $5::int4[]) AS t(feedback_id, position)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "UuidArray",
+        "Int4Array"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "bf8ba442d1012d17477a3817ee1fc5cd55664a5d429b88c897a7d77eb1f79044"
+}

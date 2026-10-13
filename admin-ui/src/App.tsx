@@ -5,6 +5,10 @@ import { FeedbackDrawer } from "./pages/FeedbackDrawer";
 import { AdminRoadmap } from "./pages/roadmap/AdminRoadmap";
 import { PublicRoadmap } from "./pages/roadmap/PublicRoadmap";
 import { PublicBoard } from "./pages/board/PublicBoard";
+import { BoardItemDetail } from "./pages/board/BoardItemDetail";
+import { MyPriorities } from "./pages/board/MyPriorities";
+import { SignInHandoff } from "./pages/board/SignInHandoff";
+import { OwnerPriority } from "./pages/priority/OwnerPriority";
 import { TierSettings } from "./pages/settings/TierSettings";
 import { RunnerTokens } from "./pages/settings/RunnerTokens";
 import { BoardSettings } from "./pages/settings/BoardSettings";
@@ -42,6 +46,10 @@ import { useAdminLocaleDefault } from "./i18n/useAdminLocaleDefault";
 //   /admin/autopilot/work-orders/:id         → WorkOrderDetail (state + ledger + owner actions)
 //   /public/projects/:projectId/roadmap      → PublicRoadmap (no admin chrome; project-segmented per Contract C15)
 //   /public/projects/:projectId/board        → PublicBoard (no admin chrome; approved-only public board per Contract C29)
+//   /public/projects/:projectId/board/items/:shortCode → BoardItemDetail (public detail record, Contract C43)
+//   /public/projects/:projectId/board/priorities       → MyPriorities (signed-in viewer's priority list, C43)
+//   /public/projects/:projectId/board/sign-in          → SignInHandoff (#token= fragment → board session, C43)
+//   /admin/priority                          → OwnerPriority (aggregate priority beside votes + not-needed, Contract C44)
 //   /  and  /board                           → TenantHostLanding (board for THIS host's tenant, FR-FBR-32)
 //   /roadmap                                 → TenantHostLanding (roadmap for THIS host's tenant)
 //   anything else                            → redirect to /feedback (or /login when API 401s)
@@ -75,6 +83,34 @@ export function App() {
   // cross-tenant addressable (mirrors the public roadmap route). Shows only
   // approved feedback; a board-disabled project 404s server-side and the page
   // renders a clean "not available" state (Contract C29).
+  // End-user prioritization (Contract C43). Deeper board routes first; each
+  // is project-segmented like the board itself, with no admin chrome.
+  const boardItem = pathname.match(
+    /^\/public\/projects\/([^/]+)\/board\/items\/([^/]+)\/?$/,
+  );
+  if (boardItem) {
+    return (
+      <BoardItemDetail
+        projectId={decodeURIComponent(boardItem[1])}
+        shortCode={decodeURIComponent(boardItem[2])}
+      />
+    );
+  }
+  const boardPriorities = pathname.match(
+    /^\/public\/projects\/([^/]+)\/board\/priorities\/?$/,
+  );
+  if (boardPriorities) {
+    return <MyPriorities projectId={decodeURIComponent(boardPriorities[1])} />;
+  }
+  // The token arrives in the URL FRAGMENT (never the query or path), which the
+  // router does not see; the page reads and clears it (FR-FBR-44).
+  const boardSignIn = pathname.match(
+    /^\/public\/projects\/([^/]+)\/board\/sign-in\/?$/,
+  );
+  if (boardSignIn) {
+    return <SignInHandoff projectId={decodeURIComponent(boardSignIn[1])} />;
+  }
+
   const publicBoard = pathname.match(
     /^\/public\/projects\/([^/]+)\/board\/?$/,
   );
@@ -130,6 +166,10 @@ export function App() {
   }
   if (pathname === "/admin/moderation" || pathname === "/admin/moderation/") {
     return <ModerationQueue />;
+  }
+  // Owner priority view (Contract C44). Project-less, sole-project resolution.
+  if (pathname === "/admin/priority" || pathname === "/admin/priority/") {
+    return <OwnerPriority />;
   }
 
   // P5a autopilot surface (FR-FBR-21). Project-less admin URLs (sole-project

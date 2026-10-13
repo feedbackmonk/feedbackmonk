@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT count(*) AS \"count!\"\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2\n              AND f.moderation_status = 'approved'\n              AND ($3::text IS NULL OR f.kind = $3)\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "2498c4dd5f72711ab59155dd9da5c7296c03c6bbfb68b754996d2e068e33fa19"
+}

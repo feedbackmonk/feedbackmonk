@@ -53,6 +53,15 @@ pub mod voting_common;
 pub mod board;
 pub mod moderation;
 
+// End-user prioritization (Contracts C43/C44, FR-FBR-42..61):
+//   board_session — hosted-board sign-in handoff + board session (C43). Its
+//                   routes register inside `board::board_router`.
+//   board_admin   — owner priority view + board note (C44). Its routes
+//                   register from `moderation::routes`.
+// Neither adds a router to `build_app`.
+pub mod board_admin;
+pub mod board_session;
+
 // P3 Stage 1: admin tier-status endpoint (FR-FBR-14, Contract C17).
 pub mod admin_tier;
 

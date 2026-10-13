@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM board_priority_entries\n            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "f833cf1dbf8433a5771ea4906c84a14aae501535a7ddc94af335358703b5fcf6"
+}

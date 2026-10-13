@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                f.short_code,\n                left(f.body, 200) AS body_excerpt,\n                f.status,\n                f.accepted_at,\n                (SELECT count(*) FROM feedback_board_votes v WHERE v.feedback_id = f.id) AS \"vote_count!\",\n                (SELECT count(*) FROM feedback_not_needed n WHERE n.feedback_id = f.id) AS \"not_needed_count!\"\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2\n              AND f.moderation_status = 'approved'\n              AND f.kind = 'feature'\n              AND f.status NOT IN ('shipped', 'wontfix', 'duplicate')\n            ORDER BY f.short_code ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "body_excerpt",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "accepted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "vote_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 5,
+        "name": "not_needed_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null,
+      false,
+      false,
+      null,
+      null
+    ]
+  },
+  "hash": "a3ec4137203030bc7ec03a35684a6bd345e6b44a5e544cddc4ea095dd0d59acd"
+}

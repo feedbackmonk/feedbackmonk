@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO feedback_not_needed (tenant_id, project_id, feedback_id, user_sub)\n            VALUES ($1, $2, $3, $4)\n            ON CONFLICT (feedback_id, user_sub) DO NOTHING\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d05d2a26140c5b721958baaa344399d97dcdfd02f20eccb4c6ede4b9e3a8c08e"
+}

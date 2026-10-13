@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            DELETE FROM feedback_board_notes\n            WHERE feedback_id = $1 AND tenant_id = $2 AND project_id = $3\n              AND feedback_id IN (\n                  SELECT f.id FROM feedback AS f\n                  WHERE f.id = $1 AND f.moderation_status = 'approved'\n              )\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "5294b5f5a4ae2ada18198c8e7e1b8cf28e38e3fe3e2410ab97bbb2df1ed10902"
+}

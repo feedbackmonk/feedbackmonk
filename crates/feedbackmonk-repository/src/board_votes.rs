@@ -32,6 +32,15 @@
 //! so a non-approved / board-disabled row is structurally un-votable. The
 //! `feedback_id` passed here is therefore always an approved, in-scope row.
 //!
+//! **End-user prioritization (Contracts C43/C44).** This repo is also the
+//! board's end-user store: [`BoardVoteRepo::signals`], [`BoardVoteRepo::sessions`]
+//! and [`BoardVoteRepo::notes`] reach the not-needed / priority-list, board
+//! session and board-note repositories over the same pool, so the handlers get
+//! them from the `AppState::board_votes` field that already exists. And a JWT
+//! voter's upvote clears their not-needed mark on the same item in the cast's
+//! own transaction (FR-FBR-48 exclusivity; the converse is in
+//! `BoardSignalRepo::set_not_needed`).
+//!
 //! Lineage:
 //!   PF-BOARD-VOTING-01 / DEC-FBR-IMPL-21
 //!   Contract C30 (plan §Interface Contract)
@@ -45,6 +54,9 @@ use uuid::Uuid;
 
 use feedbackmonk_core::RoadmapVoterMode;
 
+use crate::board_notes::{BoardNoteRepo, SqlxBoardNoteRepo};
+use crate::board_sessions::{BoardSessionRepo, SqlxBoardSessionRepo};
+use crate::board_signals::{BoardSignalRepo, SqlxBoardSignalRepo};
 use crate::error::{RepoError, Result};
 use crate::roadmap_votes::RetractOutcome;
 use crate::scope::ProjectScope;
@@ -69,7 +81,9 @@ pub trait BoardVoteRepo: Send + Sync {
     /// Cast a board vote. Returns `Err(RepoError::Conflict)` on duplicate
     /// `(feedback_id, voter_id)` (Hard Invariant 1). Cross-tenant inserts are
     /// prevented by the scope filter on `feedback_id` membership; an unknown /
-    /// out-of-scope `feedback_id` yields `RepoError::NotFound`.
+    /// out-of-scope `feedback_id` yields `RepoError::NotFound`. In
+    /// `RoadmapVoterMode::Jwt` the voter's not-needed mark on the same item is
+    /// deleted in the same transaction (FR-FBR-48).
     async fn cast(
         &self,
         scope: &ProjectScope,
@@ -102,19 +116,38 @@ pub trait BoardVoteRepo: Send + Sync {
         feedback_id: Uuid,
         voter_id: &str,
     ) -> Result<bool>;
+
+    /// Not-needed marks, priority lists, per-viewer board state, the
+    /// kind-filtered board page and the owner's priority inputs (C43/C44).
+    fn signals(&self) -> &dyn BoardSignalRepo;
+
+    /// Board sessions — the hosted board's signed-in session (FR-FBR-44).
+    fn sessions(&self) -> &dyn BoardSessionRepo;
+
+    /// Board detail record and the owner's board note (FR-FBR-57/58).
+    fn notes(&self) -> &dyn BoardNoteRepo;
 }
 
 #[derive(Clone)]
 pub struct SqlxBoardVoteRepo {
     pool: PgPool,
+    signals: SqlxBoardSignalRepo,
+    sessions: SqlxBoardSessionRepo,
+    notes: SqlxBoardNoteRepo,
 }
 
 impl SqlxBoardVoteRepo {
     /// Constructor — allowlisted as a structural mirror of
-    /// `SqlxRoadmapVoteRepo::new`.
+    /// `SqlxRoadmapVoteRepo::new`. Also builds the board's sibling end-user
+    /// repositories over the same pool (no query runs here).
     #[must_use]
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            signals: SqlxBoardSignalRepo::new(pool.clone()),
+            sessions: SqlxBoardSessionRepo::new(pool.clone()),
+            notes: SqlxBoardNoteRepo::new(pool.clone()),
+            pool,
+        }
     }
 }
 
@@ -136,6 +169,7 @@ impl BoardVoteRepo for SqlxBoardVoteRepo {
         // NOTE: this does NOT re-check moderation_status — the handler resolves
         // an approved-only id via resolve_approved_board_feedback_id BEFORE
         // calling cast (plan D2 structural gate).
+        let mut tx = self.pool.begin().await?;
         let row = match sqlx::query!(
             r#"
             INSERT INTO feedback_board_votes (tenant_id, project_id, feedback_id, voter_id, voter_mode)
@@ -150,17 +184,37 @@ impl BoardVoteRepo for SqlxBoardVoteRepo {
             voter_id,
             voter_mode.as_db_str(),
         )
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         {
             Ok(Some(r)) => r,
             // No row -> INSERT...SELECT found no matching feedback in scope.
+            // (Dropping `tx` rolls it back.)
             Ok(None) => return Err(RepoError::NotFound),
             Err(sqlx::Error::Database(db_err)) if db_err.is_unique_violation() => {
                 return Err(RepoError::Conflict);
             }
             Err(e) => return Err(e.into()),
         };
+
+        // FR-FBR-48: a signed-in user's upvote and not-needed mark are
+        // exclusive. Their voter_id IS the sub, the not-needed key. Anonymous
+        // voters cannot hold a mark, so there is nothing to clear for them.
+        if voter_mode == RoadmapVoterMode::Jwt {
+            sqlx::query!(
+                r#"
+                DELETE FROM feedback_not_needed
+                WHERE tenant_id = $1 AND project_id = $2 AND feedback_id = $3 AND user_sub = $4
+                "#,
+                scope.tenant_id(),
+                scope.project_id(),
+                feedback_id,
+                voter_id,
+            )
+            .execute(&mut *tx)
+            .await?;
+        }
+        tx.commit().await?;
 
         Ok(BoardVote {
             id: row.id,
@@ -276,6 +330,18 @@ impl BoardVoteRepo for SqlxBoardVoteRepo {
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.is_some())
+    }
+
+    fn signals(&self) -> &dyn BoardSignalRepo {
+        &self.signals
+    }
+
+    fn sessions(&self) -> &dyn BoardSessionRepo {
+        &self.sessions
+    }
+
+    fn notes(&self) -> &dyn BoardNoteRepo {
+        &self.notes
     }
 }
 

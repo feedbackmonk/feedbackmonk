@@ -1,0 +1,75 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH mine AS (\n                SELECT e.feedback_id,\n                       (row_number() OVER (ORDER BY e.position) - 1)::int4 AS pos\n                FROM board_priority_entries AS e\n                JOIN feedback AS pf ON pf.id = e.feedback_id\n                WHERE e.tenant_id = $1 AND e.project_id = $2 AND e.user_sub = $4\n                  AND pf.moderation_status = 'approved'\n                  AND pf.kind = 'feature'\n                  AND pf.status NOT IN ('shipped', 'wontfix', 'duplicate')\n            )\n            SELECT\n                f.short_code, f.kind, f.status, f.body, f.accepted_at,\n                (SELECT count(*) FROM feedback_board_votes v WHERE v.feedback_id = f.id) AS \"vote_count!\",\n                EXISTS (\n                    SELECT 1 FROM feedback_board_votes v\n                    WHERE v.feedback_id = f.id AND v.voter_id = $4\n                ) AS \"upvoted!\",\n                EXISTS (\n                    SELECT 1 FROM feedback_not_needed n\n                    WHERE n.feedback_id = f.id AND n.user_sub = $4\n                ) AS \"not_needed!\",\n                (SELECT m.pos FROM mine m WHERE m.feedback_id = f.id) AS \"priority_position?\"\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2\n              AND f.moderation_status = 'approved'\n              AND ($3::text IS NULL OR f.kind = $3)\n            ORDER BY f.accepted_at DESC, f.short_code ASC\n            LIMIT $5 OFFSET $6\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "short_code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "kind",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "accepted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "vote_count!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 6,
+        "name": "upvoted!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 7,
+        "name": "not_needed!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 8,
+        "name": "priority_position?",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "848449ac4597c2bde9963bdd380a4e23f579036ff495d5ef8153a6ab13ee7396"
+}

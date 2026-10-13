@@ -1,0 +1,31 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO feedback_board_notes (feedback_id, tenant_id, project_id, body, updated_at)\n            SELECT f.id, f.tenant_id, f.project_id, $4, now()\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.short_code = $3\n              AND f.moderation_status = 'approved'\n            ON CONFLICT (feedback_id) DO UPDATE\n                SET body = EXCLUDED.body, updated_at = EXCLUDED.updated_at\n            RETURNING body, updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "body",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "updated_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "ba8d164145bd8470e881ec4549817351f7788bf500208880c326c5b2bfd75f05"
+}

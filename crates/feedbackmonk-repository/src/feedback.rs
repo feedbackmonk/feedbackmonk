@@ -530,7 +530,9 @@ pub trait FeedbackRepo: Send + Sync {
     /// user-keyed rows the feedback FK cascade does NOT reach:
     /// `feedback_solicitations` `(project_id, end_user_sub)`, `roadmap_votes`
     /// and `feedback_board_votes` cast by this sub (JWT `voter_id == sub`, per
-    /// `handlers/voting_common.rs`).
+    /// `handlers/voting_common.rs`), and the sub's end-user prioritization
+    /// records (FR-FBR-60): `feedback_not_needed` marks, `board_priority_entries`
+    /// (their priority list) and `board_sessions`, each keyed by `user_sub`.
     ///
     /// The caller MUST purge attachment object BYTES for ALL the sub's feedback
     /// BEFORE invoking this (bytes-before-rows: a mid-failure leaves retryable
@@ -2262,6 +2264,49 @@ impl FeedbackRepo for SqlxFeedbackRepo {
             r#"
             DELETE FROM feedback_board_votes
             WHERE tenant_id = $1 AND project_id = $2 AND voter_id = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            end_user_sub,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // FR-FBR-60: the sub's end-user prioritization records. Each table keys
+        // the person by `user_sub` (the verified JWT sub) and is reached by no
+        // feedback FK cascade for marks/lists the user made on OTHER people's
+        // feedback, so each is erased here explicitly.
+        //   feedback_not_needed     — their "not needed" marks (00035)
+        sqlx::query!(
+            r#"
+            DELETE FROM feedback_not_needed
+            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            end_user_sub,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        //   board_priority_entries  — their whole priority list (00035)
+        sqlx::query!(
+            r#"
+            DELETE FROM board_priority_entries
+            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3
+            "#,
+            scope.tenant_id(),
+            scope.project_id(),
+            end_user_sub,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        //   board_sessions          — their signed-in board sessions (00034)
+        sqlx::query!(
+            r#"
+            DELETE FROM board_sessions
+            WHERE tenant_id = $1 AND project_id = $2 AND user_sub = $3
             "#,
             scope.tenant_id(),
             scope.project_id(),

@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT e.user_sub, f.short_code\n            FROM board_priority_entries AS e\n            JOIN feedback AS f ON f.id = e.feedback_id\n            WHERE e.tenant_id = $1 AND e.project_id = $2\n              AND f.tenant_id = $1 AND f.project_id = $2\n              AND f.moderation_status = 'approved'\n              AND f.kind = 'feature'\n              AND f.status NOT IN ('shipped', 'wontfix', 'duplicate')\n            ORDER BY e.user_sub ASC, e.position ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_sub",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "short_code",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "a9fdd0c0a90942d9d6bddcfc51e85e5f6a41a77f0580c19cf25a81488bee0cae"
+}

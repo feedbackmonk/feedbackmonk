@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-Ordered, append-only SQL migrations (`00001`–`00032`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
+Ordered, append-only SQL migrations (`00001`–`00036`) that build feedbackmonk's Postgres schema from empty, run lexically by `sqlx-cli`. `00001_p0_schema.sql` is the authoritative source for the column names the `feedbackmonk-repository` crate hard-depends on at sqlx-macro-compile time. Open the File Index below for what each migration adds (email verification, status history, replies, email branding, roadmap items + votes, tier check, attachments, crash-event, full-text search).
 
 ## Purpose & Responsibilities
 
@@ -46,6 +46,10 @@ The migration runner is `sqlx-cli` (used implicitly by `sqlx::test` macros in th
 | `00030_tenant_hosting.sql` | FR-FBR-32/33: globally unique nullable `tenants.subdomain` (with a shape CHECK) and the `tenant_domains` custom-domain registry — the host → tenant substrate DEC-FBR-13 assumes. |
 | `00031_submitter_locale.sql` | FR-FBR-37, Contract C37: `feedback.submitter_locale`, the submitter's UI language at submit — deliberately distinct from `source_lang` (what the translator detected). |
 | `00032_tenant_locale.sql` | FR-FBR-38, Contract C38: nullable `tenants.locale` (admin console language + email fallback) and `translate_outbound` (default false), reserved for FR-FBR-40 outbound translation. |
+| `00033_project_board_access.sql` | FR-FBR-43, Contract C44: `projects.board_access` (`public` default \| `signed_in`), owner-only; who may see an enabled board. Orthogonal to `public_board_enabled`. |
+| `00034_board_sessions.sql` | FR-FBR-44, DEC-FBR-21, Contract C43: `board_sessions` — sha256 of the board-session cookie token, the JWT `sub` only, and an expiry the schema caps at 8 hours. Erased with the user. |
+| `00035_board_signals.sql` | FR-FBR-48..51, DEC-FBR-18..20: `feedback_not_needed` (one private mark per item and user) and `board_priority_entries` (each user's ordered list). Both keyed by `user_sub`, cascade-deleted with the item, erased with the user. |
+| `00036_feedback_board_notes.sql` | FR-FBR-58, DEC-FBR-22: `feedback_board_notes` — one owner-written plain-text note per item for every board viewer; never a reply. Cascade-deleted with the item. |
 
 ## Constraints & Business Rules
 

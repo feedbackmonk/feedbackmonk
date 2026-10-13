@@ -1,0 +1,37 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH mine AS (\n                SELECT e.feedback_id,\n                       (row_number() OVER (ORDER BY e.position) - 1)::int4 AS pos\n                FROM board_priority_entries AS e\n                JOIN feedback AS pf ON pf.id = e.feedback_id\n                WHERE e.tenant_id = $1 AND e.project_id = $2 AND e.user_sub = $4\n                  AND pf.moderation_status = 'approved'\n                  AND pf.kind = 'feature'\n                  AND pf.status NOT IN ('shipped', 'wontfix', 'duplicate')\n            )\n            SELECT\n                EXISTS (\n                    SELECT 1 FROM feedback_board_votes v\n                    WHERE v.feedback_id = f.id AND v.voter_id = $4\n                ) AS \"upvoted!\",\n                EXISTS (\n                    SELECT 1 FROM feedback_not_needed n\n                    WHERE n.feedback_id = f.id AND n.user_sub = $4\n                ) AS \"not_needed!\",\n                (SELECT m.pos FROM mine m WHERE m.feedback_id = f.id) AS \"priority_position?\"\n            FROM feedback AS f\n            WHERE f.tenant_id = $1 AND f.project_id = $2 AND f.short_code = $3\n              AND f.moderation_status = 'approved'\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "upvoted!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 1,
+        "name": "not_needed!",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 2,
+        "name": "priority_position?",
+        "type_info": "Int4"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "ae38592549210c8a9ee1f2311b306ade9b6387b80ef6300ca7f6f4c6995a4f48"
+}

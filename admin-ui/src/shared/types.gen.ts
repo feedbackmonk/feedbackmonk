@@ -386,6 +386,106 @@ export interface BoardRetractResponse {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// C43 — End-user prioritization, public board (FR-FBR-42..61).
+// Source of truth: docs/planning/handoffs/prioritization-contracts.md §C43.
+//
+// PRIVACY: a viewer's state is THEIR OWN only, and absent for an anonymous
+// viewer (FR-FBR-46). No public shape carries a not-needed count, a priority
+// order, a submitter field, a reply, an attachment, the translated body or the
+// submitter locale (FR-FBR-49/56/59). Do NOT widen these with such a field.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type BoardAccess = "public" | "signed_in";
+
+// The CALLER's own state on one board item (core `ViewerItemState`).
+export interface BoardViewerState {
+  upvoted: boolean;
+  not_needed: boolean;
+  priority_position: number | null; // 0-based place in the viewer's list
+}
+
+// A board item as the C43 list returns it: the C29 item plus the viewer's own
+// state, present only when the request was signed in.
+export interface BoardViewerItem extends BoardItem {
+  viewer?: BoardViewerState;
+}
+
+export interface BoardViewerListResponse {
+  items: BoardViewerItem[];
+  total: number; // counts only the filtered kind (FR-FBR-42)
+  limit: number;
+  offset: number;
+  access: BoardAccess;
+  signed_in: boolean;
+}
+
+// `401 {"error":"SignInRequired"}` — an anonymous viewer on a `signed_in`
+// board, or an anonymous write that needs a person. Distinct from the
+// board-disabled 404 (FR-FBR-43).
+export interface SignInRequiredBody {
+  error: "SignInRequired";
+}
+
+export function isSignInRequired(b: unknown): b is SignInRequiredBody {
+  return (
+    !!b &&
+    typeof b === "object" &&
+    (b as { error?: unknown }).error === "SignInRequired"
+  );
+}
+
+export interface BoardNote {
+  body: string; // plain text, written by the owner for every board viewer
+  updated_at: string;
+}
+
+// One submitter-visible status transition: status and date only (FR-FBR-57).
+export interface BoardTimelineEntry {
+  status: FeedbackStatus;
+  at: string;
+}
+
+// `GET …/board/items/{short_code}` (FR-FBR-57).
+export interface BoardItemDetail {
+  short_code: string;
+  body: string; // verbatim, in the submitted language
+  kind: FeedbackKind;
+  status: FeedbackStatus;
+  vote_count: number;
+  accepted_at: string;
+  board_note: BoardNote | null;
+  timeline: BoardTimelineEntry[]; // oldest first
+  in_ranking_pool: boolean; // offer "not needed" / "add to priorities" only when true
+  viewer?: BoardViewerState;
+}
+
+// `PUT|DELETE …/board/items/{short_code}/not-needed` (FR-FBR-48).
+export interface NotNeededResponse {
+  short_code: string;
+  not_needed: boolean;
+  upvote_cleared?: boolean; // on PUT: the viewer's upvote was cleared
+}
+
+// `GET|PUT …/board/priorities` (FR-FBR-50/51).
+export interface PriorityListResponse {
+  entries: BoardItem[]; // the viewer's list, top first
+  unranked: BoardItem[]; // pool items not yet ranked
+  removed: BoardItem[]; // left the pool, still public; reported once
+  removed_hidden: number; // left the pool and the board; counted only
+  influences_priority: boolean; // false while fewer than two entries
+}
+
+export interface PriorityListRequest {
+  items: string[]; // short codes, top first; [] clears
+}
+
+// `POST|GET|DELETE …/board/session` (FR-FBR-44).
+export interface BoardSessionResponse {
+  signed_in: boolean;
+  expires_at: string | null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // P3 — Tier model + cap-aware error rendering (Contracts C17/C18/C19).
 //
 // Source of truth: docs/planning/handoffs/p3-stage1-to-stage2.md

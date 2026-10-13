@@ -1,0 +1,38 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO board_sessions (token_hash, tenant_id, project_id, user_sub, created_at, expires_at)\n            VALUES ($1, $2, $3, $4, now(), now() + make_interval(secs => $5::float8))\n            RETURNING user_sub, created_at, expires_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_sub",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Float8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2e3ced1df531f6671fd4b8ea4093520a703a4d53055387dd41b61b0f3d025c48"
+}

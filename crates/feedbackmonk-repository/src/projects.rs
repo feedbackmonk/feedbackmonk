@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use feedbackmonk_core::Project;
+use feedbackmonk_core::{BoardAccess, Project};
 
 use crate::error::{RepoError, Result};
 use crate::scope::{ProjectScope, TenantScope};
@@ -61,6 +61,17 @@ pub trait ProjectRepo: Send + Sync {
         public_board_enabled: Option<bool>,
         board_requires_moderation: Option<bool>,
     ) -> Result<BoardSettings>;
+
+    /// Set who may see the project's board (FR-FBR-43, migration 00033).
+    /// Owner-only: the caller holds an admin-minted scope (`open`). Returns the
+    /// resulting settings. `NotFound` if the project is absent/out-of-scope.
+    /// A separate method (not a third `set_board_settings` leg) so the
+    /// existing partial-PATCH signature stays frozen for its callers.
+    async fn set_board_access(
+        &self,
+        scope: &ProjectScope,
+        access: BoardAccess,
+    ) -> Result<BoardSettings>;
 }
 
 /// Per-project public-board settings (migration 00016). `public_board_enabled`
@@ -70,6 +81,10 @@ pub trait ProjectRepo: Send + Sync {
 pub struct BoardSettings {
     pub public_board_enabled: bool,
     pub board_requires_moderation: bool,
+    /// Who may see an enabled board (FR-FBR-43, migration 00033). Default
+    /// `Public`. Orthogonal to `public_board_enabled`: a disabled board 404s
+    /// whatever this says.
+    pub board_access: BoardAccess,
 }
 
 #[derive(Clone)]
@@ -199,7 +214,7 @@ impl ProjectRepo for SqlxProjectRepo {
     async fn get_board_settings(&self, scope: &ProjectScope) -> Result<BoardSettings> {
         let row = sqlx::query!(
             r#"
-            SELECT public_board_enabled, board_requires_moderation
+            SELECT public_board_enabled, board_requires_moderation, board_access
             FROM projects WHERE id = $1 AND tenant_id = $2
             "#,
             scope.project_id(),
@@ -212,6 +227,7 @@ impl ProjectRepo for SqlxProjectRepo {
         Ok(BoardSettings {
             public_board_enabled: row.public_board_enabled,
             board_requires_moderation: row.board_requires_moderation,
+            board_access: BoardAccess::from_db_str(&row.board_access),
         })
     }
 
@@ -229,7 +245,7 @@ impl ProjectRepo for SqlxProjectRepo {
             SET public_board_enabled = COALESCE($3, public_board_enabled),
                 board_requires_moderation = COALESCE($4, board_requires_moderation)
             WHERE id = $1 AND tenant_id = $2
-            RETURNING public_board_enabled, board_requires_moderation
+            RETURNING public_board_enabled, board_requires_moderation, board_access
             "#,
             scope.project_id(),
             scope.tenant_id(),
@@ -243,6 +259,34 @@ impl ProjectRepo for SqlxProjectRepo {
         Ok(BoardSettings {
             public_board_enabled: row.public_board_enabled,
             board_requires_moderation: row.board_requires_moderation,
+            board_access: BoardAccess::from_db_str(&row.board_access),
+        })
+    }
+
+    async fn set_board_access(
+        &self,
+        scope: &ProjectScope,
+        access: BoardAccess,
+    ) -> Result<BoardSettings> {
+        let row = sqlx::query!(
+            r#"
+            UPDATE projects
+            SET board_access = $3
+            WHERE id = $1 AND tenant_id = $2
+            RETURNING public_board_enabled, board_requires_moderation, board_access
+            "#,
+            scope.project_id(),
+            scope.tenant_id(),
+            access.as_db_str(),
+        )
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or(RepoError::NotFound)?;
+
+        Ok(BoardSettings {
+            public_board_enabled: row.public_board_enabled,
+            board_requires_moderation: row.board_requires_moderation,
+            board_access: BoardAccess::from_db_str(&row.board_access),
         })
     }
 }

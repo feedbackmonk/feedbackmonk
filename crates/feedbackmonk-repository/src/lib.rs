@@ -15,6 +15,9 @@
 
 pub mod analysis_sweeps;
 pub mod attachments;
+pub mod board_notes;
+pub mod board_sessions;
+pub mod board_signals;
 pub mod board_votes;
 pub mod clusters;
 pub mod domains;
@@ -35,6 +38,8 @@ pub mod scope;
 pub mod signing_keys;
 pub mod solicitations;
 pub mod tenants;
+#[cfg(test)]
+mod test_support;
 pub mod tier_quota;
 pub mod work_order_events;
 pub mod work_orders;
@@ -42,6 +47,15 @@ pub mod work_orders;
 pub use analysis_sweeps::{AnalysisSweep, AnalysisSweepRepo, SqlxAnalysisSweepRepo, SweepOutcome};
 pub use attachments::{
     AttachmentKind, AttachmentRepo, AttachmentRow, NewAttachment, SqlxAttachmentRepo,
+};
+pub use board_notes::{
+    BoardItemDetail, BoardNote, BoardNoteRepo, BoardTimelineEntry, SqlxBoardNoteRepo,
+    BOARD_NOTE_MAX_CHARS,
+};
+pub use board_sessions::{BoardSession, BoardSessionRepo, SqlxBoardSessionRepo};
+pub use board_signals::{
+    BoardFilter, BoardSignalRepo, NotNeededOutcome, PoolItemStats, PriorityInputs,
+    PriorityListView, SqlxBoardSignalRepo, ViewerBoardItem,
 };
 pub use board_votes::{BoardVote, BoardVoteRepo, SqlxBoardVoteRepo};
 pub use clusters::{ClusterRepo, FeedbackCluster, SqlxClusterRepo};

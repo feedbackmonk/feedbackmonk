@@ -4,8 +4,11 @@ import type {
   AdminRoadmapPatchRequest,
   AnalysisSweep,
   ApproveWorkOrderRequest,
+  BoardItemDetail,
   BoardListResponse,
   BoardRetractResponse,
+  BoardSessionResponse,
+  BoardViewerListResponse,
   BoardVoteResponse,
   ClusterDetail,
   ClusterListResponse,
@@ -14,8 +17,12 @@ import type {
   CreateWorkOrderRequest,
   FeedbackCrash,
   FeedbackDetail,
+  FeedbackKind,
   FeedbackListResponse,
   FeedbackStatus,
+  NotNeededResponse,
+  PriorityListRequest,
+  PriorityListResponse,
   PromoteRequest,
   PromoteResponse,
   Recommendation,
@@ -43,7 +50,7 @@ import type {
   WorkOrderTransitionRequest,
   WorkOrderTransitionResponse,
 } from "./types.gen";
-import { isTierCapExceeded } from "./types.gen";
+import { isSignInRequired, isTierCapExceeded } from "./types.gen";
 
 const api: AxiosInstance = axios.create({
   baseURL: "/api/v1",
@@ -54,10 +61,16 @@ const api: AxiosInstance = axios.create({
 api.interceptors.response.use(
   (r) => r,
   (err: AxiosError) => {
+    // A board's `401 {"error":"SignInRequired"}` (Contract C43) asks the END
+    // USER to sign in to that board; it is not an expired admin session, so
+    // it never redirects to the admin login. Public pages (`/public/...`)
+    // never have an admin session to renew either.
     if (
       err.response?.status === 401 &&
       typeof location !== "undefined" &&
-      location.pathname !== "/login"
+      location.pathname !== "/login" &&
+      !location.pathname.startsWith("/public/") &&
+      !isSignInRequired(err.response?.data)
     ) {
       const next = encodeURIComponent(location.pathname + location.search);
       location.replace(`/login?next=${next}`);
@@ -644,11 +657,19 @@ const PUBLIC_BOARD_PATHS = {
   // retractBoardVote below — mirrors the roadmap postCastVote/deleteVote pair.
   vote: (pid: string, shortCode: string) =>
     `/projects/${encodeURIComponent(pid)}/board/items/${encodeURIComponent(shortCode)}/vote`,
+  // End-user prioritization (Contract C43).
+  notNeeded: (pid: string, shortCode: string) =>
+    `/projects/${encodeURIComponent(pid)}/board/items/${encodeURIComponent(shortCode)}/not-needed`,
+  priorities: (pid: string) =>
+    `/projects/${encodeURIComponent(pid)}/board/priorities`,
+  session: (pid: string) => `/projects/${encodeURIComponent(pid)}/board/session`,
 } as const;
 
 export interface BoardListParams {
   limit?: number;
   offset?: number;
+  // FR-FBR-42: only items of this kind; `total` counts only those.
+  kind?: FeedbackKind;
 }
 
 // A board-disabled project (`public_board_enabled = FALSE`) returns 404 from
@@ -663,8 +684,119 @@ export async function fetchPublicBoard(
     params: {
       limit: params.limit ?? 50,
       offset: params.offset ?? 0,
+      ...(params.kind ? { kind: params.kind } : {}),
     },
   });
+  return r.data;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// C43 — End-user prioritization (FR-FBR-42..61). Source of truth:
+// docs/planning/handoffs/prioritization-contracts.md §C43. Errors surface as
+// AxiosErrors unchanged: 404 = board disabled / item not on the board (or not
+// in the ranking pool, for signal writes); 401 with `isSignInRequired(body)` =
+// the viewer must sign in (a `signed_in` board, or a write that needs a
+// person). The session cookie rides on `withCredentials`.
+// ─────────────────────────────────────────────────────────────────────────
+
+// The board list with the viewer's own state (C43 shape of the same route).
+export async function fetchBoardForViewer(
+  projectId: string,
+  params: BoardListParams = {},
+): Promise<BoardViewerListResponse> {
+  const r = await api.get<BoardViewerListResponse>(
+    PUBLIC_BOARD_PATHS.list(projectId),
+    {
+      params: {
+        limit: params.limit ?? 50,
+        offset: params.offset ?? 0,
+        ...(params.kind ? { kind: params.kind } : {}),
+      },
+    },
+  );
+  return r.data;
+}
+
+export async function fetchBoardItemDetail(
+  projectId: string,
+  shortCode: string,
+): Promise<BoardItemDetail> {
+  const r = await api.get<BoardItemDetail>(
+    PUBLIC_BOARD_PATHS.item(projectId, shortCode),
+  );
+  return r.data;
+}
+
+export async function markNotNeeded(
+  projectId: string,
+  shortCode: string,
+): Promise<NotNeededResponse> {
+  const r = await api.put<NotNeededResponse>(
+    PUBLIC_BOARD_PATHS.notNeeded(projectId, shortCode),
+  );
+  return r.data;
+}
+
+export async function clearNotNeeded(
+  projectId: string,
+  shortCode: string,
+): Promise<NotNeededResponse> {
+  const r = await api.delete<NotNeededResponse>(
+    PUBLIC_BOARD_PATHS.notNeeded(projectId, shortCode),
+  );
+  return r.data;
+}
+
+export async function fetchMyPriorities(
+  projectId: string,
+): Promise<PriorityListResponse> {
+  const r = await api.get<PriorityListResponse>(
+    PUBLIC_BOARD_PATHS.priorities(projectId),
+  );
+  return r.data;
+}
+
+// Saves the WHOLE order, top first (FR-FBR-50). `[]` clears the list.
+export async function saveMyPriorities(
+  projectId: string,
+  shortCodes: string[],
+): Promise<PriorityListResponse> {
+  const body: PriorityListRequest = { items: shortCodes };
+  const r = await api.put<PriorityListResponse>(
+    PUBLIC_BOARD_PATHS.priorities(projectId),
+    body,
+  );
+  return r.data;
+}
+
+// The one-time handoff (FR-FBR-44): the JWT from the URL fragment, posted once.
+// The caller removes the fragment from the address bar and history after.
+export async function exchangeBoardSession(
+  projectId: string,
+  token: string,
+): Promise<BoardSessionResponse> {
+  const r = await api.post<BoardSessionResponse>(
+    PUBLIC_BOARD_PATHS.session(projectId),
+    { token },
+  );
+  return r.data;
+}
+
+export async function fetchBoardSession(
+  projectId: string,
+): Promise<BoardSessionResponse> {
+  const r = await api.get<BoardSessionResponse>(
+    PUBLIC_BOARD_PATHS.session(projectId),
+  );
+  return r.data;
+}
+
+export async function endBoardSession(
+  projectId: string,
+): Promise<BoardSessionResponse> {
+  const r = await api.delete<BoardSessionResponse>(
+    PUBLIC_BOARD_PATHS.session(projectId),
+  );
   return r.data;
 }
 
