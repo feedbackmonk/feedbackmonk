@@ -1,0 +1,22 @@
+{
+  "schema": "hazards/1",
+  "retire_after_days": 20,
+  "entries": [
+    {
+      "id": "sqlx-online-against-stale-dev-db",
+      "title": "cargo test compiles sqlx::query! online against .env's feedbackmonk_dev, which lacks a lane's new migrations",
+      "symptoms": [
+        "error returned from database: column \"[a-z_]+\" does not exist",
+        "error returned from database: relation \"[a-z_]+\" does not exist"
+      ],
+      "cost": "contracts lane of collab-20261013-145347: the independent re-run of a green proof went red and needed a manual offline re-run",
+      "fix": "Prefix cargo with SQLX_OFFLINE=true so the macros read the committed .sqlx cache; #[sqlx::test] still builds fresh databases from migrations/ via DATABASE_URL. Or apply the new migrations to feedbackmonk_dev first.",
+      "delivers_on": [
+        "tool:Bash(cargo *)"
+      ],
+      "recorded": "2026-10-13",
+      "last_seen": "2026-10-13"
+    }
+  ],
+  "retired": []
+}
