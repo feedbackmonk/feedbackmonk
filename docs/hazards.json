@@ -31,6 +31,20 @@
       ],
       "recorded": "2026-10-13",
       "last_seen": "2026-10-13"
+    },
+    {
+      "id": "landing-check-skips-rust-tests",
+      "title": "converge.py checks' landing check selects no new Rust test; the suite green covers only TypeScript",
+      "symptoms": [
+        "landing: fast lane \\+ [0-9]+ test\\(s\\)"
+      ],
+      "cost": "both prioritization wave critics (C-003, C-001) had to run the Rust tests by hand",
+      "fix": "After converge.py checks, run the wave's Rust targets yourself: SQLX_OFFLINE=true DATABASE_URL=postgres://postgres:dev@localhost:5433/feedbackmonk_dev cargo test -p <crate> --test <new targets>, and hand the critic the result. Framework brief: S:/ULDF/docs/planning/deferred/20261013-0450-landing-check-misses-new-rust-tests.md",
+      "delivers_on": [
+        "tool:Bash(*converge.py checks*)"
+      ],
+      "recorded": "2026-10-13",
+      "last_seen": "2026-10-13"
     }
   ],
   "retired": []
