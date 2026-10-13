@@ -9,10 +9,29 @@ import {
 import { useToast } from "../../components/Toast";
 import { useAdminProject } from "../autopilot/useAdminProject";
 import { useTranslation } from "../../i18n";
+import type { BoardAccess } from "../../shared/types.gen";
 
 // /admin/settings/board — per-project public-board settings (migration 00016
-// columns `public_board_enabled` + `board_requires_moderation`). Mirrors the
-// RunnerTokens project-resolution wrapper + TierSettings card chrome.
+// columns `public_board_enabled` + `board_requires_moderation`, and migration
+// 00033's `board_access`, FR-FBR-43). Mirrors the RunnerTokens
+// project-resolution wrapper + TierSettings card chrome.
+
+const BOARD_ACCESS_CHOICES: ReadonlyArray<{
+  value: BoardAccess;
+  label: string;
+  note: string;
+}> = [
+  {
+    value: "public",
+    label: "admin.boardSettings.accessPublic",
+    note: "admin.boardSettings.accessPublicNote",
+  },
+  {
+    value: "signed_in",
+    label: "admin.boardSettings.accessSignedIn",
+    note: "admin.boardSettings.accessSignedInNote",
+  },
+];
 export function BoardSettings() {
   const { t } = useTranslation("admin");
   const project = useAdminProject();
@@ -46,6 +65,7 @@ function BoardSettingsInner({ projectId }: { projectId: string }) {
   const { t } = useTranslation("admin");
   const enabledId = useId();
   const moderationId = useId();
+  const accessId = useId();
   const queryClient = useQueryClient();
   const { notify } = useToast();
   const queryKey = ["admin-board-settings", projectId];
@@ -135,6 +155,38 @@ function BoardSettingsInner({ projectId }: { projectId: string }) {
               </p>
             </div>
           </div>
+
+          {/* Board access (FR-FBR-43, Contract C44). Owner-only: who may see
+              an ENABLED board. A response from a server that predates the
+              column carries no `board_access`; that is the default, public. */}
+          <fieldset className="visibility-fieldset board-access-fieldset">
+            <legend>{t("admin.boardSettings.accessLegend")}</legend>
+            {BOARD_ACCESS_CHOICES.map((choice) => {
+              const id = `${accessId}-${choice.value}`;
+              return (
+                <div className="settings-toggle" key={choice.value}>
+                  <input
+                    id={id}
+                    type="radio"
+                    name={accessId}
+                    value={choice.value}
+                    checked={(settings.board_access ?? "public") === choice.value}
+                    disabled={saving}
+                    aria-describedby={`${id}-note`}
+                    onChange={() =>
+                      mutation.mutate({ board_access: choice.value })
+                    }
+                  />
+                  <div className="settings-toggle-text">
+                    <label htmlFor={id}>{t(choice.label)}</label>
+                    <p id={`${id}-note`} className="muted">
+                      {t(choice.note)}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </fieldset>
         </section>
       ) : null}
     </main>
