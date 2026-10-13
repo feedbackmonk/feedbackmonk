@@ -18,7 +18,13 @@ Probes:
             itself be a discovered board read fn (so check (1) pins its SQL).
             Any other `.feedback.<method>` call, a bare `.feedback` handle, or
             raw pool/sqlx access in board.rs FAILS.
-       (1)  EVERY SQL string literal in EACH board read fn must hard-filter
+            Board reads and writes through `.board_votes.signals()` /
+            `.notes()` / `.sessions()` are seen too: each called method is
+            found in the impl that backs the handle (the trait is read from
+            `fn signals(&self) -> &dyn <Trait>` in the repository) and its
+            body, with every same-file helper it calls, is VERIFIED gated
+            (see `_verify_handle_method`). No method name is allowlisted.
+       (1) EVERY SQL string literal in EACH board read fn must hard-filter
             `moderation_status = 'approved'` (a literal, not a bound param), once
             per `FROM/JOIN feedback` it contains. Rust comments and SQL `--`
             comments are stripped first, so a filter present only in a comment
@@ -26,8 +32,12 @@ Probes:
        (1b) no non-approved moderation literal (`'pending'`/`'rejected'`) in scope.
        (2)  no submitter-PII field in scope (handler wire shape OR repo SELECT).
        (3)  no `feedback_replies` in scope.
-       (4)  vote path: every board.rs handler writing through `.board_votes` runs
-            `ensure_board_enabled` AND `resolve_approved_board_*` BEFORE the write.
+       (4)  vote path: every board.rs handler using `.board_votes` runs
+            `ensure_board_enabled` before its first use, and every DIRECT
+            `.board_votes.<method>(` write is preceded by
+            `resolve_approved_board_*`. A use through a sub-handle is gated by
+            the repository method itself, verified in (0b). Any other
+            `.board_votes` form (an aliased handle) FAILS.
 
   C) BEHAVIOR (--full): cargo-tests board_moderation_gate, board_privacy_isolation
      and board_vote_moderation_gate against a real DB (drift detection).
@@ -112,6 +122,19 @@ SQL_LITERAL_RE = re.compile(r"\b(?:SELECT|INSERT|UPDATE|DELETE|WITH)\b", re.IGNO
 # Member access to the feedback repository handle in board.rs (not `.feedback_x`).
 FEEDBACK_HANDLE_RE = re.compile(r"\.\s*feedback\b(?!_)")
 FEEDBACK_CALL_RE = re.compile(r"\.\s*feedback\s*\.\s*(\w+)\s*\(")
+# Board sub-handles: `.board_votes.signals().<m>(` (gated inside the repository,
+# FR-FBR-61 / C43) vs a direct `.board_votes.<m>(` vote write (gated in the handler).
+BOARD_HANDLE_CALL_RE = re.compile(
+    r"\.\s*board_votes\s*\.\s*(signals|notes|sessions)\s*\(\s*\)\s*\.\s*(\w+)\s*\("
+)
+BOARD_DIRECT_CALL_RE = re.compile(r"\.\s*board_votes\s*\.\s*(\w+)\s*\(")
+BOARD_SUB_HANDLES = {"signals", "notes", "sessions"}
+HANDLE_TRAIT_RE = re.compile(
+    r"\bfn\s+(signals|notes|sessions)\s*\(\s*&\s*self\s*\)\s*->\s*&\s*dyn\s+(\w+)"
+)
+POOL_GATE_FN = "resolve_pool_board_items"
+SQL_WRITE_RE = re.compile(r"\b(?:INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
+LOCAL_CALL_RE = re.compile(r"(?<![.\w])(?:Self\s*::\s*)?(\w+)\s*\(")
 RAW_DB_IN_HANDLER_RE = re.compile(r"\bsqlx\b|\.\s*pool\b|\bPgPool\b|\bquery(?:_as|_scalar)?!?\s*\(")
 
 
@@ -223,6 +246,148 @@ def _board_read_fns() -> List[Tuple[str, str, str, str]]:
     return out
 
 
+def _blank(code: str, start: int, end: int) -> str:
+    return code[:start] + "".join(c if c == "\n" else " " for c in code[start:end]) + code[end:]
+
+
+def _block_end(code: str, open_brace: int) -> int:
+    depth = 0
+    for j in range(open_brace, len(code)):
+        if code[j] == "{":
+            depth += 1
+        elif code[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return j
+    return len(code) - 1
+
+
+def _strip_test_mods(code: str) -> str:
+    """Blank out `#[cfg(test)] mod .. { }` blocks (offsets kept) so a test fn
+    never stands in for a production one."""
+    for m in list(re.finditer(r"#\[cfg\(test\)\]\s*mod\s+\w+\s*\{", code)):
+        code = _blank(code, m.start(), _block_end(code, m.end() - 1) + 1)
+    return code
+
+
+def _handle_impls() -> dict:
+    """{handle: (relpath, file_code, impl_block)}: the production impl backing
+    `.board_votes.<handle>()`, found through the trait the accessor returns
+    (`fn signals(&self) -> &dyn BoardSignalRepo`), never by a hard-coded file."""
+    traits, files = {}, []
+    for src in sorted(REPOSITORY_SRC.rglob("*.rs")):
+        code = _strip_test_mods(lex_rust(src.read_text(encoding="utf-8"))[0])
+        files.append((src, code))
+        for m in HANDLE_TRAIT_RE.finditer(code):
+            traits[m.group(1)] = m.group(2)
+    out = {}
+    for handle, trait in traits.items():
+        for src, code in files:
+            m = re.search(rf"\bimpl\s+{re.escape(trait)}\s+for\s+\w+\s*\{{", code)
+            if m:
+                out[handle] = (rel(src), code, code[m.end() - 1:_block_end(code, m.end() - 1) + 1])
+                break
+    return out
+
+
+def _sql_lits(code_body: str) -> List[str]:
+    _, lits = lex_rust(code_body)
+    return [strip_sql_comments(x) for x in lits if SQL_LITERAL_RE.search(x)]
+
+
+def _unfiltered_feedback_read(sql: str) -> bool:
+    refs = len(FEEDBACK_TABLE_REF_RE.findall(sql))
+    return refs > 0 and len(APPROVED_SQL_RE.findall(sql)) < refs
+
+
+def _is_ungated_write(sql: str) -> bool:
+    return bool(SQL_WRITE_RE.search(sql)) and not APPROVED_SQL_RE.search(sql)
+
+
+def _verify_handle_method(handle: str, method: str, impls: dict, discarded: bool,
+                          read_names: set) -> Tuple[Optional[str], List[str]]:
+    """Return (problem or None, bodies verified). A method reached through a board
+    sub-handle is GATED iff, over its body and every same-file helper it calls
+    (transitively):
+      (g1) no SQL literal reads `FROM/JOIN feedback` without the literal
+           `moderation_status = 'approved'` once per reference; and
+      (g2) every write (an own INSERT/UPDATE/DELETE literal that does not itself
+           carry the approved literal, or a call to a helper that makes one)
+           comes AFTER a call to `resolve_pool_board_items`, which must itself be
+           a discovered board read fn, so check (1) pins its approved-only SQL.
+    The single exception is a WITHDRAW: every literal is a `DELETE` with no
+    `RETURNING`, no helper is called, and the handler discards the result
+    (`state.board_votes.<h>().<m>(..).await?;` as a bare statement), so the
+    response cannot depend on whether a hidden row exists."""
+    if handle not in impls:
+        return (f"no production impl backs `.board_votes.{handle}()` under "
+                f"{rel(REPOSITORY_SRC)}, so the method's gate cannot be verified"), []
+    relpath, file_code, impl_block = impls[handle]
+    bodies = [b for _, b, _ in _iter_fn_bodies(impl_block, re.escape(method) + r"(?!\w)")]
+    if not bodies:
+        return f"`{method}` has no body in the impl backing `.board_votes.{handle}()` ({relpath})", []
+    body = bodies[0]
+    file_fns = {n: b for n, b, _ in _iter_fn_bodies(file_code, r"\w+")}
+    label = f"{relpath}::{method}"
+
+    def helpers(b: str) -> List[Tuple[str, int]]:
+        return [(m.group(1), m.start()) for m in LOCAL_CALL_RE.finditer(b)
+                if m.group(1) in file_fns and m.group(1) != method]
+
+    lits = _sql_lits(body)
+    if (discarded and lits and not helpers(body)
+            and all(re.match(r"\s*DELETE\b", x, re.IGNORECASE) for x in lits)
+            and not any(re.search(r"\bRETURNING\b", x, re.IGNORECASE) for x in lits)):
+        return None, [body]
+
+    # (g1) over the body and the transitive closure of same-file helpers.
+    seen, stack, verified = {method}, [body], []
+    while stack:
+        b = stack.pop()
+        verified.append(b)
+        if any(_unfiltered_feedback_read(x) for x in _sql_lits(b)):
+            return (f"{label}: reaches a SQL literal that reads `feedback` without the literal "
+                    "`moderation_status = 'approved'` (FR-FBR-61, C29 inv. 1)"), verified
+        for h, _ in helpers(b):
+            if h not in seen:
+                seen.add(h)
+                stack.append(file_fns[h])
+
+    def writes(b: str, path: frozenset) -> bool:
+        if any(_is_ungated_write(x) for x in _sql_lits(b)):
+            return True
+        return any(writes(file_fns[h], path | {h}) for h, _ in helpers(b) if h not in path)
+
+    # (g2) every write site in the body comes after the pool gate.
+    write_sites = []
+    _, raw_lits = lex_rust(body)
+    for x in raw_lits:
+        if SQL_LITERAL_RE.search(x) and _is_ungated_write(strip_sql_comments(x)):
+            write_sites.append(body.find(x))
+    for h, pos in helpers(body):
+        if h != POOL_GATE_FN and writes(file_fns[h], frozenset({h})):
+            write_sites.append(pos)
+    if write_sites:
+        gate = re.search(rf"(?<![.\w]){POOL_GATE_FN}\s*\(", body)
+        if gate is None or gate.start() > min(write_sites):
+            return (f"{label}: writes before (or without) calling `{POOL_GATE_FN}`, an ungated "
+                    "signal write on a possibly hidden item (FR-FBR-61, C43)"), verified
+        if POOL_GATE_FN not in read_names:
+            return (f"`{POOL_GATE_FN}` is not a discovered board read fn, so check (1) does not "
+                    "pin its approved-only SQL and the write gate is unproven"), verified
+    return None, verified
+
+
+def _discarded_statement(fn_body: str, pos: int) -> bool:
+    """True when the `.board_votes` use at `pos` is a bare `state...await?;`
+    statement whose value is thrown away."""
+    start = max(fn_body.rfind(c, 0, pos) for c in ";{}")
+    if fn_body[start + 1:pos].strip() != "state":
+        return False
+    end = fn_body.find(";", pos)
+    return end != -1 and re.search(r"\.\s*await\s*\?\s*$", fn_body[pos:end]) is not None
+
+
 def probe_b() -> List[str]:
     if not BOARD_HANDLER_RS.exists():
         return [f"{rel(BOARD_HANDLER_RS)} does not exist — the public board handler is gone "
@@ -278,7 +443,23 @@ def probe_b() -> List[str]:
                 f"{rel(REPOSITORY_SRC)} (named *board*, queries `FROM feedback`) — its "
                 "approved-only SQL cannot be verified, so the allowlist entry is unproven."
             )
-    if not calls:
+    # (0b, continued) board reads/writes through the board sub-handles: each
+    # called method's gate is verified in the repository, never allowlisted.
+    impls = _handle_impls()
+    handle_calls = 0
+    for fname, fbody, fstart in _iter_fn_bodies(handler_code, r"\w+"):
+        for m in BOARD_HANDLE_CALL_RE.finditer(fbody):
+            handle_calls += 1
+            line = handler_code.count("\n", 0, fstart + m.start()) + 1
+            call = f".board_votes.{m.group(1)}().{m.group(2)}"
+            problem, verified = _verify_handle_method(
+                m.group(1), m.group(2), impls, _discarded_statement(fbody, m.start()), read_names)
+            if problem:
+                offenders.append(f"{hrel}:{line} ({fname}): `{call}(..)` is not verifiably "
+                                 f"approved-gated: {problem}")
+            else:
+                scope += [(f"{hrel}:{line} via {call} [{k}]", vb) for k, vb in enumerate(verified)]
+    if not calls and not handle_calls:
         offenders.append(f"{hrel}: invokes no board-safe feedback read — the board is wired "
                          "to some other read path (C29 inv. 1).")
 
@@ -321,20 +502,33 @@ def probe_b() -> List[str]:
             offenders.append(f"{label}: references `{REPLY_TABLE_TOKEN}` — the board must not "
                              "surface internal/admin reply content.")
 
-    # (4) vote path: gate before write.
+    # (4) vote path: board gate before any use; approved resolution before every
+    #     DIRECT `.board_votes.<m>(` write. Sub-handle uses are verified in (0b).
     for name, body, _ in _iter_fn_bodies(handler_code, r"\w+"):
-        write_idx = body.find(BOARD_VOTE_REPO_TOKEN)
-        if write_idx == -1:
+        uses = [m.start() for m in re.finditer(re.escape(BOARD_VOTE_REPO_TOKEN) + r"\b", body)]
+        if not uses:
             continue
         en = body.find(BOARD_ENABLED_FN)
-        if en == -1 or en > write_idx:
-            offenders.append(f"{hrel}::{name}: vote handler does not call `{BOARD_ENABLED_FN}` "
-                             "before the `.board_votes` write (C29 inv. 2, plan D2).")
-        rm = APPROVED_RESOLVE_RE.search(body)
-        if not rm or rm.start() > write_idx:
-            offenders.append(f"{hrel}::{name}: vote handler does not resolve the target through "
-                             "`resolve_approved_board_*` before the `.board_votes` write — an "
-                             "existence oracle for hidden feedback (plan D2).")
+        if en == -1 or en > uses[0]:
+            offenders.append(f"{hrel}::{name}: handler does not call `{BOARD_ENABLED_FN}` "
+                             "before its first `.board_votes` use (C29 inv. 2, plan D2).")
+        handle_uses = {m.start() for m in BOARD_HANDLE_CALL_RE.finditer(body)}
+        direct = {m.start(): m.group(1) for m in BOARD_DIRECT_CALL_RE.finditer(body)
+                  if m.group(1) not in BOARD_SUB_HANDLES}
+        for pos in uses:
+            if pos in handle_uses:
+                continue
+            if pos not in direct:
+                offenders.append(f"{hrel}::{name}: takes `.board_votes` in a form that is neither "
+                                 "a direct vote write nor a verified sub-handle call; an aliased "
+                                 "handle hides which write runs (plan D2).")
+                continue
+            rm = APPROVED_RESOLVE_RE.search(body)
+            if not rm or rm.start() > pos:
+                offenders.append(f"{hrel}::{name}: vote handler does not resolve the target "
+                                 f"through `resolve_approved_board_*` before the "
+                                 f"`.board_votes.{direct[pos]}` write, an existence oracle for "
+                                 "hidden feedback (plan D2).")
     return offenders
 
 
