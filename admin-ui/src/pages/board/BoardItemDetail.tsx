@@ -9,6 +9,10 @@ import {
   retractBoardVote,
   saveMyPriorities,
 } from "../../shared/ApiClient";
+import type {
+  BoardRetractResponse,
+  BoardVoteResponse,
+} from "../../shared/types.gen";
 import { useToast } from "../../components/Toast";
 import { formatAbsolute } from "../../shared/format";
 import { Link } from "../../shared/router";
@@ -65,7 +69,11 @@ export function BoardItemDetail({ projectId, shortCode }: BoardItemDetailProps) 
     notify(needsSignIn(err) ? t("public.signIn.expired") : fallback, "error");
 
   const voteMutation = useMutation({
-    mutationFn: (upvoted: boolean) =>
+    // One toggle drives both calls, so its result is honestly either
+    // response; nothing here reads the body, the page refetches.
+    mutationFn: (
+      upvoted: boolean,
+    ): Promise<BoardVoteResponse | BoardRetractResponse> =>
       upvoted
         ? retractBoardVote(projectId, shortCode)
         : castBoardVote(projectId, shortCode),
