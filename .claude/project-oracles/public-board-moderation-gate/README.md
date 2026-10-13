@@ -6,7 +6,8 @@ Proves from code that no public-board endpoint (read or vote) can return or act 
 feedback row whose `moderation_status` is not `approved`, and that the board wire shape
 carries no submitter PII (C29 inv. 1 and 3, plan D2). The moderation gate is the trust
 boundary between public submission and public exposure. Come here when you touch
-`handlers/board.rs`, a `*board*` repository read, or the board wire shape.
+`handlers/board.rs`, a `*board*` repository read, a board signal/note repository method
+(`board_signals.rs`, `board_notes.rs`), or the board wire shape.
 
 ## Probes
 
@@ -24,14 +25,30 @@ plus every repository fn named `*board*` whose body queries `FROM feedback`.
   Any other `.feedback.<method>(` call (whitespace/multi-line tolerant), an aliased
   `.feedback` handle, or raw `sqlx` / `.pool` / `PgPool` / `query*(` in board.rs fails. Each
   allowlisted method must itself be a discovered board read fn, so check (1) pins its SQL.
+  Calls through the board sub-handles, `.board_votes.signals()` / `.notes()` / `.sessions()`
+  (the list and detail reads, not-needed set/clear, priority-list get/put; C43, FR-FBR-61),
+  are seen too, and are verified rather than allowlisted. The oracle finds the impl that backs
+  each handle from the trait its accessor returns (`fn signals(&self) -> &dyn BoardSignalRepo`),
+  and checks the called method's body and every same-file helper it reaches. **(g1)** No SQL
+  literal reads `FROM/JOIN feedback` without the literal approved filter once per reference.
+  **(g2)** Every write, meaning an `INSERT`/`UPDATE`/`DELETE` literal that does not itself carry
+  the approved filter or a call to a helper that makes one, comes after a call to
+  `resolve_pool_board_items`. That gate fn must itself be a discovered board read fn, so check
+  (1) pins its SQL. The one exception is a withdraw (`clear_not_needed`): every literal must be
+  a `DELETE` with no `RETURNING`, it may call no helper, and the handler must discard the
+  result (a bare `state.board_votes.<h>().<m>(..).await?;` statement). A response that cannot
+  depend on whether a hidden row exists confirms nothing. Verified method bodies join the scope
+  of checks (1b), (2) and (3).
 - **(1)** Every SQL string literal in each board read fn must carry the literal
   `moderation_status = 'approved'` at least once per `FROM/JOIN feedback` it contains.
   Rust comments and SQL `--` / `/* */` comments are stripped first, so a filter present only in
   a comment does not count. A bound parameter does not count.
 - **(1b)** no `'pending'` / `'rejected'` literal in scope. **(2)** no submitter-PII column in
   scope. **(3)** no `feedback_replies` in scope.
-- **(4)** every board.rs handler writing through `.board_votes` calls `ensure_board_enabled`
-  and `resolve_approved_board_*` before the write.
+- **(4)** every board.rs handler using `.board_votes` calls `ensure_board_enabled` before its
+  first use. Every direct `.board_votes.<method>(` write (vote cast and retract) is preceded by
+  `resolve_approved_board_*`. A sub-handle call is gated by its repository method, verified in
+  (0b). Any other `.board_votes` form, such as an aliased handle, fails.
 
 **Probe C (`--full`).** `cargo test -p feedbackmonk-api --test board_moderation_gate --test
 board_privacy_isolation --test board_vote_moderation_gate` against a real database. A missing
@@ -61,6 +78,18 @@ against the same mutation.
 | M8 board.rs deleted | exit 1 | exit 0 (PENDING) |
 | M9 raw `sqlx::query_scalar(..).fetch_one(&state.pool)` in board.rs | exit 1 | exit 0 |
 | restored (unmutated copy) | exit 0 | exit 0 |
+
+**v1.2.0 widening (2026-10-13, end-user prioritization wave 2).** The v1.1.0 oracle
+failed every handler that reaches `.board_votes` through a sub-handle, because those
+handlers gate inside the repository rather than calling `resolve_approved_board_*`. v1.2.0
+verifies that repository gate instead. The mutations were applied in place to the working
+tree and reverted, and the oracle was run against the real tree each time:
+
+| Mutation | v1.2.0 |
+|---|---|
+| M10 `board_signals.rs::set_not_needed` drops its `resolve_pool_board_items(..)` call (a fixed `PoolItem` stands in) | exit 1: `set_not_needed: writes before (or without) calling resolve_pool_board_items` |
+| M11 `board.rs::public_board_vote_cast` skips `resolve_approved_board_feedback_id` (the id is parsed from the short code) | exit 1: `public_board_vote_cast: ... before the .board_votes.cast write` |
+| restored | exit 0 |
 
 Known static boundary: C29 inv. 2 (board-disabled project returns 404 on the read path) is
 covered by Probe C (`board_moderation_gate.rs::board_disabled_project_404s`), not statically.

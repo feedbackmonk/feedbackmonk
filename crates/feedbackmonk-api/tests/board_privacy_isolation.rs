@@ -290,14 +290,26 @@ async fn board_item_shape_is_public_only(pool: PgPool) {
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_to_json(resp.into_body()).await;
 
-    // Exactly the public wire keys — no more.
+    // Exactly the public wire keys — no more. Contract C43 detail shape: the
+    // six item keys plus `board_note`, `timeline` and `in_ranking_pool`;
+    // `viewer` is absent (not null) for this anonymous request (FR-FBR-46).
     let obj = body.as_object().expect("object");
     let mut keys: Vec<&str> = obj.keys().map(String::as_str).collect();
     keys.sort_unstable();
     assert_eq!(
         keys,
-        ["accepted_at", "body", "kind", "short_code", "status", "vote_count"],
-        "board item must carry exactly the public wire keys"
+        [
+            "accepted_at",
+            "board_note",
+            "body",
+            "in_ranking_pool",
+            "kind",
+            "short_code",
+            "status",
+            "timeline",
+            "vote_count",
+        ],
+        "board item detail must carry exactly the C43 public wire keys"
     );
     assert_no_pii(&body.to_string());
     assert!(!body.to_string().contains("shape@private.example"));
