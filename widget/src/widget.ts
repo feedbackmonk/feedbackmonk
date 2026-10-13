@@ -8,8 +8,10 @@ import type {
   WidgetSubmissionKind,
   WidgetTheme,
 } from "./types.js";
-import { fetchWidgetConfig, submitFeedback } from "./api.js";
+import { fetchWidgetConfig, resolveApiBase, submitFeedback } from "./api.js";
+import { boardLink, fetchBoardAccess, type BoardAccess } from "./board.js";
 import {
+  addBoardLink,
   applyTheme,
   clearError,
   createLauncher,
@@ -124,6 +126,7 @@ function resolveOptions(o: MountOptions): MountOptions {
     jwt: o.jwt || attr("data-jwt"),
     tokenUrl: o.tokenUrl || attr("data-token-url"),
     apiBase: o.apiBase || attr("data-api-base"),
+    boardUrl: o.boardUrl || attr("data-board-url"),
     captureConsole:
       o.captureConsole ??
       (document.querySelector("script[data-capture-console]") ? true : undefined),
@@ -313,6 +316,9 @@ async function performSubmit(state: WidgetState): Promise<void> {
 async function openModal(state: WidgetState): Promise<void> {
   if (!state.config || state.modalEls || state.destroyed || state.opening) return;
   state.opening = true;
+  // The board probe runs alongside the token fetch and never delays the form:
+  // the link joins the open modal when the answer arrives (FR-FBR-45).
+  const access = fetchBoardAccess(state.projectId, state.opts);
   try {
     await refreshToken(state);
   } finally {
@@ -370,6 +376,49 @@ async function openModal(state: WidgetState): Promise<void> {
   document.addEventListener("keydown", trapListener, true);
   state.escListener = escListener;
   state.trapListener = trapListener;
+  void showBoardLink(state, els, access);
+}
+
+/// Add the "See all requests" link (FR-FBR-45) once the board probe answers,
+/// if this modal is still the open one and `boardLink` says to show it: an
+/// enabled board, and a token unless the board is public. A token holder's
+/// link carries the token in the fragment of the board's sign-in page.
+async function showBoardLink(
+  state: WidgetState,
+  els: ModalElements,
+  pending: Promise<BoardAccess | null>,
+): Promise<void> {
+  const access = await pending;
+  const href = (): string | null =>
+    boardLink(
+      state.opts.boardUrl || resolveApiBase(state.opts),
+      state.projectId,
+      access,
+      state.opts.jwt,
+    );
+  const first = href();
+  if (!first || state.modalEls !== els) return;
+  addBoardLink(els, first, (e, link) => {
+    // The handoff needs a token the exchange will accept. One from
+    // `data-token-url` may have expired while the form sat open: open the tab
+    // now, inside the click (or a popup blocker eats it), fetch a fresh token,
+    // then send the tab on.
+    if (state.opts.tokenUrl && state.tokenExp <= Date.now() / 1000 + 30) {
+      e.preventDefault();
+      const w = window.open("", "_blank");
+      void refreshToken(state).then(() => {
+        if (!w) return;
+        w.opener = null;
+        const h = href();
+        if (h) w.location.href = h;
+        else w.close();
+      });
+      return;
+    }
+    const h = href();
+    if (h) link.href = h;
+    else e.preventDefault();
+  });
 }
 
 /// Tear the widget down: close the modal, remove the document-level trigger

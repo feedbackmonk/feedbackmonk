@@ -284,6 +284,13 @@ fieldset.fbm-field {
   text-decoration: underline;
 }
 
+.fbm-board { font-size: 13px; }
+.fbm-board a { color: var(--fbm-primary); text-decoration: underline; }
+.fbm-board a:focus-visible {
+  outline: 3px solid var(--fbm-primary);
+  outline-offset: 2px;
+}
+
 /* Attachments */
 .fbm-attach { gap: 6px; }
 .fbm-attach-label {

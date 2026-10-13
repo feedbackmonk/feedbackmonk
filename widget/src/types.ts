@@ -79,6 +79,10 @@ export interface MountOptions {
   tokenUrl?: string;
   projectId?: string;
   apiBase?: string;
+  // Origin (and optional path prefix) of the hosted public board the "See all
+  // requests" link opens (FR-FBR-45). Defaults to `apiBase`, the shape where one
+  // origin serves both the API and the board. Set via `data-board-url`.
+  boardUrl?: string;
   // Theme override (highest precedence): "auto" | "light" | "dark". Falls back
   // to the per-tenant brand default, then "auto". Set via the script-tag
   // `data-theme` attribute or programmatically (DEC-FBR-IMPL-12).
