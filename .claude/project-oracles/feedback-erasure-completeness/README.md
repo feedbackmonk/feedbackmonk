@@ -81,7 +81,7 @@ against the real tree; the "v1.0.0" column is the oracle before Probe F, on the 
 
 ### Dropped constraints (2026-10-13, v1.2.0)
 
-An independent critic showed the schema parse ignored `DROP CONSTRAINT` (C-001): a later
+An independent critic showed the schema parse ignored `DROP CONSTRAINT` (finding `1bc4cd079967:C-001`, the window review of collab-20261013-194157): a later
 `ALTER TABLE feedback_not_needed DROP CONSTRAINT feedback_not_needed_feedback_id_fkey;` left the
 FK standing in the parsed schema, and the raw `REFERENCES feedback` count did not move, so B and F
 stayed clean. v1.2.0 names every parsed FK (explicitly, or by Postgres's default) and applies the

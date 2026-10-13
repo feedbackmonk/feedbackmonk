@@ -118,7 +118,7 @@ oracle before Probe E on the same mutation.
 
 ### Nested mounts and renamed parameters (2026-10-13, v1.2.0)
 
-An independent critic showed Probe E read only `.route("<full path>"` literals (C-002): a
+An independent critic showed Probe E read only `.route("<full path>"` literals (finding `1bc4cd079967:C-002`, the window review of collab-20261013-194157): a
 `.nest("/api/v1/projects/:project_id/board", Router::new().route("/session", ..))` inside
 `health_router` registered the session exchange unbound and passed. v1.2.0 checks every
 `.nest(` / `.nest_service(` in the api crate: one whose prefix is a whole-segment prefix of a
