@@ -182,10 +182,17 @@ fn priority_one_comparison_does_not_reach_an_extreme() {
     let ten: Vec<Vec<&str>> = (0..10).map(|_| vec!["a", "b"]).collect();
     let many = fit_priority(&pool, &ten, &cfg());
     assert!(strength(&many, "a") > sa + 0.5, "{} vs {sa}", strength(&many, "a"));
-    // And the uncertainty shrinks with evidence.
+    // The uncertainty is finite, and shrinks with more evidence at the same
+    // win ratio (a lopsided ratio raises the standard error of θ, so the
+    // comparison is between equal ratios).
     let se = |f: &PriorityFit<&'static str>| f.ranked.iter().find(|r| r.key == "a").unwrap().std_error;
     assert!(se(&once).is_finite() && se(&once) > 0.0);
-    assert!(se(&many) < se(&once));
+    let split = |n: usize| -> Vec<Vec<&'static str>> {
+        (0..n).flat_map(|_| [vec!["a", "b"], vec!["b", "a"]]).collect()
+    };
+    let few = fit_priority(&pool, &split(1), &cfg());
+    let lots = fit_priority(&pool, &split(10), &cfg());
+    assert!(se(&lots) < se(&few), "{} vs {}", se(&lots), se(&few));
 }
 
 #[test]
