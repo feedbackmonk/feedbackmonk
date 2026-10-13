@@ -13,6 +13,10 @@ import AxeBuilder from "@axe-core/playwright";
 //   1. Initial idle render with approved items present (each carrying an
 //      accessible vote button — Contract C30)
 //   2. The board-disabled (404) "not available" state
+//   3. The board item detail page (Contract C43), signed in
+//
+// The C43 prioritization flows (sign-in prompt, handoff, priority list) are in
+// `public-board-priorities.spec.ts`.
 //
 // The public route is /public/projects/:projectId/board and has NO admin
 // chrome. The fixture deliberately carries NO submitter identity (C29 privacy
@@ -228,5 +232,49 @@ test.describe("Public board a11y smoke", () => {
       page.getByText(/this feedback board isn’t available/i),
     ).toBeVisible();
     await expectNoAxeViolations(page, "public board disabled");
+  });
+});
+
+// The board item detail page (FR-FBR-57/58, Contract C43): body verbatim, the
+// owner's board note and the status timeline, for a signed-in viewer with the
+// not-needed and priority actions on screen.
+test.describe("Public board item detail a11y", () => {
+  test.use({ locale: "en-US" });
+
+  test("item detail has zero WCAG 2.1 AA violations", async ({ page }) => {
+    test.skip(!FAKE_API, "Real-backend mode requires a seeded approved item");
+
+    await page.route("**/api/v1/**", async (route: Route) => {
+      const url = route.request().url();
+      if (url.match(/\/board\/items\/FB-BBB222(\?|$)/)) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...LIST_BODY.items[1],
+            board_note: {
+              body: "We're starting this in November.",
+              updated_at: "2026-10-10T00:00:00Z",
+            },
+            timeline: [
+              { status: "triaged", at: "2026-06-18T00:00:00Z" },
+              { status: "in-progress", at: "2026-06-20T00:00:00Z" },
+            ],
+            in_ranking_pool: true,
+            viewer: { upvoted: true, not_needed: false, priority_position: 0 },
+          }),
+        });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto(`/public/projects/${PROJECT_ID}/board/items/FB-BBB222`);
+    await expect(page.getByText("Please add a dark theme.")).toBeVisible();
+    await expect(page.getByText("We're starting this in November.")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "I don’t need this" }),
+    ).toBeVisible();
+    await expectNoAxeViolations(page, "public board item detail");
   });
 });

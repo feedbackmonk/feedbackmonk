@@ -2,7 +2,7 @@
 
 ## Synopsis
 
-`/public/projects/:projectId/board` — the hosted, no-auth public feedback board end-users see. Renders APPROVED feedback only (a server-side SQL invariant), no admin chrome, mirroring `pages/roadmap/PublicRoadmap.tsx`. Consumes `GET /api/v1/projects/{id}/board` (Contract C29) and the `POST`/`DELETE .../board/items/{short_code}/vote` voting surface (Contract C30, PF-BOARD-VOTING-01) — `vote_count` is the real aggregate and each item carries an accessible vote button. **Localized since FR-FBR-36**: page chrome, status labels, vote controls and empty states come from the `public.*` / `status.*` catalog namespaces via `useLabels`, `<html lang/dir>` follow the active locale, and a `?lang=` parameter wins for a page-view — but **feedback content stays verbatim in its source language** (the Q24 boundary; never translate a submitter's words here).
+`/public/projects/:projectId/board` — the hosted public feedback board end-users see, plus its item detail, a signed-in viewer's priority list, and the one-time sign-in handoff (Contract C43, end-user prioritization). A project's board is open to everyone or to signed-in viewers only (FR-FBR-43). Renders APPROVED feedback only (a server-side SQL invariant), no admin chrome, mirroring `pages/roadmap/PublicRoadmap.tsx`. Consumes `GET /api/v1/projects/{id}/board` (Contract C29) and the `POST`/`DELETE .../board/items/{short_code}/vote` voting surface (Contract C30, PF-BOARD-VOTING-01) — `vote_count` is the real aggregate and each item carries an accessible vote button. **Localized since FR-FBR-36**: page chrome, status labels, vote controls and empty states come from the `public.*` / `status.*` catalog namespaces via `useLabels`, `<html lang/dir>` follow the active locale, and a `?lang=` parameter wins for a page-view — but **feedback content stays verbatim in its source language** (the Q24 boundary; never translate a submitter's words here).
 
 ## Purpose & Responsibilities
 
@@ -16,22 +16,30 @@ The customer-embeddable public board surface for the Public Feedback Board + Mod
 
 | File | Role |
 |---|---|
-| `PublicBoard.tsx` | Page component — query + loading/empty/error/board-disabled/list states; `BoardItemRow` renders one approved item |
-| `BoardItemDetail.tsx` | Board item detail page (FR-FBR-57/58/59, Contract C43) — stub until the `public-ui` piece builds it |
-| `MyPriorities.tsx` | A signed-in viewer's priority list (FR-FBR-50/51, Contract C43) — stub until the `public-ui` piece builds it |
-| `SignInHandoff.tsx` | One-time `#token=` handoff to a board session (FR-FBR-44, Contract C43) — stub until the `public-ui` piece builds it |
-| `__tests__/PublicBoard.test.tsx` | Vitest suite — list render + vote button, **vote-cast on click (C30)**, **privacy-leak guard**, empty state, board-disabled (404) state |
+| `PublicBoard.tsx` | Page component — query + loading/empty/error/board-disabled/sign-in/list states; kind filter (FR-FBR-42); signed-in bar (My priorities, Sign out); `BoardItemRow` renders one approved item, its title linking to the detail page |
+| `BoardItemDetail.tsx` | Board item detail page (FR-FBR-57/58/59, Contract C43): body verbatim, kind, status, votes, accepted date, board note, status timeline; vote; for a signed-in viewer on a pool item, "I don't need this" and add/remove to my priorities |
+| `MyPriorities.tsx` | A signed-in viewer's priority list (FR-FBR-50/51, Contract C43): reorder by keyboard (Move up/down, focus follows the item) and by drag, remove, add from "Not yet ranked"; every change saves the whole order; the fewer-than-two note; the once-only "taken off your list" report |
+| `SignInHandoff.tsx` | One-time `#token=` handoff to a board session (FR-FBR-44, Contract C43): reads the fragment, clears it from the address bar and history at once, posts it once, replaces the entry with the board; `readFragmentToken` |
+| `SignInPrompt.tsx` | What every board page renders for `401 SignInRequired` (FR-FBR-43): where to sign in (the product's "See all requests" link), not a login form |
+| `boardErrors.ts` | `isNotFound` / `needsSignIn` / `retryBoardQuery` (the two terminal answers never retry) and the board page paths |
+| `__tests__/PublicBoard.test.tsx` | Vitest suite — list render + vote button, **vote-cast on click (C30)**, **privacy-leak guard**, empty state, board-disabled (404) state, sign-in prompt (401), the viewer's own upvote + My priorities link, kind filter |
+| `__tests__/BoardItemDetail.test.tsx` | Vitest — the detail record, no actions for an anonymous viewer or an item outside the pool, not-needed, add to the whole list, privacy-leak guard (FR-FBR-59), 404 |
+| `__tests__/MyPriorities.test.tsx` | Vitest — order vs not-yet-ranked, move saves the whole order and keeps focus, focus hand-off at the ends, add, remove, the one-item note, the left-the-pool report, sign-in prompt |
+| `__tests__/SignInHandoff.test.tsx` | Vitest — fragment-only token read, one exchange, fragment cleared on success and on failure, no exchange without a fragment token |
 
-E2E a11y coverage lives in `admin-ui/e2e/public-board-a11y.spec.ts` (Playwright + axe-core, idle + board-disabled + the `en`/`de`/`fa` locale matrix, 0 violations).
+E2E a11y coverage lives in `admin-ui/e2e/public-board-a11y.spec.ts` (Playwright + axe-core, idle + board-disabled + item detail + the `en`/`de`/`fa` locale matrix, 0 violations) and `admin-ui/e2e/public-board-priorities.spec.ts` (sign-in prompt on a `signed_in` board, the `#token=` handoff leaving no fragment, keyboard-only reorder saving the whole order, the one-item note — each 0 violations).
 
 ## Public API & Usage
 
 ```tsx
-// Mounted at /public/projects/:projectId/board in App.tsx router (no admin chrome)
-<PublicBoard projectId={projectId} />
+// Mounted in App.tsx (no admin chrome)
+<PublicBoard projectId={projectId} />                         // /public/projects/:projectId/board
+<BoardItemDetail projectId={projectId} shortCode={code} />    // …/board/items/:shortCode
+<MyPriorities projectId={projectId} />                        // …/board/priorities
+<SignInHandoff projectId={projectId} />                       // …/board/sign-in#token=…
 ```
 
-Data shape consumed verbatim from Contract C29 (`BoardListResponse` / `BoardItem`) — see `shared/types.gen.ts`. Single read path: `fetchPublicBoard(projectId)` in `shared/ApiClient.ts`.
+Data shapes consumed verbatim from Contracts C29 and C43 (`BoardViewerListResponse`, `BoardItemDetail`, `PriorityListResponse`, `BoardSessionResponse`) — see `shared/types.gen.ts` and `docs/planning/handoffs/prioritization-contracts.md`. The board list reads through `fetchBoardForViewer(projectId, { kind })`; the other pages through `fetchBoardItemDetail`, `fetchMyPriorities` / `saveMyPriorities`, `markNotNeeded` / `clearNotNeeded`, `exchangeBoardSession` / `endBoardSession`, all in `shared/ApiClient.ts`.
 
 ## Constraints & Business Rules
 
@@ -48,6 +56,18 @@ Data shape consumed verbatim from Contract C29 (`BoardListResponse` / `BoardItem
 ## Decision Log
 
 ### Current
+
+#### End-user prioritization pages (Contract C43, FR-FBR-42..51/57)
+
+**Decision**: Three pages join the board — item detail, My priorities, and the sign-in handoff — and every board page renders `401 SignInRequired` as a sign-in prompt (`SignInPrompt`), distinct from the 404 "not available" state.
+
+**Rationale**: The board never signs anyone in itself: the customer-signed JWT is the only end-user identity (DEC-FBR-04), and it arrives once, in the URL fragment, from the widget (FR-FBR-44/45). So the prompt points the visitor back to the product rather than offering a form, and the handoff clears the fragment from the address bar and history *before* the exchange resolves — the token is gone even when the exchange fails or the visitor leaves mid-request, which is stricter than the contract's "after the exchange".
+
+**Keyboard and pointer reorder**: Move up / Move down / Remove are ordinary buttons, so Tab plus Enter/Space is the whole keyboard interface; after a keyboard move focus follows the moved item (to the other move button when it reaches an end), and a polite live region announces the new position. Drag and drop is the pointer path. Every change saves the whole order and only the newest save's answer is applied, so two quick moves cannot let an older response overwrite a newer order.
+
+**Privacy**: the detail page renders only the C43 detail shape, and has a leak-guard test like the list's (FR-FBR-59). Not-needed and priority actions appear only for a signed-in viewer on a ranking-pool item; the board never shows a not-needed count or any aggregate priority (FR-FBR-49/56).
+
+**Host-rooted pages**: `TenantHostLanding` still renders only the board list and roadmap at `/`, `/board` and `/roadmap`; its links to the detail and priorities pages use the `/public/projects/{id}/board/…` routes, which work on a tenant host as on any other. Host-rooted variants of the new pages would need new `App.tsx` routes.
 
 #### Voting wired (C30, PF-BOARD-VOTING-01) — mirrors the roadmap vote button
 

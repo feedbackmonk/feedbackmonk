@@ -26,7 +26,15 @@
       "unavailable": "This feedback board isn’t available.",
       "loadError": "Failed to load the feedback board.",
       "itemTitle": "{{kind}} · {{code}}",
-      "voteAria": "Vote for {{code}} — current count {{votes}}"
+      "voteAria": "Vote for {{code}} — current count {{votes}}",
+      "kindFilter": "Show",
+      "kindAll": "All kinds",
+      "filteredEmpty": "Nothing of this kind has been published yet.",
+      "myPriorities": "My priorities",
+      "signedIn": "You’re signed in.",
+      "signOut": "Sign out",
+      "signedOut": "You’ve signed out of this board.",
+      "signOutFailed": "Sign-out failed — please try again."
     },
     "roadmap": {
       "title": "Roadmap",
@@ -50,6 +58,71 @@
     "switcher": {
       "label": "Language",
       "changed": "Language changed to {{name}}."
+    },
+    "signIn": {
+      "title": "Sign in to see this board",
+      "body": "This feedback board is open to signed-in users. Open it from the product while you’re signed in — use its “See all requests” link.",
+      "expired": "Your sign-in has ended. Open the board again from the product to continue.",
+      "backToBoard": "Back to the feedback board"
+    },
+    "handoff": {
+      "title": "Signing you in",
+      "working": "Signing you in to the feedback board…",
+      "missing": "This sign-in link is incomplete. Open the board again from the product.",
+      "failed": "This sign-in link didn’t work. It may have expired — open the board again from the product.",
+      "continueAnonymous": "Continue to the board without signing in"
+    },
+    "detail": {
+      "backToBoard": "Back to the feedback board",
+      "notFound": "This item isn’t on the feedback board.",
+      "loadError": "Failed to load this item.",
+      "kind": "Kind",
+      "status": "Status",
+      "votes": "Votes",
+      "accepted": "Published",
+      "noteTitle": "Note from the team",
+      "noteUpdated": "Updated {{when}}",
+      "timelineTitle": "Status history",
+      "timelineEmpty": "No status changes yet.",
+      "actionsTitle": "Your say",
+      "notNeeded": "I don’t need this",
+      "notNeededSet": "Marked as not needed. The team sees only a count, never who.",
+      "notNeededCleared": "Not-needed mark cleared.",
+      "saveFailed": "Couldn’t save that — please try again.",
+      "addToPriorities": "Add to my priorities",
+      "removeFromPriorities": "Remove from my priorities",
+      "inPriorities": "Number {{position}} in your priorities.",
+      "addedToPriorities": "Added to your priorities.",
+      "removedFromPriorities": "Removed from your priorities."
+    },
+    "priorities": {
+      "title": "My priorities",
+      "intro": "Put the requests you care about in the order you’d want them built. The team sees only the combined order of everyone’s lists, never yours.",
+      "backToBoard": "Back to the feedback board",
+      "loadError": "Failed to load your priorities.",
+      "listTitle": "Your order",
+      "listEmpty": "Your list is empty. Add requests from “Not yet ranked” below.",
+      "tooFewNote": "Rank at least two requests for your list to influence priority.",
+      "unrankedTitle": "Not yet ranked",
+      "unrankedEmpty": "Every open request is in your list.",
+      "reorderHelp": "Use the Move up and Move down buttons, or drag an item to a new place.",
+      "moveUp": "Move up: {{code}}",
+      "moveDown": "Move down: {{code}}",
+      "remove": "Remove: {{code}}",
+      "add": "Add: {{code}}",
+      "moveUpLabel": "Move up",
+      "moveDownLabel": "Move down",
+      "removeLabel": "Remove",
+      "addLabel": "Add",
+      "moved": "{{code}} is now number {{position}} of {{total}}.",
+      "added": "{{code}} added as number {{position}}.",
+      "removed": "{{code}} removed from your list.",
+      "saveFailed": "Couldn’t save your order — please try again.",
+      "leftPoolTitle": "Taken off your list",
+      "leftPoolBody_one": "{{count}} request is no longer open, so it was taken off your list:",
+      "leftPoolBody_other": "{{count}} requests are no longer open, so they were taken off your list:",
+      "leftPoolHidden_one": "{{count}} request is no longer on the board and was taken off your list.",
+      "leftPoolHidden_other": "{{count}} requests are no longer on the board and were taken off your list."
     }
   }
 }
