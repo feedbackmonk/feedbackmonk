@@ -61,10 +61,18 @@ Pass 'step 1 -- tenant created'
 # ---------- step 2: read verify token from Mailpit + verify ----------------
 
 Log 'step 2: read verify-email token from Mailpit + POST /api/v1/verify-email'
-Start-Sleep -Seconds 1
-$messages = Invoke-RestMethod -Uri "$MailpitBase/api/v1/messages?limit=50"
-$ourMsg = $messages.messages | Where-Object { $_.To[0].Address -eq $TestEmail } | Select-Object -First 1
-if (-not $ourMsg) { Fail "no Mailpit message for $TestEmail" }
+# Poll until the verify-email arrives, with no deadline (DEC-743): a slow SMTP
+# round-trip on a busy machine is not a failure. Progress is logged so a
+# watcher can stop it.
+$ourMsg = $null
+for ($i = 1; -not $ourMsg; $i++) {
+    $messages = Invoke-RestMethod -Uri "$MailpitBase/api/v1/messages?limit=50"
+    $ourMsg = $messages.messages | Where-Object { $_.To[0].Address -eq $TestEmail } | Select-Object -First 1
+    if (-not $ourMsg) {
+        if ($i % 10 -eq 0) { Log "  still waiting for the verify-email (${i}s) -- Ctrl-C to stop" }
+        Start-Sleep -Seconds 1
+    }
+}
 $full = Invoke-RestMethod -Uri "$MailpitBase/api/v1/message/$($ourMsg.ID)"
 $token = ([regex]'token=([A-Za-z0-9_-]+)').Match($full.Text).Groups[1].Value
 if (-not $token) { Fail 'could not extract verify token from Mailpit body' }

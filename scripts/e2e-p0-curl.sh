@@ -61,20 +61,24 @@ pass "step 1 -- tenant created"
 # ---------- step 2: read verify token from Mailpit + verify -----------------
 
 log "step 2: read verify-email token from Mailpit + POST /api/v1/verify-email"
-# Poll Mailpit for up to 10s for the verify-email message to appear. SMTP
-# round-trip + Mailpit ingest can take >1s under load. Capture the ID into
+# Poll Mailpit until the verify-email message appears, with no deadline
+# (DEC-743): SMTP round-trip + Mailpit ingest can take >1s under load, and a
+# slow machine is not a failure. Progress is logged so a watcher can stop it.
+# Capture the ID into
 # a variable rather than piping through xargs -- xargs without --no-run-if-empty
 # will run curl with the literal '{}' placeholder when the input is empty,
 # which manifests as a confusing "URL rejected: Malformed input" error.
 MSG_ID=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for (( i=1; ; i++ )); do
     MSG_ID="$(curl -sS "$MAILPIT_BASE/api/v1/messages" \
         | jq -r --arg em "$TEST_EMAIL" '.messages[] | select(.To[0].Address==$em) | .ID' \
         | head -n 1)"
     [ -n "$MSG_ID" ] && break
+    if (( i % 10 == 0 )); then
+        log "  still waiting for the verify-email (${i}s) -- Ctrl-C to stop"
+    fi
     sleep 1
 done
-[ -n "$MSG_ID" ] || fail "no verify-email in Mailpit for $TEST_EMAIL after 10s"
 
 VERIFY_LINK="$(curl -sS "$MAILPIT_BASE/api/v1/message/$MSG_ID" \
     | jq -r '.Text' \

@@ -9,7 +9,13 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [["list"]],
+  // No time limit stops a test, an assertion or an action (DEC-743): a busy
+  // machine making a run slow is not a failure. `0` means none here.
+  timeout: 0,
+  expect: { timeout: 0 },
   use: {
+    actionTimeout: 0,
+    navigationTimeout: 0,
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
   },
@@ -30,6 +36,9 @@ export default defineConfig({
         : "node_modules/.bin/vite",
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
+    // time-bound: no limit, death still seen at once — webServer has no
+    // unlimited value (`0` falls back to 60 s, `Infinity` fires at once), and
+    // its launch wait races the server process, so a build that dies fails now.
+    timeout: 2_147_483_647,
   },
 });

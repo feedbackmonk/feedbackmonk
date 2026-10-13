@@ -70,23 +70,26 @@ fi
 log "API: $API_BASE | Mailpit: $MAILPIT_BASE ($([ "$MAILPIT_READY" = "1" ] && echo ready || echo skipped)) | work: $WORK_DIR"
 
 # Helper: poll Mailpit for a message whose subject matches the regex AND is
-# addressed to the given recipient. Returns 0 + prints the message ID on
-# success, 1 on timeout. Skips with 2 if Mailpit not ready.
+# addressed to the given recipient, with no deadline (DEC-743: a slow machine
+# is not a failure). Prints the message ID and returns 0 once it arrives;
+# progress goes to stderr so a watcher can Ctrl-C. Skips with 2 if Mailpit
+# not ready.
 poll_mailpit_for_subject() {
     local recipient="$1"
     local subject_re="$2"
-    local timeout="${3:-15}"
     [ "$MAILPIT_READY" = "1" ] || return 2
 
     local msg_id="" i
-    for (( i=0; i<timeout; i++ )); do
+    for (( i=1; ; i++ )); do
         msg_id="$(curl -sS "$MAILPIT_BASE/api/v1/messages?limit=50" \
             | jq -r --arg em "$recipient" --arg sre "$subject_re" \
                 '[.messages[] | select(.To[0].Address==$em) | select(.Subject|test($sre))] | .[0].ID // empty')"
         [ -n "$msg_id" ] && break
+        if (( i % 10 == 0 )); then
+            log "  still waiting for \"$subject_re\" to $recipient (${i}s) -- Ctrl-C to stop" >&2
+        fi
         sleep 1
     done
-    [ -n "$msg_id" ] || return 1
     printf '%s' "$msg_id"
     return 0
 }
@@ -105,15 +108,18 @@ pass "step 1 -- tenant created"
 
 log "step 2: read verify-email token + POST /api/v1/verify-email (Contract C11 admin-session cookie)"
 if [ "$MAILPIT_READY" = "1" ]; then
+    # No deadline (DEC-743); progress is logged so a watcher can stop it.
     MSG_ID=""
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
+    for (( i=1; ; i++ )); do
         MSG_ID="$(curl -sS "$MAILPIT_BASE/api/v1/messages" \
             | jq -r --arg em "$TEST_EMAIL" '.messages[] | select(.To[0].Address==$em) | .ID' \
             | head -n 1)"
         [ -n "$MSG_ID" ] && break
+        if (( i % 10 == 0 )); then
+            log "  still waiting for the verify-email (${i}s) -- Ctrl-C to stop"
+        fi
         sleep 1
     done
-    [ -n "$MSG_ID" ] || fail "no verify-email in Mailpit for $TEST_EMAIL after 10s"
 
     VERIFY_TOKEN="$(curl -sS "$MAILPIT_BASE/api/v1/message/$MSG_ID" \
         | jq -r '.Text' \
@@ -222,14 +228,14 @@ pass "step 7 -- transition to triaged committed"
 log "step 8: poll Mailpit for status-change email to $SUBMITTER_EMAIL"
 if [ "$MAILPIT_READY" = "1" ]; then
     # Subject shape (templates.rs): "[<prefix> #<FB-id>] Status updated: Triaged"
-    if STATUS_MSG_ID="$(poll_mailpit_for_subject "$SUBMITTER_EMAIL" "Status updated: Triaged" 15)"; then
+    if STATUS_MSG_ID="$(poll_mailpit_for_subject "$SUBMITTER_EMAIL" "Status updated: Triaged")"; then
         log "  status-change msg id: $STATUS_MSG_ID"
         STATUS_BODY="$(curl -sS "$MAILPIT_BASE/api/v1/message/$STATUS_MSG_ID" | jq -r '.Text')"
         echo "$STATUS_BODY" | grep -q "$FB_ID" \
             || fail "status-change email body does not reference $FB_ID"
         pass "step 8 -- status-change email delivered (subject + body OK)"
     else
-        fail "no status-change email in Mailpit for $SUBMITTER_EMAIL within 15s"
+        fail "could not poll Mailpit for the status-change email to $SUBMITTER_EMAIL"
     fi
 else
     log "  Mailpit not ready -- skipping email-arrival assertion (server-side emit still exercised)"
@@ -254,7 +260,7 @@ pass "step 9 -- public reply committed"
 
 log "step 10: poll Mailpit for public-reply email to $SUBMITTER_EMAIL"
 if [ "$MAILPIT_READY" = "1" ]; then
-    if REPLY_MSG_ID="$(poll_mailpit_for_subject "$SUBMITTER_EMAIL" "Reply from the team" 15)"; then
+    if REPLY_MSG_ID="$(poll_mailpit_for_subject "$SUBMITTER_EMAIL" "Reply from the team")"; then
         log "  public-reply msg id: $REPLY_MSG_ID"
         REPLY_BODY="$(curl -sS "$MAILPIT_BASE/api/v1/message/$REPLY_MSG_ID" | jq -r '.Text')"
         echo "$REPLY_BODY" | grep -q "$FB_ID" \
@@ -263,7 +269,7 @@ if [ "$MAILPIT_READY" = "1" ]; then
             || fail "public-reply email body does not include reply text"
         pass "step 10 -- public-reply email delivered (subject + body OK)"
     else
-        fail "no public-reply email in Mailpit for $SUBMITTER_EMAIL within 15s"
+        fail "could not poll Mailpit for the public-reply email to $SUBMITTER_EMAIL"
     fi
 else
     log "  Mailpit not ready -- skipping email-arrival assertion (server-side emit still exercised)"

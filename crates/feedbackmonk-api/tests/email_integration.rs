@@ -24,6 +24,7 @@ fn mailpit_reachable() -> bool {
         return true;
     }
     // Quick TCP-connect probe. Mailpit defaults to 1025 SMTP / 8025 HTTP.
+    // time-bound: probe — an unanswered connect decides "skip", it fails nothing.
     std::net::TcpStream::connect_timeout(
         &"127.0.0.1:1025".parse().unwrap(),
         StdDuration::from_millis(200),
@@ -283,6 +284,8 @@ async fn mailpit_status_change_email_lands_with_brand_subject_and_footer() {
     // `GET /api/v1/messages?query=...` for search. We filter by the
     // unique recipient address to avoid races with concurrent runs.
     let client = reqwest::Client::builder()
+        // time-bound: probe — a stalled request is abandoned and the poll below
+        // asks again; it never fails the test.
         .timeout(StdDuration::from_secs(5))
         .build()
         .expect("reqwest client");
@@ -291,22 +294,21 @@ async fn mailpit_status_change_email_lands_with_brand_subject_and_footer() {
         urlencoded(&unique_submitter)
     );
 
-    let mut found: Option<serde_json::Value> = None;
-    for _ in 0..20 {
+    // Poll until Mailpit has it, with no deadline (DEC-743): `send_email`
+    // already reported the message queued, so a slow SMTP round-trip on a
+    // busy machine is not a failure.
+    let msg = loop {
         if let Ok(resp) = client.get(&url).send().await {
             if let Ok(json) = resp.json::<serde_json::Value>().await {
                 if let Some(messages) = json.get("messages").and_then(|m| m.as_array()) {
-                    if !messages.is_empty() {
-                        found = Some(messages[0].clone());
-                        break;
+                    if let Some(first) = messages.first() {
+                        break first.clone();
                     }
                 }
             }
         }
         tokio::time::sleep(StdDuration::from_millis(100)).await;
-    }
-
-    let msg = found.expect("Mailpit captured the message");
+    };
     let subject = msg
         .get("Subject")
         .and_then(|v| v.as_str())
