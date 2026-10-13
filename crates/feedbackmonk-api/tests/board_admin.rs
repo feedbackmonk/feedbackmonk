@@ -569,7 +569,7 @@ async fn priority_view_returns_order_rankers_uncertainty_unranked_and_computed_a
     signals.save_priority_list(scope, "u2", &[a.clone(), b.clone()]).await.unwrap();
     signals.save_priority_list(scope, "u3", &[a.clone(), c.clone()]).await.unwrap();
     // A one-item list states no pair: e is placed, but unranked.
-    signals.save_priority_list(scope, "u4", &[e.clone()]).await.unwrap();
+    signals.save_priority_list(scope, "u4", std::slice::from_ref(&e)).await.unwrap();
     signals.set_not_needed(scope, &d, "u5").await.unwrap();
     signals.set_not_needed(scope, &c, "u6").await.unwrap();
 

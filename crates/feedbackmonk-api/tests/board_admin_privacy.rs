@@ -467,6 +467,12 @@ async fn the_priority_view_does_not_depend_on_who_holds_which_list(pool: PgPool)
                 .as_array_mut()
                 .unwrap()
                 .sort_by(|x, y| x["short_code"].as_str().cmp(&y["short_code"].as_str()));
+            // The fit sums in short-code order, so the last bits of a float
+            // can differ between two projects; compare to 1e-9.
+            for item in view["ranked"].as_array_mut().unwrap() {
+                let u = item["uncertainty"].as_f64().unwrap();
+                item["uncertainty"] = json!(format!("{u:.9}"));
+            }
             view
         }
     };
