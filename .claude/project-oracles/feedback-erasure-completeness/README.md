@@ -18,7 +18,7 @@ runs `cargo test -p feedbackmonk-api --test me_feedback_delete` against a real d
 | Probe | Where | What must hold |
 |---|---|---|
 | A | `handlers/me_feedback.rs`, `repository/attachments.rs` | Both handlers: `authenticate_parts` → list keys → `storage.delete(..)?` inside a `for` over those keys → row delete keyed to `claims.sub`. Per-item: `get_for_end_user(.., claims.sub, ..).await?` runs before any listing or purge (`resolve_feedback_uuid` is not sub-scoped). Bulk: `list_storage_keys_for_end_user(.., claims.sub)`, whose SQL binds `end_user_sub`, `tenant_id` and `project_id` to the caller. |
-| B | `migrations/*.sql`, parsed into a final schema | Every FK to `feedback` (with or without `(id)`, inline, table-level or `ALTER … ADD CONSTRAINT`) is `ON DELETE CASCADE` or `SET NULL`; the raw count of `REFERENCES feedback` equals the parsed FKs (an unreadable form fails, not passes); every `*feedback_id` / `*feedback_uuid` column outside `feedback` has an FK to it. |
+| B | `migrations/*.sql`, parsed into a final schema | Every FK to `feedback` (with or without `(id)`, inline, table-level or `ALTER … ADD CONSTRAINT`) is `ON DELETE CASCADE` or `SET NULL`; the raw count of `REFERENCES feedback` equals the parsed FKs (an unreadable form fails, not passes); every `*feedback_id` / `*feedback_uuid` column outside `feedback` has an FK to it. The final schema applies `DROP CONSTRAINT` / `RENAME CONSTRAINT` (matched by explicit name or by Postgres's default `<table>_<cols>_fkey`, with its 63-byte truncation), `DROP [COLUMN]` and `DROP TABLE`, each taking its FKs with it; a dropped or renamed name that matches nothing parsed and is not a default `_pkey`/`_key`/`_check`/`_excl` name fails closed. |
 | C | `repository/feedback.rs` | Every `DELETE` in `delete_for_end_user` / `erase_all_for_end_user` binds, **in its own WHERE** (SQL comments stripped, no top-level `OR`), `tenant_id` to `scope.tenant_id()`, `project_id` to `scope.project_id()` and an end-user key to `end_user_sub` — or is `DELETE FROM feedback WHERE id = $n` with `$n` = `<row>.id`, `<row>` bound by an earlier `SELECT … FROM feedback` scoped the same way. |
 | D | `repository/feedback.rs` | `scrub_cluster_derived_text` clears `feedback_clusters.summary`, `recommendations.body`, `work_orders.instructions`, `analysis_sweeps.digest_summary`; both erasure fns call it. |
 | E | migrations × `erase_all_for_end_user` | Every table carrying an end-user identity column (`end_user_*`, `*_sub`, `voter_id`, `submitter_id`) is erased by a DELETE scoped as in C and keyed on that column — or is listed in `CASCADE_COVERED` (in `oracle.py`, with a rationale) **and** verified to hang off `feedback` by a `NOT NULL … ON DELETE CASCADE` FK. Today: `feedback`, `feedback_solicitations`, `roadmap_votes`, `feedback_board_votes`, `feedback_not_needed`, `board_priority_entries`, `board_sessions` by DELETE (keyed on `voter_id` / `user_sub`); `submit_idempotency` by cascade. |
@@ -78,3 +78,28 @@ against the real tree; the "v1.0.0" column is the oracle before Probe F, on the 
 | F3 | `board_priority_entries.feedback_id` → `ON DELETE SET NULL` | 1 (F) | 0 |
 | F4 | a later migration drops `feedback_board_notes` | 1 (F) | 0 |
 | — | restored | 0 | 0 |
+
+### Dropped constraints (2026-10-13, v1.2.0)
+
+An independent critic showed the schema parse ignored `DROP CONSTRAINT` (C-001): a later
+`ALTER TABLE feedback_not_needed DROP CONSTRAINT feedback_not_needed_feedback_id_fkey;` left the
+FK standing in the parsed schema, and the raw `REFERENCES feedback` count did not move, so B and F
+stayed clean. v1.2.0 names every parsed FK (explicitly, or by Postgres's default) and applies the
+drop; Probe B's raw count now compares against every FK ever declared, dropped ones included.
+
+| # | Mutation | v1.2.0 | v1.1.0 |
+|---|---|---|---|
+| G1 | a later migration drops `feedback_not_needed_feedback_id_fkey` (the default name) | 1 (B, F) | 0 |
+| G2 | a later migration drops `IF EXISTS not_needed_item_ref`, a name nothing declares | 1 (B, fail closed) | 0 |
+| — | restored | 0 | 0 |
+
+**Re-running the mutations.** E5–E8, F1–F4, G1 and G2 are recorded in `mutations.json` and
+replayed by `mutations.py`, which copies `crates/` and `migrations/` from the source tree into a
+temporary directory, checks the unmutated copy exits 0, applies each row alone to the copy, runs
+this `oracle.py --root <copy>` and requires exit 1, then restores the copy. The working tree is
+only read. From the repository root:
+
+    python .claude/project-oracles/feedback-erasure-completeness/mutations.py [--root <tree>] [--only G1 ...]
+
+Exit 0 means the clean copy is green and every row red. The 2026-09-30 rows (C1–D1) predate the
+recorded harness and are not in `mutations.json`.

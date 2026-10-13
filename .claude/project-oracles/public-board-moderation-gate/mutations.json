@@ -1,0 +1,13 @@
+[
+ {
+  "id": "M12",
+  "why": "the priority save stops resolving codes through resolve_pool_board_items (approved-only), so a non-approved item can enter a list",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-repository/src/board_signals.rs",
+    "old": "is saved whole, never partially).\n        let resolved = resolve_pool_board_items(&mut tx, scope, &codes).await?;",
+    "new": "is saved whole, never partially).\n        let resolved: Vec<PoolItem> = codes.iter().map(|c| PoolItem { id: Uuid::nil(), short_code: c.clone() }).collect();"
+   }
+  ]
+ }
+]

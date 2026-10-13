@@ -40,7 +40,9 @@ not count), never a self-reported flag:
   Probe D -- (--full) the behavioural fixtures.
   Probe E -- route homes: the C43 board-session / signal routes and the C44
              owner routes are registered only inside the router fn that
-             build_app merges under their class (ROUTE_HOMES).
+             build_app merges under their class (ROUTE_HOMES), whether as a
+             `.route(` literal (parameters compared by position, not name) or
+             under a `.nest(` / `.nest_service(` prefix (C-002, v1.2.0).
 
 A missing target file is a FAIL: the host layer exists in this codebase, so its
 absence is a regression, not a self-host opt-out (self-host inertness is a
@@ -120,7 +122,8 @@ WRAPPERS = ("bind_public_routes", "bind_admin_routes", "apply_public_rate_limit"
 # pinned to the router fn that must register it, and that fn to the name it is
 # merged under in build_app, whose class Probe A then enforces. Every
 # `.route("<path>"` registration of the path anywhere in the api crate must sit
-# inside that fn; a path registered nowhere FAILS.
+# inside that fn, and so must every `.nest("<prefix>"` whose prefix leads to the
+# path; a path registered nowhere FAILS.
 #   path -> (file under crates/feedbackmonk-api/src, fn name, ROUTERS name, class)
 ROUTE_HOMES: dict[str, tuple[str, str, str, str]] = {
     # C43 (FR-FBR-44): the hosted board's sign-in handoff -- public, host-bound,
@@ -637,6 +640,26 @@ def _exported_as(lib_text: str, module: str, fn: str) -> set[str]:
     return names
 
 
+def _segments(path: str) -> list[str]:
+    """Path segments with every capture (`:name`, `{name}`, `*rest`) reduced to
+    one placeholder, so a renamed parameter cannot dodge the comparison."""
+    out = []
+    for seg in path.strip().strip("/").split("/"):
+        if not seg:
+            continue
+        out.append("<p>" if seg[0] in ":*{" else seg)
+    return out
+
+
+def _is_prefix(prefix: str, path: str) -> bool:
+    """`prefix` is a whole-segment prefix of `path` (or equal to it)."""
+    a, b = _segments(prefix), _segments(path)
+    return len(a) <= len(b) and b[: len(a)] == a
+
+
+_NEST_RE = re.compile(r"\.\s*(nest|nest_service)\s*\(")
+
+
 def probe_e(ctx: Ctx, offenders: list[str]) -> str:
     src = ctx.api / "src"
     lib = src / "lib.rs"
@@ -646,6 +669,42 @@ def probe_e(ctx: Ctx, offenders: list[str]) -> str:
     lib_text = strip_comments(lib.read_text(encoding="utf-8", errors="replace"))
     files = {p: strip_comments(p.read_text(encoding="utf-8", errors="replace")) for p in src.rglob("*.rs")}
     ok = True
+
+    # Nested mounts. A `.nest("<prefix>", ..)` registers its inner routes under
+    # the prefix, so `.nest("/api/v1/projects/:project_id/board",
+    # Router::new().route("/session", ..))` registers a ROUTE_HOMES path that no
+    # `.route("<full path>"` literal shows. Any nest whose prefix is a
+    # whole-segment prefix of a pinned path is allowed only inside that path's
+    # home fn; a nest whose prefix is not a string literal cannot be resolved
+    # and fails closed.
+    for p, text in files.items():
+        spans = _fn_spans(text)
+        for m in _NEST_RE.finditer(text):
+            line = text.count("\n", 0, m.start()) + 1
+            encl = [s for s in spans if s[1] < m.start() < s[2]]
+            inner = min(encl, key=lambda s: s[2] - s[1]) if encl else None
+            arg = re.match(r"\s*\"((?:[^\"\\]|\\.)*)\"\s*,", text[m.end():])
+            if arg is None:
+                offenders.append(
+                    f"{ctx.rel(p)}:{line}  `.{m.group(1)}(` in `{inner[0] if inner else '<no fn>'}` has no string-"
+                    f"literal prefix -- its mount point cannot be checked against ROUTE_HOMES; use a literal "
+                    f"rather than pass blind"
+                )
+                ok = False
+                continue
+            prefix = arg.group(1)
+            for path, (home_file, home_fn, router, cls) in ROUTE_HOMES.items():
+                if not _is_prefix(prefix, path):
+                    continue
+                if p != src / home_file or inner is None or inner[0] != home_fn:
+                    offenders.append(
+                        f"{ctx.rel(p)}:{line}  `.{m.group(1)}(\"{prefix}\", ..)` in "
+                        f"`{inner[0] if inner else '<no fn>'}` mounts under route `{path}` -- that prefix may be "
+                        f"mounted only in `{ctx.rel(src / home_file)}::{home_fn}`, merged as the {cls} router "
+                        f"`{router}`; anywhere else its routes escape that router's host binding / rate floor / "
+                        f"CORS class"
+                    )
+                    ok = False
     for path, (home_file, home_fn, router, cls) in ROUTE_HOMES.items():
         where = f"route `{path}`"
         if ROUTERS.get(router, (None,))[0] != cls:
@@ -662,7 +721,9 @@ def probe_e(ctx: Ctx, offenders: list[str]) -> str:
         found = 0
         for p, text in files.items():
             spans = _fn_spans(text)
-            for m in re.finditer(r"\.\s*route\s*\(\s*\"" + re.escape(path) + r"\"", text):
+            for m in re.finditer(r"\.\s*route\s*\(\s*\"((?:[^\"\\]|\\.)*)\"", text):
+                if _segments(m.group(1)) != _segments(path):  # a renamed `:param` is the same route
+                    continue
                 found += 1
                 encl = [s for s in spans if s[1] < m.start() < s[2]]
                 inner = min(encl, key=lambda s: s[2] - s[1]) if encl else None

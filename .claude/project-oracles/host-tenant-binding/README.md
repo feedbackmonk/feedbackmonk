@@ -51,7 +51,7 @@ covers it behaviourally.
 | **A** — build_app wiring | comments stripped, then the `let app = …;` chain is parsed paren-balanced: every element is `.merge(` (a chain `.layer(`/`.route(` FAILS); no `.merge(` outside that chain; no inline `.route/.nest/.fallback`; every merged router classified (unclassified FAILS), merged once (twice FAILS), and in its class's exact shape; every classified router still merged; the wrappers' second args are `prl`/`hs`; `let cors = public_cors_layer(..)`, `let prl = PublicRateLimit::new(..)` and `FEEDBACKMONK_CORS_ORIGINS` present; `.layer(cors` appears nowhere but on a cors=yes router |
 | **B** — host layer | `bind_public_routes`/`bind_admin_routes` install `public_host_binding`/`admin_host_binding` respectively; `admin_host_binding` maps `Tenant` → `not_found()` and `AdminAlias` → `redirect_to_admin`; `public_host_binding` compares the path project's tenant to the host's tenant and 404s both mismatch and unknown; no `StatusCode::FORBIDDEN` (a 403 is an existence oracle); `effective_host` gates `x-forwarded-host` on `trust_forwarded_host` |
 | **C** — resolution purity | host resolution lives in the repository crate (`sqlx::query!` in `domains.rs`, DEC-FBR-03); no `resolve_host(` call outside the allowed files; no ad-hoc `Host` header read outside `hosting.rs` |
-| **E** — route homes | each route in `ROUTE_HOMES` (the C43 board session, priorities and not-needed routes; the C44 owner priority view and board note) is registered, as a `.route("<path>"` literal anywhere in the api crate, only inside its home fn (`handlers/board.rs::board_router`, `handlers/moderation.rs::routes`); `lib.rs` exports that fn under the name build_app merges (`board_router`, `moderation_router`); and that name is classified in the route's class. Probe A sees routers, not routes, so without E a route moved into a *classified* router of the wrong class (the session exchange into `health_router`) passes. A path registered nowhere fails |
+| **E** — route homes | each route in `ROUTE_HOMES` (the C43 board session, priorities and not-needed routes; the C44 owner priority view and board note) is registered, as a `.route("<path>"` literal anywhere in the api crate, only inside its home fn (`handlers/board.rs::board_router`, `handlers/moderation.rs::routes`); `lib.rs` exports that fn under the name build_app merges (`board_router`, `moderation_router`); and that name is classified in the route's class. Probe A sees routers, not routes, so without E a route moved into a *classified* router of the wrong class (the session exchange into `health_router`) passes. A path registered nowhere fails. Path parameters match by position, not name; and every `.nest(`/`.nest_service(` whose literal prefix is a whole-segment prefix of a pinned path must sit in that path's home fn (a non-literal prefix fails closed) |
 | **D** — behavioural (`--full`) | `cargo test --test host_tenant_binding` + `--test domains_repo` |
 
 A missing `main.rs`, `hosting.rs` or repository `domains.rs` is a **FAIL**. The former
@@ -116,6 +116,33 @@ oracle before Probe E on the same mutation.
 | H4 | the C44 board-note route also registered in `board_router` (public) | 1 (E) | 0 |
 | — | restored | 0 | 0 |
 
+### Nested mounts and renamed parameters (2026-10-13, v1.2.0)
+
+An independent critic showed Probe E read only `.route("<full path>"` literals (C-002): a
+`.nest("/api/v1/projects/:project_id/board", Router::new().route("/session", ..))` inside
+`health_router` registered the session exchange unbound and passed. v1.2.0 checks every
+`.nest(` / `.nest_service(` in the api crate: one whose prefix is a whole-segment prefix of a
+`ROUTE_HOMES` path fails unless it sits in that path's home fn, and one whose prefix is not a
+string literal fails closed. Path parameters are compared by position, not name, so a route
+re-registered as `:pid` is still the pinned route.
+
+| # | Mutation | v1.2.0 | v1.1.0 |
+|---|---|---|---|
+| H5 | `health_router` nests a router at `/api/v1/projects/:project_id/board` that registers `/session` | 1 (E) | 0 |
+| H6 | `health_router` registers `/api/v1/projects/:pid/board/priorities` (parameter renamed) | 1 (E) | 0 |
+| — | restored | 0 | 0 |
+
+**Re-running the mutations.** H1–H6 are recorded in `mutations.json` and replayed by
+`mutations.py`, which copies `crates/` and `migrations/` from the source tree into a temporary
+directory, checks the unmutated copy exits 0, applies each row alone to the copy, runs this
+`oracle.py --root <copy>` and requires exit 1, then restores the copy. The working tree is only
+read. From the repository root:
+
+    python .claude/project-oracles/host-tenant-binding/mutations.py [--root <tree>] [--only H5 ...]
+
+Exit 0 means the clean copy is green and every row red. The 28 rows of the 2026-09-30 table
+predate the recorded harness and are not in `mutations.json`.
+
 The paren-balanced parser matters: real arguments nest
 (`bind_public_routes(apply_public_rate_limit(board_router(state).layer(cors.clone()), prl), hs)`),
 and a regex split truncates at the first `)` — a silent false PASS. Comment stripping matters
@@ -127,6 +154,8 @@ too: #11 passed the pre-2026-09-30 oracle, which matched wrapper names in raw te
 |---|---|
 | `oracle.py` | the implementation and the `ROUTERS` table |
 | `oracle.json` | the oracle contract |
+| `mutations.py` | replays `mutations.json` against a scratch copy of the tree (every row must exit 1) |
+| `mutations.json` | the recorded mutations H1–H6 |
 | `README.md` | this file |
 
 ## History

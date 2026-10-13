@@ -1,0 +1,83 @@
+[
+ {
+  "id": "H1",
+  "why": "the board-session route moved out of board_router into a new board_session_router, merged fully wrapped (public shape + cors)",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-api/src/handlers/board.rs",
+    "old": "        .route(\n            \"/api/v1/projects/:project_id/board/session\",",
+    "new": "        .with_state(state)\n}\n\npub fn board_session_router(state: AppState) -> Router {\n    Router::new()\n        .route(\n            \"/api/v1/projects/:project_id/board/session\","
+   },
+   {
+    "file": "crates/feedbackmonk-api/src/main.rs",
+    "old": "        .merge(bind_admin_routes(moderation_router(state.clone()), hs.clone()))",
+    "new": "        .merge(bind_public_routes(\n            apply_public_rate_limit(\n                board_session_router(state.clone()).layer(cors.clone()),\n                prl.clone(),\n            ),\n            hs.clone(),\n        ))\n        .merge(bind_admin_routes(moderation_router(state.clone()), hs.clone()))"
+   }
+  ]
+ },
+ {
+  "id": "H2",
+  "why": "the priorities route moved into health_router (unbound)",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-api/src/handlers/board.rs",
+    "old": "        .route(\n            \"/api/v1/projects/:project_id/board/priorities\",\n            get(public_board_priorities_get).put(public_board_priorities_put),\n        )\n",
+    "new": ""
+   },
+   {
+    "file": "crates/feedbackmonk-api/src/router.rs",
+    "old": "        .route(\"/health/ready\", get(health::readiness))\n",
+    "new": "        .route(\"/health/ready\", get(health::readiness))\n        .route(\n            \"/api/v1/projects/:project_id/board/priorities\",\n            get(crate::handlers::board::public_board_priorities_get),\n        )\n"
+   }
+  ]
+ },
+ {
+  "id": "H3",
+  "why": "the C44 owner priority and board-note routes moved into a new owner_priority_router, merged with bind_admin_routes",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-api/src/handlers/moderation.rs",
+    "old": "        // Contract C44 (end-user prioritization, owner side).\n        .route(\n            \"/api/v1/admin/projects/:project_id/priority\",\n            get(board_admin::get_priority_view),\n        )\n",
+    "new": "        .with_state(state)\n}\n\npub fn owner_priority_router(state: AppState) -> Router {\n    Router::new()\n        .route(\n            \"/api/v1/admin/projects/:project_id/priority\",\n            get(board_admin::get_priority_view),\n        )\n"
+   },
+   {
+    "file": "crates/feedbackmonk-api/src/main.rs",
+    "old": "        .merge(bind_admin_routes(moderation_router(state.clone()), hs.clone()))",
+    "new": "        .merge(bind_admin_routes(moderation_router(state.clone()), hs.clone()))\n        .merge(bind_admin_routes(owner_priority_router(state.clone()), hs.clone()))"
+   }
+  ]
+ },
+ {
+  "id": "H4",
+  "why": "the admin board-note route registered inside board_router (public)",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-api/src/handlers/board.rs",
+    "old": "        // C43: the hosted board's sign-in handoff (FR-FBR-44).",
+    "new": "        .route(\n            \"/api/v1/admin/feedback/:feedback_id/board-note\",\n            get(crate::handlers::board_admin::get_board_note),\n        )\n        // C43: the hosted board's sign-in handoff (FR-FBR-44)."
+   }
+  ]
+ },
+ {
+  "id": "H5",
+  "why": "C-002: health_router (unbound) nests a Router at the board prefix that registers /session relative to it",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-api/src/router.rs",
+    "old": "        .route(\"/health/ready\", get(health::readiness))\n",
+    "new": "        .route(\"/health/ready\", get(health::readiness))\n        .nest(\n            \"/api/v1/projects/:project_id/board\",\n            Router::new().route(\"/session\", post(crate::handlers::board::exchange_board_session)),\n        )\n"
+   }
+  ]
+ },
+ {
+  "id": "H6",
+  "why": "health_router (unbound) registers the priorities route with its path parameter renamed (:pid), so the literal differs from ROUTE_HOMES",
+  "edits": [
+   {
+    "file": "crates/feedbackmonk-api/src/router.rs",
+    "old": "        .route(\"/health/ready\", get(health::readiness))\n",
+    "new": "        .route(\"/health/ready\", get(health::readiness))\n        .route(\n            \"/api/v1/projects/:pid/board/priorities\",\n            get(crate::handlers::board::public_board_priorities_get),\n        )\n"
+   }
+  ]
+ }
+]
