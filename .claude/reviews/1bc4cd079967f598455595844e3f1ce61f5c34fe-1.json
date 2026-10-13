@@ -1,0 +1,128 @@
+{
+ "schema": "review-window/1",
+ "n": 1,
+ "base": "8e9f672ef4fc8f624945c8c0fa461ae6d8bdf39e",
+ "tip": "1bc4cd079967f598455595844e3f1ce61f5c34fe",
+ "tree": "8931ed2a407136bf7299919017ade2ee7c37eb13",
+ "reviewed": [
+  "d39de77f1b30c17ea68a5f4dd3db5a5206d56df5",
+  "806257fb8271fdfa8a7023e25b5e920db6fb4063",
+  "0332137811841b3e7ddc5668218b6aa553a40b9b",
+  "389598ea63c4872e5ef57ab46192aadbe93b9af0",
+  "690cd353a3e37d65a1eb676e3e2f3305ccbbb2d1",
+  "7673cabb58bd63ef15d755c05eda432884ba5de5",
+  "824764a6b1f54d9c1cb28b8fa4e88f1bf606faf6",
+  "56524a720e4151461adeacae0d750e0228ce1a0c",
+  "0be9b74ab0abf4e8c5b6f96aaa365997527c444d",
+  "a942062fc105705f1bc1077bf10a45cae49307ff",
+  "e604d1bc783905691f4b646a65fd39cbc2b3a954",
+  "a3224c23e893dc3fd3a8c19db448e4ca5f0361fb",
+  "43acb6132a808abb27c87d8bfabad6d757508204",
+  "6bbb66d3c89d568d93f0f566a1e8ced63518a04d",
+  "43ee08ed9ae0db96efd1d9a34592d65b72aa7c25",
+  "006e4cf7213100160ecd85f2a1ed55530db7447b",
+  "555da54bff05e097b44bbc4a26a1ca8d597544b1",
+  "e654943c1d904045fe488641154517f861f3eaa7",
+  "5b667690c1d73296f0de1caa9505580b2efc3531",
+  "03046e52d624eaa1b22e95fcbe8a4503135a8ec9",
+  "75db1baaae709021d71a4f37117cec5a92c70fb9",
+  "5759d258dceaf735cb9bd48cee0fff8f4cc1e00c",
+  "d14615e984bb55aea90bedc3b88419d2d48454ee",
+  "39efce1ca4f556e69e0e49d3fab07449b19154bc",
+  "67543e85dd5d5583392e2f8ec9e05bf6901dfd86",
+  "d15adc5730ad726c1f7328c4738ddea6e56bba8a",
+  "8787c8c6a47d6be0c1df98bb9c7d600b47588b21",
+  "fe142ab47f355b945a343458d36be0ca2afe31d7",
+  "82b4321bc2eb1b0abaef31a19a1c27bf720a2b74",
+  "354b01f606168f574508b93a5ffacab6b508075b",
+  "f6e17c074f0c4d7a051db95bdddb1e176d9b765f",
+  "28c98794ba55b27b3d6c43ecdcfcd238d7e8860c",
+  "990cff974d77f684be75f7c637da28fe747a9ff5",
+  "8065d53da46522a6d26da274cf3a41082d7998f7",
+  "91d334cdc0daea7e9b59c35e8ddb852a449c6301",
+  "b8982f3bef9d22629cac37a9e378c05467cdef25",
+  "8013ae89c9d79e943fd23af1fc78c8f32c66870c",
+  "4ff2bf7dbd42d3deeafb1173918bde3ada9bf5e8",
+  "c0f9a28ef4ba94d12560b9f8fe9446a61b49eac4",
+  "2db098eaeabe8d560b06074345185165bcc63df2",
+  "8d9c511b3c739adecb472142f9cb3ff157695c63",
+  "89b3f8e2eddf208b4cf161752ef182a752bb0764",
+  "0f11aa883d0648864fa8e591a018c8f6146d4c26",
+  "e32e3b4c80cb8e1cc16e28ee91e1c7b7ebd70d78",
+  "6db81501a72f51fe9bd0c72bdcba8d566eb30b27",
+  "fcb7e2d60380aff6274bbe0426e01d49eb36863e",
+  "859f73b58bd08c1353906740fb15478df0f94a7c",
+  "c5be12d18cb6bad7099f2bd72b1f3ff060f60282",
+  "93df7f458b6daabe99deacf7ac7d956687c8be58",
+  "d581ffdf74c528b2557f9e8c3dfdd0fd98333e39",
+  "9b09a61d9557485f5d52aee7513ef539eae609fc",
+  "1bc4cd079967f598455595844e3f1ce61f5c34fe"
+ ],
+ "supersedes": "",
+ "suite": {
+  "result": "pass",
+  "suite_tip": "5e4431c73f653c3f9aaa6c369effd8c9d7caa1c7",
+  "suite_tree": "8931ed2a407136bf7299919017ade2ee7c37eb13",
+  "oracles": "fail",
+  "receipt": "checks.txt"
+ },
+ "verdict": "CONCERN",
+ "approach": {
+  "verdict": "sound",
+  "why": "Static probes over the parsed final schema (Probe F: ITEM_SIDE tables pinned by name, NOT NULL + ON DELETE CASCADE on feedback_id, plus a generic no-SET-NULL rule for user-keyed FKs to feedback) and over route-literal homes (Probe E: each C43/C44 path pinned to its registering fn, that fn to the lib.rs export name build_app merges, and that name to Probe A's class) is the right shape: each probe fails on the defect it names and names the artefact it defends. Verified on the merged tree: both oracles exit 0 with Probe F clean and Probe E PASS; replays of F2 and H2 from the README rows on a scratch copy exit 1 as recorded. The diff is additive (208 insertions, 5 deletions all in README/oracle.json prose and version strings); no existing probe's code changed, so nothing was weakened. Every deliverable the objective names is present: erasure v1.1.0 Probe F, host-tenant-binding v1.1.0 Probe E, M12 recorded for public-board-moderation-gate at v1.2.0. The concerns below are parser boundaries of the probes, not design faults."
+ },
+ "findings": [
+  {
+   "id": "1bc4cd079967:C-001",
+   "lens": "general",
+   "severity": "medium",
+   "summary": "Probe F stays green when a later migration DROPs the CASCADE FK: parse_schema never models DROP CONSTRAINT, so an end-user-keyed row can be left behind with the oracle passing",
+   "evidence": ".claude/project-oracles/feedback-erasure-completeness/oracle.py:460-478 handles ADD COLUMN / ADD CONSTRAINT / DROP COLUMN / ALTER COLUMN NOT NULL only; no branch for DROP CONSTRAINT. Probe B's raw-count guard (oracle.py:446, `REFERENCES feedback`) is unchanged by such a statement. Reproduced on a scratch copy via --root: added migrations/00099_drop_fk.sql = `ALTER TABLE feedback_not_needed DROP CONSTRAINT feedback_not_needed_feedback_id_fkey;` -> `PASS feedback-erasure-completeness`, `Probe B (FK cascade completeness): clean`, `Probe F (item-side board artefacts): clean`, exit 0. The README row for F says 'a dropped or renamed table fails'; a dropped constraint does not. No behavioural backstop: grep for feedback_not_needed|board_priority_entries|feedback_board_notes under crates/feedbackmonk-api/tests/ matches only tests/board_session.rs (2 hits), none in tests/me_feedback_delete.rs. Pre-existing parser limitation inherited by F, not introduced here; fix is to model DROP CONSTRAINT (Postgres default <table>_<col>_fkey plus named constraints) and record it as F5."
+  },
+  {
+   "id": "1bc4cd079967:C-002",
+   "lens": "security",
+   "severity": "medium",
+   "summary": "Probe E sees only .route(\"<full path>\") literals: a C43 route made reachable through .nest(prefix, Router::new().route(\"/session\", ..)) inside another classified router (e.g. unbound health_router) passes A and E",
+   "evidence": ".claude/project-oracles/host-tenant-binding/oracle.py:664: the only registration shape searched is a regex for `.route(` followed by the quoted full path; Probe A's .nest ban applies to build_app's chain only (README Probe A row). Reproduced on a scratch copy via --root: crates/feedbackmonk-api/src/router.rs health_router given `.nest(\"/api/v1/projects/:project_id/board\", Router::new().route(\"/session\", get(health::liveness)))` -> `PASS host-tenant-binding`, Probe A PASS, Probe E PASS, exit 0, while the session exchange is now reachable on the unbound, un-rate-limited router. The README states the literal-only scope ('as a .route(\"<path>\" literal'), so the claim is honest but narrower than 'registered only inside its home fn'. Fix: fail any .nest( in the api crate whose prefix is a prefix of a ROUTE_HOMES path, or any .nest( outside the two home fns; record as H5."
+  },
+  {
+   "id": "1bc4cd079967:C-003",
+   "lens": "general",
+   "severity": "low",
+   "summary": "Probe F's generic guard iterates only FKs that target feedback, so a user-keyed table that names the item by short_code with no FK is invisible to the item side; Probe E (user side) still forces its erasure",
+   "evidence": "oracle.py:759 `if f.target != \"feedback\" ...: continue` -- tables with no FK to feedback never enter the loop. Scratch copy via --root: added migrations/00099_flags.sql creating board_item_flags(tenant_id, project_id, item_short_code TEXT, user_sub TEXT) -> Probe F clean, but `Probe E (end-user table coverage) failures: ... table board_item_flags carries end-user key column(s) ['user_sub'] but is not erased by a DELETE scoped (tenant, project, key = end_user_sub)`, exit 1. So 'forget me' (FR-FBR-60 person side) holds; item deletion leaving other viewers' rows on a gone item is outside every probe. Not a defect in the tree; a boundary to name in the README's 'Known static boundary' style."
+  },
+  {
+   "id": "1bc4cd079967:C-004",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The 15 mutations (E5-E8, F1-F4, M12, H1-H4) exist only as one-line README rows; the lead replayed them by hand, and re-verification after the next parser change means re-deriving each from prose",
+   "evidence": ".claude/project-oracles/feedback-erasure-completeness/README.md:63-80, host-tenant-binding/README.md:104-117, public-board-moderation-gate/README.md:94-100 record mutation text only; `git diff --stat 9b09a61..5e4431c` shows no script under .claude/project-oracles/**. Consistent with the project's precedent (28 host-tenant-binding mutations, M1-M11, all prose). Re-deriving F2 and H2 from the rows took a few lines each and matched (exit 1), so the record is usable; a checked-in mutations.py --root <scratch> applying each row to a copy and asserting exit 1 then 0 would make the table a program (mode: oracle self-check; owner: each oracle directory). Never a blocker."
+  }
+ ],
+ "veto_reason": null,
+ "reviewer": {
+  "model": "claude-fable-5-1",
+  "seat": "distinct",
+  "requested": {
+   "seat": "distinct"
+  }
+ },
+ "authors": [],
+ "closing_session": "collab-20261013-194157",
+ "minutes": 0.0,
+ "decided_at": "2026-10-13T19:59:14Z",
+ "debt": {
+  "cleared": 384728.461,
+  "budget": 1715.1,
+  "next_budget": 1715.1,
+  "why": "the seed, from the replay (docs/planning/measurements/review-window)"
+ },
+ "holds_on": "medium",
+ "carried": [],
+ "fixes": [],
+ "resolved": {},
+ "merge_tip": "5e4431c73f653c3f9aaa6c369effd8c9d7caa1c7",
+ "group": "collab-20261013-194157"
+}
