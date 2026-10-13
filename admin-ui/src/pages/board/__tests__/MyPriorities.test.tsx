@@ -125,8 +125,10 @@ describe("MyPriorities", () => {
     expect(document.activeElement).toBe(
       screen.getByRole("button", { name: "Move down: FB-AAA111" }),
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "FB-AAA111 is now number 2 of 3.",
+    // Announced in a polite live region.
+    expect(screen.getByText("FB-AAA111 is now number 2 of 3.")).toHaveAttribute(
+      "role",
+      "status",
     );
   });
 
