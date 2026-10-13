@@ -16,6 +16,21 @@
       ],
       "recorded": "2026-10-13",
       "last_seen": "2026-10-13"
+    },
+    {
+      "id": "npx-playwright-outside-admin-ui",
+      "title": "npx playwright run outside admin-ui (or without --no-install) fetches a different Playwright and finds no tests",
+      "symptoms": [
+        "npm warn exec The following package was not found and will be installed: playwright@",
+        "Error: No tests found\\."
+      ],
+      "cost": "collab-20261013-171541: both UI lanes' independent re-runs went red and needed a manual re-run",
+      "fix": "Run from admin-ui and pin the local binary: cd admin-ui && CI=1 npx --no-install playwright test <specs>. CI=1 also stops reuse of another tree's dev server on 14204.",
+      "delivers_on": [
+        "tool:Bash(*playwright*)"
+      ],
+      "recorded": "2026-10-13",
+      "last_seen": "2026-10-13"
     }
   ],
   "retired": []
