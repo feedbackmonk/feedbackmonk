@@ -435,6 +435,10 @@ Parallel-first: L1's widget and email legs share only C34/C37 and can run as two
 
 ---
 
+## Capability extension — end-user prioritization (FR-FBR-42 … FR-FBR-61) — PLANNED
+
+Signed-in end users see every feature request, upvote or mark it "not needed" (owner-only), keep a personal priority list aggregated by pairwise preference for the owner, and open a full public detail view; a project can require sign-in to see its board. Requirements: [`end-user-prioritization.md`](end-user-prioritization.md). Decisions: DEC-FBR-18 … DEC-FBR-22.
+
 ## Spec session — COMPLETE ✅
 
 **Verdict**: READY FOR `/0-uldf-ldis-plan`.

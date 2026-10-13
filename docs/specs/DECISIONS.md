@@ -1237,3 +1237,54 @@ GitCellar then flips its Forge embed to `data-fbm-no-auto-mount`, marks its navb
 **Rationale**: the 30 KiB figure entered as one cell of DEC-FBR-08's scope table with no reason recorded, then hardened into an oracle and "never raise" prose. No visitor can tell 30 KiB from 40; the cap's only measured effect was to stall the 2026-10-10 form redesign and force a refactor. "Lightweight" is still the goal and the number is still in front of whoever changes the widget — judged by what it is for, not by a threshold. The 4 KiB chunk cap guarded against code or a second namespace leaking into a chunk; a size proxy for that passes a small chunk of code and fails a long honest translation, so the content is checked instead.
 
 **Alternatives considered**: *Keep 40 KiB* (DEC-FBR-IMPL-35, a few hours old) — the owner asked why any cap existed and chose to drop it. *Warn above a number* — the same mechanism with a quieter voice.
+
+---
+
+## End-user prioritization (spec session 2026-10-13)
+
+Requirements: [`end-user-prioritization.md`](end-user-prioritization.md) (FR-FBR-42 … FR-FBR-61). The owner ratified the recommendations as a set ("go with your recommendations").
+
+<a id="dec-fbr-18"></a>
+### DEC-FBR-18: Ranking is a separate, owner-facing signal fitted from stated pairwise preferences; votes stay the public sort
+
+**Decision**: each signed-in user keeps an ordered priority list. Aggregation reads the list only as the "a over b" pairs it states. An unranked item contributes no information, not a negative. Each pair weighs 2/k, so a user who ranked k items carries k − 1 in total. The aggregate is a regularized Bradley–Terry fit, shown to the owner beside vote and not-needed counts with a ranker count and an uncertainty indicator, and never merged with them into one score. The public board keeps sorting by votes.
+
+**Why**: the owner's concern was that a user who ranks two items and ignores the rest should not distort the order. Reading only stated pairs solves that directly: what the user did not compare carries no weight in either direction. Linear weight in k keeps a thorough ranker from either drowning out others (all C(k,2) pairs at full weight grows quadratically) or being diluted (equal total weight per user penalizes the careful ranker's top choice relative to a one-item ranker's). The prior stops one comparison from pinning an item at an extreme. Votes measure breadth and rankings measure relative intensity among engaged users; merging them hides which one moved the number.
+
+**Rejected**: *1/N weighting by items ranked* (the owner's first idea): it still penalizes thoroughness. *Borda count over the full pool*: it has to give unranked items a position, which treats "didn't look" as "ranked last". *Points budgeting*: simpler, but throws away the order the user expressed and was not what the owner asked for. *One combined public score*. *A public aggregate priority list*: it invites gaming of a visible leaderboard. *Inferring "ranked above every seen-but-unranked item"*: it needs per-user view tracking, which is a new surveillance surface (DEC-FBR-02).
+
+<a id="dec-fbr-19"></a>
+### DEC-FBR-19: The ranking pool is the board's open feature requests, not the roadmap
+
+**Decision**: users rank approved `feature` items whose status is not `shipped`, `wontfix` or `duplicate`. Promotion to the roadmap sets `duplicate` and so ends an item's ranking life. The roadmap keeps its own vote-only model.
+
+**Why**: ranking answers "what should be built next", which is a question about unbuilt demand, and that lives on the board. Roadmap items are already the owner's commitments. The board and roadmap are separate tables with separate vote pools (DEC-FBR-IMPL-21), and merging their rankings would require a cross-table identity the codebase deliberately avoided. The owner sees the priority order *before* promoting, which is when it informs the decision.
+
+**Rejected**: *Roadmap only*: it ranks what is already committed. *Both, in one list*: it needs a polymorphic item identity across two tables and a rule for carrying rankings across promotion. Revisit only if owners ask to order committed roadmap work by user preference.
+
+<a id="dec-fbr-20"></a>
+### DEC-FBR-20: "Not needed" is a private signal to the owner, from signed-in users only
+
+**Decision**: a signed-in viewer can mark a pool item not needed. The mark is mutually exclusive with their upvote, can be cleared any time, and is counted only on the owner's console. No public count, no public effect on ordering, and the owner never sees who set it.
+
+**Why**: a public negative score discourages submitters and invites pile-ons. A private count still tells the owner what "40 up" cannot: whether opposition is near zero or close to the support. Requiring sign-in keeps the count from being inflated by cookie churn, since an anonymous identity is only an IP-and-cookie hash.
+
+**Rejected**: *Public downvotes or a net score*. *Anonymous not-needed marks*. *Showing the owner who marked it*: aggregate only, per the privacy promise.
+
+<a id="dec-fbr-21"></a>
+### DEC-FBR-21: A signed-in identity reaches the hosted board by a one-time fragment-token handoff to a short board session
+
+**Decision**: the customer's app (or the widget's "See all requests" link) opens the hosted board with a freshly minted end-user JWT in the URL fragment. The board posts it once to an exchange endpoint, which verifies it with the existing verifier and sets an HttpOnly, Secure, host-only, project-scoped cookie holding only the `sub`. The cookie lasts at most 8 hours and is not extendable without a new handoff. Signed-in voting retracts at any time; anonymous voting keeps its window.
+
+**Why**: the hosted board today has no way to learn who a signed-in user is, so signed-in viewing, ranking and not-needed marks all need this. A fragment never reaches a server or a `Referer`, unlike a query string. A bounded session is what makes a 5-minute JWT usable for a browsing visit without minting one per request. The identity is still only the customer-signed `sub`, with no callback to any provider, so DEC-FBR-04 holds. 8 hours covers a working session and keeps the cookie from becoming a long-lived bearer.
+
+**Rejected**: *Render the board and ranking inside the widget*: it puts a whole second application into the drop-in script. *The hosted board fetching the customer's `token-url` cross-origin*: it needs credentialed CORS on every customer. *JWT in the query string*: it leaks to logs and referrers. *A refreshable or long-lived board session*.
+
+<a id="dec-fbr-22"></a>
+### DEC-FBR-22: The detail view shows an owner-written board note and a dated status timeline, never replies
+
+**Decision**: board detail shows the body as submitted, status, votes, accepted date, a dated timeline of submitter-visible transitions (no notes, no actor) and an optional owner-authored board note written for all viewers. Replies, including `public` ones, never appear on the board.
+
+**Why**: `public` replies are addressed to the submitter and routinely greet them by name. Contract C29 invariant 3 already keeps the board away from `feedback_replies`. A note written *for the board* gives owners a place to explain an item's state to everyone without republishing a private conversation.
+
+**Rejected**: *Showing public replies*, which was proposed in the first draft of these recommendations and withdrawn on reading C29. *Showing status-change notes*: same exposure. *Attachments*: screenshots are where personal data hides.
