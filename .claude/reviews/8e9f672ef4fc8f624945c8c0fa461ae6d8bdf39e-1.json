@@ -1,0 +1,87 @@
+{
+ "schema": "review-window/1",
+ "n": 1,
+ "base": null,
+ "tip": "8e9f672ef4fc8f624945c8c0fa461ae6d8bdf39e",
+ "tree": "c10992e5ffc340eaf09df6b2ec9f9e2f2b778dd5",
+ "reviewed": [
+  "0bd04c7cacf1ff833a01ad1644a155295595b0d2",
+  "8e9f672ef4fc8f624945c8c0fa461ae6d8bdf39e"
+ ],
+ "supersedes": "",
+ "suite": {
+  "result": "fail",
+  "suite_tip": "8e9f672ef4fc8f624945c8c0fa461ae6d8bdf39e",
+  "suite_tree": "c10992e5ffc340eaf09df6b2ec9f9e2f2b778dd5",
+  "receipt": "this run",
+  "oracles": "pass",
+  "oracle_reds": []
+ },
+ "verdict": "CONCERN",
+ "approach": {
+  "verdict": "sound",
+  "why": "Both commits do what they set out to do in a way that can work. 0bd04c7: fast-check.sh runs the offline cargo check CI compiles plus tsc -b in both front ends (both tsconfigs are noEmit; widget build:check and admin-ui build already use tsc -b); run-selected-tests.sh routes widget and admin-ui vitest and playwright paths and crates/<dir> to cargo test -p, and every crates/* directory name equals its Cargo package name. 8e9f672: the redesign and the token endpoint hold together: resolveOptions keeps every prior data-* semantic; refreshToken runs at open and again at send when under 30 s remain; Send anonymously builds opts with jwt undefined so api.ts authHeaders adds no Authorization header and credentials falls to include, and the same opts reach uploadAttachments; showSent destroys the attachments controller first, keeps closeBtn, esc and the focus trap (trapFocus queries live via getFocusable), and submitBtn stays disabled on success so Ctrl/Cmd+Enter cannot resend; dist/widget.js is rebuilt from this source (contains data-token-url, fbm-chips, fbm-sent, no fbm-toast) and its 32,773 B total is exactly 30,720+2,053 as the message claims. Test lens, ruling on both VER-32 flags: the renamed happy-path test is the old one evolved and asserts strictly more (Send disabled until a message, the POST payload kind/subject/body, axe on the confirmation, Done closes); the attachments test lost expect(dialog).toBeHidden() because the dialog no longer closes on submit and its /Thanks/i status check became an exact-text one, so neither makes a check pass more easily. The four new DEC-FBR-IMPL-35 e2e cells assert the token on the wire, no Authorization header under anonymity, the signed-out fallback and a second token fetch before an expiring send; the vitest cells assert the radio group, the disabled Send, the counter threshold, Ctrl+Enter and jwtEmail. Security lens: no path that grants or guards access changed; data-token-url is page-controlled exactly as data-jwt already was, the fetch uses credentials same-origin and only reads a string token from JSON, and the email claim is rendered through textContent. The cap raise is recorded as the owner decision in DEC-FBR-IMPL-35 and applied consistently in oracle.py, oracle.json and the project docs."
+ },
+ "findings": [
+  {
+   "id": "8e9f672ef4fc:C-001",
+   "lens": "general",
+   "severity": "medium",
+   "summary": "The suite at the tip observed none of the window front-end tests: its red is sccache and a missing vitest, not a cell",
+   "evidence": "backstop/records/c10992e5ffc340eaf09df6b2ec9f9e2f2b778dd5.json: verdict red, red: [], why \"the suite failed and named no cell\". evidence/finalize-check-20261011T034045-root.log:323-342 \"sccache: error: failed to execute compile ... An existing connection was forcibly closed by the remote host. (os error 10054)\"; :343 \"error: could not compile futures-executor (lib)\"; :414-416 \"vitest is not recognized as an internal or external command\" (twice: widget and admin-ui). So widget/src/ui.test.ts (+159 lines) and widget/e2e/widget-a11y.spec.ts (+172 lines, 5 new cells) have no recorded run at 8e9f672; this worktree has no widget/node_modules or admin-ui/node_modules either, so I could not run them. The oracle lanes did run and pass."
+  },
+  {
+   "id": "8e9f672ef4fc:C-002",
+   "lens": "general",
+   "severity": "medium",
+   "summary": "The API has no subject field: the first-line subject the window calls API-required is sent and dropped, yet is recorded as fact in DECISIONS, the README, a code comment and a mocked e2e assertion",
+   "evidence": "crates/feedbackmonk-api/src/handlers/feedback.rs:84-125 FeedbackRequest fields are body, sentiment, kind, email, crash_event_id, severity, rating; no subject, and grep deny_unknown_fields over crates/ matches only feedbackmonk-runner/src/analyst/ingest.rs, so serde ignores it. grep subject over crates/**/*.rs finds only email subjects, tenants.email_subject_prefix and an error.rs test string. widget/src/widget.ts:241-244 \"The API requires a subject; ... the subject is its first line\"; widget/README.md:286 says the API required subject is the first line of the message; docs/specs/DECISIONS.md:1225 \"(the required subject is the message first line)\"; widget/e2e/widget-a11y.spec.ts happy-path asserts sent.subject equals \"How do I export my data?\" against the mocked POST, a value the real server never reads. Pre-existing on the wire (widget/src/types.ts:40 since 9f1a28b), but this window writes the false premise into durable text and tests it."
+  },
+  {
+   "id": "8e9f672ef4fc:C-003",
+   "lens": "general",
+   "severity": "low",
+   "summary": "Token refresh edge cases: a failed refresh discards a still-valid token and sends anonymously after the form said where replies go; opening awaits the endpoint with no timeout",
+   "evidence": "widget/src/widget.ts:162-184 refreshToken: on !r.ok, a body without token, or a thrown fetch, token stays undefined and :182 state.opts = { ...state.opts, jwt: token } runs unconditionally, so a token with 0 < ttl < 30 s is replaced by none; :263 the send path then calls submitFeedback with no Authorization while the open form shows \"Replies go to <email>\" (ui.ts whoField), and an auth-only project (config.auth_modes without anonymous) gets a 401 instead of a retry with the held token. widget/src/widget.ts:312-318 openModal awaits refreshToken(state) with no AbortController or timeout; a hanging token endpoint keeps the dialog from opening while state.opening is true. Neither path has a test cell."
+  },
+  {
+   "id": "8e9f672ef4fc:C-004",
+   "lens": "general",
+   "severity": "low",
+   "summary": "Files the window touched still state the old 30,720 B cap beside the new 40,960 B one",
+   "evidence": "widget/README.md:5 says 40 KiB; widget/README.md:238 \"English page-load set <= 30720 bytes\", :240-241 \"Current: 29,836 B used / 884 B headroom\", :248 \"SIZE_CAP_BYTES is the same 30720 it has always been\". .claude/project-oracles/widget-bundle-size/README.md:23 says 40960; same file :6 \"at most 30720 bytes (30 KiB\", :87 \"The cap itself was not touched. SIZE_CAP_BYTES is the same 30720\", :122 sample output \"<= 30720B\". .claude/project-oracles/widget-bundle-size/oracle.py:65 says 40 KiB; same file :26 \"same 30720 it has always been\". Untouched but now wrong: widget/vite.config.ts:8 \"<= 30720 bytes (FR-FBR-04)\", :73 \"capped at 30 KiB together\"; widget/src/i18n.ts:15 \"the 30 KiB page-load cap\"."
+  },
+  {
+   "id": "8e9f672ef4fc:C-005",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The two new landing-check scripts have no program verifying their routing or exit contract",
+   "evidence": "scripts/run-selected-tests.sh:17-26 routes five path shapes and exits 2 on any other; :29-41 dispatches to npx vitest, npx playwright and cargo test -p. scripts/fast-check.sh:11-13 runs three commands. No test file in the tree names either script (grep run-selected-tests across tracked files matches only .claude/config.json and scripts/README.md). Mode: unit (a shell or pytest cell that puts stub npx and cargo on PATH and asserts which runner each path reaches and that an unplaceable path exits 2), owned by a new tests/scripts/ cell beside the scripts; the other behaviour in the window is covered by vitest and playwright cells and needs nothing here."
+  }
+ ],
+ "veto_reason": null,
+ "reviewer": {
+  "model": "claude-fable-5-1",
+  "seat": "distinct",
+  "requested": {
+   "model": "claude-fable-5-1",
+   "alias": "fable",
+   "seat": "distinct",
+   "note": null
+  }
+ },
+ "authors": [
+  "claude-opus-5-5"
+ ],
+ "closing_session": "review-auto-20261011T031025Z",
+ "minutes": 42.6,
+ "decided_at": "2026-10-11T04:12:16Z",
+ "debt": {
+  "cleared": 213.636,
+  "budget": 1715.1,
+  "next_budget": 1715.1,
+  "why": "the seed, from the replay (docs/planning/measurements/review-window); next: unchanged: neither of VER-34's adjustments applies"
+ },
+ "fixes": [],
+ "resolved": {}
+}
