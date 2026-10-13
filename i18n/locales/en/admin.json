@@ -246,7 +246,62 @@
       "enableLabel": "Enable public board",
       "enableNote": "When on, approved feedback is visible at your public board URL. Turning it off hides the board entirely (existing approvals are kept).",
       "requireModerationLabel": "Require moderation",
-      "requireModerationNote": "Always on in v1 — every item is reviewed before it can appear on the board. Auto-approve is reserved for a future release."
+      "requireModerationNote": "Always on in v1 — every item is reviewed before it can appear on the board. Auto-approve is reserved for a future release.",
+      "accessLegend": "Who can see the board",
+      "accessPublic": "Anyone with the link",
+      "accessPublicNote": "Anyone can read the board and vote. Marking items “not needed” and keeping a priority list still need a signed-in user.",
+      "accessSignedIn": "Signed-in users only",
+      "accessSignedInNote": "Only users who arrive from your app with a sign-in link (through the widget) can read the board or vote. Everyone else sees a sign-in prompt."
+    },
+    "ownerPriority": {
+      "title": "Priority",
+      "intro": "What signed-in users say matters most, fitted from their personal priority lists. Votes, “not needed” marks and priority are three separate signals: they are shown side by side and never combined into one score. No individual user’s list is ever shown.",
+      "loadError": "Failed to load the priority view.",
+      "computedAt": "Computed <time>{{when}}</time>",
+      "contributingRankers_one": "{{count}} user’s list contributes (lists of two or more items count).",
+      "contributingRankers_other": "{{count}} users’ lists contribute (lists of two or more items count).",
+      "rankedHeading": "Ranked by users",
+      "rankedCaption": "Items in priority order, with the users who placed each, the fit’s uncertainty, votes and not-needed marks as separate columns",
+      "rankedEmpty": "No item has been ranked yet. An item enters the order once at least one user puts it in a priority list of two or more items.",
+      "unrankedHeading": "Not ranked yet",
+      "unrankedCaption": "Board items no user has ranked, with their votes and not-needed marks",
+      "unrankedEmpty": "Every item on the board has been ranked.",
+      "columns": {
+        "rank": "Priority",
+        "item": "Item",
+        "excerpt": "Feedback",
+        "status": "Status",
+        "rankers": "Ranked by",
+        "uncertainty": "Uncertainty",
+        "votes": "Votes",
+        "notNeeded": "Not needed",
+        "boardNote": "Board note"
+      },
+      "uncertaintyBand": {
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "uncertaintyValue": "{{band}} (±{{value}})",
+      "editNote": "Board note",
+      "editNoteAria": "Edit the board note for {{item}}"
+    },
+    "boardNoteEditor": {
+      "heading": "Board note for {{item}}",
+      "intro": "A short public note every board viewer sees on this item — for example, when you plan to start it. Plain text. It is not a reply to the submitter.",
+      "label": "Board note",
+      "loading": "Loading the board note…",
+      "loadError": "Failed to load the board note.",
+      "notOnBoard": "This item is not on the board, so it cannot carry a board note.",
+      "none": "No board note yet.",
+      "lastUpdated": "Last updated {{when}}",
+      "counter": "{{length}} / {{max}}",
+      "save": "Save note",
+      "clear": "Clear note",
+      "close": "Close",
+      "saved": "Board note saved.",
+      "cleared": "Board note cleared.",
+      "saveFailed": "Could not save the board note."
     },
     "hostingSettings": {
       "title": "Public address",
