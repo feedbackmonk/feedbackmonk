@@ -4,26 +4,29 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { PublicBoard } from "../PublicBoard";
 import { ToastProvider } from "../../../components/Toast";
 import { renderWithClient } from "../../../test/testUtils";
-import type { BoardListResponse } from "../../../shared/types.gen";
+import type { BoardViewerListResponse } from "../../../shared/types.gen";
 
 vi.mock("../../../shared/ApiClient", () => ({
-  fetchPublicBoard: vi.fn(),
+  fetchBoardForViewer: vi.fn(),
   castBoardVote: vi.fn(),
   retractBoardVote: vi.fn(),
+  endBoardSession: vi.fn(),
 }));
 
 import {
   castBoardVote,
-  fetchPublicBoard,
+  fetchBoardForViewer,
   retractBoardVote,
 } from "../../../shared/ApiClient";
-const mockedList = vi.mocked(fetchPublicBoard);
+// The board reads through the C43 viewer-aware client since end-user
+// prioritization; a C29 list is a valid C43 list for an anonymous viewer.
+const mockedList = vi.mocked(fetchBoardForViewer);
 const mockedCast = vi.mocked(castBoardVote);
 const mockedRetract = vi.mocked(retractBoardVote);
 
 const PROJECT_ID = "00000000-0000-0000-0000-000000000abc";
 
-const exampleList: BoardListResponse = {
+const exampleList: BoardViewerListResponse = {
   items: [
     {
       short_code: "FB-AAA111",
@@ -45,6 +48,8 @@ const exampleList: BoardListResponse = {
   total: 2,
   limit: 50,
   offset: 0,
+  access: "public",
+  signed_in: false,
 };
 
 describe("PublicBoard", () => {
@@ -126,7 +131,7 @@ describe("PublicBoard", () => {
           anon_token_hash: "deadbeef",
         },
       ],
-    } as BoardListResponse;
+    } as BoardViewerListResponse;
     mockedList.mockResolvedValueOnce(leaky);
     const { container } = renderWithClient(
       <ToastProvider>
@@ -151,6 +156,8 @@ describe("PublicBoard", () => {
       total: 0,
       limit: 50,
       offset: 0,
+      access: "public",
+      signed_in: false,
     });
     renderWithClient(
       <ToastProvider>
@@ -185,5 +192,78 @@ describe("PublicBoard", () => {
     });
     // Not an error/alert surface — a board-disabled project is a normal state.
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("renders the sign-in prompt, not the unavailable state, on a signed_in board (FR-FBR-43)", async () => {
+    const err = new axios.AxiosError("unauthorized");
+    // @ts-expect-error — minimal AxiosResponse stub for the 401 branch.
+    err.response = { status: 401, data: { error: "SignInRequired" } };
+    mockedList.mockRejectedValue(err);
+    renderWithClient(
+      <ToastProvider>
+        <PublicBoard projectId={PROJECT_ID} />
+      </ToastProvider>,
+      { withRouter: true, initialPath: `/public/projects/${PROJECT_ID}/board` },
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Sign in to see this board" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(/this feedback board isn’t available/i),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("shows a signed-in viewer their own upvote and a link to their priorities (FR-FBR-46)", async () => {
+    mockedList.mockResolvedValueOnce({
+      ...exampleList,
+      signed_in: true,
+      items: [
+        {
+          ...exampleList.items[0],
+          viewer: { upvoted: true, not_needed: false, priority_position: null },
+        },
+        {
+          ...exampleList.items[1],
+          viewer: { upvoted: false, not_needed: false, priority_position: 0 },
+        },
+      ],
+    });
+    renderWithClient(
+      <ToastProvider>
+        <PublicBoard projectId={PROJECT_ID} />
+      </ToastProvider>,
+      { withRouter: true, initialPath: `/public/projects/${PROJECT_ID}/board` },
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Retract vote — current count 9/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: "My priorities" })).toHaveAttribute(
+      "href",
+      `/public/projects/${PROJECT_ID}/board/priorities`,
+    );
+    // Each item links to its detail page.
+    expect(screen.getByRole("link", { name: /Bug · FB-AAA111/ })).toHaveAttribute(
+      "href",
+      `/public/projects/${PROJECT_ID}/board/items/FB-AAA111`,
+    );
+  });
+
+  it("asks the server for one kind when the kind filter is set (FR-FBR-42)", async () => {
+    mockedList.mockResolvedValue(exampleList);
+    renderWithClient(
+      <ToastProvider>
+        <PublicBoard projectId={PROJECT_ID} />
+      </ToastProvider>,
+      { withRouter: true, initialPath: `/public/projects/${PROJECT_ID}/board` },
+    );
+
+    const filter = await screen.findByRole("combobox", { name: "Show" });
+    fireEvent.change(filter, { target: { value: "feature" } });
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(PROJECT_ID, { kind: "feature" });
+    });
   });
 });
