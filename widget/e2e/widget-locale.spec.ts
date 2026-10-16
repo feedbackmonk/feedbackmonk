@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect } from "./_liveness/liveness";
+import type { Page, Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // FR-FBR-35 end-to-end suite: the locale matrix, the CSP fixture (TGF-…-01)

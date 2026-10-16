@@ -25,7 +25,7 @@ FR-FBR-07. P1 Stage 2.
 |---|---|
 | `package.json` | npm package + scripts (`dev`, `build`, `test`, `test:e2e`). |
 | `vite.config.ts` | Vite + Vitest config. Port **14204** with `strictPort: true` (Dev Port Registry); `/api` → `http://localhost:14304`. |
-| `playwright.config.ts` | Playwright config; spawns the Vite dev server as `webServer`. |
+| `playwright.config.ts` | Playwright config; enters the machine-wide browser-test queue and adopts the dev server on 14204, or starts `npm run dev` detached, through `metadata.testServer` — no run owns or stops it. |
 | `tsconfig.json` / `tsconfig.node.json` | Strict TS config. |
 | `index.html` | SPA shell. |
 | `src/main.tsx` | Entry: QueryClient + Router + ToastProvider + `<App />`. |
@@ -45,6 +45,7 @@ FR-FBR-07. P1 Stage 2.
 | `src/test/setup.ts` | Vitest setup (`@testing-library/jest-dom`). |
 | `src/test/testUtils.tsx` | `renderWithClient` helper. |
 | `src/**/*.test.tsx` | Vitest unit tests (StatusControls, ReplyComposer, FeedbackList). |
+| `e2e/_liveness/` | The stall-detector fixture and queue entry, vendored unchanged from `~/.claude/templates/testing/playwright/` (ULDF testing-runtime standard, DEC-745): every spec imports `test`/`expect` from `liveness.ts`, so the stall detector bounds each wait; `queue-setup`/`queue-teardown` take and free a slot in the machine-wide browser-test queue. Re-copy on a template bump; never edit it here. |
 | `e2e/a11y.spec.ts` | Playwright + `@axe-core/playwright` smoke (login → list → drawer → reply → transition). |
 | `e2e/` | Playwright + axe-core WCAG 2.1 AA smokes, one per surface, fake-API by default (`PLAYWRIGHT_FAKE_API=0` for a seeded server): `a11y.spec.ts` above, plus `autopilot-a11y`, `board-kanban-a11y`, `hosting-settings-a11y`, `language-settings-a11y`, `moderation-a11y`, `public-board-a11y`, `public-roadmap-a11y` and `tier-settings-a11y` (`.spec.ts`). |
 | `src/shared/` | API clients, the backend wire-type mirror and shared helpers — see `src/shared/README.md`. |

@@ -8,7 +8,7 @@ export default defineConfig({
     format: 'directory',
   },
   server: {
-    port: 14210,
+    port: 14222,
     host: '127.0.0.1',
   },
   vite: {

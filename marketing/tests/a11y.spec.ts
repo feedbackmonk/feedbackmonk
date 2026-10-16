@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "./_liveness/liveness";
+import type { Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // FR-FBR-16 a11y smoke. For every page in the C23 routing scheme:

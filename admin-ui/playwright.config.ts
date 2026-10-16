@@ -9,6 +9,16 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [["list"]],
+  // Every run takes a slot in the machine-wide browser-test queue (TLV-10).
+  globalSetup: "./e2e/_liveness/queue-setup.ts",
+  globalTeardown: "./e2e/_liveness/queue-teardown.ts",
+  // The test server is declared here, never in `webServer`: the queue adopts the
+  // dev server already answering on the reserved port, or starts it detached so
+  // that no run owns it (testing-runtime TLV-11, 12, DEC-745). A run in a
+  // worktree therefore uses whichever tree's dev server holds 14204.
+  metadata: {
+    testServer: { url: `http://localhost:${PORT}`, command: ["npm", "run", "dev"] },
+  },
   // No time limit stops a test, an assertion or an action (DEC-743): a busy
   // machine making a run slow is not a failure. `0` means none here.
   timeout: 0,
@@ -25,20 +35,4 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    // Direct path to `vite.cmd` (not `npm run dev` or `npx vite`) —
-    // Playwright's webServer spawn on Windows does NOT inherit a shell,
-    // so .cmd extension resolution doesn't happen. Pointing at the
-    // resolved binary avoids `'vite' is not recognized` failures.
-    command:
-      process.platform === "win32"
-        ? "node_modules\\.bin\\vite.cmd"
-        : "node_modules/.bin/vite",
-    url: `http://localhost:${PORT}`,
-    reuseExistingServer: !process.env.CI,
-    // time-bound: no limit, death still seen at once — webServer has no
-    // unlimited value (`0` falls back to 60 s, `Infinity` fires at once), and
-    // its launch wait races the server process, so a build that dies fails now.
-    timeout: 2_147_483_647,
-  },
 });

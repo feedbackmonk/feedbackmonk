@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect } from "./_liveness/liveness";
+import type { Page, Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // Smoke a11y harness for FR-FBR-07. By default uses fake API mocks so it

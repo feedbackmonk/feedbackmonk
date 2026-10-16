@@ -28,9 +28,9 @@ just like the rest of the product — no separate proprietary marketing repo.
 | `README.md` | This file (ULADP module README). |
 | `package.json` | Astro + Playwright + axe-core devDeps; `prebuild`/`predev` hook the Rust→JSON pricing export; `test:a11y` script for the smoke spec. Pins `@rollup/rollup-win32-x64-msvc` to work around the npm optional-platform-dep bug (same workaround as `admin-ui/`). |
 | `package-lock.json` | npm lockfile; pins the exact dependency tree `npm ci` installs. |
-| `astro.config.mjs` | Astro config; `site = https://feedbackmonk.com`; `trailingSlash: 'ignore'`; preview/dev on port 14210 with `strictPort: true` (per DEC-FBR-IMPL-04). |
+| `astro.config.mjs` | Astro config; `site = https://feedbackmonk.com`; `trailingSlash: 'ignore'`; preview/dev on port 14222 with `strictPort: true` (per DEC-FBR-IMPL-04). |
 | `tsconfig.json` | Extends `astro/tsconfigs/strict`. |
-| `playwright.config.ts` | A11y smoke harness; webServer spawns `astro preview` on 14210; Windows-aware bin path (mirrors `admin-ui/playwright.config.ts`). |
+| `playwright.config.ts` | A11y smoke harness under the ULDF testing-runtime standard: takes a slot in the machine-wide browser-test queue and adopts or detached-starts `npm run preview` on 14222 through `metadata.testServer` (`tests/_liveness/`, vendored unchanged from `~/.claude/templates/testing/playwright/`). |
 | `.gitignore` | `node_modules/`, `dist/`, `.astro/`, `test-results/`, **and `src/data/tier_quotas.json`** (the pricing JSON is generated, not source — DEC-FBR-IMPL-05). |
 | `scripts/run-export.mjs` | Cross-platform dispatcher invoked by `prebuild` + `predev`. Calls `cargo run -p feedbackmonk-core --example export_tier_quotas` and writes stdout to `src/data/tier_quotas.json`. |
 | `scripts/export-tier-quotas.sh` | POSIX shim for the same export (kept as documentation + manual-invocation surface). |
@@ -78,13 +78,13 @@ useful for diagnosing the JSON shape on its own.
 ### Dev / preview
 
 ```bash
-npm run dev                # astro dev on 127.0.0.1:14210 (strictPort)
+npm run dev                # astro dev on 127.0.0.1:14222 (strictPort)
 npm run preview            # astro preview from dist/ on the same port
 ```
 
-Port **14210** is reserved in `~/.claude/MACHINE_CONFIG.md` Dev Port
-Registry (logged via `channels/messages.md` for LD to register at
-convergence). `strictPort: true` prevents silent collision per
+Port **14222** is reserved for feedbackmonk in `~/.claude/MACHINE_CONFIG.md`
+Dev Port Registry (claimed 2026-10-16; the original 14210 was never registered
+here and is AllyCheckup's). `strictPort: true` prevents silent collision per
 DEC-FBR-IMPL-04.
 
 ### Tests
@@ -173,6 +173,7 @@ pwsh ./scripts/export-tier-quotas.ps1     # Windows
 - **2026-05-14** — Pricing-export JSON shape: `Vec<{ tier: <discriminator>, ...TierQuotas via serde flatten }>`. Self-describing (every consumer can round-trip), flat (no nested `quotas:` wrapper), field-shape matches `TierQuotas` verbatim with the `tier` discriminator added (no rename/restructure of existing fields per task spec).
 - **2026-05-14** — Cross-platform prebuild: a Node dispatcher (`scripts/run-export.mjs`) is the canonical entry point; the `.sh` / `.ps1` shims are retained for manual invocation. Node is already present (Astro requires it), so dispatching via Node avoids `&&` / `||` shell incompatibility between PowerShell and bash.
 - **2026-05-14** — Astro dev/preview port: **14210**. Chosen from the 14200-range per the project's Dev Port Registry; deconflicted from admin-ui (14204), widget e2e (14205), widget preview (14206), and api (14304). `strictPort: true` in `astro.config.mjs` and `playwright.config.ts`.
+- **2026-10-16** — Port moved 14210 → **14222**: 14210 is AllyCheckup's in the machine Dev Port Registry, and under the testing-runtime standard a run adopts whatever answers at its URL, so a clash would test the wrong site.
 - **2026-05-14** — `/docs/self-host` strategy: **content-mirror snapshot** rather than MDX-import. Rationale: the marketing-side page is a "is this for me + happy path" introduction, not a verbatim operator runbook. The canonical operator-side version stays in `docs/operations/SELFHOST.md` (terminal-readable, refreshed post-launch from real incidents); the marketing page links there for backup/restore depth + full troubleshooting matrix. The snapshot date is logged at the top of `src/pages/docs/self-host.astro` so future refreshes have a known starting state.
 - **2026-05-14** — Self-hosted fonts: **Inter Variable + JetBrains Mono Variable** as single `.woff2` files (~466 KB combined). Committed to `public/fonts/` rather than fetched at runtime per BRAND.md mandate. `scripts/fetch-fonts.mjs` exists for re-fetch if the files are ever pruned.
 - **2026-05-14** — Brand-token additive widening: 3 new tokens (`--brand-radius: 0.375rem`, `--brand-shadow`, `--brand-content-max: 68ch`). All structural / spatial — no new color hue. Pre-authorized per GUIDE.md §8 (CSS custom properties beyond the 6 BRAND.md tokens, additive, harmonize with palette).

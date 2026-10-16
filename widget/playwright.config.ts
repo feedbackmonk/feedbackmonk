@@ -18,6 +18,22 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: [["list"]],
+  // Every run takes a slot in the machine-wide browser-test queue (TLV-10).
+  globalSetup: "./e2e/_liveness/queue-setup.ts",
+  globalTeardown: "./e2e/_liveness/queue-teardown.ts",
+  // The test server is declared here, never in `webServer`: the queue adopts the
+  // preview already answering on 14206, or starts it detached so that no run
+  // owns it (testing-runtime TLV-11, 12, DEC-745). `--outDir .` makes preview
+  // serve the widget project ROOT statically (not just dist/), so
+  // `/e2e/fixture.html` and the fixture's `../dist/widget.js` both resolve --
+  // and the bundle is served as the real minified artifact, not a
+  // dev-transformed module. (Bare `vite preview` serves only dist/.)
+  metadata: {
+    testServer: {
+      url: `http://localhost:${PORT}/e2e/fixture.html`,
+      command: ["npx", "--no-install", "vite", "preview", "--outDir", ".", "--port", String(PORT), "--strictPort"],
+    },
+  },
   // No time limit stops a test, an assertion or an action (DEC-743): a busy
   // machine making a run slow is not a failure. `0` means none here.
   timeout: 0,
@@ -34,17 +50,4 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  webServer: {
-    // `--outDir .` makes preview serve the widget project ROOT statically (not
-    // just dist/), so `/e2e/fixture.html` and the fixture's `../dist/widget.js`
-    // both resolve — and the bundle is served as the real minified artifact,
-    // not a dev-transformed module. (Bare `vite preview` serves only dist/.)
-    command: `vite preview --outDir . --port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}/e2e/fixture.html`,
-    reuseExistingServer: !process.env.CI,
-    // time-bound: no limit, death still seen at once — webServer has no
-    // unlimited value (`0` falls back to 60 s, `Infinity` fires at once), and
-    // its launch wait races the server process, so a build that dies fails now.
-    timeout: 2_147_483_647,
-  },
 });

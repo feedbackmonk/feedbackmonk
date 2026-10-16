@@ -1,4 +1,5 @@
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect } from "./_liveness/liveness";
+import type { Page, Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
 // A11y smoke for the P6 read-only Kanban board (C31 §7). Mirrors
