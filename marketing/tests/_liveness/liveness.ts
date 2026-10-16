@@ -1,4 +1,4 @@
-// uldf-template: testing-liveness v1
+// uldf-template: testing-liveness v2
 // Vendored from <home>/templates/testing/playwright/ (testing-runtime TLV-1..6, DEC-745). Change
 // the template and re-copy; the `test-liveness` oracle reports a copy older than the template.
 //
@@ -131,7 +131,7 @@ export async function watchContext(context: BrowserContext, testInfo: TestInfo,
       running = false;
       await loop;
       if (stall) {
-        testInfo.annotations.push({ type: "stall", description: stall.split("\n")[0] });
+        testInfo.annotations.push({ type: "stall", description: stall.slice(0, stall.indexOf("\n")) });
         throw new Error(stall);
       }
     },

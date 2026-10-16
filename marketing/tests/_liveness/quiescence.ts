@@ -1,4 +1,4 @@
-// uldf-template: testing-liveness v1
+// uldf-template: testing-liveness v2
 // Vendored from <home>/templates/testing/playwright/ (testing-runtime TLV-2, DEC-745). Change the
 // template and re-copy; the `test-liveness` oracle reports a copy older than the template.
 //
@@ -139,6 +139,15 @@ export function installQuiescence(shortTimerMs: number): void {
   };
   if (document.documentElement) observe();
   else document.addEventListener("readystatechange", observe, { once: true });
+
+  // The document's own loading is work in flight: a cold dev server transforming the module graph
+  // is slow, real work that no `fetch`, XHR or DOM change shows. Each document re-installs the
+  // counter, so every navigation's load is covered. A chunk `import()`ed after `load` is not, and
+  // stays the project's to `track()`.
+  if (document.readyState !== "complete") {
+    const loaded = begin("document load");
+    w.addEventListener("load", loaded, { once: true });
+  }
 
   const doc = Math.random().toString(36).slice(2);
   const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
