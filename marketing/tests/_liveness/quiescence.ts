@@ -1,4 +1,4 @@
-// uldf-template: testing-liveness v2
+// uldf-template: testing-liveness v3
 // Vendored from <home>/templates/testing/playwright/ (testing-runtime TLV-2, DEC-745). Change the
 // template and re-copy; the `test-liveness` oracle reports a copy older than the template.
 //

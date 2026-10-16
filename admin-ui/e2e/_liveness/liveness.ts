@@ -1,4 +1,4 @@
-// uldf-template: testing-liveness v2
+// uldf-template: testing-liveness v3
 // Vendored from <home>/templates/testing/playwright/ (testing-runtime TLV-1..6, DEC-745). Change
 // the template and re-copy; the `test-liveness` oracle reports a copy older than the template.
 //
@@ -15,7 +15,7 @@
 // to the run nor resets it. So pending work, however slow, keeps the test alive indefinitely, and a
 // wait that nothing left can satisfy fails within `stallSamples` on-time samples.
 
-import { test as base, expect, type BrowserContext, type TestInfo } from "@playwright/test";
+import { test as base, expect, type BrowserContext, type Request, type TestInfo } from "@playwright/test";
 import { installQuiescence, type QuietSnapshot } from "./quiescence";
 
 export { expect };
@@ -27,9 +27,14 @@ export interface LivenessOptions {
   cadenceMs: number;
   /** A `setTimeout` at or under this delay counts as work in flight (TLV-2). */
   shortTimerMs: number;
+  /** URL substrings of requests that are not work: a stream the app holds open for its whole
+   *  life (an EventSource, a long poll) would otherwise keep every wait alive. */
+  ignoreUrls: string[];
 }
 
-export const LIVENESS_DEFAULTS: LivenessOptions = { stallSamples: 40, cadenceMs: 250, shortTimerMs: 1000 };
+export const LIVENESS_DEFAULTS: LivenessOptions = {
+  stallSamples: 40, cadenceMs: 250, shortTimerMs: 1000, ignoreUrls: [],
+};
 
 const nodeBusy = new Map<number, string>();
 let nodeSeq = 0;
@@ -78,6 +83,31 @@ export async function watchContext(context: BrowserContext, testInfo: TestInfo,
     await page.evaluate(installQuiescence, o.shortTimerMs).catch(() => undefined);
   }
 
+  // Every request the browser has in flight for this context, seen from the Node side: module
+  // scripts, a dynamic `import()`, the document itself, images. The page-side counter cannot see
+  // these, and a cold dev server transforming them is slow, real work (TLV-2).
+  const requests = new Map<Request, string>();
+  const onRequest = (r: Request) => {
+    const url = r.url();
+    if (!o.ignoreUrls.some((part) => url.includes(part))) requests.set(r, `${r.resourceType()} ${url}`);
+  };
+  const onDone = (r: Request) => { requests.delete(r); };
+  context.on("request", onRequest);
+  context.on("requestfinished", onDone);
+  context.on("requestfailed", onDone);
+  const openRequests = () => {
+    for (const r of [...requests.keys()]) {
+      let closed = false;
+      try {
+        closed = r.frame().page().isClosed();
+      } catch {
+        closed = false;   // a service worker's request has no frame; its own events end it
+      }
+      if (closed) requests.delete(r);
+    }
+    return [...requests.values()];
+  };
+
   let running = true;
   let stall: string | null = null;
   const loop = (async () => {
@@ -111,7 +141,8 @@ export async function watchContext(context: BrowserContext, testInfo: TestInfo,
       counted++;
       armed ||= snaps.some((s) => s !== null);
       const key = JSON.stringify(snaps.map((s) => s && [s.doc, s.href, s.mutations]));
-      const working = nodeBusy.size > 0 || snaps.some((s) => s === null || s.inflight.length > 0);
+      const working = nodeBusy.size > 0 || openRequests().length > 0
+        || snaps.some((s) => s === null || s.inflight.length > 0);
       if (!armed || working || key !== lastKey) quiet = 0;
       else quiet++;
       lastKey = key;
@@ -130,6 +161,9 @@ export async function watchContext(context: BrowserContext, testInfo: TestInfo,
     async stop() {
       running = false;
       await loop;
+      context.off("request", onRequest);
+      context.off("requestfinished", onDone);
+      context.off("requestfailed", onDone);
       if (stall) {
         testInfo.annotations.push({ type: "stall", description: stall.slice(0, stall.indexOf("\n")) });
         throw new Error(stall);
