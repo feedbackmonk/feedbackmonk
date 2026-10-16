@@ -1,0 +1,127 @@
+{
+ "schema": "review-window/1",
+ "n": 1,
+ "base": "1bc4cd079967f598455595844e3f1ce61f5c34fe",
+ "tip": "1c0ced9a4dbc513deb783dc7b416a7ca1a3e349c",
+ "tree": "c77f4ac6edcef7f86f749cfb75cf5b05740dd598",
+ "reviewed": [
+  "f25d619b45ca5b7671e1d51af4a350987f3d4014",
+  "0ec1e62cbde93de20c31d83ff696773f84a21b04",
+  "1f52134ca8610e2e8ae15a60297dfecea8e8026e",
+  "e460de70a655797aa2f3d23ceee5a17a2c74dd59",
+  "3d5933f31b832d3078a80649b78a5ab81ddcb9f2",
+  "3b9cadbc1ecaedf4b5e1f9dc04cad3210b4e4dd8",
+  "d3549b9f3c10491f74b57cd889836637aaba0916",
+  "f93745b2eac170505515e299557dcf6352a09fe4",
+  "bb88a4ed555ac8ea6e2104e8e73ffc0cb51b2d5d",
+  "1c0ced9a4dbc513deb783dc7b416a7ca1a3e349c"
+ ],
+ "supersedes": "",
+ "suite": {
+  "result": "unknown",
+  "suite_tip": "1c0ced9a4dbc513deb783dc7b416a7ca1a3e349c",
+  "suite_tree": "c77f4ac6edcef7f86f749cfb75cf5b05740dd598",
+  "receipt": "backstop 2026-10-16T06:48:17Z",
+  "source": "backstop",
+  "backstop": {
+   "verdict": "unmeasured",
+   "tip": "1c0ced9a4dbc513deb783dc7b416a7ca1a3e349c",
+   "red": [],
+   "flaky": [],
+   "why": "this checkout is not installed: package.json names packages and there is no node_modules in admin-ui, marketing, widget of S:/Apps/FeedbackMonk/.claude/session-state/backstop/tree; declare how a fresh tree is installed (`.claude/config.json` \"backstop\": {\"setup\": [commands]}, or a checkout factory \"worktree\": {\"add\", \"remove\"})"
+  },
+  "oracles": "pass",
+  "oracle_reds": []
+ },
+ "verdict": "CONCERN",
+ "approach": {
+  "verdict": "sound",
+  "why": "Two things set out to be done: close the held window's two oracle holes, and move the three Playwright lanes onto the testing-runtime standard. Both are done in a way that works. Oracles: parse_schema now returns a named-FK Schema (explicit CONSTRAINT or pg_default_name with NAMEDATALEN truncation) and models DROP/RENAME CONSTRAINT, DROP [COLUMN] and DROP TABLE, failing closed on an unresolvable name (oracle.py:509-535, 561-597, 722-738); host-tenant-binding Probe E scans every .nest/.nest_service, fails closed on a non-literal prefix and compares path params by position (oracle.py:643-706, 724-726). Verified here, not taken on trust: all three mutations.py runners exit 0 on this tree (erasure 10/10 red incl. G1/G2, host-binding 6/6 red incl. H5/H6, moderation 1/1 red; clean and restored copies exit 0), and both oracles exit 0 on the real tree. Playwright: the five _liveness files are byte-identical across admin-ui, marketing, widget and ~/.claude/templates/testing/playwright (md5 match), every spec in the three lanes imports test/expect from the fixture (grep: none left on @playwright/test for test), timeouts stay 0, and the test-liveness oracle passes on this tree. Test lens: each spec's change is the import line only; liveness.ts re-exports Playwright's expect unchanged (line 21) and test is base.extend (line 172), so no assertion, cell or comparison was loosened. The window's own composition is consistent: metadata.testServer commands match the package scripts (admin-ui dev=vite on 14204 strictPort; widget vite preview --outDir . on 14206; marketing preview on 14222 in package.json, astro.config.mjs and playwright.config.ts alike), and test_queue.py resolves .cmd on win32 via proc.resolve, so the old webServer .cmd workaround is not needed. ci-local.sh's .env read is guarded (only when DATABASE_URL is unset and .env exists; strips CR; CI unaffected). The concerns below are a stale instruction the window made wrong, a documented promise the standard does not keep off-ULDF, and a lane left unrun."
+ },
+ "findings": [
+  {
+   "id": "1c0ced9a4dbc:C-001",
+   "lens": "general",
+   "severity": "medium",
+   "summary": "docs/hazards.json still instructs `CI=1 ... stops reuse of another tree's dev server on 14204`, which 1c0ced9 made false: the queue adopts whatever answers on the port and reads no CI, so a worktree lane following the delivered fix tests the anchor's server believing it is isolated",
+   "evidence": "docs/hazards.json entry `npx-playwright-outside-admin-ui`, fix: \"cd admin-ui && CI=1 npx --no-install playwright test <specs>. CI=1 also stops reuse of another tree's dev server on 14204.\", delivers_on [\"tool:Bash(*playwright*)\"] (it was delivered to this review on a grep that merely named playwright). admin-ui/playwright.config.ts diff: `reuseExistingServer: !process.env.CI` removed with the whole webServer block; new comment at the metadata block: \"A run in a worktree therefore uses whichever tree's dev server holds 14204.\" admin-ui/e2e/_liveness/queue.ts:66-70 passes server.url/command to `test_queue.py server`; grep -n '\"CI\"|CI=|environ.get(\"CI|reuse' C:/Users/Carbonadmin/.claude/scripts/test_queue.py: no match; test_queue.py server(): `if answers(url): return 0, 'adopted the server answering at {url}'`. The entry is the project's only guidance for running a lane from a worktree and it now points at a switch with no effect."
+  },
+  {
+   "id": "1c0ced9a4dbc:C-002",
+   "lens": "general",
+   "severity": "low",
+   "summary": "The three lane READMEs promise the run 'starts npm run dev / preview detached' but the vendored queue returns before the testServer block when ~/.claude/scripts/test_queue.py is absent, so on a contributor's machine (public repo, e2e not in CI) `npm run test:e2e` now meets a dead port; filed upstream, not noted locally",
+   "evidence": "admin-ui/e2e/_liveness/queue.ts:56-61: `if (!script) { console.log('test-queue: ... running unqueued (TLV-10)'); return; }` precedes the `if (server)` start at lines 65-70. admin-ui/README.md:28, widget/README.md playwright.config.ts row, marketing/README.md playwright.config.ts row: each says the run adopts or starts the server, with no 'under ULDF only' caveat. .github/workflows/*.yml: no playwright/test:e2e/test:a11y match, so CI never exercises it. S:/ULDF/docs/planning/deferred/20261016-1300-queue-absent-starts-no-test-server.md exists (the template defect, named in 1c0ced9's message). Before this window admin-ui/playwright.config.ts webServer started vite with no framework dependency."
+  },
+  {
+   "id": "1c0ced9a4dbc:C-003",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The marketing lane's rewiring (new port 14222, metadata.testServer, globalSetup) landed config-only with no run observing it, and no check receipt exists for the tip; the program that would own it is the backstop once a fresh tree can be installed",
+   "evidence": "1c0ced9 message: \"marketing's lane is config-only here: it has no node_modules, so it was not run.\" grep '1c0ced9|c77f4ac6' over S:/Apps/FeedbackMonk/.claude/session-state/*.jsonl and */*.json: only backstop/status.json, `why: unmeasured at 1c0ced9a4dbc`; the prompt's suite result for the tip is unknown. This review tree has no node_modules in admin-ui, widget or marketing, so the lane could not be run here either. Mode: one run of marketing/tests/a11y.spec.ts under the fixture (the brief's proofs (1) and (2) were observed on the other two lanes only); owner: the backstop, which needs `backstop.setup` or `backstop.env` declared in .claude/config.json (config has no `backstop` key; the open brief docs/planning/deferred/20261015-0107-declare-backstop-env-and-revisit-unknown.md, carried 1bc4cd079967:C-001 of record 2)."
+  }
+ ],
+ "veto_reason": null,
+ "reviewer": {
+  "model": "claude-fable-5-1",
+  "seat": "distinct",
+  "requested": {
+   "model": "claude-fable-5-1",
+   "alias": "fable",
+   "seat": "distinct",
+   "note": null
+  }
+ },
+ "authors": [
+  "claude-opus-5-5"
+ ],
+ "closing_session": "review-auto-20261016T070025Z",
+ "minutes": 28.4,
+ "decided_at": "2026-10-16T08:29:37Z",
+ "debt": {
+  "cleared": 3611.693,
+  "budget": 1715.1,
+  "next_budget": 1715.1,
+  "why": "from .claude/reviews/1bc4cd079967f598455595844e3f1ce61f5c34fe-2.json (the seed, from the replay (docs/planning/measurements/review-window); next: unchanged: neither of VER-34's adjustments applies); next: unchanged: neither of VER-34's adjustments applies"
+ },
+ "holds_on": "medium",
+ "carried": [
+  {
+   "id": "1bc4cd079967:C-003",
+   "lens": "general",
+   "severity": "low",
+   "summary": "Probe F's generic guard iterates only FKs that target feedback, so a user-keyed table that names the item by short_code with no FK is invisible to the item side; Probe E (user side) still forces its erasure",
+   "record": ".claude/reviews/1bc4cd079967f598455595844e3f1ce61f5c34fe-1.json"
+  },
+  {
+   "id": "1bc4cd079967:C-004",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The 15 mutations (E5-E8, F1-F4, M12, H1-H4) exist only as one-line README rows; the lead replayed them by hand, and re-verification after the next parser change means re-deriving each from prose",
+   "record": ".claude/reviews/1bc4cd079967f598455595844e3f1ce61f5c34fe-1.json"
+  },
+  {
+   "id": "1bc4cd079967:C-001",
+   "lens": "general",
+   "severity": "low",
+   "summary": "The backstop has never been green for this project: its tree copy has no node_modules and no DATABASE_URL, so cargo test and both front-end suites never run there and every record is red 'named no cell' -- the only whole-suite pass is the session's own run in the checkout",
+   "record": ".claude/reviews/1bc4cd079967f598455595844e3f1ce61f5c34fe-2.json"
+  },
+  {
+   "id": "1bc4cd079967:C-002",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The three mutations.py runners (held C-004's program) exist but no declared check runs them, so a parser change that un-reds a row is only caught when someone runs them by hand",
+   "record": ".claude/reviews/1bc4cd079967f598455595844e3f1ce61f5c34fe-2.json"
+  },
+  {
+   "id": "1bc4cd079967:C-003",
+   "lens": "adts",
+   "severity": "low",
+   "summary": "The closing session verified by repetition and polling where parking would do: tsc -b run 4x with no edit between, two reruns after a failure with no edit, and a background verification polled 14 times over 25.7 min",
+   "record": ".claude/reviews/1bc4cd079967f598455595844e3f1ce61f5c34fe-2.json"
+  }
+ ],
+ "fixes": [],
+ "resolved": {}
+}
