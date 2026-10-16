@@ -25,7 +25,7 @@
         "Error: No tests found\\."
       ],
       "cost": "collab-20261013-171541: both UI lanes' independent re-runs went red and needed a manual re-run",
-      "fix": "Run from admin-ui and pin the local binary: cd admin-ui && CI=1 npx --no-install playwright test <specs>. CI=1 also stops reuse of another tree's dev server on 14204.",
+      "fix": "Run from admin-ui and pin the local binary: cd admin-ui && CI=1 npx --no-install playwright test <specs> (the same in widget/ and marketing/). CI=1 no longer isolates a worktree: the test queue adopts whatever answers on the lane's port (14204, 14206, 14222), so a worktree run tests the tree whose server holds that port -- stop that server first, or run from the tree that owns it.",
       "delivers_on": [
         "tool:Bash(*playwright*)"
       ],
